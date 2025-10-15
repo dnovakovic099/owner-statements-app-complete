@@ -1,0 +1,48 @@
+{
+  "name": "owner-statements-app",
+  "version": "1.0.0",
+  "description": "Automated Owner Statements Management System",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build": "npm run install:frontend && npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "dev:frontend": "cd frontend && npm start",
+    "install:frontend": "cd frontend && npm install",
+    "postinstall": "npm run install:frontend",
+    "init-db": "node scripts/init-database.js",
+    "reset-db": "node scripts/reset-database.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "property-management",
+    "statements",
+    "automation",
+    "hostaway",
+    "securestay"
+  ],
+  "author": "Property Management Team",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
+    "axios": "^1.12.2",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-basic-auth": "^1.2.1",
+    "helmet": "^8.1.0",
+    "html-pdf-node": "^1.0.8",
+    "intuit-oauth": "^4.2.0",
+    "moment": "^2.30.1",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "node-quickbooks": "^2.0.46",
+    "puppeteer": "^24.22.3",
+    "sequelize": "^6.37.7",
+    "sqlite3": "^5.1.7",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Simple Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #005a9e;
+        }
+        .result {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 QuickBooks Simple Test</h1>
+        <p>Test QuickBooks API endpoints without complex JavaScript</p>
+
+        <div>
+            <button onclick="testAuthUrl()" class="button">🔗 Test Auth URL</button>
+            <button onclick="testTransactions()" class="button">📊 Test Transactions</button>
+            <button onclick="testAccounts()" class="button">💰 Test Accounts</button>
+            <button onclick="clearResults()" class="button">🧹 Clear</button>
+        </div>
+
+        <div id="results" class="result">Click a button above to test...</div>
+
+        <div style="margin-top: 30px;">
+            <h3>🔗 Direct Links (No JavaScript)</h3>
+            <p>If JavaScript fails, try these direct links:</p>
+            <ul>
+                <li><a href="/api/quickbooks/auth-url" target="_blank">Get Auth URL (JSON)</a></li>
+                <li><a href="/api/quickbooks/transactions" target="_blank">Test Transactions (JSON)</a></li>
+                <li><a href="/api/quickbooks/accounts" target="_blank">Test Accounts (JSON)</a></li>
+                <li><a href="/quickbooks-manual.html" target="_blank">Manual Setup Page</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function log(message) {
+            const results = document.getElementById('results');
+            if (results) {
+                results.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+                results.scrollTop = results.scrollHeight;
+            }
+        }
+
+        function clearResults() {
+            const results = document.getElementById('results');
+            if (results) {
+                results.textContent = 'Results cleared...\n';
+            }
+        }
+
+        async function testAuthUrl() {
+            log('Testing auth URL endpoint...');
+            try {
+                const response = await fetch('/api/quickbooks/auth-url', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                
+                log('Response status: ' + response.status);
+                
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+                
+                const data = await response.json();
+                log('Response data: ' + JSON.stringify(data, null, 2));
+                
+                if (data && data.success && data.authUrl) {
+                    log('✅ Auth URL generated successfully!');
+                    log('URL: ' + data.authUrl);
+                } else {
+                    log('❌ Auth URL generation failed');
+                    log('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message);
+                console.error('Auth URL test error:', error);
+            }
+        }
+
+        async function testTransactions() {
+            log('Testing transactions endpoint...');
+            try {
+                const response = await fetch('/api/quickbooks/transactions', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                
+                log('Response status: ' + response.status);
+                
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+                
+                const data = await response.json();
+                log('Response data: ' + JSON.stringify(data, null, 2));
+                
+                if (data && data.success) {
+                    if (data.count > 0) {
+                        log('✅ Found ' + data.count + ' transactions');
+                    } else {
+                        log('⚠️ Connected but no transactions found');
+                        log('Message: ' + (data.message || 'No message'));
+                    }
+                } else {
+                    log('❌ Transactions test failed');
+                    log('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message);
+                console.error('Transactions test error:', error);
+            }
+        }
+
+        async function testAccounts() {
+            log('Testing accounts endpoint...');
+            try {
+                const response = await fetch('/api/quickbooks/accounts', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                
+                log('Response status: ' + response.status);
+                
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+                
+                const data = await response.json();
+                log('Response data: ' + JSON.stringify(data, null, 2));
+                
+                if (data && data.success) {
+                    if (data.data && data.data.length > 0) {
+                        log('✅ Found ' + data.data.length + ' accounts');
+                    } else {
+                        log('⚠️ Connected but no accounts found');
+                    }
+                } else {
+                    log('❌ Accounts test failed');
+                    log('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message);
+                console.error('Accounts test error:', error);
+            }
+        }
+
+        // Test on page load
+        window.addEventListener('load', function() {
+            log('Page loaded. Ready to test QuickBooks integration.');
+            log('Current credentials issue: Invalid Client ID/Secret');
+            log('Need to get real QuickBooks app credentials first.');
+        });
+    </script>
+</body>
+</html>
+

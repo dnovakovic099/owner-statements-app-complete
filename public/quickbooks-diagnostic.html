@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks App Diagnostic</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .url-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            word-break: break-all;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 QuickBooks App Diagnostic Tool</h1>
+        <p>This tool will help diagnose issues with your QuickBooks app configuration.</p>
+
+        <div id="results">
+            <div class="test-result warning">Click "Run Diagnostics" to start testing...</div>
+        </div>
+
+        <button onclick="runDiagnostics()" class="button">🔍 Run Diagnostics</button>
+        <button onclick="testDifferentUrl()" class="button">🧪 Test Different URL</button>
+
+        <div id="manual-test" style="display: none;">
+            <h3>Manual URL Test</h3>
+            <p>Try this direct QuickBooks URL (bypassing our server):</p>
+            <div class="url-box" id="direct-url"></div>
+            <button onclick="openDirectUrl()" class="button">🔗 Open Direct URL</button>
+        </div>
+    </div>
+
+    <script>
+        let currentAuthUrl = '';
+
+        async function runDiagnostics() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="test-result warning">Running diagnostics...</div>';
+
+            const tests = [
+                { name: 'Server Connection', test: testServerConnection },
+                { name: 'Auth URL Generation', test: testAuthUrlGeneration },
+                { name: 'QuickBooks App Status', test: testQuickBooksApp },
+                { name: 'Redirect URI Validation', test: testRedirectUri }
+            ];
+
+            for (const testCase of tests) {
+                try {
+                    const result = await testCase.test();
+                    addResult(testCase.name, result.success, result.message, result.data);
+                } catch (error) {
+                    addResult(testCase.name, false, error.message);
+                }
+            }
+        }
+
+        async function testServerConnection() {
+            const response = await fetch('/api/quickbooks/auth-url', {
+                headers: {
+                    'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                }
+            });
+
+            if (response.ok) {
+                return { success: true, message: 'Server responding normally' };
+            } else {
+                return { success: false, message: `Server error: ${response.status}` };
+            }
+        }
+
+        async function testAuthUrlGeneration() {
+            const response = await fetch('/api/quickbooks/auth-url', {
+                headers: {
+                    'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                }
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                currentAuthUrl = data.authUrl;
+                return { 
+                    success: true, 
+                    message: 'Auth URL generated successfully',
+                    data: data.authUrl
+                };
+            } else {
+                return { success: false, message: data.error || 'Failed to generate auth URL' };
+            }
+        }
+
+        async function testQuickBooksApp() {
+            if (!currentAuthUrl) {
+                return { success: false, message: 'No auth URL available to test' };
+            }
+
+            // Test if the QuickBooks URL is accessible
+            try {
+                const response = await fetch(currentAuthUrl, { method: 'HEAD', mode: 'no-cors' });
+                return { success: true, message: 'QuickBooks URL appears accessible' };
+            } catch (error) {
+                return { success: false, message: 'QuickBooks URL may not be accessible: ' + error.message };
+            }
+        }
+
+        async function testRedirectUri() {
+            const expectedUri = 'https://lathlike-drolly-xochitl.ngrok-free.dev/api/quickbooks/auth/callback';
+            
+            if (currentAuthUrl.includes(encodeURIComponent(expectedUri))) {
+                return { success: true, message: 'Redirect URI correctly encoded in auth URL' };
+            } else {
+                return { success: false, message: 'Redirect URI mismatch or encoding issue' };
+            }
+        }
+
+        function addResult(testName, success, message, data) {
+            const resultsDiv = document.getElementById('results');
+            const className = success ? 'success' : 'error';
+            const icon = success ? '✅' : '❌';
+            
+            let resultHtml = `<div class="test-result ${className}">
+                <strong>${icon} ${testName}:</strong> ${message}`;
+            
+            if (data) {
+                resultHtml += `<br><small>${data}</small>`;
+            }
+            
+            resultHtml += '</div>';
+            
+            resultsDiv.innerHTML += resultHtml;
+        }
+
+        function testDifferentUrl() {
+            document.getElementById('manual-test').style.display = 'block';
+            
+            // Create a direct QuickBooks URL with minimal parameters
+            const directUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=ABrr5qKHPABgu5bGV0DBRCYu3nf4HdcGwhRrOMpE7Gd7RUWSh&scope=com.intuit.quickbooks.accounting&redirect_uri=https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl&response_type=code&access_type=offline&state=test123`;
+            
+            document.getElementById('direct-url').textContent = directUrl;
+            window.testDirectUrl = directUrl;
+        }
+
+        function openDirectUrl() {
+            if (window.testDirectUrl) {
+                window.open(window.testDirectUrl, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>
+
