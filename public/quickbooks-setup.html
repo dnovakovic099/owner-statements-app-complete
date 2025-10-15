@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Setup - Owner Statements</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #007cba;
+            background-color: #f8f9fa;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .button:hover {
+            background-color: #005a9e;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .code-block {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔗 QuickBooks Integration Setup</h1>
+            <p>Connect your QuickBooks account to enable transaction categorization</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 1: Current Status</h3>
+            <div id="status-container">
+                <div class="status warning">
+                    ⚠️ Checking QuickBooks connection status...
+                </div>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Connect to QuickBooks</h3>
+            <p>Click the button below to authorize your Owner Statements app to access your QuickBooks data:</p>
+            <button id="connect-btn" class="button" onclick="connectQuickBooks()">
+                🔗 Connect to QuickBooks
+            </button>
+            <div id="auth-url" class="code-block" style="display: none;"></div>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: What This Enables</h3>
+            <ul>
+                <li>✅ Import transactions from QuickBooks</li>
+                <li>✅ Categorize transactions by property</li>
+                <li>✅ Assign transactions to departments</li>
+                <li>✅ Generate detailed financial reports</li>
+                <li>✅ Sync data between systems</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Test Connection</h3>
+            <button id="test-btn" class="button" onclick="testConnection()" disabled>
+                🧪 Test QuickBooks Connection
+            </button>
+            <div id="test-results"></div>
+        </div>
+    </div>
+
+    <script>
+        let authUrl = '';
+
+        // Check status on page load
+        window.onload = function() {
+            checkStatus();
+        };
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/quickbooks/transactions', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                const data = await response.json();
+                
+                const statusContainer = document.getElementById('status-container');
+                
+                if (data.message === 'QuickBooks not connected') {
+                    statusContainer.innerHTML = '<div class="status warning">⚠️ QuickBooks not connected - Ready to set up</div>';
+                    await getAuthUrl();
+                } else if (data.success && data.count > 0) {
+                    statusContainer.innerHTML = '<div class="status success">✅ QuickBooks connected successfully! Found ' + data.count + ' transactions</div>';
+                    document.getElementById('test-btn').disabled = false;
+                } else {
+                    statusContainer.innerHTML = '<div class="status success">✅ QuickBooks connected but no transactions found</div>';
+                    document.getElementById('test-btn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Status check error:', error);
+                document.getElementById('status-container').innerHTML = '<div class="status error">❌ Error checking status: ' + error.message + '</div>';
+                // Still try to get auth URL even if status check fails
+                await getAuthUrl();
+            }
+        }
+
+        async function getAuthUrl() {
+            try {
+                console.log('Fetching auth URL...');
+                const response = await fetch('/api/quickbooks/auth-url', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                
+                console.log('Auth URL response status:', response.status);
+                const data = await response.json();
+                console.log('Auth URL response data:', data);
+                
+                if (data.success) {
+                    authUrl = data.authUrl;
+                    document.getElementById('auth-url').innerHTML = 'OAuth URL: ' + authUrl;
+                    document.getElementById('auth-url').style.display = 'block';
+                    console.log('Auth URL set:', authUrl);
+                } else {
+                    console.error('Failed to get auth URL:', data);
+                    document.getElementById('auth-url').innerHTML = 'Error: ' + (data.error || 'Failed to get auth URL');
+                    document.getElementById('auth-url').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error getting auth URL:', error);
+                document.getElementById('auth-url').innerHTML = 'Error: ' + error.message;
+                document.getElementById('auth-url').style.display = 'block';
+            }
+        }
+
+        function connectQuickBooks() {
+            console.log('Connect button clicked, authUrl:', authUrl);
+            
+            if (authUrl) {
+                console.log('Opening QuickBooks OAuth URL:', authUrl);
+                window.open(authUrl, '_blank');
+                
+                // Show instructions
+                document.getElementById('connect-btn').innerHTML = '⏳ Waiting for authorization...';
+                document.getElementById('connect-btn').disabled = true;
+                
+                // Check status every 5 seconds
+                const checkInterval = setInterval(() => {
+                    checkStatus().then(() => {
+                        // If connected, stop checking
+                        const statusDiv = document.querySelector('.status');
+                        if (statusDiv && statusDiv.classList.contains('success')) {
+                            clearInterval(checkInterval);
+                            document.getElementById('connect-btn').innerHTML = '✅ Connected!';
+                        }
+                    });
+                }, 5000);
+                
+                // Stop checking after 2 minutes
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    document.getElementById('connect-btn').innerHTML = '🔗 Connect to QuickBooks';
+                    document.getElementById('connect-btn').disabled = false;
+                }, 120000);
+            } else {
+                console.error('No auth URL available');
+                alert('Error: No authorization URL available. Please refresh the page and try again.');
+                // Try to get auth URL again
+                getAuthUrl();
+            }
+        }
+
+        async function testConnection() {
+            const testResults = document.getElementById('test-results');
+            testResults.innerHTML = '<div class="status warning">⏳ Testing connection...</div>';
+            
+            try {
+                // Test multiple endpoints
+                const tests = [
+                    { name: 'Transactions', url: '/api/quickbooks/transactions' },
+                    { name: 'Accounts', url: '/api/quickbooks/accounts' },
+                    { name: 'Departments', url: '/api/quickbooks/departments' }
+                ];
+                
+                let results = '<h4>Test Results:</h4>';
+                
+                for (const test of tests) {
+                    try {
+                        const response = await fetch(test.url, {
+                            headers: {
+                                'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                            }
+                        });
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            results += `<div class="status success">✅ ${test.name}: ${data.data ? data.data.length : 0} items</div>`;
+                        } else {
+                            results += `<div class="status error">❌ ${test.name}: ${data.error || 'Failed'}</div>`;
+                        }
+                    } catch (error) {
+                        results += `<div class="status error">❌ ${test.name}: ${error.message}</div>`;
+                    }
+                }
+                
+                testResults.innerHTML = results;
+            } catch (error) {
+                testResults.innerHTML = '<div class="status error">❌ Test failed: ' + error.message + '</div>';
+            }
+        }
+    </script>
+</body>
+</html>

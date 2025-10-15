@@ -1,0 +1,35 @@
+{
+  "uploadedAt": "2025-10-01T07:33:20.098Z",
+  "originalFilename": "duplicate_test.csv",
+  "totalExpenses": 2,
+  "expenses": [
+    {
+      "id": "upload_duplicate_test.csv_0",
+      "type": "expense",
+      "source": "upload",
+      "uploadedFile": "duplicate_test.csv",
+      "uploadedAt": "2025-10-01T07:33:20.098Z",
+      "date": "2025-09-30",
+      "description": "Trust and Safety Fee for Lawn Mowing",
+      "amount": 49.99,
+      "category": "Maintenance",
+      "vendor": "LawnStarter",
+      "listing": "Rogers",
+      "propertyId": null
+    },
+    {
+      "id": "upload_duplicate_test.csv_1",
+      "type": "expense",
+      "source": "upload",
+      "uploadedFile": "duplicate_test.csv",
+      "uploadedAt": "2025-10-01T07:33:20.098Z",
+      "date": "2025-09-28",
+      "description": "New Unique Expense",
+      "amount": 199.99,
+      "category": "Repair",
+      "vendor": "Test Vendor",
+      "listing": "Rogers",
+      "propertyId": null
+    }
+  ]
+}

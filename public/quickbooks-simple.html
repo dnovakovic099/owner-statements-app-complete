@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Setup - Simple</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+        .button:hover {
+            background-color: #005a9e;
+        }
+        .url-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            word-break: break-all;
+            text-align: left;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #007cba;
+            background-color: #f8f9fa;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 QuickBooks Setup</h1>
+        <p>Connect your QuickBooks account to enable transaction categorization</p>
+
+        <div class="step">
+            <h3>Step 1: Get Your OAuth URL</h3>
+            <p>Click the button below to get your QuickBooks authorization URL:</p>
+            <button onclick="getAuthUrl()" class="button">Get QuickBooks Auth URL</button>
+            <div id="url-container" style="display: none;">
+                <p><strong>Copy and paste this URL into a new browser tab:</strong></p>
+                <div id="auth-url" class="url-box"></div>
+                <a id="auth-link" href="#" target="_blank" class="button">🔗 Open QuickBooks Authorization</a>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Authorize Your App</h3>
+            <p>After clicking the link above:</p>
+            <ol>
+                <li>Select your QuickBooks company</li>
+                <li>Grant permissions to your app</li>
+                <li>You'll be redirected back to your app</li>
+                <li>The connection will be established automatically</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Test Connection</h3>
+            <p>After authorization, test your connection:</p>
+            <a href="/api/quickbooks/transactions" target="_blank" class="button">Test Transactions</a>
+            <a href="/api/quickbooks/accounts" target="_blank" class="button">Test Accounts</a>
+        </div>
+    </div>
+
+    <script>
+        async function getAuthUrl() {
+            try {
+                console.log('Getting auth URL...');
+                
+                // Make the request with basic auth
+                const response = await fetch('/api/quickbooks/auth-url', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!'),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.success && data.authUrl) {
+                    document.getElementById('auth-url').textContent = data.authUrl;
+                    document.getElementById('auth-link').href = data.authUrl;
+                    document.getElementById('url-container').style.display = 'block';
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to get authorization URL'));
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error getting auth URL: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
+

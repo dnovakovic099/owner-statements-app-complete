@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Setup - Direct</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+        .button:hover {
+            background-color: #005a9e;
+        }
+        .url-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            word-break: break-all;
+            text-align: left;
+            font-size: 12px;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #007cba;
+            background-color: #f8f9fa;
+            text-align: left;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 QuickBooks Setup</h1>
+        <p>Connect your QuickBooks account to enable transaction categorization</p>
+
+        <div class="warning">
+            <strong>⚠️ JavaScript Blocked:</strong> Your browser is blocking JavaScript for security. 
+            Use the direct links below instead.
+        </div>
+
+        <div class="step">
+            <h3>Step 1: Get Authorization URL</h3>
+            <p>Click this link to get your QuickBooks authorization URL:</p>
+            <a href="/api/quickbooks/auth-url" target="_blank" class="button">🔗 Get Auth URL (JSON)</a>
+            <p><small>This will open a new tab with JSON containing your authorization URL</small></p>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Manual Authorization URL</h3>
+            <p>Or use this pre-generated URL directly:</p>
+            <div class="url-box" id="manual-url">
+                Loading URL...
+            </div>
+            <p><strong>Instructions:</strong></p>
+            <ol>
+                <li>Copy the URL above</li>
+                <li>Paste it into a new browser tab</li>
+                <li>Select your QuickBooks company</li>
+                <li>Grant permissions to your app</li>
+                <li>You'll be redirected back automatically</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Test Connection</h3>
+            <p>After authorization, test your connection:</p>
+            <a href="/api/quickbooks/transactions" target="_blank" class="button">Test Transactions</a>
+            <a href="/api/quickbooks/accounts" target="_blank" class="button">Test Accounts</a>
+            <a href="/api/quickbooks/departments" target="_blank" class="button">Test Departments</a>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Return to Main App</h3>
+            <p>Once connected, go back to your main application:</p>
+            <a href="http://localhost:3000" class="button">🏠 Back to Owner Statements App</a>
+        </div>
+    </div>
+
+    <!-- Load the auth URL without JavaScript -->
+    <script>
+        // Try to load auth URL, but don't fail if CSP blocks it
+        fetch('/api/quickbooks/auth-url', {
+            headers: {
+                'Authorization': 'Basic ' + btoa('LL:bnb547!')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('manual-url').innerHTML = 
+                    '<a href="' + data.authUrl + '" target="_blank" style="color: #0077c5; text-decoration: none;">' + 
+                    data.authUrl + '</a>';
+            }
+        })
+        .catch(error => {
+            document.getElementById('manual-url').innerHTML = 
+                'Error loading URL. Use the "Get Auth URL" button above instead.';
+        });
+    </script>
+</body>
+</html>
+

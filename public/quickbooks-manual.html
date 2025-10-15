@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Manual Setup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .step {
+            margin: 30px 0;
+            padding: 20px;
+            border-left: 4px solid #007cba;
+            background-color: #f8f9fa;
+        }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #0077c5;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #005a9e;
+        }
+        .auth-button {
+            background-color: #28a745;
+            font-size: 18px;
+            padding: 20px 40px;
+        }
+        .auth-button:hover {
+            background-color: #218838;
+        }
+        .url-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            word-break: break-all;
+            font-size: 12px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .center {
+            text-align: center;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        #status {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="center">
+            <h1>🔗 QuickBooks Manual Setup</h1>
+            <p>Get your QuickBooks tokens manually and input them here</p>
+        </div>
+
+        <div id="status"></div>
+
+        <div class="step">
+            <h3>📋 Step 1: Get Your Authorization URL</h3>
+            <p>First, get the QuickBooks authorization URL:</p>
+            <div class="center">
+                <button onclick="getAuthUrl()" class="button auth-button">🔗 Get Authorization URL</button>
+            </div>
+            <div id="auth-url-display" style="display: none;">
+                <p><strong>Your Authorization URL:</strong></p>
+                <div class="url-box" id="auth-url-text"></div>
+                <p><strong>Instructions:</strong></p>
+                <ol>
+                    <li>Copy the URL above</li>
+                    <li>Open it in a new browser tab</li>
+                    <li>Select your QuickBooks company</li>
+                    <li>Grant permissions</li>
+                    <li>You'll be redirected to a callback URL</li>
+                    <li>Copy the values from the callback URL below</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>✏️ Step 2: Input Your Tokens</h3>
+            <p>After completing the OAuth flow, input the tokens you received:</p>
+            
+            <div class="form-group">
+                <label for="companyId">Company ID:</label>
+                <input type="text" id="companyId" placeholder="e.g., 9130359982560895033">
+            </div>
+            
+            <div class="form-group">
+                <label for="accessToken">Access Token:</label>
+                <input type="text" id="accessToken" placeholder="Long access token string...">
+            </div>
+            
+            <div class="form-group">
+                <label for="refreshToken">Refresh Token:</label>
+                <input type="text" id="refreshToken" placeholder="Long refresh token string...">
+            </div>
+            
+            <div class="center">
+                <button onclick="saveTokens()" class="button">💾 Save Tokens</button>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>🧪 Step 3: Test Connection</h3>
+            <p>After saving tokens, test your connection:</p>
+            <div class="center">
+                <button onclick="testConnection()" class="button">🔍 Test QuickBooks Connection</button>
+            </div>
+            <div id="test-results"></div>
+        </div>
+
+        <div class="step">
+            <h3>🏠 Step 4: Back to App</h3>
+            <div class="center">
+                <a href="http://localhost:3000" class="button">Back to Owner Statements App</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function getAuthUrl() {
+            try {
+                const response = await fetch('/api/quickbooks/auth-url', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('auth-url-text').innerHTML = 
+                        '<a href="' + data.authUrl + '" target="_blank" style="color: #0077c5;">' + 
+                        data.authUrl + '</a>';
+                    document.getElementById('auth-url-display').style.display = 'block';
+                    
+                    document.getElementById('status').innerHTML = 
+                        '<div class="success">✅ Authorization URL generated! Click the link above to start OAuth flow.</div>';
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="error">❌ Error: ' + (data.error || 'Failed to get auth URL') + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = 
+                    '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function saveTokens() {
+            const companyId = document.getElementById('companyId').value.trim();
+            const accessToken = document.getElementById('accessToken').value.trim();
+            const refreshToken = document.getElementById('refreshToken').value.trim();
+
+            if (!companyId || !accessToken || !refreshToken) {
+                document.getElementById('status').innerHTML = 
+                    '<div class="warning">⚠️ Please fill in all token fields</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/quickbooks/save-tokens', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    },
+                    body: JSON.stringify({
+                        companyId: companyId,
+                        accessToken: accessToken,
+                        refreshToken: refreshToken
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="success">✅ Tokens saved successfully! You can now test the connection.</div>';
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="error">❌ Error saving tokens: ' + (data.error || 'Unknown error') + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = 
+                    '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function testConnection() {
+            try {
+                const response = await fetch('/api/quickbooks/transactions', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('LL:bnb547!')
+                    }
+                });
+                const data = await response.json();
+                
+                let resultHtml = '<h4>Test Results:</h4>';
+                
+                if (data.success && data.count > 0) {
+                    resultHtml += '<div class="success">✅ Success! Found ' + data.count + ' transactions</div>';
+                    resultHtml += '<p><strong>Sample transactions:</strong></p><ul>';
+                    data.data.slice(0, 3).forEach(tx => {
+                        resultHtml += '<li>' + (tx.Description || 'No description') + ' - $' + (tx.Amount || '0') + '</li>';
+                    });
+                    resultHtml += '</ul>';
+                } else if (data.success && data.count === 0) {
+                    resultHtml += '<div class="warning">⚠️ Connected but no transactions found</div>';
+                } else {
+                    resultHtml += '<div class="error">❌ Error: ' + (data.message || 'Connection failed') + '</div>';
+                }
+                
+                document.getElementById('test-results').innerHTML = resultHtml;
+                
+            } catch (error) {
+                document.getElementById('test-results').innerHTML = 
+                    '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        // Check status on page load
+        window.onload = function() {
+            testConnection();
+        };
+    </script>
+</body>
+</html>
+

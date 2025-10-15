@@ -1,0 +1,49 @@
+{
+  "uploadedAt": "2025-10-01T07:31:54.698Z",
+  "originalFilename": "test_expenses.csv",
+  "totalExpenses": 3,
+  "expenses": [
+    {
+      "id": "upload_test_expenses.csv_0",
+      "type": "expense",
+      "source": "upload",
+      "uploadedFile": "test_expenses.csv",
+      "uploadedAt": "2025-10-01T07:31:54.698Z",
+      "date": "2025-09-15",
+      "description": "Pool Cleaning",
+      "amount": 125,
+      "category": "Maintenance",
+      "vendor": "AquaClear Pool Service",
+      "listing": "Rogers",
+      "propertyId": 170031
+    },
+    {
+      "id": "upload_test_expenses.csv_1",
+      "type": "expense",
+      "source": "upload",
+      "uploadedFile": "test_expenses.csv",
+      "uploadedAt": "2025-10-01T07:31:54.698Z",
+      "date": "2025-09-20",
+      "description": "Landscaping",
+      "amount": 85.5,
+      "category": "Maintenance",
+      "vendor": "Green Thumb",
+      "listing": "Rogers",
+      "propertyId": 170031
+    },
+    {
+      "id": "upload_test_expenses.csv_2",
+      "type": "expense",
+      "source": "upload",
+      "uploadedFile": "test_expenses.csv",
+      "uploadedAt": "2025-10-01T07:31:54.698Z",
+      "date": "2025-09-25",
+      "description": "Plumbing Repair",
+      "amount": 275,
+      "category": "Repair",
+      "vendor": "Fix-It Plumbing",
+      "listing": "Rogers",
+      "propertyId": 170031
+    }
+  ]
+}

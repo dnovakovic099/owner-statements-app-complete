@@ -1,0 +1,43 @@
+# Server Configuration
+PORT=3003
+NODE_ENV=development
+
+# Database
+DATABASE_URL=sqlite:./database/owner_statements.db
+
+# Hostaway API Configuration
+HOSTAWAY_API_URL=https://api.hostaway.com/v1
+HOSTAWAY_CLIENT_ID=your_hostaway_client_id
+HOSTAWAY_CLIENT_SECRET=your_hostaway_client_secret
+
+# SecureStay API Configuration
+SECURESTAY_API_URL=https://api.securestay.com/v1
+SECURESTAY_API_KEY=your_securestay_api_key
+
+# SendGrid Configuration (for email delivery)
+SENDGRID_API_KEY=your_sendgrid_api_key
+FROM_EMAIL=statements@yourcompany.com
+FROM_NAME=Owner Statements System
+
+# Default Fees
+DEFAULT_TECH_FEE=50.00
+DEFAULT_INSURANCE_FEE=25.00
+
+# File Upload Configuration
+MAX_FILE_SIZE=10485760
+UPLOAD_DIR=./public/uploads
+
+# PDF Generation
+STATEMENTS_DIR=./statements
+COMPANY_NAME=Your Property Management Company
+COMPANY_ADDRESS=123 Main St, City, State 12345
+COMPANY_PHONE=(555) 123-4567
+COMPANY_EMAIL=info@yourcompany.com
+
+# QuickBooks API Configuration
+QUICKBOOKS_COMPANY_ID=your_quickbooks_company_id
+QUICKBOOKS_ACCESS_TOKEN=your_quickbooks_access_token
+QUICKBOOKS_REFRESH_TOKEN=your_quickbooks_refresh_token
+QUICKBOOKS_CLIENT_ID=your_quickbooks_client_id
+QUICKBOOKS_CLIENT_SECRET=your_quickbooks_client_secret
+QUICKBOOKS_REDIRECT_URI=http://localhost:3003/api/quickbooks/auth/callback
