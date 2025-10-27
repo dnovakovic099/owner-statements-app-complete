@@ -1,0 +1,23 @@
+# Don't upload these to Railway
+node_modules/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+logs/
+uploads/temp/
+
+# Don't need these in production
+scripts/
+exports/
+frontend/src/
+frontend/public/
+frontend/node_modules/
+*.md
+.git/
+.gitignore
+
+# Only include the built frontend, not source
+!frontend/build/
+
