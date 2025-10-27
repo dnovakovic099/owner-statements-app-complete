@@ -67,7 +67,7 @@ class FileDataService {
             endDate = sixMonthsFromNow.toISOString().split('T')[0];
         }
         
-        const hostawayService = require('./HostawayService');
+        const hostifyService = require('./HostifyService');
         
         try {
             const listingIds = propertyId ? [parseInt(propertyId)] : [];
@@ -75,7 +75,7 @@ class FileDataService {
             if (calculationType === 'calendar') {
                 console.log(`Fetching overlapping reservations for calendar-based calculation: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
                 
-                const reservations = await hostawayService.getOverlappingReservations(listingIds, startDate, endDate);
+                const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate);
                 
                 // Apply proration for calendar-based calculations
                 const proratedReservations = reservations.map(reservation => {
@@ -108,9 +108,9 @@ class FileDataService {
                 
             } else {
                 // Default checkout-based calculation
-                console.log(`Fetching reservations using consolidated finance report for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
+                console.log(`Fetching reservations from Hostify for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
                 
-                // Prepare parameters for consolidated finance report
+                // Prepare parameters for Hostify
                 const params = {
                     fromDate: startDate,
                     toDate: endDate,
@@ -122,14 +122,14 @@ class FileDataService {
                     params.listingMapIds = [parseInt(propertyId)];
                 }
                 
-                // Use the new consolidated finance report endpoint
-                const transformedReservations = await hostawayService.getConsolidatedFinanceReport(params);
+                // Use Hostify to get reservations
+                const transformedReservations = await hostifyService.getConsolidatedFinanceReport(params);
                 
-                console.log(`Fetched ${transformedReservations.length} reservations using consolidated finance report`);
+                console.log(`Fetched ${transformedReservations.length} reservations from Hostify`);
                 return transformedReservations;
             }
         } catch (error) {
-            console.error('Error fetching reservations using consolidated finance report:', error);
+            console.error('Error fetching reservations from Hostify:', error);
             // Fallback to empty array if API fails
             return [];
         }

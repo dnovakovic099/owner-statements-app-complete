@@ -5,10 +5,14 @@ NODE_ENV=development
 # Database
 DATABASE_URL=sqlite:./database/owner_statements.db
 
-# Hostaway API Configuration
-HOSTAWAY_API_URL=https://api.hostaway.com/v1
-HOSTAWAY_CLIENT_ID=your_hostaway_client_id
-HOSTAWAY_CLIENT_SECRET=your_hostaway_client_secret
+# Hostify API Configuration
+HOSTIFY_API_URL=https://api-rms.hostify.com
+HOSTIFY_API_KEY=your_hostify_api_key
+
+# Legacy Hostaway API Configuration (deprecated - keep for reference)
+# HOSTAWAY_API_URL=https://api.hostaway.com/v1
+# HOSTAWAY_CLIENT_ID=your_hostaway_client_id
+# HOSTAWAY_CLIENT_SECRET=your_hostaway_client_secret
 
 # SecureStay API Configuration
 SECURESTAY_API_URL=https://api.securestay.com/v1

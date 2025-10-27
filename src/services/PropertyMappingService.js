@@ -1,26 +1,26 @@
 /**
- * Service to map between Hostaway property IDs and SecureStay listing names
- * This service uses Hostaway's internalListingName field to automatically map to SecureStay
+ * Service to map between Hostify property IDs and SecureStay listing names
+ * This service uses Hostify's nickname or name field to automatically map to SecureStay
  * 
- * SECURITY NOTE: This mapping uses Hostaway's internalListingName field
+ * SECURITY NOTE: This mapping uses Hostify's nickname/name field
  * which should match SecureStay listing names for automatic mapping
  */
 
 class PropertyMappingService {
     constructor() {
-        // Manual override mapping for properties where internalListingName doesn't match SecureStay
+        // Manual override mapping for properties where nickname/name doesn't match SecureStay
         // Only add entries here if the automatic mapping fails
         this.manualOverrides = {
-            // Example: 170031: "CustomSecureStayName", // if internalListingName doesn't match
+            // Example: 170031: "CustomSecureStayName", // if nickname/name doesn't match
         };
         
-        // Cache for Hostaway listing data to avoid repeated API calls
+        // Cache for Hostify listing data to avoid repeated API calls
         this.hostawayListingCache = new Map();
     }
     
     /**
-     * Get SecureStay listing name using Hostaway's internalListingName
-     * @param {number} propertyId - Hostaway property ID
+     * Get SecureStay listing name using Hostify's nickname or name
+     * @param {number} propertyId - Hostify property ID
      * @returns {Promise<string|null>} - SecureStay listing name or null if not found
      */
     async getSecureStayListingName(propertyId) {
@@ -30,14 +30,18 @@ class PropertyMappingService {
         }
         
         try {
-            // Get Hostaway listing data
-            const listingData = await this.getHostawayListingData(propertyId);
-            if (listingData && listingData.internalListingName) {
-                console.log(`Auto-mapped property ${propertyId} to SecureStay listing: "${listingData.internalListingName}"`);
-                return listingData.internalListingName;
+            // Get Hostify listing data
+            const listingData = await this.getHostifyListingData(propertyId);
+            if (listingData) {
+                // Try nickname first, then name
+                const listingName = listingData.nickname || listingData.name;
+                if (listingName) {
+                    console.log(`Auto-mapped property ${propertyId} to SecureStay listing: "${listingName}"`);
+                    return listingName;
+                }
             }
         } catch (error) {
-            console.warn(`Failed to get Hostaway listing data for property ${propertyId}:`, error.message);
+            console.warn(`Failed to get Hostify listing data for property ${propertyId}:`, error.message);
         }
         
         console.warn(`No SecureStay mapping found for property ${propertyId}`);
@@ -45,33 +49,38 @@ class PropertyMappingService {
     }
     
     /**
-     * Get Hostaway listing data with caching
-     * @param {number} propertyId - Hostaway property ID
-     * @returns {Promise<object|null>} - Hostaway listing data
+     * Get Hostify listing data with caching
+     * @param {number} propertyId - Hostify property ID
+     * @returns {Promise<object|null>} - Hostify listing data
      */
-    async getHostawayListingData(propertyId) {
+    async getHostifyListingData(propertyId) {
         // Check cache first
         if (this.hostawayListingCache.has(propertyId)) {
             return this.hostawayListingCache.get(propertyId);
         }
         
         try {
-            const HostawayService = require('./HostawayService');
-            const response = await HostawayService.makeRequest(`/listings/${propertyId}`);
-            const listingData = response.result;
+            const HostifyService = require('./HostifyService');
+            const response = await HostifyService.getProperty(propertyId);
+            const listingData = response.success ? response.listing : null;
             
             // Cache the result
             this.hostawayListingCache.set(propertyId, listingData);
             return listingData;
         } catch (error) {
-            console.error(`Failed to fetch Hostaway listing ${propertyId}:`, error.message);
+            console.error(`Failed to fetch Hostify listing ${propertyId}:`, error.message);
             return null;
         }
     }
     
+    // Backward compatibility alias
+    async getHostawayListingData(propertyId) {
+        return this.getHostifyListingData(propertyId);
+    }
+    
     /**
      * Add a manual override mapping
-     * @param {number} propertyId - Hostaway property ID
+     * @param {number} propertyId - Hostify property ID
      * @param {string} listingName - SecureStay listing name
      */
     addManualOverride(propertyId, listingName) {
@@ -81,20 +90,20 @@ class PropertyMappingService {
     
     /**
      * Get mapping status for a property
-     * @param {number} propertyId - Hostaway property ID
+     * @param {number} propertyId - Hostify property ID
      * @returns {Promise<object>} - Status object with mapping info
      */
     async getMappingStatus(propertyId) {
         const listingName = await this.getSecureStayListingName(propertyId);
-        const listingData = await this.getHostawayListingData(propertyId);
+        const listingData = await this.getHostifyListingData(propertyId);
         
         return {
             propertyId,
             listingName,
             isValidMapping: listingName !== null,
             isManualOverride: propertyId in this.manualOverrides,
-            hostawayInternalName: listingData?.internalListingName || null,
-            hostawayName: listingData?.name || null
+            hostifyNickname: listingData?.nickname || null,
+            hostifyName: listingData?.name || null
         };
     }
     
@@ -109,8 +118,8 @@ class PropertyMappingService {
             const mappingType = status.isManualOverride ? '🔧 MANUAL' : '🤖 AUTO';
             const statusIcon = status.isValidMapping ? '✅ MAPPED' : '⚠️  NO MAPPING';
             console.log(`Property ${propertyId}: "${status.listingName || 'NO MAPPING'}" ${mappingType} ${statusIcon}`);
-            if (status.hostawayInternalName) {
-                console.log(`  └─ Hostaway Internal: "${status.hostawayInternalName}"`);
+            if (status.hostifyNickname || status.hostifyName) {
+                console.log(`  └─ Hostify Nickname: "${status.hostifyNickname || status.hostifyName}"`);
             }
         }
         console.log('===============================');

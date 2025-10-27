@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const HostawayService = require('../services/HostawayService');
+const HostifyService = require('../services/HostifyService');
 const FileDataService = require('../services/FileDataService');
 
 // GET /api/reservations-file - Get reservations from file
@@ -47,7 +47,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-// POST /api/reservations-file/sync - Sync reservations from Hostaway to file
+// POST /api/reservations-file/sync - Sync reservations from Hostify to file
 router.post('/sync', async (req, res) => {
     try {
         const { startDate, endDate } = req.body;
@@ -58,10 +58,10 @@ router.post('/sync', async (req, res) => {
 
         console.log(`Starting reservation sync for ${startDate} to ${endDate} (file-based)`);
 
-        // Get ALL reservations from Hostaway with pagination
-        const hostawayReservations = await HostawayService.getAllReservations(startDate, endDate);
+        // Get ALL reservations from Hostify with pagination
+        const hostifyReservations = await HostifyService.getAllReservations(startDate, endDate);
         
-        if (!hostawayReservations.result || hostawayReservations.result.length === 0) {
+        if (!hostifyReservations.result || hostifyReservations.result.length === 0) {
             return res.json({ message: 'No reservations found for the specified period', synced: 0 });
         }
 
@@ -78,26 +78,26 @@ router.post('/sync', async (req, res) => {
         let skippedCount = 0;
         const transformedReservations = [];
 
-        for (const hostawayReservation of hostawayReservations.result) {
+        for (const hostifyReservation of hostifyReservations.result) {
             try {
-                // Transform Hostaway data
-                const reservationData = HostawayService.transformReservation(hostawayReservation);
+                // Transform Hostify data (already transformed by HostifyService)
+                const reservationData = hostifyReservation;
                 
-                // Match with our property using the listingMapId field
-                const listingMapId = hostawayReservation.listingMapId;
-                const propertyId = listingMap.get(listingMapId?.toString());
+                // Match with our property using the listing_id field
+                const listingId = reservationData.propertyId;
+                const propertyId = listingMap.get(listingId?.toString());
                 
                 if (!propertyId) {
                     if (skippedCount < 5) { // Only log first few skips
-                        console.warn(`No matching property found for Hostaway listing ${listingMapId}`);
+                        console.warn(`No matching property found for Hostify listing ${listingId}`);
                     }
                     skippedCount++;
                     continue;
                 }
 
-                // Add property ID and other fields
+                // Add/update fields
                 reservationData.propertyId = propertyId;
-                reservationData.id = parseInt(hostawayReservation.id);
+                reservationData.id = parseInt(reservationData.hostifyId);
                 reservationData.createdAt = new Date().toISOString();
                 reservationData.updatedAt = new Date().toISOString();
 
@@ -105,7 +105,7 @@ router.post('/sync', async (req, res) => {
                 syncedCount++;
 
             } catch (error) {
-                console.error(`Error processing reservation ${hostawayReservation.id}:`, error);
+                console.error(`Error processing reservation ${hostifyReservation.hostifyId}:`, error);
                 skippedCount++;
             }
         }
@@ -119,7 +119,7 @@ router.post('/sync', async (req, res) => {
             message: 'Reservation sync completed',
             synced: syncedCount,
             skipped: skippedCount,
-            total: hostawayReservations.result.length
+            total: hostifyReservations.result.length
         });
     } catch (error) {
         console.error('Reservation sync error:', error);
