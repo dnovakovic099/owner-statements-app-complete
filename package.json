@@ -6,11 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "build": "npm run install:frontend && npm run build:frontend",
+    "build": "cd frontend && npm install && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "dev:frontend": "cd frontend && npm start",
     "install:frontend": "cd frontend && npm install",
-    "postinstall": "npm run install:frontend",
     "init-db": "node scripts/init-database.js",
     "reset-db": "node scripts/reset-database.js",
     "test": "echo \"Error: no test specified\" && exit 1"
