@@ -96,6 +96,10 @@ export const statementsAPI = {
     return response.data;
   },
 
+  deleteStatement: async (id: number): Promise<void> => {
+    await api.delete(`/statements/${id}`);
+  },
+
   editStatement: async (id: number, data: {
     expenseIdsToRemove?: number[];
     cancelledReservationIdsToAdd?: number[];

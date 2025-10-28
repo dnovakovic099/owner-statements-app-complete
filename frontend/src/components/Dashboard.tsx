@@ -135,6 +135,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       } else if (action === 'edit') {
         setEditingStatementId(id);
         setIsEditModalOpen(true);
+      } else if (action === 'delete') {
+        if (!window.confirm('⚠️ Are you sure you want to delete this statement? This action cannot be undone.')) {
+          return;
+        }
+        await statementsAPI.deleteStatement(id);
+        alert('✅ Statement deleted successfully');
+        await loadStatements();
       }
     } catch (err) {
       alert(`❌ Failed to ${action} statement: ${err instanceof Error ? err.message : 'Unknown error'}`);

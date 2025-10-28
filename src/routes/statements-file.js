@@ -508,6 +508,30 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// DELETE /api/statements-file/:id - Delete statement
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Check if statement exists
+        const statement = await FileDataService.getStatementById(id);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Delete the statement
+        await FileDataService.deleteStatement(id);
+
+        res.json({ 
+            message: 'Statement deleted successfully',
+            id: parseInt(id)
+        });
+    } catch (error) {
+        console.error('Statement delete error:', error);
+        res.status(500).json({ error: 'Failed to delete statement' });
+    }
+});
+
 // GET /api/statements-file/:id/view - View statement in browser
 router.get('/:id/view', async (req, res) => {
     try {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Edit, Send, Download } from 'lucide-react';
+import { Eye, Edit, Send, Download, Trash2 } from 'lucide-react';
 import { Statement } from '../types';
 
 interface StatementsTableProps {
@@ -154,6 +154,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                       title="Download Statement"
                     >
                       <Download className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onAction(statement.id, 'delete')}
+                      className="text-red-600 hover:text-red-900"
+                      title="Delete Statement"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </td>

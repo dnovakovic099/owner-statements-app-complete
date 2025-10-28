@@ -381,6 +381,28 @@ class FileDataService {
         return filePath;
     }
 
+    async deleteStatement(id) {
+        await this.ensureDirectories();
+        try {
+            // Find the statement file
+            const files = await fs.readdir(this.statementsDir);
+            const statementFile = files.find(file => file.startsWith(`statement-${id}-`));
+            
+            if (!statementFile) {
+                throw new Error(`Statement ${id} not found`);
+            }
+
+            // Delete the file
+            const filePath = path.join(this.statementsDir, statementFile);
+            await fs.unlink(filePath);
+            console.log(`Deleted statement ${id} from ${statementFile}`);
+            return true;
+        } catch (error) {
+            console.error(`Error deleting statement ${id}:`, error);
+            throw error;
+        }
+    }
+
     async getStatements() {
         await this.ensureDirectories();
         try {
