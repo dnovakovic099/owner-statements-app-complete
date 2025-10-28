@@ -24,6 +24,12 @@ NODE_ENV=production
 PORT=3003
 ```
 
+### Puppeteer/PDF Generation (Required for statement downloads)
+```bash
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+```
+
 ### Hostify API (Required)
 ```bash
 HOSTIFY_API_URL=https://api-rms.hostify.com
