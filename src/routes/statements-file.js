@@ -1571,7 +1571,18 @@ router.get('/:id/download', async (req, res) => {
             footer: {
                 height: '0mm',
                 contents: ''
-            }
+            },
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions'
+            ],
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
         };
 
         const file = { content: statementHTML };
