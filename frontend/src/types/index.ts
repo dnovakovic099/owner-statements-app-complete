@@ -62,6 +62,7 @@ export interface Statement {
   propertyName: string;
   weekStartDate: string;
   weekEndDate: string;
+  calculationType?: 'checkout' | 'calendar';
   totalRevenue: number;
   totalExpenses: number;
   pmCommission: number;

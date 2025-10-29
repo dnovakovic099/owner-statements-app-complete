@@ -170,17 +170,28 @@ router.post('/generate', async (req, res) => {
             });
         }
 
-        // Get reservations for the date range (checkout date in range)
+        // Get reservations for the date range
+        // For calendar calculation, reservations are already filtered by overlap in FileDataService
+        // For checkout calculation, filter by checkout date
         const periodReservations = reservations.filter(res => {
             if (propertyId && res.propertyId !== parseInt(propertyId)) {
                 console.log(`Excluded reservation - wrong property: ${res.propertyId} (expected ${propertyId})`);
                 return false;
             }
-            const checkoutDate = new Date(res.checkOutDate);
-            const dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
             
-            if (!dateMatch) {
-                console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
+            // For calendar-based calculation, reservations are already filtered and prorated
+            if (calculationType === 'calendar') {
+                console.log(`Including prorated reservation: ${res.hostifyId || res.id} - ${res.prorationNote || 'no proration'}`);
+                // Don't re-filter by date for calendar calculation
+            } else {
+                // For checkout-based calculation, filter by checkout date
+                const checkoutDate = new Date(res.checkOutDate);
+                const dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                
+                if (!dateMatch) {
+                    console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
+                    return false;
+                }
             }
             
             // Only include confirmed, modified, and new status reservations by default
