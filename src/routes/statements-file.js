@@ -57,6 +57,7 @@ router.get('/', async (req, res) => {
             propertyName: s.propertyName || (s.propertyId ? `Property ${s.propertyId}` : 'All Properties'),
             weekStartDate: s.weekStartDate,
             weekEndDate: s.weekEndDate,
+            calculationType: s.calculationType || 'checkout',
             totalRevenue: s.totalRevenue,
             totalExpenses: s.totalExpenses,
             pmCommission: s.pmCommission,
