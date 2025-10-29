@@ -179,14 +179,17 @@ router.post('/generate', async (req, res) => {
                 return false;
             }
             
-            // For calendar-based calculation, reservations are already filtered and prorated
+            // Check date match based on calculation type
+            let dateMatch = true;
+            
             if (calculationType === 'calendar') {
+                // For calendar-based calculation, reservations are already filtered and prorated
                 console.log(`Including prorated reservation: ${res.hostifyId || res.id} - ${res.prorationNote || 'no proration'}`);
-                // Don't re-filter by date for calendar calculation
+                dateMatch = true; // Already filtered by overlap in FileDataService
             } else {
                 // For checkout-based calculation, filter by checkout date
                 const checkoutDate = new Date(res.checkOutDate);
-                const dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                 
                 if (!dateMatch) {
                     console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
