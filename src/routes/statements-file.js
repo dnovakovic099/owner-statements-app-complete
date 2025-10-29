@@ -584,46 +584,44 @@ router.get('/:id/view', async (req, res) => {
         
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
-            max-width: 900px; 
-            margin: 0 auto; 
-            padding: 40px 20px; 
-            line-height: 1.6;
+            max-width: 100%; 
+            margin: 0; 
+            padding: 0; 
+            line-height: 1.4;
             color: var(--luxury-navy);
-            background: var(--luxury-cream);
+            background: white;
         }
         
         .document {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(30, 58, 95, 0.1);
             overflow: hidden;
         }
         
         .header {
             background: white;
-            padding: 30px;
-            border-bottom: 3px solid var(--luxury-navy);
+            padding: 15px 20px;
+            border-bottom: 2px solid var(--luxury-navy);
         }
         
         .company-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 20px;
+            padding-bottom: 10px;
         }
         
         .company-info h1 {
-            font-size: 32px;
+            font-size: 20px;
             font-weight: 700;
             color: var(--luxury-navy);
-            margin-bottom: 8px;
-            letter-spacing: 1px;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
         }
         
         .contact-info {
-            font-size: 13px;
+            font-size: 10px;
             color: var(--luxury-gray);
             font-weight: 500;
         }
@@ -653,10 +651,10 @@ router.get('/:id/view', async (req, res) => {
         .detail-row {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 25px;
-            padding: 20px 0;
-            border-bottom: 2px solid #e5e7eb;
+            gap: 15px;
+            margin-bottom: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e5e7eb;
         }
         
         .detail-group {
@@ -666,16 +664,16 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .detail-label {
-            font-size: 11px;
+            font-size: 9px;
             font-weight: 700;
             color: var(--luxury-gray);
             text-transform: uppercase;
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+            letter-spacing: 0.3px;
         }
         
         .detail-value {
-            font-size: 15px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--luxury-navy);
         }
@@ -745,22 +743,22 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .content {
-            padding: 40px 30px;
+            padding: 20px;
         }
         
         .section {
-            margin-bottom: 40px;
+            margin-bottom: 20px;
         }
         
         .section-title {
-            font-size: 18px;
+            font-size: 13px;
             font-weight: 700;
             color: var(--luxury-navy);
-            margin-bottom: 25px;
-            padding: 12px 0;
-            border-bottom: 3px solid var(--luxury-gold);
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 2px solid var(--luxury-gold);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             position: relative;
         }
         
@@ -1115,37 +1113,43 @@ router.get('/:id/view', async (req, res) => {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            font-size: 11px;
+            font-size: 9px;
         }
         
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
-            padding: 14px 12px;
+            padding: 8px 4px;
             text-align: center;
             font-weight: 600;
-            font-size: 11px;
+            font-size: 8px;
             text-transform: uppercase;
             letter-spacing: 0.3px;
             border-right: 1px solid rgba(255,255,255,0.2);
             white-space: nowrap;
+            line-height: 1.2;
         }
         
-        .rental-table th:nth-child(1) { width: 30%; }   /* Booking Details */
-        .rental-table th:nth-child(2) { width: 12%; }  /* Revenue */
-        .rental-table th:nth-child(3) { width: 12%; }  /* Expenses */
-        .rental-table th:nth-child(4) { width: 12%; }  /* Luxury Fee */
-        .rental-table th:nth-child(5) { width: 12%; }  /* Tax */
-        .rental-table th:nth-child(6) { width: 22%; }  /* Net Payout */
+        .rental-table th:nth-child(1) { width: 18%; }   /* Guest Details */
+        .rental-table th:nth-child(2) { width: 6%; }    /* Check-in */
+        .rental-table th:nth-child(3) { width: 6%; }    /* Check-out */
+        .rental-table th:nth-child(4) { width: 5%; }    /* Nights */
+        .rental-table th:nth-child(5) { width: 8%; }    /* Base Rate */
+        .rental-table th:nth-child(6) { width: 8%; }    /* Cleaning */
+        .rental-table th:nth-child(7) { width: 8%; }    /* Platform Fees */
+        .rental-table th:nth-child(8) { width: 8%; }    /* Revenue */
+        .rental-table th:nth-child(9) { width: 8%; }    /* PM Commission */
+        .rental-table th:nth-child(10) { width: 8%; }   /* Tax Responsibility */
+        .rental-table th:nth-child(11) { width: 9%; }   /* Gross Payout */
         
         .rental-table td {
-            padding: 12px 12px;
+            padding: 6px 3px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
-            font-size: 12px;
+            font-size: 9px;
             text-align: center;
             vertical-align: top;
-            line-height: 1.4;
+            line-height: 1.3;
         }
         
         .booking-cell {
@@ -1153,17 +1157,29 @@ router.get('/:id/view', async (req, res) => {
             padding: 14px 10px !important;
         }
         
+        .guest-details-cell {
+            text-align: left !important;
+            padding: 6px 4px !important;
+        }
+        
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 12px;
-            margin-bottom: 3px;
+            font-size: 9px;
+            margin-bottom: 2px;
+        }
+        
+        .guest-info {
+            font-size: 7px;
+            color: var(--luxury-gray);
+            line-height: 1.3;
+            margin-bottom: 1px;
         }
         
         .booking-details {
-            font-size: 9px;
+            font-size: 7px;
             color: var(--luxury-gray);
-            line-height: 1.4;
+            line-height: 1.3;
         }
         
         .listing-info {
@@ -1177,23 +1193,43 @@ router.get('/:id/view', async (req, res) => {
             color: #666;
         }
         
+        .date-cell {
+            font-size: 8px;
+            white-space: nowrap;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
         
         .channel-badge {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 1px 4px;
+            padding: 1px 3px;
             border-radius: 2px;
-            font-size: 7px;
+            font-size: 6px;
             font-weight: 600;
             text-transform: uppercase;
-            margin-top: 2px;
+            margin-top: 1px;
+        }
+        
+        .proration-info {
+            font-size: 6px !important;
+            color: #007bff !important;
+            margin-top: 1px !important;
         }
         
         .amount-cell {
             text-align: right;
             font-weight: 600;
-            font-size: 11px;
+            font-size: 9px;
+            padding-right: 4px !important;
+        }
+        
+        .payout-cell {
+            font-weight: 700;
+            background: #f0f9ff !important;
         }
         
         .expense-amount {
@@ -1208,36 +1244,73 @@ router.get('/:id/view', async (req, res) => {
             background: #f8fafc;
         }
         
+        .rental-table .totals-row {
+            background: var(--luxury-navy);
+            color: white;
+            font-weight: 700;
+        }
+        
+        .rental-table .totals-row td {
+            padding: 8px 4px;
+            border-bottom: none;
+            font-size: 9px;
+        }
+        
+        /* Page setup for PDF */
+        @page {
+            size: A4 landscape;
+            margin: 0.5cm 0.8cm;
+        }
+        
         /* Print styles */
         @media print {
             body {
+                padding: 0;
+                font-size: 9px;
+            }
+            
+            .header {
+                padding: 15px 20px;
+            }
+            
+            .content {
                 padding: 20px;
-                font-size: 11px;
             }
             
             .rental-table {
-                font-size: 10px;
+                font-size: 8px;
+                page-break-inside: avoid;
             }
             
-            .booking-cell {
-                padding: 10px 8px !important;
+            .rental-table th {
+                font-size: 7px;
+                padding: 6px 3px;
+            }
+            
+            .rental-table td {
+                font-size: 8px;
+                padding: 5px 2px;
+            }
+            
+            .guest-details-cell {
+                padding: 5px 3px !important;
             }
             
             .guest-name {
-                font-size: 11px;
-            }
-            
-            .booking-details {
                 font-size: 8px;
             }
             
+            .guest-info, .booking-details {
+                font-size: 6px;
+            }
+            
             .amount-cell {
-                font-size: 10px;
+                font-size: 8px;
             }
             
             .channel-badge {
-                font-size: 6px;
-                padding: 1px 3px;
+                font-size: 5px;
+                padding: 0px 2px;
             }
             
             .section-title {
