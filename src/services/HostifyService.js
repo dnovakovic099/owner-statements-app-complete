@@ -173,11 +173,25 @@ class HostifyService {
 
     // Transform Hostify reservation data to our format
     transformReservation(hostifyReservation) {
+        // Try to get guest name from multiple possible fields
+        let guestName = 'Guest';
+        if (hostifyReservation.guestName) {
+            guestName = hostifyReservation.guestName;
+        } else if (hostifyReservation.guest_name) {
+            guestName = hostifyReservation.guest_name;
+        } else if (hostifyReservation.guest?.name) {
+            guestName = hostifyReservation.guest.name;
+        } else if (hostifyReservation.guest?.first_name || hostifyReservation.guest?.last_name) {
+            guestName = `${hostifyReservation.guest.first_name || ''} ${hostifyReservation.guest.last_name || ''}`.trim();
+        } else if (hostifyReservation.guestFirstName || hostifyReservation.guestLastName) {
+            guestName = `${hostifyReservation.guestFirstName || ''} ${hostifyReservation.guestLastName || ''}`.trim();
+        }
+        
         const baseReservation = {
             hostifyId: hostifyReservation.id ? hostifyReservation.id.toString() : 'undefined',
             propertyId: parseInt(hostifyReservation.listing_id), // Use Hostify listing_id
-            guestName: hostifyReservation.guestName || `${hostifyReservation.guest?.name || 'Guest'}`,
-            guestEmail: hostifyReservation.guest?.email || '',
+            guestName: guestName,
+            guestEmail: hostifyReservation.guest?.email || hostifyReservation.guestEmail || '',
             checkInDate: hostifyReservation.checkIn,
             checkOutDate: hostifyReservation.checkOut,
             nights: parseInt(hostifyReservation.nights || 0),
