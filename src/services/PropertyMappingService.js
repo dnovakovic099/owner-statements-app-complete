@@ -11,7 +11,8 @@ class PropertyMappingService {
         // Manual override mapping for properties where nickname/name doesn't match SecureStay
         // Only add entries here if the automatic mapping fails
         this.manualOverrides = {
-            // Example: 170031: "CustomSecureStayName", // if nickname/name doesn't match
+            // St Louis property - Hostify has "St Louis" but SecureStay uses "St Louis (#2E)"
+            300017057: "St Louis (#2E)",
         };
         
         // Cache for Hostify listing data to avoid repeated API calls
