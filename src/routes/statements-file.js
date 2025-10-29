@@ -1271,7 +1271,7 @@ router.get('/:id/view', async (req, res) => {
                 <div class="company-info">
                     <h1>Luxury Lodging</h1>
                     <div class="contact-info">
-                        <span>usa.florida.realty.solutions@gmail.com | +1 (813) 531-8368</span>
+                        <span>support@luxurylodgingpm.com | +1 (813) 594-8882</span>
     </div>
             </div>
                 <div class="logo-placeholder">
@@ -1319,13 +1319,14 @@ router.get('/:id/view', async (req, res) => {
                                 <th>Guest Details</th>
                                 <th>Check-in date</th>
                                 <th>Check-out date</th>
+                                <th>Nights</th>
                                 <th>Base Rate</th>
                                 <th>Cleaning and Other Fees</th>
                                 <th>Platform Fees</th>
-                                <th>Client Revenue</th>
-                                <th>Luxury Lodging Fee</th>
-                                <th>Client Tax Responsibility</th>
-                                <th>Client Payout</th>
+                                <th>Revenue</th>
+                                <th>PM Commission</th>
+                                <th>Tax Responsibility</th>
+                                <th>Gross Payout</th>
                 </tr>
             </thead>
             <tbody>
@@ -1359,19 +1360,21 @@ router.get('/:id/view', async (req, res) => {
                                         const [year, month, day] = reservation.checkOutDate.split('-').map(Number);
                                         return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                     })()}</td>
+                                    <td class="text-center">${reservation.nights || 0}</td>
                                     <td class="amount-cell">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell expense-amount">-$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell revenue-amount">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell payout-cell">$${clientPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
-                            }).join('') || '<tr><td colspan="10" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
+                            }).join('') || '<tr><td colspan="11" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
                                 <td colspan="2"></td>
+                                <td class="text-center"><strong>${statement.reservations?.reduce((sum, res) => sum + (res.nights || 0), 0) || 0}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -1483,23 +1486,23 @@ router.get('/:id/view', async (req, res) => {
                     <div class="summary-box">
                         <table class="summary-table">
                             <tr>
-                                <td class="summary-label">Client Revenue</td>
+                                <td class="summary-label">Revenue</td>
                                 <td class="summary-value revenue">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr>
-                                <td class="summary-label">Luxury Lodging Fee</td>
+                                <td class="summary-label">PM Commission</td>
                                 <td class="summary-value expense">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr>
-                                <td class="summary-label">Client Tax Responsibility</td>
-                                <td class="summary-value">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-label">Tax Responsibility</td>
+                                <td class="summary-value revenue">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr>
                                 <td class="summary-label">Expenses and extras</td>
                                 <td class="summary-value expense">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr class="total-row">
-                                <td class="summary-label"><strong>STATEMENT TOTAL</strong></td>
+                                <td class="summary-label"><strong>NET PAYOUT</strong></td>
                                 <td class="summary-value total-amount"><strong>$${(() => {
                                     const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                                     const luxuryLodgingFee = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0;
@@ -1993,7 +1996,7 @@ function generateStatementHTML(statement, id) {
             <div class="company-info">
                 <h1>Luxury Lodging</h1>
                 <div class="contact-info">
-                    <span>usa.florida.realty.solutions@gmail.com | +1 (813) 531-8368</span>
+                    <span>support@luxurylodgingpm.com | +1 (813) 594-8882</span>
                 </div>
             </div>
             <div class="logo-box">LOGO</div>
@@ -2033,13 +2036,14 @@ function generateStatementHTML(statement, id) {
                     <th>Guest Details</th>
                     <th>Check-in date</th>
                     <th>Check-out date</th>
+                    <th>Nights</th>
                     <th>Base Rate</th>
                     <th>Cleaning and Other Fees</th>
                     <th>Platform Fees</th>
-                    <th>Client Revenue</th>
-                    <th>Luxury Lodging Fee</th>
-                    <th>Client Tax Responsibility</th>
-                    <th>Client Payout</th>
+                    <th>Revenue</th>
+                    <th>PM Commission</th>
+                    <th>Tax Responsibility</th>
+                    <th>Gross Payout</th>
                 </tr>
             </thead>
             <tbody>
