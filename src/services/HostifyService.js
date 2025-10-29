@@ -273,15 +273,20 @@ class HostifyService {
             
             const allReservations = new Map(); // Use Map to deduplicate by reservation ID
             
-            // Look back some days to catch long stays
+            // Look back some days to catch long stays that started before the period
             const lookbackDate = new Date(fromDate);
             lookbackDate.setDate(lookbackDate.getDate() - 90);
             const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
             
+            // Look forward some days to catch reservations that checkout after the period ends
+            const lookforwardDate = new Date(toDate);
+            lookforwardDate.setDate(lookforwardDate.getDate() + 90);
+            const lookforwardDateStr = lookforwardDate.toISOString().split('T')[0];
+            
             // For each listing, fetch reservations
             for (const listingId of listingIds) {
                 console.log(`Fetching reservations for listing ${listingId}...`);
-                const response = await this.getAllReservations(lookbackDateStr, toDate, listingId);
+                const response = await this.getAllReservations(lookbackDateStr, lookforwardDateStr, listingId);
                 
                 if (response.result) {
                     // Filter to only include reservations that actually overlap our period
