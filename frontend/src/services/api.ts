@@ -76,6 +76,7 @@ export const statementsAPI = {
     propertyId?: string;
     startDate: string;
     endDate: string;
+    calculationType: string;
   }): Promise<{ message: string }> => {
     const response = await api.post('/statements/generate', data);
     return response.data;
