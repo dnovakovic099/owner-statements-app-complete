@@ -866,7 +866,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .revenue {
-            color: var(--luxury-green);
+            color: var(--luxury-navy);
             font-weight: 600;
         }
         
@@ -1881,7 +1881,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .expense-amount { color: var(--luxury-red); }
-        .revenue-amount { color: var(--luxury-green); }
+        .revenue-amount { color: var(--luxury-navy); }
         
         .totals-row td {
             background: var(--luxury-navy);
