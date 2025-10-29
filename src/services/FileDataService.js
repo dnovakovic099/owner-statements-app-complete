@@ -288,8 +288,17 @@ class FileDataService {
      * @returns {Object} - Proration details { factor, daysInPeriod, totalDays }
      */
     calculateProration(reservation, periodStart, periodEnd) {
-        const arrivalDate = new Date(reservation.arrivalDate);
-        const departureDate = new Date(reservation.departureDate);
+        // Use checkInDate/checkOutDate (from Hostify) or fallback to arrivalDate/departureDate
+        const checkIn = reservation.checkInDate || reservation.arrivalDate;
+        const checkOut = reservation.checkOutDate || reservation.departureDate;
+        
+        if (!checkIn || !checkOut) {
+            console.warn(`Missing check-in/check-out dates for reservation ${reservation.id}`);
+            return { factor: 1, daysInPeriod: reservation.nights || 0, totalDays: reservation.nights || 1 };
+        }
+        
+        const arrivalDate = new Date(checkIn);
+        const departureDate = new Date(checkOut);
         const periodStartDate = new Date(periodStart);
         const periodEndDate = new Date(periodEnd);
         
@@ -297,17 +306,17 @@ class FileDataService {
         const overlapStart = new Date(Math.max(arrivalDate.getTime(), periodStartDate.getTime()));
         const overlapEnd = new Date(Math.min(departureDate.getTime(), periodEndDate.getTime()));
         
-        // Calculate days
+        // Calculate days (nights stayed, not calendar days)
         const totalDays = Math.ceil((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
-        const daysInPeriod = Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24));
+        const daysInPeriod = Math.max(0, Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)));
         
-        // Ensure we don't have negative days or divide by zero
-        const safeDaysInPeriod = Math.max(0, daysInPeriod);
+        // Ensure we don't divide by zero
         const safeTotalDays = Math.max(1, totalDays);
+        const safeDaysInPeriod = Math.max(0, daysInPeriod);
         
         const factor = safeDaysInPeriod / safeTotalDays;
         
-        console.log(`Proration for reservation ${reservation.id}: ${safeDaysInPeriod}/${safeTotalDays} days = ${(factor * 100).toFixed(1)}%`);
+        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId}: ${checkIn} to ${checkOut} - ${safeDaysInPeriod}/${safeTotalDays} days (${(factor * 100).toFixed(1)}%) overlap with period ${periodStart} to ${periodEnd}`);
         
         return {
             factor: factor,

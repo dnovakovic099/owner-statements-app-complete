@@ -77,6 +77,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                 Week
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Type
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Revenue
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -105,6 +108,15 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                   <div className="text-sm text-gray-900">
                     {formatDateRange(statement.weekStartDate, statement.weekEndDate)}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    statement.calculationType === 'calendar' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {statement.calculationType === 'calendar' ? '📅 Calendar' : '✓ Checkout'}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">
