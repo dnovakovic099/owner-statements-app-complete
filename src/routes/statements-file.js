@@ -1197,7 +1197,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .revenue-amount {
-            color: var(--luxury-green);
+            color: var(--luxury-navy);
         }
         
         .rental-table tr:nth-child(even) {
@@ -1903,7 +1903,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .revenue-amount {
-            color: var(--luxury-green);
+            color: var(--luxury-navy);
         }
         
         .payout-amount {
