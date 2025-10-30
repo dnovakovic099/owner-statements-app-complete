@@ -1113,26 +1113,26 @@ router.get('/:id/view', async (req, res) => {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            font-size: 9px;
+            font-size: 7px;
         }
         
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
-            padding: 8px 4px;
+            padding: 4px 2px;
             text-align: center;
             font-weight: 600;
-            font-size: 8px;
+            font-size: 6px;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
             border-right: 1px solid rgba(255,255,255,0.2);
             white-space: nowrap;
-            line-height: 1.2;
+            line-height: 1.1;
         }
         
-        .rental-table th:nth-child(1) { width: 18%; }   /* Guest Details */
-        .rental-table th:nth-child(2) { width: 6%; }    /* Check-in */
-        .rental-table th:nth-child(3) { width: 6%; }    /* Check-out */
+        .rental-table th:nth-child(1) { width: 16%; }   /* Guest Details */
+        .rental-table th:nth-child(2) { width: 7%; }    /* Check-in */
+        .rental-table th:nth-child(3) { width: 7%; }    /* Check-out */
         .rental-table th:nth-child(4) { width: 5%; }    /* Nights */
         .rental-table th:nth-child(5) { width: 8%; }    /* Base Rate */
         .rental-table th:nth-child(6) { width: 8%; }    /* Cleaning */
@@ -1143,13 +1143,13 @@ router.get('/:id/view', async (req, res) => {
         .rental-table th:nth-child(11) { width: 9%; }   /* Gross Payout */
         
         .rental-table td {
-            padding: 6px 3px;
+            padding: 4px 2px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
-            font-size: 9px;
+            font-size: 7px;
             text-align: center;
             vertical-align: top;
-            line-height: 1.3;
+            line-height: 1.2;
         }
         
         .booking-cell {
@@ -1159,27 +1159,27 @@ router.get('/:id/view', async (req, res) => {
         
         .guest-details-cell {
             text-align: left !important;
-            padding: 6px 4px !important;
+            padding: 4px 2px !important;
         }
         
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 9px;
-            margin-bottom: 2px;
+            font-size: 7px;
+            margin-bottom: 1px;
         }
         
         .guest-info {
-            font-size: 7px;
+            font-size: 6px;
             color: var(--luxury-gray);
-            line-height: 1.3;
+            line-height: 1.2;
             margin-bottom: 1px;
         }
         
         .booking-details {
-            font-size: 7px;
+            font-size: 6px;
             color: var(--luxury-gray);
-            line-height: 1.3;
+            line-height: 1.2;
         }
         
         .listing-info {
@@ -1194,7 +1194,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .date-cell {
-            font-size: 8px;
+            font-size: 7px;
             white-space: nowrap;
         }
         
@@ -1206,16 +1206,16 @@ router.get('/:id/view', async (req, res) => {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 1px 3px;
+            padding: 0px 2px;
             border-radius: 2px;
-            font-size: 6px;
+            font-size: 5px;
             font-weight: 600;
             text-transform: uppercase;
             margin-top: 1px;
         }
         
         .proration-info {
-            font-size: 6px !important;
+            font-size: 5px !important;
             color: #007bff !important;
             margin-top: 1px !important;
         }
@@ -1223,8 +1223,8 @@ router.get('/:id/view', async (req, res) => {
         .amount-cell {
             text-align: right;
             font-weight: 600;
-            font-size: 9px;
-            padding-right: 4px !important;
+            font-size: 7px;
+            padding-right: 2px !important;
         }
         
         .payout-cell {
@@ -1251,9 +1251,9 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .rental-table .totals-row td {
-            padding: 8px 4px;
+            padding: 5px 2px;
             border-bottom: none;
-            font-size: 9px;
+            font-size: 7px;
         }
         
         /* Page setup for PDF */
@@ -1266,55 +1266,55 @@ router.get('/:id/view', async (req, res) => {
         @media print {
             body {
                 padding: 0;
-                font-size: 9px;
+                font-size: 7px;
             }
             
             .header {
-                padding: 15px 20px;
+                padding: 10px 15px;
             }
             
             .content {
-                padding: 20px;
+                padding: 15px;
             }
             
             .rental-table {
-                font-size: 8px;
+                font-size: 6px;
                 page-break-inside: avoid;
             }
             
             .rental-table th {
-                font-size: 7px;
-                padding: 6px 3px;
+                font-size: 5px;
+                padding: 3px 1px;
             }
             
             .rental-table td {
-                font-size: 8px;
-                padding: 5px 2px;
+                font-size: 6px;
+                padding: 3px 1px;
             }
             
             .guest-details-cell {
-                padding: 5px 3px !important;
+                padding: 3px 2px !important;
             }
             
             .guest-name {
-                font-size: 8px;
-            }
-            
-            .guest-info, .booking-details {
                 font-size: 6px;
             }
             
+            .guest-info, .booking-details {
+                font-size: 5px;
+            }
+            
             .amount-cell {
-                font-size: 8px;
+                font-size: 6px;
             }
             
             .channel-badge {
-                font-size: 5px;
-                padding: 0px 2px;
+                font-size: 4px;
+                padding: 0px 1px;
             }
             
             .section-title {
-                font-size: 16px;
+                font-size: 11px;
             }
         }
         
