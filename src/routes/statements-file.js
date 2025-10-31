@@ -275,9 +275,12 @@ router.post('/generate', async (req, res) => {
         const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
         const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
         
-        // Get PM percentage from listing database (property-specific)
-        let pmPercentage = 15; // Default fallback
+        // Calculate PM commission: For multi-property statements, calculate per-reservation based on property PM fee
+        let pmCommission = 0;
+        let pmPercentage = 15; // For display purposes
+        
         if (propertyId) {
+            // Single property - use its PM fee for all revenue
             const listing = await ListingService.getListingWithPmFee(parseInt(propertyId));
             if (listing && listing.pmFeePercentage !== null) {
                 pmPercentage = listing.pmFeePercentage;
@@ -285,9 +288,27 @@ router.post('/generate', async (req, res) => {
             } else {
                 console.log(`No PM fee found for listing ${propertyId}, using default: ${pmPercentage}%`);
             }
+            pmCommission = totalRevenue * (pmPercentage / 100);
+        } else {
+            // Multi-property statement - calculate PM commission per reservation
+            console.log(`Calculating PM commission per-reservation for ${periodReservations.length} reservations...`);
+            const propertyPmFees = {}; // Cache PM fees to avoid repeated DB calls
+            
+            for (const res of periodReservations) {
+                if (!propertyPmFees[res.propertyId]) {
+                    const listing = await ListingService.getListingWithPmFee(res.propertyId);
+                    propertyPmFees[res.propertyId] = listing?.pmFeePercentage ?? 15;
+                }
+                const resPmFee = propertyPmFees[res.propertyId];
+                const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
+                pmCommission += resCommission;
+                console.log(`  Property ${res.propertyId}: $${res.grossAmount} × ${resPmFee}% = $${resCommission.toFixed(2)}`);
+            }
+            
+            // Calculate average PM percentage for display
+            pmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
+            console.log(`Total PM Commission: $${pmCommission.toFixed(2)} (avg ${pmPercentage.toFixed(2)}%)`);
         }
-        
-        const pmCommission = totalRevenue * (pmPercentage / 100);
         
         // Calculate fees per property
         const propertyCount = targetListings.length;
