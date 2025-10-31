@@ -266,27 +266,28 @@ class HostifyService {
         const cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
         const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
         const extraPersonFee = parseFloat(hostifyReservation.extra_person || 0);
+        const cleaningAndOtherFees = cleaningFee + petsFee + extraPersonFee;
         const channelCommission = parseFloat(hostifyReservation.channel_commission || 0);
         const transactionFee = parseFloat(hostifyReservation.transaction_fee || 0);
         const platformFees = channelCommission + transactionFee;
         const taxAmount = parseFloat(hostifyReservation.tax_amount || 0);
         
-        // Calculate totals
-        const totalRevenue = parseFloat(hostifyReservation.subtotal || 0);
+        // Calculate totals - Revenue = base + fees - platform
+        const clientRevenue = baseRate + cleaningAndOtherFees - platformFees;
         const clientPayout = parseFloat(hostifyReservation.payout_price || 0);
         
         return {
             ...baseReservation,
             // Detailed financial breakdown
             baseRate: baseRate,
-            cleaningAndOtherFees: cleaningFee + petsFee + extraPersonFee,
+            cleaningAndOtherFees: cleaningAndOtherFees,
             platformFees: platformFees,
-            clientRevenue: totalRevenue,
+            clientRevenue: clientRevenue,
             luxuryLodgingFee: 0, // PM Commission will be calculated based on property's pmFeePercentage
             clientTaxResponsibility: taxAmount,
             clientPayout: clientPayout,
             // Legacy fields for compatibility
-            grossAmount: totalRevenue,
+            grossAmount: clientRevenue,
             hostPayoutAmount: clientPayout,
             hasDetailedFinance: true
         };
