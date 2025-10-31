@@ -2601,7 +2601,7 @@ function generateStatementHTML(statement, id) {
                     <span>support@luxurylodgingpm.com | +1 (813) 594-8882</span>
                 </div>
             </div>
-            <div class="logo-box">LOGO</div>
+            <div class="logo-box">Luxury Lodging</div>
         </div>
         
         <div class="statement-details">
@@ -2610,22 +2610,8 @@ function generateStatementHTML(statement, id) {
                 <span class="meta-value">${statement.weekStartDate} - ${statement.weekEndDate}</span>
             </div>
             <div class="meta-item">
-                <span class="meta-label">Calculation Method</span>
-                <span class="meta-value" style="color: ${statement.calculationType === 'calendar' ? '#007bff' : '#666'};">
-                    ${statement.calculationType === 'calendar' ? '📅 Calendar-based (prorated)' : '📋 Check-out based'}
-                </span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">Generated</span>
-                <span class="meta-value">${new Date().toLocaleDateString('en-US')}</span>
-            </div>
-            <div class="meta-item">
                 <span class="meta-label">Property</span>
                 <span class="meta-value">${statement.propertyName || `Property ${statement.propertyId}`}</span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">Status</span>
-                <span class="meta-value">${statement.status}</span>
             </div>
         </div>
     </div>
@@ -2636,9 +2622,6 @@ function generateStatementHTML(statement, id) {
             <thead>
                 <tr>
                     <th>Guest Details</th>
-                    <th>Check-in date</th>
-                    <th>Check-out date</th>
-                    <th>Nights</th>
                     <th>Base Rate</th>
                     <th>Cleaning and Other Fees</th>
                     <th>Platform Fees</th>
@@ -2706,16 +2689,16 @@ function generateStatementHTML(statement, id) {
         </table>
         
         <!-- Expenses Section -->
-        <div style="margin-top: 20px;">
-            <h3 style="color: var(--luxury-navy); font-size: 16px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">EXPENSES</h3>
-            <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #ddd; margin-bottom: 25px;">
+        <div style="margin-top: 30px;">
+            <h3 style="color: var(--luxury-navy); font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; border-bottom: 3px solid var(--luxury-gold); padding-bottom: 10px;">EXPENSES</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
                 <thead>
-                    <tr style="background: var(--luxury-navy); color: white;">
-                        <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Date</th>
-                        <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Description</th>
-                        <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Property</th>
-                        <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Category</th>
-                        <th style="padding: 10px 8px; text-align: right; font-weight: 600; font-size: 9px;">Amount</th>
+                    <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">DATE</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">DESCRIPTION</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">PROPERTY</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">CATEGORY</th>
+                        <th style="padding: 14px 12px; text-align: right; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">AMOUNT</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2732,51 +2715,52 @@ function generateStatementHTML(statement, id) {
                         });
                         
                         return `
-                        <tr${isDuplicate ? ' style="background-color: #fff3cd; border-left: 3px solid #ffc107;"' : ''}>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; font-weight: 500; font-size: 9px;">
+                        <tr${isDuplicate ? ' style="background-color: #fff3cd; border-left: 4px solid #ffc107;"' : ' style="background-color: white; transition: background-color 0.2s;"'}>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: 500; font-size: 10px; color: #374151;">
                                 ${(() => {
                                     const [year, month, day] = expense.date.split('-').map(Number);
                                     return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                 })()}
-                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 7px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
+                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 8px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
                             </td>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 9px; line-height: 1.3;">${expense.description}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; color: #666; font-size: 8px;">${expense.listing || '-'}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; text-transform: capitalize; color: #666; font-size: 9px;">${expense.category}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: right; font-weight: 600; font-size: 9px;">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 10px; line-height: 1.4; color: #1f2937; font-weight: 500;">${expense.description}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 9px;">${expense.listing || '-'}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-transform: capitalize; color: #6b7280; font-size: 10px;">${expense.category}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 700; font-size: 11px; color: #dc2626;">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         `;
-                    }).join('') || '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666; font-style: italic; font-size: 10px;">No expenses for this period</td></tr>'}
-                    <tr style="background: var(--luxury-navy); color: white;">
-                        <td colspan="4" style="padding: 10px 8px; font-weight: 700; border: none; font-size: 10px;"><strong>TOTAL EXPENSES</strong></td>
-                        <td style="padding: 10px 8px; text-align: right; font-weight: 700; border: none; font-size: 10px;"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    }).join('') || '<tr><td colspan="5" style="text-align: center; padding: 24px; color: #9ca3af; font-style: italic; font-size: 11px;">No expenses for this period</td></tr>'}
+                    <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
+                        <td colspan="4" style="padding: 16px 12px; font-weight: 700; border: none; font-size: 11px; letter-spacing: 0.5px;"><strong>TOTAL EXPENSES</strong></td>
+                        <td style="padding: 16px 12px; text-align: right; font-weight: 700; border: none; font-size: 12px;"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
         <!-- Summary Section -->
-        <div class="summary-box" style="margin-top: 25px;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px; background: #f8f9fa; border: 2px solid var(--luxury-navy); border-radius: 8px;">
-                <tr>
-                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">Client Revenue</td>
-                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #28a745; border-bottom: 1px solid #e9ecef;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <div class="summary-box" style="margin-top: 40px; background: linear-gradient(135deg, #f8fafc 0%, #e5e7eb 100%); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+            <h3 style="color: var(--luxury-navy); font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; border-bottom: 3px solid var(--luxury-gold); padding-bottom: 10px;">STATEMENT SUMMARY</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Revenue</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
-                <tr>
-                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">PM Commission</td>
-                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #dc3545; border-bottom: 1px solid #e9ecef;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">PM Commission</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
-                <tr>
-                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">Client Tax Responsibility</td>
-                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #28a745; border-bottom: 1px solid #e9ecef;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Tax Responsibility</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
-                <tr>
-                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 2px solid var(--luxury-navy);">Expenses and extras</td>
-                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #dc3545; border-bottom: 2px solid var(--luxury-navy);">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <tr style="border-bottom: 2px solid var(--luxury-navy);">
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Expenses</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
-                <tr style="background: var(--luxury-navy); color: white;">
-                    <td style="padding: 16px; font-weight: 700; font-size: 14px;"><strong>STATEMENT TOTAL</strong></td>
-                    <td style="padding: 16px; text-align: right; font-weight: 700; font-size: 14px;"><strong>$${(() => {
+                <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
+                    <td style="padding: 20px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px;"><strong>TOTAL PAYOUT</strong></td>
+                    <td style="padding: 20px; text-align: right; font-weight: 700; font-size: 16px;"><strong>$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
                         const clientTaxResponsibility = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0;
