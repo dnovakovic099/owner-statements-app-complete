@@ -1203,17 +1203,14 @@ router.get('/:id/view', async (req, res) => {
             line-height: 1.3;
         }
         
-        .rental-table th:nth-child(1) { width: 16%; }   /* Guest Details */
-        .rental-table th:nth-child(2) { width: 7%; }    /* Check-in */
-        .rental-table th:nth-child(3) { width: 7%; }    /* Check-out */
-        .rental-table th:nth-child(4) { width: 5%; }    /* Nights */
-        .rental-table th:nth-child(5) { width: 8%; }    /* Base Rate */
-        .rental-table th:nth-child(6) { width: 8%; }    /* Cleaning */
-        .rental-table th:nth-child(7) { width: 8%; }    /* Platform Fees */
-        .rental-table th:nth-child(8) { width: 8%; }    /* Revenue */
-        .rental-table th:nth-child(9) { width: 8%; }    /* PM Commission */
-        .rental-table th:nth-child(10) { width: 8%; }   /* Tax Responsibility */
-        .rental-table th:nth-child(11) { width: 9%; }   /* Gross Payout */
+        .rental-table th:nth-child(1) { width: 25%; }   /* Guest Details with dates */
+        .rental-table th:nth-child(2) { width: 11%; }   /* Base Rate */
+        .rental-table th:nth-child(3) { width: 11%; }   /* Cleaning */
+        .rental-table th:nth-child(4) { width: 11%; }   /* Platform Fees */
+        .rental-table th:nth-child(5) { width: 11%; }   /* Revenue */
+        .rental-table th:nth-child(6) { width: 11%; }   /* PM Commission */
+        .rental-table th:nth-child(7) { width: 10%; }   /* Tax Responsibility */
+        .rental-table th:nth-child(8) { width: 10%; }   /* Gross Payout */
         
         .rental-table td {
             padding: 6px 4px;
@@ -1440,9 +1437,6 @@ router.get('/:id/view', async (req, res) => {
                         <span>support@luxurylodgingpm.com | +1 (813) 594-8882</span>
     </div>
             </div>
-                <div class="logo-placeholder">
-                    <div class="logo-box">LOGO</div>
-            </div>
     </div>
 
             <div class="statement-details">
@@ -1457,15 +1451,14 @@ router.get('/:id/view', async (req, res) => {
                             ${statement.calculationType === 'calendar' ? '📅 Calendar-based (prorated)' : '📋 Check-out based'}
                         </span>
                     </div>
-            </div>
                     <div class="detail-group">
                         <span class="detail-label">Date:</span>
                         <span class="detail-value">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-            </div>
+                    </div>
                     <div class="detail-group">
-                        <span class="detail-label">Invoice number:</span>
-                        <span class="detail-value">${statement.id}</span>
-            </div>
+                        <span class="detail-label">Property:</span>
+                        <span class="detail-value">${statement.propertyName}</span>
+                    </div>
             </div>
                 
                 <div class="owner-info">
@@ -1483,9 +1476,6 @@ router.get('/:id/view', async (req, res) => {
             <thead>
                 <tr>
                                 <th>Guest Details</th>
-                                <th>Check-in date</th>
-                                <th>Check-out date</th>
-                                <th>Nights</th>
                                 <th>Base Rate</th>
                                 <th>Cleaning and Other Fees</th>
                                 <th>Platform Fees</th>
@@ -1511,7 +1501,13 @@ router.get('/:id/view', async (req, res) => {
                                 <tr>
                                     <td class="guest-details-cell">
                                         <div class="guest-name">${reservation.guestName}</div>
-                                        <div class="guest-info">${statement.propertyName || 'Property'}</div>
+                                        <div class="guest-info">${(() => {
+                                            const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
+                                            const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
+                                            const checkIn = new Date(yearIn, monthIn - 1, dayIn).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                            const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                            return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
+                                        })()}</div>
                                         <div class="channel-badge">${reservation.source}</div>
                                         ${reservation.prorationNote ? 
                                             `<div class="proration-info" style="font-size: 10px; color: #007bff; margin-top: 2px;">
@@ -1519,15 +1515,6 @@ router.get('/:id/view', async (req, res) => {
                                             </div>` : ''
                                         }
                                     </td>
-                                    <td class="date-cell">${(() => {
-                                        const [year, month, day] = reservation.checkInDate.split('-').map(Number);
-                                        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                    })()}</td>
-                                    <td class="date-cell">${(() => {
-                                        const [year, month, day] = reservation.checkOutDate.split('-').map(Number);
-                                        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                    })()}</td>
-                                    <td class="text-center">${reservation.nights || 0}</td>
                                     <td class="amount-cell">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1537,11 +1524,9 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell payout-cell">$${(clientRevenue - luxuryFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
-                            }).join('') || '<tr><td colspan="11" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
+                            }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
-                                <td colspan="2"></td>
-                                <td class="text-center"><strong>${statement.reservations?.reduce((sum, res) => sum + (res.nights || 0), 0) || 0}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -2681,7 +2666,13 @@ function generateStatementHTML(statement, id) {
                     <tr>
                         <td class="guest-details-cell">
                             <div class="guest-name">${reservation.guestName}</div>
-                            <div class="guest-info">${statement.propertyName || 'Property'}</div>
+                            <div class="guest-info">${(() => {
+                                const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
+                                const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
+                                const checkIn = new Date(yearIn, monthIn - 1, dayIn).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
+                            })()}</div>
                             <div class="channel-badge">${reservation.source}</div>
                             ${reservation.prorationNote ? 
                                 `<div class="proration-info" style="font-size: 8px; color: #007bff; margin-top: 1px;">
@@ -2689,14 +2680,6 @@ function generateStatementHTML(statement, id) {
                                 </div>` : ''
                             }
                         </td>
-                        <td class="date-cell">${(() => {
-                            const [year, month, day] = reservation.checkInDate.split('-').map(Number);
-                            return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                        })()}</td>
-                        <td class="date-cell">${(() => {
-                            const [year, month, day] = reservation.checkOutDate.split('-').map(Number);
-                            return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                        })()}</td>
                         <td class="amount-cell">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2706,10 +2689,9 @@ function generateStatementHTML(statement, id) {
                         <td class="amount-cell payout-amount">$${(clientRevenue - luxuryFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
-                }).join('') || '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #666;">No reservations for this period</td></tr>'}
+                }).join('') || '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #666;">No reservations for this period</td></tr>'}
                 <tr class="totals-row">
                     <td><strong>TOTALS</strong></td>
-                    <td colspan="2"></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
