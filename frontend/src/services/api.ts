@@ -79,6 +79,10 @@ export const statementsAPI = {
     calculationType: string;
   }): Promise<{ 
     message: string;
+    jobId?: string;  // For background jobs (bulk generation)
+    status?: string;  // Job status
+    note?: string;  // User-facing message
+    statusUrl?: string;  // URL to check job status
     summary?: {
       generated: number;
       skipped: number;

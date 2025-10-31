@@ -1,6 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const FileDataService = require('../services/FileDataService');
+const BackgroundJobService = require('../services/BackgroundJobService');
+
+// GET /api/statements/jobs/:jobId - Get background job status
+router.get('/jobs/:jobId', async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = BackgroundJobService.getJob(jobId);
+        
+        if (!job) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        
+        res.json(job);
+    } catch (error) {
+        console.error('Error fetching job status:', error);
+        res.status(500).json({ error: 'Failed to fetch job status' });
+    }
+});
 
 // GET /api/statements-file - Get all statements from files
 router.get('/', async (req, res) => {
@@ -113,9 +131,25 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Either property ID or owner ID is required' });
         }
 
-        // Handle "Generate All" option
+        // Handle "Generate All" option - run in background
         if (ownerId === 'all') {
-            return await generateAllOwnerStatements(req, res, startDate, endDate, calculationType);
+            console.log('🚀 Starting bulk generation as background job...');
+            
+            const jobId = await BackgroundJobService.runInBackground(
+                'bulk_statement_generation',
+                async (jobId) => {
+                    await generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType);
+                },
+                { startDate, endDate, calculationType }
+            );
+            
+            return res.status(202).json({
+                message: 'Bulk statement generation started in background',
+                jobId,
+                status: 'processing',
+                note: 'This may take several minutes to complete. Check back later or use the job status endpoint.',
+                statusUrl: `/api/statements/jobs/${jobId}`
+            });
         }
 
         const periodStart = new Date(startDate);
@@ -1702,6 +1736,230 @@ router.get('/:id/download', async (req, res) => {
 
 // Helper function to generate statement HTML for PDF
 // Helper function to generate statements for all owners and their properties
+/**
+ * Background version of bulk statement generation with progress tracking
+ */
+async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType) {
+    try {
+        console.log(`🔄 Starting background bulk statement generation (Job: ${jobId})...`);
+        console.log(`   Period: ${startDate} to ${endDate}`);
+        console.log(`   Calculation Type: ${calculationType}`);
+
+        // Get all owners and listings
+        const owners = await FileDataService.getOwners();
+        const listings = await FileDataService.getListings();
+
+        console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
+
+        // Calculate total items to process
+        const totalProperties = owners.reduce((sum, owner) => {
+            const ownerProperties = listings.filter(listing => 
+                owner.listingIds && owner.listingIds.includes(listing.id) && listing.isActive
+            );
+            return sum + ownerProperties.length;
+        }, 0);
+
+        BackgroundJobService.startJob(jobId, totalProperties);
+
+        const results = {
+            generated: [],
+            skipped: [],
+            errors: []
+        };
+
+        let processedCount = 0;
+
+        // Loop through each owner
+        for (const owner of owners) {
+            console.log(`\n📋 Processing owner: ${owner.name} (ID: ${owner.id})`);
+
+            const ownerProperties = listings.filter(listing => {
+                const belongsToOwner = owner.listingIds && owner.listingIds.includes(listing.id);
+                return belongsToOwner && listing.isActive;
+            });
+
+            console.log(`   Found ${ownerProperties.length} properties for ${owner.name}`);
+
+            if (ownerProperties.length === 0) {
+                console.log(`   ⚠️  Skipping ${owner.name} - no properties found`);
+                results.skipped.push({
+                    ownerId: owner.id,
+                    ownerName: owner.name,
+                    reason: 'No properties found'
+                });
+                continue;
+            }
+
+            // Generate a statement for each property
+            for (const property of ownerProperties) {
+                try {
+                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
+
+                    const reservations = await FileDataService.getReservations(
+                        startDate,
+                        endDate,
+                        property.id,
+                        calculationType
+                    );
+
+                    const expenses = await FileDataService.getExpenses(startDate, endDate, property.id);
+                    const periodStart = new Date(startDate);
+                    const periodEnd = new Date(endDate);
+
+                    const periodReservations = reservations.filter(res => {
+                        if (res.propertyId !== property.id) return false;
+
+                        let dateMatch = true;
+                        if (calculationType === 'calendar') {
+                            dateMatch = true;
+                        } else {
+                            const checkoutDate = new Date(res.checkOutDate);
+                            dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                        }
+
+                        const allowedStatuses = ['confirmed', 'modified', 'new'];
+                        const statusMatch = allowedStatuses.includes(res.status);
+
+                        return dateMatch && statusMatch;
+                    }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+                    const periodExpenses = expenses.filter(exp => {
+                        if (property.id && exp.propertyId !== null && exp.propertyId !== property.id) {
+                            return false;
+                        }
+                        const expenseDate = new Date(exp.date);
+                        return expenseDate >= periodStart && expenseDate <= periodEnd;
+                    });
+
+                    console.log(`   📊 Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
+
+                    if (periodReservations.length === 0 && periodExpenses.length === 0) {
+                        console.log(`   ⏭️  Skipping ${property.name} - no activity in this period`);
+                        results.skipped.push({
+                            ownerId: owner.id,
+                            ownerName: owner.name,
+                            propertyId: property.id,
+                            propertyName: property.name,
+                            reason: 'No activity in period'
+                        });
+                        processedCount++;
+                        BackgroundJobService.updateProgress(jobId, processedCount);
+                        continue;
+                    }
+
+                    // Calculate totals
+                    const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
+                    const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                    const pmPercentage = owner.defaultPmPercentage || 15;
+                    const pmCommission = totalRevenue * (pmPercentage / 100);
+                    const techFees = 50;
+                    const insuranceFees = 25;
+                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+
+                    const existingStatements = await FileDataService.getStatements();
+                    const newId = FileDataService.generateId(existingStatements);
+
+                    const statement = {
+                        id: newId,
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        weekStartDate: startDate,
+                        weekEndDate: endDate,
+                        calculationType,
+                        totalRevenue: Math.round(totalRevenue * 100) / 100,
+                        totalExpenses: Math.round(totalExpenses * 100) / 100,
+                        pmCommission: Math.round(pmCommission * 100) / 100,
+                        pmPercentage: pmPercentage,
+                        techFees: Math.round(techFees * 100) / 100,
+                        insuranceFees: Math.round(insuranceFees * 100) / 100,
+                        adjustments: 0,
+                        ownerPayout: Math.round(ownerPayout * 100) / 100,
+                        status: 'draft',
+                        sentAt: null,
+                        createdAt: new Date().toISOString(),
+                        reservations: periodReservations,
+                        expenses: periodExpenses,
+                        duplicateWarnings: expenses.duplicateWarnings || [],
+                        items: [
+                            ...periodReservations.map(res => ({
+                                type: 'revenue',
+                                description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                                amount: res.grossAmount,
+                                date: res.checkOutDate,
+                                category: 'booking'
+                            })),
+                            ...periodExpenses.map(exp => ({
+                                type: 'expense',
+                                description: exp.description,
+                                amount: exp.amount,
+                                date: exp.date,
+                                category: exp.type || exp.category || 'expense',
+                                vendor: exp.vendor,
+                                listing: exp.listing
+                            }))
+                        ]
+                    };
+
+                    await FileDataService.saveStatement(statement);
+
+                    console.log(`   ✅ Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
+
+                    results.generated.push({
+                        id: newId,
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        ownerPayout: statement.ownerPayout,
+                        totalRevenue: statement.totalRevenue,
+                        reservationCount: periodReservations.length,
+                        expenseCount: periodExpenses.length
+                    });
+
+                    processedCount++;
+                    BackgroundJobService.updateProgress(jobId, processedCount);
+
+                } catch (error) {
+                    console.error(`   ❌ Error generating statement for ${property.name}:`, error.message);
+                    results.errors.push({
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        error: error.message
+                    });
+                    processedCount++;
+                    BackgroundJobService.updateProgress(jobId, processedCount);
+                }
+            }
+        }
+
+        console.log(`\n✅ Background bulk statement generation completed (Job: ${jobId}):`);
+        console.log(`   Generated: ${results.generated.length} statements`);
+        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
+        console.log(`   Errors: ${results.errors.length}`);
+
+        BackgroundJobService.completeJob(jobId, {
+            summary: {
+                generated: results.generated.length,
+                skipped: results.skipped.length,
+                errors: results.errors.length
+            },
+            results
+        });
+
+    } catch (error) {
+        console.error(`❌ Background bulk statement generation failed (Job: ${jobId}):`, error);
+        BackgroundJobService.failJob(jobId, error);
+        throw error;
+    }
+}
+
+/**
+ * Original synchronous version (kept for backward compatibility, but not used)
+ */
 async function generateAllOwnerStatements(req, res, startDate, endDate, calculationType) {
     try {
         console.log(`🔄 Starting bulk statement generation for all owners...`);

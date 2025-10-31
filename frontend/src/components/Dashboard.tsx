@@ -100,8 +100,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const response = await statementsAPI.generateStatement(data);
       
-      // Check if this was a bulk generation
-      if (data.ownerId === 'all' && response.summary) {
+      // Check if this is a background job (bulk generation)
+      if (data.ownerId === 'all' && response.jobId) {
+        alert(
+          `🚀 Bulk Statement Generation Started!\n\n` +
+          `This process is running in the background and may take several minutes to complete.\n\n` +
+          `✅ You can close this window and check back later.\n` +
+          `📊 The statements will appear in the list once generation is complete.\n\n` +
+          `Tip: Refresh the page to see newly generated statements.`
+        );
+        
+        setIsGenerateModalOpen(false);
+        // Refresh statements after a short delay to show any initial progress
+        setTimeout(() => loadStatements(), 3000);
+      } 
+      // Check if this was a completed bulk generation (old format, shouldn't happen anymore)
+      else if (data.ownerId === 'all' && response.summary) {
         const { generated, skipped, errors } = response.summary;
         let message = `✅ Bulk Generation Complete!\n\n`;
         message += `📊 Generated: ${generated} statement(s)\n`;
@@ -119,14 +133,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }
         
         alert(message);
-      } else {
+        setIsGenerateModalOpen(false);
+        await loadStatements();
+      } 
+      // Single statement generation
+      else {
         alert('✅ Statement generated successfully');
+        setIsGenerateModalOpen(false);
+        await loadStatements();
       }
-      
-      setIsGenerateModalOpen(false);
-      await loadStatements();
     } catch (err) {
       alert(`❌ Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      throw err; // Re-throw to keep modal open on error
     }
   };
 
