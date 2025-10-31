@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Search } from 'lucide-react';
 import { Owner, Property } from '../types';
 
 interface GenerateModalProps {
@@ -24,6 +24,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [calculationType, setCalculationType] = useState('checkout');
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
   const [generateAll, setGenerateAll] = useState(false);
+  const [propertySearch, setPropertySearch] = useState('');
 
   useEffect(() => {
     if (ownerId) {
@@ -33,7 +34,18 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setFilteredProperties([]);
     }
     setPropertyId(''); // Reset property selection when owner changes
+    setPropertySearch(''); // Reset search when owner changes
   }, [ownerId, properties]);
+
+  // Filter properties based on search
+  const searchFilteredProperties = filteredProperties.filter((property) => {
+    if (!propertySearch) return true;
+    const searchLower = propertySearch.toLowerCase();
+    return (
+      property.name.toLowerCase().includes(searchLower) ||
+      property.id.toString().includes(searchLower)
+    );
+  });
 
   useEffect(() => {
     // Set default dates for current month
@@ -144,19 +156,56 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Property (Optional)
                 </label>
-                <select
-                  value={propertyId}
-                  onChange={(e) => setPropertyId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={!ownerId}
-                >
-                  <option value="">All Properties</option>
-                  {filteredProperties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name} (ID: {property.id})
+                <div className="space-y-2">
+                  {/* Search Input - Only show if owner is selected and has properties */}
+                  {ownerId && filteredProperties.length > 0 && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <input
+                        type="text"
+                        placeholder="Search properties by name or ID..."
+                        value={propertySearch}
+                        onChange={(e) => setPropertySearch(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md pl-10 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {propertySearch && (
+                        <button
+                          onClick={() => setPropertySearch('')}
+                          type="button"
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Property Dropdown */}
+                  <select
+                    value={propertyId}
+                    onChange={(e) => setPropertyId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={!ownerId}
+                  >
+                    <option value="">
+                      {ownerId 
+                        ? `All Properties (${searchFilteredProperties.length})` 
+                        : 'Select an owner first'}
                     </option>
-                  ))}
-                </select>
+                    {searchFilteredProperties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name} (ID: {property.id})
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {/* No results message */}
+                  {ownerId && propertySearch && searchFilteredProperties.length === 0 && (
+                    <p className="text-sm text-gray-500 italic">
+                      No properties found matching "{propertySearch}"
+                    </p>
+                  )}
+                </div>
               </div>
             </>
           )}
