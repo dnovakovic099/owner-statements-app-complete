@@ -1186,21 +1186,21 @@ router.get('/:id/view', async (req, res) => {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            font-size: 7px;
+            font-size: 9px;
         }
         
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
-            padding: 4px 2px;
+            padding: 8px 4px;
             text-align: center;
             font-weight: 600;
-            font-size: 6px;
+            font-size: 8px;
             text-transform: uppercase;
-            letter-spacing: 0.2px;
+            letter-spacing: 0.3px;
             border-right: 1px solid rgba(255,255,255,0.2);
             white-space: nowrap;
-            line-height: 1.1;
+            line-height: 1.3;
         }
         
         .rental-table th:nth-child(1) { width: 16%; }   /* Guest Details */
@@ -1216,13 +1216,13 @@ router.get('/:id/view', async (req, res) => {
         .rental-table th:nth-child(11) { width: 9%; }   /* Gross Payout */
         
         .rental-table td {
-            padding: 4px 2px;
+            padding: 6px 4px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
-            font-size: 7px;
+            font-size: 9px;
             text-align: center;
-            vertical-align: top;
-            line-height: 1.2;
+            vertical-align: middle;
+            line-height: 1.4;
         }
         
         .booking-cell {
@@ -1232,27 +1232,27 @@ router.get('/:id/view', async (req, res) => {
         
         .guest-details-cell {
             text-align: left !important;
-            padding: 4px 2px !important;
+            padding: 6px 4px !important;
         }
         
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 7px;
-            margin-bottom: 1px;
+            font-size: 9px;
+            margin-bottom: 2px;
         }
         
         .guest-info {
-            font-size: 6px;
+            font-size: 8px;
             color: var(--luxury-gray);
-            line-height: 1.2;
-            margin-bottom: 1px;
+            line-height: 1.3;
+            margin-bottom: 2px;
         }
         
         .booking-details {
-            font-size: 6px;
+            font-size: 8px;
             color: var(--luxury-gray);
-            line-height: 1.2;
+            line-height: 1.3;
         }
         
         .listing-info {
@@ -1267,7 +1267,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .date-cell {
-            font-size: 7px;
+            font-size: 9px;
             white-space: nowrap;
         }
         
@@ -1279,25 +1279,25 @@ router.get('/:id/view', async (req, res) => {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 0px 2px;
-            border-radius: 2px;
-            font-size: 5px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 7px;
             font-weight: 600;
             text-transform: uppercase;
-            margin-top: 1px;
+            margin-top: 2px;
         }
         
         .proration-info {
-            font-size: 5px !important;
+            font-size: 7px !important;
             color: #007bff !important;
-            margin-top: 1px !important;
+            margin-top: 2px !important;
         }
         
         .amount-cell {
             text-align: right;
             font-weight: 600;
-            font-size: 7px;
-            padding-right: 2px !important;
+            font-size: 9px;
+            padding-right: 4px !important;
         }
         
         .payout-cell {
@@ -1324,9 +1324,9 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .rental-table .totals-row td {
-            padding: 5px 2px;
+            padding: 8px 4px;
             border-bottom: none;
-            font-size: 7px;
+            font-size: 9px;
         }
         
         /* Page setup for PDF */
