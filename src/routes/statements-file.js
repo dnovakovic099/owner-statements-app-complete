@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const FileDataService = require('../services/FileDataService');
 const BackgroundJobService = require('../services/BackgroundJobService');
+const ListingService = require('../services/ListingService');
 
 // GET /api/statements/jobs/:jobId - Get background job status
 router.get('/jobs/:jobId', async (req, res) => {
@@ -273,7 +274,19 @@ router.post('/generate', async (req, res) => {
         // Calculate totals
         const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
         const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-        const pmPercentage = 15; // Default PM percentage
+        
+        // Get PM percentage from listing database (property-specific)
+        let pmPercentage = 15; // Default fallback
+        if (propertyId) {
+            const listing = await ListingService.getListingWithPmFee(parseInt(propertyId));
+            if (listing && listing.pmFeePercentage !== null) {
+                pmPercentage = listing.pmFeePercentage;
+                console.log(`Using PM fee from database for listing ${propertyId}: ${pmPercentage}%`);
+            } else {
+                console.log(`No PM fee found for listing ${propertyId}, using default: ${pmPercentage}%`);
+            }
+        }
+        
         const pmCommission = totalRevenue * (pmPercentage / 100);
         
         // Calculate fees per property
@@ -1850,7 +1863,14 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Calculate totals
                     const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
                     const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-                    const pmPercentage = owner.defaultPmPercentage || 15;
+                    
+                    // Get PM percentage from listing database (property-specific)
+                    let pmPercentage = 15; // Default fallback
+                    const listing = await ListingService.getListingWithPmFee(property.id);
+                    if (listing && listing.pmFeePercentage !== null) {
+                        pmPercentage = listing.pmFeePercentage;
+                    }
+                    
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50;
                     const insuranceFees = 25;
@@ -2064,7 +2084,14 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     // Calculate totals
                     const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
                     const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-                    const pmPercentage = owner.defaultPmPercentage || 15;
+                    
+                    // Get PM percentage from listing database (property-specific)
+                    let pmPercentage = 15; // Default fallback
+                    const listing = await ListingService.getListingWithPmFee(property.id);
+                    if (listing && listing.pmFeePercentage !== null) {
+                        pmPercentage = listing.pmFeePercentage;
+                    }
+                    
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50; // $50 per property
                     const insuranceFees = 25; // $25 per property
