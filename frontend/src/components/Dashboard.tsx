@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, AlertCircle, LogOut, CreditCard } from 'lucide-react';
+import { Plus, AlertCircle, LogOut, CreditCard, Search } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -38,6 +38,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     status: '',
     startDate: '',
     endDate: '',
+  });
+
+  // Property search state
+  const [propertySearch, setPropertySearch] = useState('');
+
+  // Filter properties based on search
+  const filteredProperties = properties.filter((property) => {
+    if (!propertySearch) return true;
+    const searchLower = propertySearch.toLowerCase();
+    return (
+      property.name.toLowerCase().includes(searchLower) ||
+      property.id.toString().includes(searchLower)
+    );
   });
 
   useEffect(() => {
@@ -278,20 +291,43 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Property</label>
-              <select
-                value={filters.propertyId}
-                onChange={(e) => setFilters({ ...filters, propertyId: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Properties</option>
-                {properties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.name} (ID: {property.id})
-                  </option>
-                ))}
-              </select>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Property Search</label>
+              <div className="space-y-2">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search by property name or ID..."
+                    value={propertySearch}
+                    onChange={(e) => setPropertySearch(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {propertySearch && (
+                    <button
+                      onClick={() => setPropertySearch('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                
+                {/* Property Dropdown */}
+                <select
+                  value={filters.propertyId}
+                  onChange={(e) => setFilters({ ...filters, propertyId: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Properties ({filteredProperties.length})</option>
+                  {filteredProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} (ID: {property.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
