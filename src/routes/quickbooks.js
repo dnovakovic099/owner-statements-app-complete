@@ -123,30 +123,70 @@ router.get('/departments', async (req, res) => {
 
 /**
  * GET /api/quickbooks/properties
- * Get available properties for categorization
+ * Get available properties for categorization with owner mapping
  */
 router.get('/properties', async (req, res) => {
     try {
-        const listings = await FileDataService.getListings();
+        const [listings, owners] = await Promise.all([
+            FileDataService.getListings(),
+            FileDataService.getOwners()
+        ]);
         
-        // Transform to match expected format
-        const properties = listings.map(listing => ({
-            id: listing.id,
-            hostawayId: listing.id.toString(),
-            name: listing.name,
-            address: listing.address,
-            ownerId: 1, // Default owner
-            pmPercentage: null,
-            techFeeAmount: 50.00,
-            insuranceFeeAmount: 25.00,
-            isActive: true,
-            Owner: {
-                id: 1,
-                name: 'Default Owner',
-                email: 'owner@example.com',
-                defaultPmPercentage: 15
+        // Create a map of listing IDs to owner IDs
+        const listingToOwnerMap = new Map();
+        owners.forEach(owner => {
+            if (owner.listingIds && Array.isArray(owner.listingIds)) {
+                owner.listingIds.forEach(listingId => {
+                    listingToOwnerMap.set(listingId, owner);
+                });
             }
-        }));
+        });
+
+        // Transform to match expected format with proper owner mapping
+        const properties = listings.map(listing => {
+            const owner = listingToOwnerMap.get(listing.id);
+            
+            // If we found an owner for this listing, use their data
+            if (owner) {
+                return {
+                    id: listing.id,
+                    hostawayId: listing.id.toString(),
+                    name: listing.name,
+                    address: listing.address,
+                    ownerId: owner.id,
+                    pmPercentage: null,
+                    techFeeAmount: 50.00,
+                    insuranceFeeAmount: 25.00,
+                    isActive: listing.isActive,
+                    Owner: {
+                        id: owner.id,
+                        name: owner.name,
+                        email: owner.email,
+                        defaultPmPercentage: owner.defaultPmPercentage
+                    }
+                };
+            }
+            
+            // Fallback to default owner if no owner found for this listing
+            const defaultOwner = owners.find(o => o.email === 'owner@example.com') || owners[0];
+            return {
+                id: listing.id,
+                hostawayId: listing.id.toString(),
+                name: listing.name,
+                address: listing.address,
+                ownerId: defaultOwner?.id || 1,
+                pmPercentage: null,
+                techFeeAmount: 50.00,
+                insuranceFeeAmount: 25.00,
+                isActive: listing.isActive,
+                Owner: {
+                    id: defaultOwner?.id || 1,
+                    name: defaultOwner?.name || 'Default Owner',
+                    email: defaultOwner?.email || 'owner@example.com',
+                    defaultPmPercentage: defaultOwner?.defaultPmPercentage || 15
+                }
+            };
+        });
         
         res.json({
             success: true,

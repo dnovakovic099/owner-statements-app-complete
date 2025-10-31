@@ -171,6 +171,66 @@ class HostifyService {
         return await this.makeRequest(`/listings/${listingId}`);
     }
 
+    // Users API (for owners)
+    async getUsers() {
+        console.log('Fetching all users from Hostify...');
+        return await this.makeRequest('/users');
+    }
+
+    async getUser(userId) {
+        console.log(`Fetching user ${userId} from Hostify...`);
+        return await this.makeRequest(`/users/${userId}`);
+    }
+
+    // Transform Hostify user to our Owner format
+    transformUser(hostifyUser) {
+        return {
+            id: hostifyUser.id,
+            hostifyId: hostifyUser.id,
+            name: `${hostifyUser.first_name || ''} ${hostifyUser.last_name || ''}`.trim() || hostifyUser.username,
+            email: hostifyUser.username, // Hostify uses username as email
+            phone: hostifyUser.phone || '',
+            address: 'Address not specified',
+            defaultPmPercentage: 15.00,
+            techFeeEnabled: true,
+            insuranceFeeEnabled: true,
+            isActive: hostifyUser.is_active === 1,
+            roles: Array.isArray(hostifyUser.roles) ? hostifyUser.roles : [hostifyUser.roles].filter(Boolean),
+            status: hostifyUser.status,
+            listingIds: hostifyUser.listings ? hostifyUser.listings.map(l => l.id) : [],
+            createdAt: new Date().toISOString()
+        };
+    }
+
+    // Get all users and transform them to owners
+    async getAllOwners() {
+        console.log('Fetching all owners (users with Listing Owner role) from Hostify...');
+        
+        try {
+            const response = await this.getUsers();
+            
+            // Fix: API returns "users" not "user"
+            if (!response.success || !response.users) {
+                console.warn('No users found in Hostify response');
+                return [];
+            }
+
+            // Filter for users with "Listing Owner" role
+            const owners = response.users
+                .filter(user => {
+                    const roles = Array.isArray(user.roles) ? user.roles : [user.roles];
+                    return roles.includes('Listing Owner') && user.is_active === 1;
+                })
+                .map(user => this.transformUser(user));
+
+            console.log(`✅ Found ${owners.length} active listing owners in Hostify`);
+            return owners;
+        } catch (error) {
+            console.error('❌ Failed to fetch owners from Hostify:', error.message);
+            throw error;
+        }
+    }
+
     // Transform Hostify reservation data to our format
     transformReservation(hostifyReservation) {
         // Try to get guest name from multiple possible fields

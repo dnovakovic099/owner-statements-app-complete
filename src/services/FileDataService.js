@@ -38,9 +38,60 @@ class FileDataService {
         await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
     }
 
-    // Listings operations
+    // Listings operations - now pulls directly from Hostify
     async getListings() {
-        return await this.readJSONFile(this.listingsFile, []);
+        try {
+            console.log('📋 Fetching listings directly from Hostify API...');
+            const hostifyService = require('./HostifyService');
+            const response = await hostifyService.getAllProperties();
+            
+            if (!response.result || response.result.length === 0) {
+                console.warn('⚠️  No listings found in Hostify');
+                return [];
+            }
+
+            // Transform to our format
+            const listings = response.result.map(listing => ({
+                id: listing.id,
+                name: listing.name || listing.nickname || `Property ${listing.id}`,
+                address: this.formatHostifyAddress(listing),
+                country: listing.country || '',
+                city: listing.city || '',
+                personCapacity: listing.guests_included || 0,
+                bedroomsNumber: listing.details?.bedroomsNumber || 0,
+                bathroomsNumber: listing.details?.bathroomsNumber || 0,
+                currency: listing.currency || 'USD',
+                price: listing.default_daily_price || 0,
+                cleaningFee: listing.cleaning_fee || 0,
+                checkInTimeStart: listing.checkin_start ? parseInt(listing.checkin_start.split(':')[0]) : 15,
+                checkInTimeEnd: listing.checkin_end ? parseInt(listing.checkin_end.split(':')[0]) : 22,
+                checkOutTime: listing.checkout ? parseInt(listing.checkout.split(':')[0]) : 11,
+                minNights: listing.min_nights || 1,
+                maxNights: listing.max_nights || 365,
+                isActive: listing.is_listed === 1,
+                syncedAt: new Date().toISOString()
+            }));
+
+            console.log(`✅ Fetched ${listings.length} listings from Hostify`);
+            return listings;
+        } catch (error) {
+            console.error('❌ Failed to fetch listings from Hostify, falling back to cached file:', error.message);
+            // Fallback to cached file if API fails
+            return await this.readJSONFile(this.listingsFile, []);
+        }
+    }
+
+    formatHostifyAddress(listing) {
+        if (!listing) return 'Address not available';
+        
+        const parts = [];
+        if (listing.street) parts.push(listing.street);
+        if (listing.city) parts.push(listing.city);
+        if (listing.state) parts.push(listing.state);
+        if (listing.country) parts.push(listing.country);
+        if (listing.zipcode) parts.push(listing.zipcode);
+        
+        return parts.length > 0 ? parts.join(', ') : 'Address not available';
     }
 
     async saveListings(listings) {
@@ -346,28 +397,55 @@ class FileDataService {
         return filtered;
     }
 
-    // Owners operations
+    // Owners operations - now pulls directly from Hostify
     async getOwners() {
-        const owners = await this.readJSONFile(this.ownersFile, []);
-        
-        // If no owners exist, create a default one
-        if (owners.length === 0) {
-            const defaultOwner = {
-                id: 1,
-                name: 'Default Owner',
-                email: 'owner@example.com',
-                phone: '(555) 123-4567',
-                address: 'Address not specified',
-                defaultPmPercentage: 15.00,
-                techFeeEnabled: true,
-                insuranceFeeEnabled: true,
-                createdAt: new Date().toISOString()
-            };
-            owners.push(defaultOwner);
-            await this.saveOwners(owners);
+        try {
+            console.log('👥 Fetching owners directly from Hostify API...');
+            const hostifyService = require('./HostifyService');
+            const owners = await hostifyService.getAllOwners();
+            
+            if (!owners || owners.length === 0) {
+                console.warn('⚠️  No owners found in Hostify, creating default owner');
+                // If no owners exist, create a default one
+                const defaultOwner = {
+                    id: 1,
+                    name: 'Default Owner',
+                    email: 'owner@example.com',
+                    phone: '(555) 123-4567',
+                    address: 'Address not specified',
+                    defaultPmPercentage: 15.00,
+                    techFeeEnabled: true,
+                    insuranceFeeEnabled: true,
+                    createdAt: new Date().toISOString()
+                };
+                return [defaultOwner];
+            }
+            
+            console.log(`✅ Fetched ${owners.length} owners from Hostify`);
+            return owners;
+        } catch (error) {
+            console.error('❌ Failed to fetch owners from Hostify, falling back to cached file:', error.message);
+            // Fallback to cached file if API fails
+            const owners = await this.readJSONFile(this.ownersFile, []);
+            
+            // If no cached owners exist, create a default one
+            if (owners.length === 0) {
+                const defaultOwner = {
+                    id: 1,
+                    name: 'Default Owner',
+                    email: 'owner@example.com',
+                    phone: '(555) 123-4567',
+                    address: 'Address not specified',
+                    defaultPmPercentage: 15.00,
+                    techFeeEnabled: true,
+                    insuranceFeeEnabled: true,
+                    createdAt: new Date().toISOString()
+                };
+                return [defaultOwner];
+            }
+            
+            return owners;
         }
-        
-        return owners;
     }
 
     async saveOwners(owners) {
