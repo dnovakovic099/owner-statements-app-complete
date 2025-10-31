@@ -39,6 +39,8 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "node-quickbooks": "^2.0.46",
+    "pg": "^8.16.3",
+    "pg-hstore": "^2.3.4",
     "puppeteer": "^24.22.3",
     "sequelize": "^6.37.7",
     "sqlite3": "^5.1.7",

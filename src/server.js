@@ -7,7 +7,8 @@ const basicAuth = require('express-basic-auth');
 const fs = require('fs');
 require('dotenv').config();
 
-// Removed database initialization - using file-based data only
+// Database initialization
+const { syncDatabase } = require('./models');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -202,7 +203,10 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
     try {
-        // Database initialization removed - using file-based data only
+        // Initialize database (PostgreSQL on Railway, SQLite locally)
+        console.log('🔄 Initializing database...');
+        await syncDatabase();
+        console.log('✅ Database initialized successfully');
         
         // Start server
         app.listen(PORT, () => {
