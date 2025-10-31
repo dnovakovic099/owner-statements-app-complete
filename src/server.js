@@ -9,6 +9,7 @@ require('dotenv').config();
 
 // Database initialization
 const { syncDatabase } = require('./models');
+const ListingService = require('./services/ListingService');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -175,6 +176,7 @@ app.use('/api/dashboard', authMiddleware, require('./routes/dashboard-file'));
 app.use('/api/reservations', authMiddleware, require('./routes/reservations-file'));
 app.use('/api/statements', authMiddleware, require('./routes/statements-file'));
 app.use('/api/properties', authMiddleware, require('./routes/properties-file'));
+app.use('/api/listings', authMiddleware, require('./routes/listings'));
 app.use('/api/expenses', authMiddleware, require('./routes/expenses'));
 app.use('/api/quickbooks', authMiddleware, require('./routes/quickbooks'));
 
@@ -207,6 +209,16 @@ async function startServer() {
         console.log('🔄 Initializing database...');
         await syncDatabase();
         console.log('✅ Database initialized successfully');
+        
+        // Sync listings from Hostify on startup (runs in background)
+        console.log('🔄 Syncing listings from Hostify...');
+        ListingService.syncListingsFromHostify()
+            .then(result => {
+                console.log(`✅ Synced ${result.synced} listings from Hostify`);
+            })
+            .catch(err => {
+                console.warn('⚠️  Listing sync failed (will retry later):', err.message);
+            });
         
         // Start server
         app.listen(PORT, () => {

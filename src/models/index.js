@@ -1,11 +1,13 @@
 const sequelize = require('../config/database');
 const Statement = require('./Statement');
 const UploadedExpense = require('./UploadedExpense');
+const Listing = require('./Listing');
 
 // Initialize models
 const models = {
     Statement,
     UploadedExpense,
+    Listing,
     sequelize
 };
 
