@@ -23,6 +23,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [endDate, setEndDate] = useState('');
   const [calculationType, setCalculationType] = useState('checkout');
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
+  const [generateAll, setGenerateAll] = useState(false);
 
   useEffect(() => {
     if (ownerId) {
@@ -47,8 +48,13 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!ownerId || !startDate || !endDate) {
-      alert('Please select an owner, start date, and end date');
+    if (!generateAll && !ownerId) {
+      alert('Please select an owner');
+      return;
+    }
+
+    if (!startDate || !endDate) {
+      alert('Please select start date and end date');
       return;
     }
 
@@ -58,7 +64,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     }
 
     onGenerate({
-      ownerId,
+      ownerId: generateAll ? 'all' : ownerId,
       propertyId: propertyId || undefined,
       startDate,
       endDate,
@@ -68,6 +74,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     // Reset form
     setOwnerId('');
     setPropertyId('');
+    setGenerateAll(false);
   };
 
   if (!isOpen) return null;
@@ -86,43 +93,73 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Owner *
+          {/* Generate All Checkbox */}
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={generateAll}
+                onChange={(e) => {
+                  setGenerateAll(e.target.checked);
+                  if (e.target.checked) {
+                    setOwnerId('');
+                    setPropertyId('');
+                  }
+                }}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="ml-3 text-sm font-medium text-gray-900">
+                Generate statements for all owners and their properties
+              </span>
             </label>
-            <select
-              value={ownerId}
-              onChange={(e) => setOwnerId(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select Owner</option>
-              {owners.map((owner) => (
-                <option key={owner.id} value={owner.id}>
-                  {owner.name}
-                </option>
-              ))}
-            </select>
+            {generateAll && (
+              <p className="mt-2 text-xs text-blue-700">
+                This will create a separate statement for each property owned by each owner using the dates selected below.
+              </p>
+            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Property (Optional)
-            </label>
-            <select
-              value={propertyId}
-              onChange={(e) => setPropertyId(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={!ownerId}
-            >
-              <option value="">All Properties</option>
-              {filteredProperties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name} (ID: {property.id})
-                </option>
-              ))}
-            </select>
-          </div>
+          {!generateAll && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Owner *
+                </label>
+                <select
+                  value={ownerId}
+                  onChange={(e) => setOwnerId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required={!generateAll}
+                >
+                  <option value="">Select Owner</option>
+                  {owners.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Property (Optional)
+                </label>
+                <select
+                  value={propertyId}
+                  onChange={(e) => setPropertyId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!ownerId}
+                >
+                  <option value="">All Properties</option>
+                  {filteredProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} (ID: {property.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

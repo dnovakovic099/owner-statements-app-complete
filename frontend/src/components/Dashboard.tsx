@@ -85,8 +85,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     calculationType: string;
   }) => {
     try {
-      await statementsAPI.generateStatement(data);
-      alert('✅ Statement generated successfully');
+      const response = await statementsAPI.generateStatement(data);
+      
+      // Check if this was a bulk generation
+      if (data.ownerId === 'all' && response.summary) {
+        const { generated, skipped, errors } = response.summary;
+        let message = `✅ Bulk Generation Complete!\n\n`;
+        message += `📊 Generated: ${generated} statement(s)\n`;
+        if (skipped > 0) message += `⏭️  Skipped: ${skipped} (no activity)\n`;
+        if (errors > 0) message += `❌ Errors: ${errors}\n`;
+        
+        if (response.results?.errors && response.results.errors.length > 0) {
+          message += `\nErrors:\n`;
+          response.results.errors.slice(0, 3).forEach((err: any) => {
+            message += `  • ${err.ownerName} - ${err.propertyName}: ${err.error}\n`;
+          });
+          if (response.results.errors.length > 3) {
+            message += `  ... and ${response.results.errors.length - 3} more\n`;
+          }
+        }
+        
+        alert(message);
+      } else {
+        alert('✅ Statement generated successfully');
+      }
+      
       setIsGenerateModalOpen(false);
       await loadStatements();
     } catch (err) {
