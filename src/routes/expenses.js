@@ -68,20 +68,20 @@ router.post('/upload', upload.single('expenseFile'), async (req, res) => {
             });
         }
 
-        // Save parsed expenses to JSON
-        const jsonFilePath = await ExpenseUploadService.saveExpensesToJSON(expenses, req.file.originalname);
+        // Save parsed expenses to DATABASE
+        const savedExpenses = await ExpenseUploadService.saveExpensesToDatabase(expenses, req.file.originalname);
         
         // Clean up the temporary uploaded file
         await ExpenseUploadService.cleanupUploadedFile(req.file.path);
         
         res.json({
             success: true,
-            message: `Successfully uploaded and processed ${expenses.length} expenses`,
+            message: `Successfully uploaded and processed ${expenses.length} expenses to database`,
             data: {
                 totalExpenses: expenses.length,
                 filename: req.file.originalname,
-                savedTo: path.basename(jsonFilePath),
-                expenses: expenses.slice(0, 5) // Return first 5 expenses as preview
+                savedCount: savedExpenses.length,
+                expenses: savedExpenses.slice(0, 5) // Return first 5 expenses as preview
             }
         });
 

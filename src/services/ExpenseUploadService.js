@@ -1,6 +1,7 @@
 /**
  * Service for handling expense file uploads and parsing
  * Supports CSV and Excel files, converts them to standardized JSON format
+ * Now saves to DATABASE instead of JSON files
  */
 
 const fs = require('fs').promises;
@@ -8,6 +9,7 @@ const path = require('path');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const { createReadStream } = require('fs');
+const DatabaseService = require('./DatabaseService');
 
 class ExpenseUploadService {
     constructor() {
@@ -199,61 +201,76 @@ class ExpenseUploadService {
      * @param {string} originalFilename - Original uploaded filename
      * @returns {Promise<string>} - Path to saved JSON file
      */
-    async saveExpensesToJSON(expenses, originalFilename) {
+    /**
+     * Save expenses to DATABASE (replaced saveExpensesToJSON)
+     * @param {Array} expenses - Array of expense objects
+     * @param {string} originalFilename - Original uploaded filename
+     * @returns {Promise<Array>} - Saved expense records
+     */
+    async saveExpensesToDatabase(expenses, originalFilename) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const baseName = path.parse(originalFilename).name;
-        const jsonFilename = `${baseName}_${timestamp}.json`;
-        const jsonFilePath = path.join(this.uploadsDir, jsonFilename);
+        const uploadFilename = `${path.parse(originalFilename).name}_${timestamp}`;
 
-        const expenseData = {
-            uploadedAt: new Date().toISOString(),
-            originalFilename,
-            totalExpenses: expenses.length,
-            expenses
-        };
+        // Add upload metadata to each expense
+        const expensesWithMetadata = expenses.map(expense => ({
+            ...expense,
+            uploadFilename,
+            source: 'manual'
+        }));
 
-        await fs.writeFile(jsonFilePath, JSON.stringify(expenseData, null, 2));
-        console.log(`💾 Saved ${expenses.length} expenses to ${jsonFilename}`);
+        // Save to database
+        const savedExpenses = await DatabaseService.saveUploadedExpenses(expensesWithMetadata);
+        console.log(`💾 Saved ${savedExpenses.length} expenses to database with filename: ${uploadFilename}`);
         
-        return jsonFilePath;
+        return savedExpenses;
+    }
+
+    // Keep old method for backward compatibility (redirects to new method)
+    async saveExpensesToJSON(expenses, originalFilename) {
+        return await this.saveExpensesToDatabase(expenses, originalFilename);
     }
 
     /**
-     * Get all uploaded expense files
+     * Get all uploaded expenses from DATABASE (replaced file reading)
      * @returns {Promise<Array>} - Array of uploaded expense data
      */
     async getAllUploadedExpenses() {
         try {
-            const files = await fs.readdir(this.uploadsDir);
-            const jsonFiles = files.filter(file => file.endsWith('.json'));
-            
-            const allExpenses = [];
-            
-            for (const file of jsonFiles) {
-                try {
-                    const filePath = path.join(this.uploadsDir, file);
-                    const fileContent = await fs.readFile(filePath, 'utf8');
-                    const expenseData = JSON.parse(fileContent);
-                    
-                    // Add metadata to each expense
-                    const expensesWithMeta = expenseData.expenses.map(expense => ({
-                        ...expense,
-                        uploadFile: file,
-                        uploadedAt: expenseData.uploadedAt
-                    }));
-                    
-                    allExpenses.push(...expensesWithMeta);
-                } catch (error) {
-                    console.warn(`⚠️  Failed to read expense file ${file}:`, error.message);
-                }
-            }
-            
-            console.log(`📁 Loaded ${allExpenses.length} uploaded expenses from ${jsonFiles.length} files`);
-            return allExpenses;
-            
+            const expenses = await DatabaseService.getUploadedExpenses();
+            console.log(`📁 Loaded ${expenses.length} uploaded expenses from database`);
+            return expenses;
         } catch (error) {
-            console.warn('⚠️  No uploaded expenses directory found, returning empty array');
+            console.warn('⚠️  Error fetching uploaded expenses from database:', error.message);
             return [];
+        }
+    }
+
+    /**
+     * Get unique upload filenames from database
+     * @returns {Promise<Array>} - Array of unique filenames
+     */
+    async getUploadFilenames() {
+        try {
+            return await DatabaseService.getUploadFilenames();
+        } catch (error) {
+            console.warn('⚠️  Error fetching upload filenames:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Delete expenses by upload filename
+     * @param {string} filename - Upload filename to delete
+     * @returns {Promise<number>} - Number of deleted expenses
+     */
+    async deleteExpensesByFilename(filename) {
+        try {
+            const count = await DatabaseService.deleteUploadedExpensesByFilename(filename);
+            console.log(`🗑️  Deleted ${count} expenses with filename: ${filename}`);
+            return count;
+        } catch (error) {
+            console.error('Error deleting expenses:', error.message);
+            throw error;
         }
     }
 

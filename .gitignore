@@ -9,3 +9,7 @@ statements/*.json
 logs/
 .nyc_output/
 coverage/
+
+# Database files
+*.sqlite
+*.sqlite-journal

@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const DatabaseService = require('./DatabaseService');
 
 class FileDataService {
     constructor() {
@@ -458,71 +459,25 @@ class FileDataService {
         return owners.find(owner => owner.id === parseInt(id));
     }
 
-    // Statements operations
+    // Statements operations - now uses DATABASE
     async saveStatement(statement) {
-        await this.ensureDirectories();
-        const filename = `statement-${statement.id}-${statement.weekStartDate}-to-${statement.weekEndDate}.json`;
-        const filePath = path.join(this.statementsDir, filename);
-        await fs.writeFile(filePath, JSON.stringify(statement, null, 2), 'utf8');
-        console.log(`Saved statement ${statement.id} to ${filename}`);
-        return filePath;
+        return await DatabaseService.saveStatement(statement);
     }
 
     async deleteStatement(id) {
-        await this.ensureDirectories();
-        try {
-            // Find the statement file
-            const files = await fs.readdir(this.statementsDir);
-            const statementFile = files.find(file => file.startsWith(`statement-${id}-`));
-            
-            if (!statementFile) {
-                throw new Error(`Statement ${id} not found`);
-            }
-
-            // Delete the file
-            const filePath = path.join(this.statementsDir, statementFile);
-            await fs.unlink(filePath);
-            console.log(`Deleted statement ${id} from ${statementFile}`);
-            return true;
-        } catch (error) {
-            console.error(`Error deleting statement ${id}:`, error);
-            throw error;
-        }
+        return await DatabaseService.deleteStatement(id);
     }
 
-    async getStatements() {
-        await this.ensureDirectories();
-        try {
-            const files = await fs.readdir(this.statementsDir);
-            const statements = [];
-            
-            for (const file of files) {
-                if (file.endsWith('.json')) {
-                    const filePath = path.join(this.statementsDir, file);
-                    const data = await this.readJSONFile(filePath, null);
-                    if (data) {
-                        statements.push(data);
-                    }
-                }
-            }
-            
-            // Sort by creation date, newest first (with revenue first)
-            return statements.sort((a, b) => {
-                // First sort by revenue (descending), then by date (descending)
-                if (a.totalRevenue !== b.totalRevenue) {
-                    return b.totalRevenue - a.totalRevenue;
-                }
-                return new Date(b.createdAt) - new Date(a.createdAt);
-            });
-        } catch (error) {
-            console.error('Error reading statements directory:', error);
-            return [];
-        }
+    async getStatements(filters = {}) {
+        return await DatabaseService.getStatements(filters);
     }
 
     async getStatementById(id) {
-        const statements = await this.getStatements();
-        return statements.find(stmt => stmt.id === parseInt(id));
+        return await DatabaseService.getStatementById(id);
+    }
+
+    async updateStatement(id, updates) {
+        return await DatabaseService.updateStatement(id, updates);
     }
 
     // Dashboard data - optimized to not fetch all reservations
