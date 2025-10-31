@@ -13,3 +13,7 @@ coverage/
 # Database files
 *.sqlite
 *.sqlite-journal
+database/
+
+# Exports
+exports/
