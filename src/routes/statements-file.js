@@ -1591,7 +1591,6 @@ router.get('/:id/view', async (req, res) => {
                 <tr>
                     <th>Date</th>
                     <th>Description</th>
-                        <th>Vendor</th>
                         <th>Property</th>
                         <th>Category</th>
                     <th>Amount</th>
@@ -1620,15 +1619,14 @@ router.get('/:id/view', async (req, res) => {
                                 ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
                             </td>
                             <td class="description-cell">${expense.description}</td>
-                            <td class="vendor-cell">${expense.vendor || '-'}</td>
                             <td class="listing-cell">${expense.listing || '-'}</td>
                             <td class="category-cell">${expense.category}</td>
                             <td class="amount-cell expense-amount">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
-                    }).join('') || '<tr><td colspan="6" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No expenses for this period</td></tr>'}
+                    }).join('') || '<tr><td colspan="5" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No expenses for this period</td></tr>'}
                     <tr class="totals-row">
-                        <td colspan="5"><strong>TOTAL EXPENSES</strong></td>
+                        <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
                         <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
@@ -2715,7 +2713,6 @@ function generateStatementHTML(statement, id) {
                     <tr style="background: var(--luxury-navy); color: white;">
                         <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Date</th>
                         <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Description</th>
-                        <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Vendor</th>
                         <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Property</th>
                         <th style="padding: 10px 8px; text-align: left; font-weight: 600; font-size: 9px;">Category</th>
                         <th style="padding: 10px 8px; text-align: right; font-weight: 600; font-size: 9px;">Amount</th>
@@ -2744,15 +2741,14 @@ function generateStatementHTML(statement, id) {
                                 ${isDuplicate ? '<br><span style="color: #856404; font-size: 7px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
                             </td>
                             <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 9px; line-height: 1.3;">${expense.description}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; color: #666; font-size: 9px;">${expense.vendor || '-'}</td>
                             <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; color: #666; font-size: 8px;">${expense.listing || '-'}</td>
                             <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; text-transform: capitalize; color: #666; font-size: 9px;">${expense.category}</td>
                             <td style="padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: right; font-weight: 600; font-size: 9px;">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         `;
-                    }).join('') || '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666; font-style: italic; font-size: 10px;">No expenses for this period</td></tr>'}
+                    }).join('') || '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666; font-style: italic; font-size: 10px;">No expenses for this period</td></tr>'}
                     <tr style="background: var(--luxury-navy); color: white;">
-                        <td colspan="5" style="padding: 10px 8px; font-weight: 700; border: none; font-size: 10px;"><strong>TOTAL EXPENSES</strong></td>
+                        <td colspan="4" style="padding: 10px 8px; font-weight: 700; border: none; font-size: 10px;"><strong>TOTAL EXPENSES</strong></td>
                         <td style="padding: 10px 8px; text-align: right; font-weight: 700; border: none; font-size: 10px;"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>
