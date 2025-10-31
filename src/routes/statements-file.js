@@ -113,6 +113,11 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Either property ID or owner ID is required' });
         }
 
+        // Handle "Generate All" option
+        if (ownerId === 'all') {
+            return await generateAllOwnerStatements(req, res, startDate, endDate, calculationType);
+        }
+
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
         
@@ -1696,6 +1701,216 @@ router.get('/:id/download', async (req, res) => {
 });
 
 // Helper function to generate statement HTML for PDF
+// Helper function to generate statements for all owners and their properties
+async function generateAllOwnerStatements(req, res, startDate, endDate, calculationType) {
+    try {
+        console.log(`🔄 Starting bulk statement generation for all owners...`);
+        console.log(`   Period: ${startDate} to ${endDate}`);
+        console.log(`   Calculation Type: ${calculationType}`);
+
+        // Get all owners and all listings
+        const owners = await FileDataService.getOwners();
+        const listings = await FileDataService.getListings();
+
+        console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
+
+        const results = {
+            generated: [],
+            skipped: [],
+            errors: []
+        };
+
+        // Loop through each owner
+        for (const owner of owners) {
+            console.log(`\n📋 Processing owner: ${owner.name} (ID: ${owner.id})`);
+
+            // Find properties for this owner
+            const ownerProperties = listings.filter(listing => {
+                // Check if this listing belongs to the current owner
+                const belongsToOwner = owner.listingIds && owner.listingIds.includes(listing.id);
+                return belongsToOwner && listing.isActive;
+            });
+
+            console.log(`   Found ${ownerProperties.length} properties for ${owner.name}`);
+
+            if (ownerProperties.length === 0) {
+                console.log(`   ⚠️  Skipping ${owner.name} - no properties found`);
+                results.skipped.push({
+                    ownerId: owner.id,
+                    ownerName: owner.name,
+                    reason: 'No properties found'
+                });
+                continue;
+            }
+
+            // Generate a statement for each property
+            for (const property of ownerProperties) {
+                try {
+                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
+
+                    // Get reservations and expenses for this specific property
+                    const reservations = await FileDataService.getReservations(
+                        startDate,
+                        endDate,
+                        property.id,
+                        calculationType
+                    );
+
+                    const expenses = await FileDataService.getExpenses(startDate, endDate, property.id);
+
+                    // Filter reservations for this property and period
+                    const periodStart = new Date(startDate);
+                    const periodEnd = new Date(endDate);
+
+                    const periodReservations = reservations.filter(res => {
+                        if (res.propertyId !== property.id) return false;
+
+                        let dateMatch = true;
+                        if (calculationType === 'calendar') {
+                            dateMatch = true; // Already filtered by overlap
+                        } else {
+                            const checkoutDate = new Date(res.checkOutDate);
+                            dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                        }
+
+                        const allowedStatuses = ['confirmed', 'modified', 'new'];
+                        const statusMatch = allowedStatuses.includes(res.status);
+
+                        return dateMatch && statusMatch;
+                    }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+                    // Filter expenses for this property
+                    const periodExpenses = expenses.filter(exp => {
+                        if (property.id && exp.propertyId !== null && exp.propertyId !== property.id) {
+                            return false;
+                        }
+                        const expenseDate = new Date(exp.date);
+                        return expenseDate >= periodStart && expenseDate <= periodEnd;
+                    });
+
+                    console.log(`   📊 Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
+
+                    // Skip if no activity
+                    if (periodReservations.length === 0 && periodExpenses.length === 0) {
+                        console.log(`   ⏭️  Skipping ${property.name} - no activity in this period`);
+                        results.skipped.push({
+                            ownerId: owner.id,
+                            ownerName: owner.name,
+                            propertyId: property.id,
+                            propertyName: property.name,
+                            reason: 'No activity in period'
+                        });
+                        continue;
+                    }
+
+                    // Calculate totals
+                    const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
+                    const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                    const pmPercentage = owner.defaultPmPercentage || 15;
+                    const pmCommission = totalRevenue * (pmPercentage / 100);
+                    const techFees = 50; // $50 per property
+                    const insuranceFees = 25; // $25 per property
+                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+
+                    // Generate unique ID
+                    const existingStatements = await FileDataService.getStatements();
+                    const newId = FileDataService.generateId(existingStatements);
+
+                    // Create statement object
+                    const statement = {
+                        id: newId,
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        weekStartDate: startDate,
+                        weekEndDate: endDate,
+                        calculationType,
+                        totalRevenue: Math.round(totalRevenue * 100) / 100,
+                        totalExpenses: Math.round(totalExpenses * 100) / 100,
+                        pmCommission: Math.round(pmCommission * 100) / 100,
+                        pmPercentage: pmPercentage,
+                        techFees: Math.round(techFees * 100) / 100,
+                        insuranceFees: Math.round(insuranceFees * 100) / 100,
+                        adjustments: 0,
+                        ownerPayout: Math.round(ownerPayout * 100) / 100,
+                        status: 'draft',
+                        sentAt: null,
+                        createdAt: new Date().toISOString(),
+                        reservations: periodReservations,
+                        expenses: periodExpenses,
+                        duplicateWarnings: expenses.duplicateWarnings || [],
+                        items: [
+                            ...periodReservations.map(res => ({
+                                type: 'revenue',
+                                description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                                amount: res.grossAmount,
+                                date: res.checkOutDate,
+                                category: 'booking'
+                            })),
+                            ...periodExpenses.map(exp => ({
+                                type: 'expense',
+                                description: exp.description,
+                                amount: exp.amount,
+                                date: exp.date,
+                                category: exp.type || exp.category || 'expense',
+                                vendor: exp.vendor,
+                                listing: exp.listing
+                            }))
+                        ]
+                    };
+
+                    // Save statement
+                    await FileDataService.saveStatement(statement);
+
+                    console.log(`   ✅ Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
+
+                    results.generated.push({
+                        id: newId,
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        ownerPayout: statement.ownerPayout,
+                        totalRevenue: statement.totalRevenue,
+                        reservationCount: periodReservations.length,
+                        expenseCount: periodExpenses.length
+                    });
+
+                } catch (error) {
+                    console.error(`   ❌ Error generating statement for ${property.name}:`, error.message);
+                    results.errors.push({
+                        ownerId: owner.id,
+                        ownerName: owner.name,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        error: error.message
+                    });
+                }
+            }
+        }
+
+        console.log(`\n✅ Bulk statement generation completed:`);
+        console.log(`   Generated: ${results.generated.length} statements`);
+        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
+        console.log(`   Errors: ${results.errors.length}`);
+
+        res.status(201).json({
+            message: 'Bulk statement generation completed',
+            summary: {
+                generated: results.generated.length,
+                skipped: results.skipped.length,
+                errors: results.errors.length
+            },
+            results: results
+        });
+
+    } catch (error) {
+        console.error('Bulk statement generation error:', error);
+        res.status(500).json({ error: 'Failed to generate statements for all owners' });
+    }
+}
+
 function generateStatementHTML(statement, id) {
     return `
 <!DOCTYPE html>
