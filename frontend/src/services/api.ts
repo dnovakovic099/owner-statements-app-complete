@@ -77,7 +77,19 @@ export const statementsAPI = {
     startDate: string;
     endDate: string;
     calculationType: string;
-  }): Promise<{ message: string }> => {
+  }): Promise<{ 
+    message: string;
+    summary?: {
+      generated: number;
+      skipped: number;
+      errors: number;
+    };
+    results?: {
+      generated: any[];
+      skipped: any[];
+      errors: any[];
+    };
+  }> => {
     const response = await api.post('/statements/generate', data);
     return response.data;
   },
