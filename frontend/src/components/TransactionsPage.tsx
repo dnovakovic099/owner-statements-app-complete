@@ -331,14 +331,20 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {transaction.propertyId ? (
-                        properties.find(p => p.id.toString() === transaction.propertyId)?.name || 'Unknown'
+                        (() => {
+                          const property = properties.find(p => p.id.toString() === transaction.propertyId);
+                          return property ? (property.nickname || property.name) : 'Unknown';
+                        })()
                       ) : (
                         <span className="text-gray-400">Not categorized</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {transaction.listingId ? (
-                        listings.find(l => l.id.toString() === transaction.listingId)?.name || 'Unknown'
+                        (() => {
+                          const listing = listings.find(l => l.id.toString() === transaction.listingId);
+                          return listing ? (listing.nickname || listing.name) : 'Unknown';
+                        })()
                       ) : (
                         <span className="text-gray-400">Not categorized</span>
                       )}
@@ -427,7 +433,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
                     <option value="">Select a listing (optional)</option>
                     {listings.map((listing) => (
                       <option key={listing.id} value={listing.id}>
-                        {listing.name}
+                        {listing.nickname || listing.name}
                       </option>
                     ))}
                   </select>

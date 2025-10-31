@@ -279,7 +279,7 @@ class HostifyService {
             cleaningAndOtherFees: cleaningFee + extrasFees,
             platformFees: platformFees,
             clientRevenue: totalRevenue,
-            luxuryLodgingFee: platformFees, // Use channel commission as luxury lodging fee
+            luxuryLodgingFee: 0, // PM Commission will be calculated based on property's pmFeePercentage
             clientTaxResponsibility: taxAmount,
             clientPayout: clientPayout,
             // Legacy fields for compatibility
