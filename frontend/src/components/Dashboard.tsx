@@ -238,7 +238,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
