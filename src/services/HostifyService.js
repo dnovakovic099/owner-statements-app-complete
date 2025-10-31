@@ -264,7 +264,8 @@ class HostifyService {
         // Extract detailed financial data from Hostify response
         const baseRate = parseFloat(hostifyReservation.base_price || 0);
         const cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
-        const extrasFees = parseFloat(hostifyReservation.extras_price || 0);
+        const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
+        const extraPersonFee = parseFloat(hostifyReservation.extra_person || 0);
         const channelCommission = parseFloat(hostifyReservation.channel_commission || 0);
         const transactionFee = parseFloat(hostifyReservation.transaction_fee || 0);
         const platformFees = channelCommission + transactionFee;
@@ -278,7 +279,7 @@ class HostifyService {
             ...baseReservation,
             // Detailed financial breakdown
             baseRate: baseRate,
-            cleaningAndOtherFees: cleaningFee + extrasFees,
+            cleaningAndOtherFees: cleaningFee + petsFee + extraPersonFee,
             platformFees: platformFees,
             clientRevenue: totalRevenue,
             luxuryLodgingFee: 0, // PM Commission will be calculated based on property's pmFeePercentage
