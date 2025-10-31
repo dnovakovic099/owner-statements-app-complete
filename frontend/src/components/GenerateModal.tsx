@@ -44,6 +44,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     const searchLower = propertySearch.toLowerCase();
     return (
       property.name.toLowerCase().includes(searchLower) ||
+      property.nickname?.toLowerCase().includes(searchLower) ||
       property.id.toString().includes(searchLower)
     );
   });
@@ -175,7 +176,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
                         type="text"
-                        placeholder="Search properties by name or ID..."
+                        placeholder="Search properties by name, nickname, or ID..."
                         value={propertySearch}
                         onChange={(e) => setPropertySearch(e.target.value)}
                         className="w-full border border-gray-300 rounded-md pl-10 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -206,7 +207,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                     </option>
                     {searchFilteredProperties.map((property) => (
                       <option key={property.id} value={property.id}>
-                        {property.name} (ID: {property.id})
+                        {property.nickname || property.name} (ID: {property.id})
                       </option>
                     ))}
                   </select>

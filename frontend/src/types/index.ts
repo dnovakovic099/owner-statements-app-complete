@@ -11,6 +11,7 @@ export interface Property {
   id: number;
   hostawayId: string;
   name: string;
+  nickname?: string | null;
   address: string;
   ownerId: number;
   pmPercentage: number | null;
@@ -117,6 +118,7 @@ export interface SyncResponse {
 export interface Listing {
   id: number;
   name: string;
+  nickname?: string | null;
   address: string;
   country: string;
   city: string;

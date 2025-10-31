@@ -55,6 +55,7 @@ class FileDataService {
             const listings = response.result.map(listing => ({
                 id: listing.id,
                 name: listing.name || listing.nickname || `Property ${listing.id}`,
+                nickname: listing.nickname || null,
                 address: this.formatHostifyAddress(listing),
                 country: listing.country || '',
                 city: listing.city || '',

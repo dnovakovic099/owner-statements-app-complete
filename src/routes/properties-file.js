@@ -31,6 +31,7 @@ router.get('/', async (req, res) => {
                     id: listing.id,
                     hostawayId: listing.id.toString(),
                     name: listing.name,
+                    nickname: listing.nickname,
                     address: formatAddress(listing.address),
                     ownerId: owner.id,
                     pmPercentage: null,
@@ -52,6 +53,7 @@ router.get('/', async (req, res) => {
                 id: listing.id,
                 hostawayId: listing.id.toString(),
                 name: listing.name,
+                nickname: listing.nickname,
                 address: formatAddress(listing.address),
                 ownerId: defaultOwner?.id || 1,
                 pmPercentage: null,
@@ -90,6 +92,7 @@ router.post('/sync', async (req, res) => {
         const listings = hostifyProperties.result.map(listing => ({
             id: listing.id,
             name: listing.name || listing.nickname || `Property ${listing.id}`,
+            nickname: listing.nickname || null,
             address: formatAddress(listing),
             country: listing.country || '',
             city: listing.city || '',

@@ -1497,7 +1497,8 @@ router.get('/:id/view', async (req, res) => {
                                 const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
                                 const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                                 const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                                const luxuryFee = reservation.hasDetailedFinance ? reservation.luxuryLodgingFee : (reservation.grossAmount * (statement.pmPercentage / 100));
+                                // PM Commission is always calculated based on statement's pmPercentage (from property's PM fee in database)
+                                const luxuryFee = reservation.grossAmount * (statement.pmPercentage / 100);
                                 const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                                 const clientPayout = reservation.hasDetailedFinance ? reservation.clientPayout : (clientRevenue - luxuryFee - taxResponsibility);
                                 
@@ -1540,7 +1541,7 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell payout-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientPayout : res.hostPayoutAmount || res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                             </tr>
@@ -1652,7 +1653,7 @@ router.get('/:id/view', async (req, res) => {
                             </tr>
                             <tr>
                                 <td class="summary-label">PM Commission</td>
-                                <td class="summary-value expense">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-value expense">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr>
                                 <td class="summary-label">Tax Responsibility</td>
@@ -1666,10 +1667,10 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
                                 <td class="summary-value total-amount"><strong>$${(() => {
                                     const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
-                                    const luxuryLodgingFee = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0;
+                                    const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
                                     const clientTaxResponsibility = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0;
                                     const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
-                                    return (clientRevenue - Math.abs(luxuryLodgingFee) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    return (clientRevenue - Math.abs(pmCommission) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 })()}</strong></td>
                             </tr>
                         </table>
@@ -2662,7 +2663,8 @@ function generateStatementHTML(statement, id) {
                     const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
                     const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                     const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                    const luxuryFee = reservation.hasDetailedFinance ? reservation.luxuryLodgingFee : (reservation.grossAmount * (statement.pmPercentage / 100));
+                    // PM Commission is always calculated based on statement's pmPercentage (from property's PM fee in database)
+                    const luxuryFee = reservation.grossAmount * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                     const clientPayout = reservation.hasDetailedFinance ? reservation.clientPayout : (clientRevenue - luxuryFee - taxResponsibility);
                     
@@ -2703,7 +2705,7 @@ function generateStatementHTML(statement, id) {
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                    <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell payout-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientPayout : res.hostPayoutAmount || res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                 </tr>
@@ -2770,8 +2772,8 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #28a745; border-bottom: 1px solid #e9ecef;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">Luxury Lodging Fee</td>
-                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #dc3545; border-bottom: 1px solid #e9ecef;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">PM Commission</td>
+                    <td style="padding: 12px 16px; text-align: right; font-weight: 600; color: #dc3545; border-bottom: 1px solid #e9ecef;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
                     <td style="padding: 12px 16px; font-weight: 600; color: var(--luxury-navy); border-bottom: 1px solid #e9ecef;">Client Tax Responsibility</td>
@@ -2785,10 +2787,10 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 16px; font-weight: 700; font-size: 14px;"><strong>STATEMENT TOTAL</strong></td>
                     <td style="padding: 16px; text-align: right; font-weight: 700; font-size: 14px;"><strong>$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
-                        const luxuryLodgingFee = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.luxuryLodgingFee : res.grossAmount * 0.05), 0) || 0;
+                        const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
                         const clientTaxResponsibility = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0;
                         const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
-                        return (clientRevenue - Math.abs(luxuryLodgingFee) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return (clientRevenue - Math.abs(pmCommission) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
                 </tr>
             </table>

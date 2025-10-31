@@ -49,6 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const searchLower = propertySearch.toLowerCase();
     return (
       property.name.toLowerCase().includes(searchLower) ||
+      property.nickname?.toLowerCase().includes(searchLower) ||
       property.id.toString().includes(searchLower)
     );
   });
@@ -317,7 +318,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
-                    placeholder="Search by property name or ID..."
+                    placeholder="Search by property name, nickname, or ID..."
                     value={propertySearch}
                     onChange={(e) => setPropertySearch(e.target.value)}
                     className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -341,7 +342,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   <option value="">All Properties ({filteredProperties.length})</option>
                   {filteredProperties.map((property) => (
                     <option key={property.id} value={property.id}>
-                      {property.name} (ID: {property.id})
+                      {property.nickname || property.name} (ID: {property.id})
                     </option>
                   ))}
                 </select>
