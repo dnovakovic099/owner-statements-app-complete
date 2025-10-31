@@ -265,7 +265,9 @@ class HostifyService {
         const baseRate = parseFloat(hostifyReservation.base_price || 0);
         const cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
         const extrasFees = parseFloat(hostifyReservation.extras_price || 0);
-        const platformFees = parseFloat(hostifyReservation.channel_commission || 0);
+        const channelCommission = parseFloat(hostifyReservation.channel_commission || 0);
+        const transactionFee = parseFloat(hostifyReservation.transaction_fee || 0);
+        const platformFees = channelCommission + transactionFee;
         const taxAmount = parseFloat(hostifyReservation.tax_amount || 0);
         
         // Calculate totals
