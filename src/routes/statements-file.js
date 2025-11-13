@@ -2021,11 +2021,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         console.log(`   Period: ${startDate} to ${endDate}`);
         console.log(`   Calculation Type: ${calculationType}`);
 
-        // Get all owners and listings
-        const owners = await FileDataService.getOwners();
+        // Get all listings
         const listings = await FileDataService.getListings();
-
-        console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
+        console.log(`   Found ${listings.length} listings`);
 
         // Fetch ALL reservations and expenses ONCE for the entire period (optimization)
         console.log(`🔄 Fetching all reservations for period ${startDate} to ${endDate}...`);
@@ -2041,15 +2039,11 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
         console.log(`✅ Fetched ${allExpenses.length} total expenses`);
 
-        // Calculate total items to process
-        const totalProperties = owners.reduce((sum, owner) => {
-            const ownerProperties = listings.filter(listing => 
-                owner.listingIds && owner.listingIds.includes(listing.id) && listing.isActive
-            );
-            return sum + ownerProperties.length;
-        }, 0);
+        // Filter to only active listings
+        const activeListings = listings.filter(l => l.isActive);
+        console.log(`   Found ${activeListings.length} active listings (out of ${listings.length} total)`);
 
-        BackgroundJobService.startJob(jobId, totalProperties);
+        BackgroundJobService.startJob(jobId, activeListings.length);
 
         const results = {
             generated: [],
@@ -2059,29 +2053,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
         let processedCount = 0;
 
-        // Loop through each owner
-        for (const owner of owners) {
-            console.log(`\n📋 Processing owner: ${owner.name} (ID: ${owner.id})`);
-
-            const ownerProperties = listings.filter(listing => {
-                const belongsToOwner = owner.listingIds && owner.listingIds.includes(listing.id);
-                return belongsToOwner && listing.isActive;
-            });
-
-            console.log(`   Found ${ownerProperties.length} properties for ${owner.name}`);
-
-            if (ownerProperties.length === 0) {
-                console.log(`   ⚠️  Skipping ${owner.name} - no properties found`);
-                results.skipped.push({
-                    ownerId: owner.id,
-                    ownerName: owner.name,
-                    reason: 'No properties found'
-                });
-                continue;
-            }
-
-            // Generate a statement for each property
-            for (const property of ownerProperties) {
+        // Generate a statement for each active listing using "Default Owner"
+        for (const property of activeListings) {
                 try {
                     console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
 
@@ -2119,8 +2092,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
                         console.log(`   ⏭️  Skipping ${property.name} - no activity in this period`);
                         results.skipped.push({
-                            ownerId: owner.id,
-                            ownerName: owner.name,
                             propertyId: property.id,
                             propertyName: property.name,
                             reason: 'No activity in period'
@@ -2151,8 +2122,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     const statement = {
                         id: newId,
-                        ownerId: owner.id,
-                        ownerName: owner.name,
+                        ownerId: 1,
+                        ownerName: 'Default Owner',
                         propertyId: property.id,
                         propertyName: property.name,
                         weekStartDate: startDate,
@@ -2198,8 +2169,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     results.generated.push({
                         id: newId,
-                        ownerId: owner.id,
-                        ownerName: owner.name,
                         propertyId: property.id,
                         propertyName: property.name,
                         ownerPayout: statement.ownerPayout,
@@ -2214,15 +2183,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 } catch (error) {
                     console.error(`   ❌ Error generating statement for ${property.name}:`, error.message);
                     results.errors.push({
-                        ownerId: owner.id,
-                        ownerName: owner.name,
                         propertyId: property.id,
                         propertyName: property.name,
                         error: error.message
                     });
                     processedCount++;
                     BackgroundJobService.updateProgress(jobId, processedCount);
-                }
             }
         }
 
