@@ -29,8 +29,13 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
   useEffect(() => {
     if (ownerId) {
-      const ownerProperties = properties.filter(p => p.ownerId.toString() === ownerId);
-      setFilteredProperties(ownerProperties);
+      // If "default" owner is selected, show ALL properties
+      if (ownerId === 'default') {
+        setFilteredProperties(properties);
+      } else {
+        const ownerProperties = properties.filter(p => p.ownerId.toString() === ownerId);
+        setFilteredProperties(ownerProperties);
+      }
     } else {
       setFilteredProperties([]);
     }
