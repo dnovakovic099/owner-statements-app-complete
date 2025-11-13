@@ -1893,14 +1893,6 @@ router.get('/:id/view', async (req, res) => {
                     <div class="summary-box">
                         <table class="summary-table">
                             <tr>
-                                <td class="summary-label">Revenue</td>
-                                <td class="summary-value revenue">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            </tr>
-                            <tr>
-                                <td class="summary-label">PM Commission</td>
-                                <td class="summary-value expense">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            </tr>
-                            <tr>
                                 <td class="summary-label">Gross Payout</td>
                                 <td class="summary-value revenue">$${(() => {
                                     const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
@@ -2999,14 +2991,6 @@ function generateStatementHTML(statement, id) {
         <div class="summary-box" style="margin-top: 40px; background: linear-gradient(135deg, #f8fafc 0%, #e5e7eb 100%); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
             <h3 style="color: var(--luxury-navy); font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; border-bottom: 3px solid var(--luxury-gold); padding-bottom: 10px;">STATEMENT SUMMARY</h3>
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Revenue</td>
-                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">PM Commission</td>
-                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
                 <tr style="border-bottom: 1px solid #e5e7eb;">
                     <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Gross Payout</td>
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
