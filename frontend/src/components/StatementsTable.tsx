@@ -27,6 +27,18 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
     return `${start} - ${end}`;
   };
 
+  const formatDateTime = (dateTimeStr: string) => {
+    const date = new Date(dateTimeStr);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   const getStatusBadge = (status: string) => {
     const statusClasses = {
       draft: 'bg-yellow-100 text-yellow-800',
@@ -89,6 +101,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Created
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -130,6 +145,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(statement.status)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-xs text-gray-500">
+                    {statement.createdAt ? formatDateTime(statement.createdAt) : '-'}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex space-x-2">
