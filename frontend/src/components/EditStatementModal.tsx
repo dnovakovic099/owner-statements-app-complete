@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Minus, Calendar } from 'lucide-react';
+import { X, DollarSign, AlertTriangle, Plus, Calendar } from 'lucide-react';
 import { statementsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 

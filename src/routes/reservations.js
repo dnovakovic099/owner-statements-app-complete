@@ -61,7 +61,13 @@ router.get('/template', async (req, res) => {
                 { id: 'checkInDate', title: 'Check-in Date (YYYY-MM-DD)' },
                 { id: 'checkOutDate', title: 'Check-out Date (YYYY-MM-DD)' },
                 { id: 'nights', title: 'Nights' },
-                { id: 'grossAmount', title: 'Gross Amount' },
+                { id: 'baseRate', title: 'Base Rate' },
+                { id: 'cleaningFee', title: 'Cleaning Fee' },
+                { id: 'petsFee', title: 'Pets Fee' },
+                { id: 'extraPersonFee', title: 'Extra Person Fee' },
+                { id: 'platformFees', title: 'Platform Fees (Channel + Transaction)' },
+                { id: 'taxAmount', title: 'Tax Amount' },
+                { id: 'grossAmount', title: 'Gross Amount (Revenue)' },
                 { id: 'propertyId', title: 'Property ID' },
                 { id: 'propertyName', title: 'Property Name' },
                 { id: 'status', title: 'Status (confirmed/cancelled)' },
@@ -78,7 +84,13 @@ router.get('/template', async (req, res) => {
                 checkInDate: '2025-01-15',
                 checkOutDate: '2025-01-18',
                 nights: '3',
-                grossAmount: '450.00',
+                baseRate: '400.00',
+                cleaningFee: '100.00',
+                petsFee: '50.00',
+                extraPersonFee: '25.00',
+                platformFees: '75.00',
+                taxAmount: '50.00',
+                grossAmount: '500.00',
                 propertyId: '123',
                 propertyName: 'Beach House',
                 status: 'confirmed',
@@ -148,13 +160,25 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
                             return;
                         }
                         
-                        const grossAmount = parseFloat(row.grossAmount || row['Gross Amount']);
+                        // Parse financial fields
+                        const baseRate = parseFloat(row.baseRate || row['Base Rate'] || 0);
+                        const cleaningFee = parseFloat(row.cleaningFee || row['Cleaning Fee'] || 0);
+                        const petsFee = parseFloat(row.petsFee || row['Pets Fee'] || 0);
+                        const extraPersonFee = parseFloat(row.extraPersonFee || row['Extra Person Fee'] || 0);
+                        const platformFees = parseFloat(row.platformFees || row['Platform Fees (Channel + Transaction)'] || 0);
+                        const taxAmount = parseFloat(row.taxAmount || row['Tax Amount'] || 0);
+                        
+                        // Calculate totals if not provided
+                        const cleaningAndOtherFees = cleaningFee + petsFee + extraPersonFee;
+                        const calculatedRevenue = baseRate + cleaningAndOtherFees - platformFees;
+                        const grossAmount = parseFloat(row.grossAmount || row['Gross Amount (Revenue)']) || calculatedRevenue;
+                        
                         if (isNaN(grossAmount) || grossAmount <= 0) {
                             errors.push(`Invalid amount for guest "${row.guestName}"`);
                             return;
                         }
                         
-                        // Create reservation object
+                        // Create reservation object with full financial breakdown
                         const reservation = {
                             id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                             guestName: row.guestName || row['Guest Name'],
@@ -162,7 +186,18 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
                             checkInDate: checkInDate.toISOString().split('T')[0],
                             checkOutDate: checkOutDate.toISOString().split('T')[0],
                             nights: parseInt(row.nights || row['Nights']) || Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)),
+                            // Financial breakdown
+                            baseRate: baseRate,
+                            cleaningAndOtherFees: cleaningAndOtherFees,
+                            platformFees: platformFees,
+                            clientRevenue: grossAmount,
+                            luxuryLodgingFee: 0, // PM commission calculated by statement
+                            clientTaxResponsibility: taxAmount,
+                            clientPayout: grossAmount - taxAmount,
+                            // Legacy fields
                             grossAmount: grossAmount,
+                            hostPayoutAmount: grossAmount - taxAmount,
+                            // Property info
                             propertyId: parseInt(row.propertyId || row['Property ID']) || null,
                             propertyName: row.propertyName || row['Property Name'] || null,
                             status: (row.status || row['Status (confirmed/cancelled)'] || 'confirmed').toLowerCase(),
