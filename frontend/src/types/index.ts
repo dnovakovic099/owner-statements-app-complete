@@ -31,13 +31,15 @@ export interface Property {
 
 export interface Reservation {
   id: number;
-  hostawayId: string;
+  hostawayId?: string;
+  hostifyId?: number;
   propertyId: number;
   guestName: string;
   guestEmail: string;
   checkInDate: string;
   checkOutDate: string;
   grossAmount: number;
+  clientRevenue?: number;
   hostPayoutAmount: number;
   platformFees: number;
   nights: number;
