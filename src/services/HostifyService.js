@@ -57,7 +57,9 @@ class HostifyService {
             page,
             per_page: perPage,
             // Include all sources (Airbnb, VRBO, Booking.com, direct, etc.)
-            // If Hostify has a source filter, we want to exclude it to get all channels
+            // Note: Hostify's start_date/end_date filter by check-in date by default
+            // This means we might miss reservations that check in before our period but check out during it
+            // For calendar-based calculations, we handle this in getOverlappingReservations by expanding the date range
         };
 
         // Add listing filter if specified
@@ -66,8 +68,19 @@ class HostifyService {
             console.log(`Property filter enabled for listing_id: ${listingId}`);
         }
 
-        console.log(`Hostify API params:`, JSON.stringify(params, null, 2));
-        return await this.makeRequest('/reservations', params);
+        console.log(`🔍 Hostify API request - listing: ${listingId || 'ALL'}, dates: ${startDate} to ${endDate}`);
+        console.log(`📋 Params:`, JSON.stringify(params, null, 2));
+        
+        const result = await this.makeRequest('/reservations', params);
+        
+        if (result.success && result.reservations) {
+            console.log(`✅ Hostify returned ${result.reservations.length} reservations`);
+            // Log sources for debugging
+            const sources = result.reservations.map(r => r.source).filter((v, i, a) => a.indexOf(v) === i);
+            console.log(`📊 Sources in results: ${sources.join(', ')}`);
+        }
+        
+        return result;
     }
 
     async getAllReservations(startDate, endDate, listingId = null) {
