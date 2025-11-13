@@ -6,8 +6,20 @@ class DatabaseService {
     
     async saveStatement(statementData) {
         try {
+            // Check if statement already exists
+            if (statementData.id) {
+                const existing = await Statement.findByPk(statementData.id);
+                if (existing) {
+                    // Update existing statement
+                    await existing.update(statementData);
+                    console.log(`✅ Updated statement ${statementData.id} in database`);
+                    return existing.toJSON();
+                }
+            }
+            
+            // Create new statement if it doesn't exist
             const statement = await Statement.create(statementData);
-            console.log(`✅ Saved statement ${statement.id} to database`);
+            console.log(`✅ Created statement ${statement.id} in database`);
             return statement.toJSON();
         } catch (error) {
             console.error('Error saving statement to database:', error);
