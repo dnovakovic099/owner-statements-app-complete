@@ -142,7 +142,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                     >
                       <Eye className="w-4 h-4" />
                     </a>
-                    {statement.status === 'draft' && (
+                    {(statement.status === 'draft' || statement.status === 'modified') && (
                       <button
                         onClick={() => onAction(statement.id, 'edit')}
                         className="text-yellow-600 hover:text-yellow-900"
