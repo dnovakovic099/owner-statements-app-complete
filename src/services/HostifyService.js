@@ -257,13 +257,21 @@ class HostifyService {
         try {
             const response = await this.getUsers();
             
+            console.log('🔍 Full Hostify response:', JSON.stringify(response, null, 2));
+            
             // Fix: API returns "users" not "user"
             if (!response.success || !response.users) {
                 console.warn('No users found in Hostify response');
+                console.log('Response structure:', Object.keys(response));
                 return [];
             }
 
             console.log(`📋 Hostify returned ${response.users.length} total users`);
+            
+            // Log each user
+            response.users.forEach((user, idx) => {
+                console.log(`   User ${idx + 1}: ${user.name || user.email} (ID: ${user.id}, Active: ${user.is_active})`);
+            });
 
             // Filter for active users only (no role filtering)
             const owners = response.users
