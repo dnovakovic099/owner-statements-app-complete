@@ -63,20 +63,37 @@ class SecureStayService {
                 const response = await this.makeRequest('/accounting/getexpenses', params);
                 
                 if (response.data && Array.isArray(response.data)) {
-                    const pageExpenses = response.data.map(expense => ({
-                        id: expense.expenseId,
-                        description: expense.description || 'Expense',
-                        amount: parseFloat(expense.amount || 0),
-                        date: expense.dateAdded || expense.dateOfWork,
-                        type: expense.categories || expense.type || 'expense',
-                        propertyId: null, // SecureStay uses listing names, not IDs
-                        vendor: expense.contractorName,
-                        listing: expense.listing,
-                        status: expense.status,
-                        paymentMethod: expense.paymentMethod,
-                        category: expense.categories,
-                        expenseType: expense.type // Original type from API (expense or extras)
-                    }));
+                    const pageExpenses = response.data.map(expense => {
+                        const amount = parseFloat(expense.amount || 0);
+                        const expenseType = expense.type;
+                        const category = expense.categories;
+                        
+                        // Debug log for upsells
+                        if (expenseType === 'extras' || category === 'Upsell' || amount > 0) {
+                            console.log(`🔍 Potential upsell detected:`, {
+                                description: expense.description,
+                                amount: amount,
+                                type: expenseType,
+                                category: category,
+                                listing: expense.listing
+                            });
+                        }
+                        
+                        return {
+                            id: expense.expenseId,
+                            description: expense.description || 'Expense',
+                            amount: amount,
+                            date: expense.dateAdded || expense.dateOfWork,
+                            type: expense.categories || expense.type || 'expense',
+                            propertyId: null, // SecureStay uses listing names, not IDs
+                            vendor: expense.contractorName,
+                            listing: expense.listing,
+                            status: expense.status,
+                            paymentMethod: expense.paymentMethod,
+                            category: expense.categories,
+                            expenseType: expense.type // Original type from API (expense or extras)
+                        };
+                    });
                     
                     allExpenses = allExpenses.concat(pageExpenses);
                     

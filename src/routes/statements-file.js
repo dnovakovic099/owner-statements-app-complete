@@ -360,7 +360,19 @@ router.post('/generate', async (req, res) => {
                 })),
                 // Expenses and upsells - categorize based on amount sign and category
                 ...periodExpenses.map(exp => {
-                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
+                    
+                    // Debug log for classification
+                    console.log(`💰 Classifying expense:`, {
+                        description: exp.description,
+                        amount: exp.amount,
+                        type: exp.type,
+                        category: exp.category,
+                        expenseType: exp.expenseType,
+                        isUpsell: isUpsell,
+                        finalType: isUpsell ? 'upsell' : 'expense'
+                    });
+                    
                     return {
                         type: isUpsell ? 'upsell' : 'expense',
                         description: exp.description,
@@ -1857,8 +1869,7 @@ router.get('/:id/view', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                    ${statement.items?.filter(item => item.type === 'expense' || item.type === 'upsell').map(expense => {
-                        const isUpsell = expense.type === 'upsell';
+                    ${statement.items?.filter(item => item.type === 'expense').map(expense => {
                         // Check if this expense is part of a duplicate warning
                         const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
                             const matchesExpense1 = dup.expense1.description === expense.description && 
@@ -1882,7 +1893,7 @@ router.get('/:id/view', async (req, res) => {
                             <td class="description-cell">${expense.description}</td>
                             <td class="listing-cell">${expense.listing || '-'}</td>
                             <td class="category-cell">${expense.category}</td>
-                            <td class="amount-cell ${isUpsell ? 'revenue-amount' : 'expense-amount'}">${isUpsell ? '+' : ''}$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="amount-cell expense-amount">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
                     }).join('') || '<tr><td colspan="5" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No expenses for this period</td></tr>'}
@@ -1894,6 +1905,46 @@ router.get('/:id/view', async (req, res) => {
         </table>
         </div>
     </div>
+
+    <!-- Additional Revenue Section (Upsells) -->
+    ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+    <div class="section">
+        <h2 class="section-title">ADDITIONAL REVENUE</h2>
+        <div class="expenses-container">
+            <table class="expenses-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Property</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                    ${statement.items?.filter(item => item.type === 'upsell').map(upsell => `
+                        <tr>
+                            <td class="date-cell">
+                                ${(() => {
+                                    const [year, month, day] = upsell.date.split('-').map(Number);
+                                    return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                })()}
+                            </td>
+                            <td class="description-cell">${upsell.description}</td>
+                            <td class="listing-cell">${upsell.listing || '-'}</td>
+                            <td class="category-cell">${upsell.category}</td>
+                            <td class="amount-cell revenue-amount">+$${upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                    `).join('')}
+                    <tr class="totals-row">
+                        <td colspan="4"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td class="amount-cell revenue-amount"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    </tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    ` : ''}
 
     <!-- Summary Section -->
     <div class="section">
@@ -2992,10 +3043,15 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-                        return (clientRevenue - Math.abs(pmCommission) + upsells).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</td>
                 </tr>
+                ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Additional Revenue</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+                ` : ''}
                 <tr style="border-bottom: 2px solid var(--luxury-navy);">
                     <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Expenses</td>
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
