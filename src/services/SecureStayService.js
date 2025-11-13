@@ -34,8 +34,9 @@ class SecureStayService {
         }
     }
 
-    async getExpensesForPeriod(startDate, endDate, propertyIds = null) {
-        console.log(`Fetching SecureStay expenses for period: ${startDate} to ${endDate}`);
+    async getExpensesForPeriod(startDate, endDate, propertyIds = null, type = null) {
+        const typeLabel = type ? ` (type: ${type})` : ' (all types)';
+        console.log(`Fetching SecureStay expenses for period: ${startDate} to ${endDate}${typeLabel}`);
         
         try {
             let allExpenses = [];
@@ -53,7 +54,12 @@ class SecureStayService {
                     expenseState: 'active'
                 };
 
-                console.log(`Fetching SecureStay expenses page ${currentPage} (limit: ${limit})`);
+                // Add type parameter if specified (expense, extras, or omit for both)
+                if (type) {
+                    params.type = type;
+                }
+
+                console.log(`Fetching SecureStay expenses page ${currentPage} (limit: ${limit})${typeLabel}`);
                 const response = await this.makeRequest('/accounting/getexpenses', params);
                 
                 if (response.data && Array.isArray(response.data)) {
@@ -62,13 +68,14 @@ class SecureStayService {
                         description: expense.description || 'Expense',
                         amount: parseFloat(expense.amount || 0),
                         date: expense.dateAdded || expense.dateOfWork,
-                        type: expense.categories || 'expense',
+                        type: expense.categories || expense.type || 'expense',
                         propertyId: null, // SecureStay uses listing names, not IDs
                         vendor: expense.contractorName,
                         listing: expense.listing,
                         status: expense.status,
                         paymentMethod: expense.paymentMethod,
-                        category: expense.categories
+                        category: expense.categories,
+                        expenseType: expense.type // Original type from API (expense or extras)
                     }));
                     
                     allExpenses = allExpenses.concat(pageExpenses);
@@ -87,13 +94,32 @@ class SecureStayService {
                 }
             }
             
-            console.log(`✅ Fetched ${allExpenses.length} total expenses from SecureStay API across ${currentPage - 1} pages`);
+            console.log(`✅ Fetched ${allExpenses.length} total expenses from SecureStay API across ${currentPage - 1} pages${typeLabel}`);
             return allExpenses;
             
         } catch (error) {
             console.warn('SecureStay API not available, returning empty expenses:', error.message);
             return [];
         }
+    }
+
+    async getExtrasForPeriod(startDate, endDate, propertyIds = null) {
+        console.log(`Fetching SecureStay extras for period: ${startDate} to ${endDate}`);
+        return this.getExpensesForPeriod(startDate, endDate, propertyIds, 'extras');
+    }
+
+    async getAllExpensesAndExtras(startDate, endDate, propertyIds = null) {
+        console.log(`Fetching all SecureStay expenses and extras for period: ${startDate} to ${endDate}`);
+        
+        // Fetch both expenses and extras in parallel
+        const [expenses, extras] = await Promise.all([
+            this.getExpensesForPeriod(startDate, endDate, propertyIds, 'expense'),
+            this.getExpensesForPeriod(startDate, endDate, propertyIds, 'extras')
+        ]);
+
+        const combined = [...expenses, ...extras];
+        console.log(`✅ Combined total: ${expenses.length} expenses + ${extras.length} extras = ${combined.length} items`);
+        return combined;
     }
 
     async getCleaningFees(startDate, endDate, propertyIds = null) {
