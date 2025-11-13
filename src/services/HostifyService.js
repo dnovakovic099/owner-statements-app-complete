@@ -66,9 +66,11 @@ class HostifyService {
         };
 
         // Add listing filter if specified
+        // NOTE: Hostify creates child listings for multi-channel properties (VRBO, Airbnb, etc)
+        // When we filter by listing_id, we miss reservations on child listings
+        // We must fetch ALL reservations and filter by parent_listing_id after
         if (listingId) {
-            params.listing_id = listingId;
-            console.log(`Property filter enabled for listing_id: ${listingId}`);
+            console.log(`⚠️ Listing filter ${listingId} will be applied after fetching (to include child listings)`);
         }
 
         console.log(`🔍 Hostify API request - listing: ${listingId || 'ALL'}, dates: ${startDate} to ${endDate}`);
@@ -126,6 +128,17 @@ class HostifyService {
         }
 
         console.log(`Total reservations fetched: ${allReservations.length}`);
+        
+        // Filter by parent_listing_id if listing filter was specified
+        // This handles Hostify's child listings (VRBO, Airbnb on same property have different listing_ids)
+        if (listingId) {
+            const beforeFilter = allReservations.length;
+            allReservations = allReservations.filter(res => {
+                const parentId = res.parent_listing_id || res.listing_id;
+                return parseInt(parentId) === parseInt(listingId);
+            });
+            console.log(`🔍 Filtered by parent_listing_id ${listingId}: ${beforeFilter} → ${allReservations.length} reservations`);
+        }
         
         // Transform all reservations to our format
         const transformedReservations = allReservations.map(reservation => this.transformReservation(reservation));
