@@ -815,7 +815,7 @@ router.put('/:id', async (req, res) => {
 
             // Update the statement status (only if not already sent)
             if (statement.status !== 'sent') {
-                statement.status = 'modified';
+            statement.status = 'modified';
             }
             
             // Save updated statement (Sequelize will automatically update the timestamp)
@@ -1703,15 +1703,15 @@ router.get('/:id/view', async (req, res) => {
                         <span class="detail-value" style="color: ${statement.calculationType === 'calendar' ? '#007bff' : '#666'};">
                             ${statement.calculationType === 'calendar' ? '📅 Calendar-based (prorated)' : '📋 Check-out based'}
                         </span>
-                    </div>
+            </div>
                     <div class="detail-group">
                         <span class="detail-label">Date:</span>
                         <span class="detail-value">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                    </div>
+            </div>
                     <div class="detail-group">
                         <span class="detail-label">Property:</span>
                         <span class="detail-value">${statement.propertyName}</span>
-                    </div>
+            </div>
             </div>
                 
                 <div class="owner-info">
@@ -1901,11 +1901,15 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="summary-value expense">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr>
-                                <td class="summary-label">Tax Responsibility</td>
-                                <td class="summary-value revenue">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-label">Gross Payout</td>
+                                <td class="summary-value revenue">$${(() => {
+                                    const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
+                                    const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
+                                    return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                })()}</td>
                             </tr>
                             <tr>
-                                <td class="summary-label">Expenses and extras</td>
+                                <td class="summary-label">Expenses</td>
                                 <td class="summary-value expense">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr class="total-row">
@@ -1913,9 +1917,9 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="summary-value total-amount"><strong>$${(() => {
                                     const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                                     const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                                    const clientTaxResponsibility = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0;
+                                    const grossPayout = clientRevenue - Math.abs(pmCommission);
                                     const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
-                                    return (clientRevenue - Math.abs(pmCommission) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    return (grossPayout - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 })()}</strong></td>
                             </tr>
                         </table>
@@ -3004,21 +3008,25 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #e5e7eb;">
-                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Tax Responsibility</td>
-                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Gross Payout</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
+                        const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
+                        const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
+                        return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    })()}</td>
                 </tr>
                 <tr style="border-bottom: 2px solid var(--luxury-navy);">
                     <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Expenses</td>
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #dc2626; font-size: 13px;">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
-                    <td style="padding: 20px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px;"><strong>TOTAL PAYOUT</strong></td>
+                    <td style="padding: 20px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px;"><strong>NET PAYOUT</strong></td>
                     <td style="padding: 20px; text-align: right; font-weight: 700; font-size: 16px;"><strong>$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        const clientTaxResponsibility = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0;
+                        const grossPayout = clientRevenue - Math.abs(pmCommission);
                         const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
-                        return (clientRevenue - Math.abs(pmCommission) + clientTaxResponsibility - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return (grossPayout - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
                 </tr>
             </table>
