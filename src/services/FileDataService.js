@@ -443,7 +443,13 @@ class FileDataService {
         
         const factor = safeNightsInPeriod / safeTotalNights;
         
-        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId}: ${checkIn} to ${checkOut} - ${safeNightsInPeriod}/${safeTotalNights} nights (${(factor * 100).toFixed(1)}%) overlap with period ${periodStart} to ${periodEnd}`);
+        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId} (${reservation.guestName || 'Unknown'}): ${checkIn} to ${checkOut}`);
+        console.log(`  - Period: ${periodStart} to ${periodEnd}`);
+        console.log(`  - Arrival: ${arrivalDate.toISOString().split('T')[0]}, Departure: ${departureDate.toISOString().split('T')[0]}`);
+        console.log(`  - Period Start: ${periodStartDate.toISOString().split('T')[0]}, Period End (inclusive): ${periodEndInclusive.toISOString().split('T')[0]}`);
+        console.log(`  - Overlap Start: ${overlapStart.toISOString().split('T')[0]}, Overlap End: ${overlapEnd.toISOString().split('T')[0]}`);
+        console.log(`  - Total nights: ${totalNights}, Nights in period: ${nightsInPeriod}, Days diff: ${(overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)}`);
+        console.log(`  - Result: ${safeNightsInPeriod}/${safeTotalNights} nights (${(factor * 100).toFixed(1)}%)`);
         
         return {
             factor: factor,
