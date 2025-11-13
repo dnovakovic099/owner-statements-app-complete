@@ -79,7 +79,9 @@ router.get('/', async (req, res) => {
         // Format for frontend
         const formattedStatements = paginatedStatements.map(s => ({
             id: s.id,
+            ownerId: s.ownerId,
             ownerName: s.ownerName || 'Default Owner',
+            propertyId: s.propertyId,
             propertyName: s.propertyName || (s.propertyId ? `Property ${s.propertyId}` : 'All Properties'),
             weekStartDate: s.weekStartDate,
             weekEndDate: s.weekEndDate,
@@ -94,7 +96,8 @@ router.get('/', async (req, res) => {
             ownerPayout: s.ownerPayout,
             status: s.status,
             sentAt: s.sentAt,
-            createdAt: s.createdAt
+            createdAt: s.createdAt || s.created_at,
+            updatedAt: s.updatedAt || s.updated_at
         }));
 
         res.json({
