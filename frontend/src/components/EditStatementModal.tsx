@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Calendar } from 'lucide-react';
+import { X, DollarSign, AlertTriangle, Plus, Minus, Calendar } from 'lucide-react';
 import { statementsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 
@@ -20,10 +20,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedExpenseIndices, setSelectedExpenseIndices] = useState<number[]>([]);
-  const [selectedCancelledReservationIds, setSelectedCancelledReservationIds] = useState<number[]>([]);
-  const [cancelledReservations, setCancelledReservations] = useState<Reservation[]>([]);
-  const [loadingCancelled, setLoadingCancelled] = useState(false);
-  const [showCancelledSection, setShowCancelledSection] = useState(false);
+  const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
+  const [selectedReservationIdsToAdd, setSelectedReservationIdsToAdd] = useState<number[]>([]);
+  const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [showAvailableSection, setShowAvailableSection] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadStatement = useCallback(async () => {
@@ -35,9 +36,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       const response = await statementsAPI.getStatement(statementId);
       setStatement(response);
       setSelectedExpenseIndices([]);
-      setSelectedCancelledReservationIds([]);
-      setCancelledReservations([]);
-      setShowCancelledSection(false);
+      setSelectedReservationIdsToRemove([]);
+      setSelectedReservationIdsToAdd([]);
+      setAvailableReservations([]);
+      setShowAvailableSection(false);
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -52,20 +54,20 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     }
   }, [isOpen, statementId, loadStatement]);
 
-  const loadCancelledReservations = async () => {
+  const loadAvailableReservations = async () => {
     if (!statementId) return;
     
     try {
-      setLoadingCancelled(true);
+      setLoadingAvailable(true);
       setError(null);
-      const response = await statementsAPI.getCancelledReservations(statementId);
-      setCancelledReservations(response.cancelledReservations);
-      setShowCancelledSection(true);
+      const response = await statementsAPI.getAvailableReservations(statementId);
+      setAvailableReservations(response.availableReservations);
+      setShowAvailableSection(true);
     } catch (err) {
-      setError('Failed to load cancelled reservations');
-      console.error('Failed to load cancelled reservations:', err);
+      setError('Failed to load available reservations');
+      console.error('Failed to load available reservations:', err);
     } finally {
-      setLoadingCancelled(false);
+      setLoadingAvailable(false);
     }
   };
 
@@ -77,8 +79,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     );
   };
 
-  const handleCancelledReservationToggle = (reservationId: number) => {
-    setSelectedCancelledReservationIds(prev => 
+  const handleReservationRemoveToggle = (reservationId: number) => {
+    setSelectedReservationIdsToRemove(prev => 
+      prev.includes(reservationId) 
+        ? prev.filter(id => id !== reservationId)
+        : [...prev, reservationId]
+    );
+  };
+
+  const handleReservationAddToggle = (reservationId: number) => {
+    setSelectedReservationIdsToAdd(prev => 
       prev.includes(reservationId) 
         ? prev.filter(id => id !== reservationId)
         : [...prev, reservationId]
@@ -86,7 +96,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleSaveChanges = async () => {
-    if (!statement || (selectedExpenseIndices.length === 0 && selectedCancelledReservationIds.length === 0)) {
+    if (!statement || (selectedExpenseIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0)) {
       return;
     }
 
@@ -94,8 +104,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     if (selectedExpenseIndices.length > 0) {
       actions.push(`remove ${selectedExpenseIndices.length} expense(s)`);
     }
-    if (selectedCancelledReservationIds.length > 0) {
-      actions.push(`add ${selectedCancelledReservationIds.length} cancelled reservation(s)`);
+    if (selectedReservationIdsToRemove.length > 0) {
+      actions.push(`remove ${selectedReservationIdsToRemove.length} reservation(s)`);
+    }
+    if (selectedReservationIdsToAdd.length > 0) {
+      actions.push(`add ${selectedReservationIdsToAdd.length} reservation(s)`);
     }
 
     const confirmMessage = `Are you sure you want to ${actions.join(' and ')}? This will recalculate the statement totals.`;
@@ -110,7 +123,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       
       await statementsAPI.editStatement(statement.id, {
         expenseIdsToRemove: selectedExpenseIndices.length > 0 ? selectedExpenseIndices : undefined,
-        cancelledReservationIdsToAdd: selectedCancelledReservationIds.length > 0 ? selectedCancelledReservationIds : undefined
+        reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
+        reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
       });
 
       alert('✅ Statement updated successfully');
@@ -127,9 +141,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const handleClose = () => {
     setStatement(null);
     setSelectedExpenseIndices([]);
-    setSelectedCancelledReservationIds([]);
-    setCancelledReservations([]);
-    setShowCancelledSection(false);
+    setSelectedReservationIdsToRemove([]);
+    setSelectedReservationIdsToAdd([]);
+    setAvailableReservations([]);
+    setShowAvailableSection(false);
     setError(null);
     onClose();
   };
@@ -137,8 +152,20 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   if (!isOpen) return null;
 
   const expenses = statement?.items?.filter(item => item.type === 'expense') || [];
+  const reservations = statement?.reservations || [];
+  
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
     return sum + (expenses[index]?.amount || 0);
+  }, 0);
+
+  const selectedReservationsToRemoveTotal = selectedReservationIdsToRemove.reduce((sum, id) => {
+    const res = reservations.find(r => (r.hostifyId || r.id) === id);
+    return sum + (res?.grossAmount || res?.clientRevenue || 0);
+  }, 0);
+
+  const selectedReservationsToAddTotal = selectedReservationIdsToAdd.reduce((sum, id) => {
+    const res = availableReservations.find(r => (r.hostifyId || r.id) === id);
+    return sum + (res?.grossAmount || res?.clientRevenue || 0);
   }, 0);
 
   return (
@@ -196,7 +223,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               </div>
 
               {/* Selection Info */}
-              {(selectedExpenseIndices.length > 0 || selectedCancelledReservationIds.length > 0) && (
+              {(selectedExpenseIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -207,20 +234,33 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedExpenseIndices.length} expense(s) selected for removal
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Total to remove: ${selectedExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Expense reduction: ${selectedExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </p>
                           </>
                         )}
-                        {selectedCancelledReservationIds.length > 0 && (
-                          <h4 className="font-medium text-amber-800">
-                            {selectedCancelledReservationIds.length} cancelled reservation(s) selected to add
-                          </h4>
+                        {selectedReservationIdsToRemove.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-amber-800">
+                              {selectedReservationIdsToRemove.length} reservation(s) selected for removal
+                            </h4>
+                            <p className="text-sm text-amber-700">
+                              Revenue reduction: ${selectedReservationsToRemoveTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
                         )}
-                        {selectedExpenseIndices.length > 0 && (
-                          <p className="text-xs text-amber-600">
-                            New payout would be: ${(statement.ownerPayout + selectedExpensesTotal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                          </p>
+                        {selectedReservationIdsToAdd.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-amber-800">
+                              {selectedReservationIdsToAdd.length} reservation(s) selected to add
+                            </h4>
+                            <p className="text-sm text-amber-700">
+                              Revenue increase: ${selectedReservationsToAddTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
                         )}
+                        <p className="text-xs text-amber-600 font-semibold pt-1">
+                          Net change: ${((selectedExpensesTotal - selectedReservationsToRemoveTotal + selectedReservationsToAddTotal)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -288,47 +328,119 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                 )}
               </div>
 
-              {/* Cancelled Reservations Section */}
+              {/* Current Reservations Section */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">
+                  Current Reservations ({reservations.length})
+                </h3>
+                
+                {reservations.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No reservations in this statement
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {reservations.map((reservation) => {
+                      const resId = reservation.hostifyId || reservation.id;
+                      const isSelected = selectedReservationIdsToRemove.includes(resId);
+                      return (
+                        <div
+                          key={resId}
+                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                            isSelected 
+                              ? 'bg-red-50 border-red-200' 
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleReservationRemoveToggle(resId)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleReservationRemoveToggle(resId)}
+                                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                />
+                                <div>
+                                  <h4 className="font-medium">{reservation.guestName}</h4>
+                                  <div className="text-sm text-gray-500">
+                                    <div className="flex items-center space-x-4">
+                                      <span className="flex items-center">
+                                        <Calendar className="w-3 h-3 mr-1" />
+                                        {reservation.checkInDate} to {reservation.checkOutDate}
+                                      </span>
+                                      {reservation.status && (
+                                        <span className={`px-2 py-1 rounded-full text-xs ${
+                                          reservation.status === 'cancelled' 
+                                            ? 'bg-red-100 text-red-800' 
+                                            : 'bg-green-100 text-green-800'
+                                        }`}>
+                                          {reservation.status.toUpperCase()}
+                                        </span>
+                                      )}
+                                      <span className="text-gray-400">
+                                        {reservation.source}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center text-green-600 font-semibold">
+                              <DollarSign className="w-4 h-4 mr-1" />
+                              {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Available Reservations Section */}
               <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">
-                    Cancelled Reservations
+                    Available Reservations
                   </h3>
-                  {!showCancelledSection ? (
+                  {!showAvailableSection ? (
                     <button
-                      onClick={loadCancelledReservations}
-                      disabled={loadingCancelled}
+                      onClick={loadAvailableReservations}
+                      disabled={loadingAvailable}
                       className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      {loadingCancelled ? 'Loading...' : 'Add Cancelled Reservations'}
+                      {loadingAvailable ? 'Loading...' : 'Add Reservations'}
                     </button>
                   ) : (
                     <div className="text-sm text-gray-600">
-                      {cancelledReservations.length} available to add
+                      {availableReservations.length} available to add
                     </div>
                   )}
                 </div>
 
-                {showCancelledSection && (
+                {showAvailableSection && (
                   <div>
-                    {cancelledReservations.length === 0 ? (
+                    {availableReservations.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
-                        No cancelled reservations found for this statement period
+                        No additional reservations found for this statement period
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {cancelledReservations.map((reservation) => {
-                          const isSelected = selectedCancelledReservationIds.includes(reservation.id);
+                        {availableReservations.map((reservation) => {
+                          const resId = reservation.hostifyId || reservation.id;
+                          const isSelected = selectedReservationIdsToAdd.includes(resId);
                           return (
                             <div
-                              key={reservation.id}
+                              key={resId}
                               className={`border rounded-lg p-4 cursor-pointer transition-colors ${
                                 isSelected 
                                   ? 'bg-green-50 border-green-200' 
                                   : 'bg-white border-gray-200 hover:bg-gray-50'
                               }`}
-                              onClick={() => handleCancelledReservationToggle(reservation.id)}
+                              onClick={() => handleReservationAddToggle(resId)}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
@@ -336,7 +448,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                     <input
                                       type="checkbox"
                                       checked={isSelected}
-                                      onChange={() => handleCancelledReservationToggle(reservation.id)}
+                                      onChange={() => handleReservationAddToggle(resId)}
                                       className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                                     />
                                     <div>
@@ -347,9 +459,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                             <Calendar className="w-3 h-3 mr-1" />
                                             {reservation.checkInDate} to {reservation.checkOutDate}
                                           </span>
-                                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">
-                                            CANCELLED
-                                          </span>
+                                          {reservation.status && (
+                                            <span className={`px-2 py-1 rounded-full text-xs ${
+                                              reservation.status === 'cancelled' 
+                                                ? 'bg-red-100 text-red-800' 
+                                                : 'bg-blue-100 text-blue-800'
+                                            }`}>
+                                              {reservation.status.toUpperCase()}
+                                            </span>
+                                          )}
                                           <span className="text-gray-400">
                                             {reservation.source}
                                           </span>
@@ -358,9 +476,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center text-gray-600 font-semibold">
+                                <div className="flex items-center text-green-600 font-semibold">
                                   <DollarSign className="w-4 h-4 mr-1" />
-                                  {reservation.grossAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                 </div>
                               </div>
                             </div>

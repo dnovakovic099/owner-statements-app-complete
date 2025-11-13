@@ -120,6 +120,8 @@ export const statementsAPI = {
   editStatement: async (id: number, data: {
     expenseIdsToRemove?: number[];
     cancelledReservationIdsToAdd?: number[];
+    reservationIdsToAdd?: number[];
+    reservationIdsToRemove?: number[];
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;
@@ -135,6 +137,20 @@ export const statementsAPI = {
     };
   }> => {
     const response = await api.get(`/statements/${id}/cancelled-reservations`);
+    return response.data;
+  },
+
+  getAvailableReservations: async (id: number): Promise<{
+    availableReservations: any[];
+    count: number;
+    statementPeriod: {
+      start: string;
+      end: string;
+      propertyId?: number;
+      calculationType?: string;
+    };
+  }> => {
+    const response = await api.get(`/statements/${id}/available-reservations`);
     return response.data;
   },
 };
