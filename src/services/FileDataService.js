@@ -176,14 +176,75 @@ class FileDataService {
                 }
                 
                 // Use Hostify to get reservations
-                const transformedReservations = await hostifyService.getConsolidatedFinanceReport(params);
+                const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
                 
-                console.log(`Fetched ${transformedReservations.length} reservations from Hostify`);
-                return transformedReservations;
+                console.log(`Fetched ${apiReservations.length} reservations from Hostify API`);
+                
+                // Load and merge imported reservations
+                const importedReservations = await this.getImportedReservations(startDate, endDate, propertyId);
+                
+                // Combine API and imported reservations
+                const allReservations = [...apiReservations, ...importedReservations];
+                
+                console.log(`Total reservations: ${allReservations.length} (API: ${apiReservations.length}, Imported: ${importedReservations.length})`);
+                return allReservations;
             }
         } catch (error) {
-            console.error('Error fetching reservations from Hostify:', error);
-            // Fallback to empty array if API fails
+            console.error('Error fetching reservations:', error);
+            // Try to return imported reservations even if API fails
+            try {
+                const importedReservations = await this.getImportedReservations(startDate, endDate, propertyId);
+                console.log(`API failed, returning ${importedReservations.length} imported reservations only`);
+                return importedReservations;
+            } catch (importError) {
+                console.error('Error fetching imported reservations:', importError);
+                return [];
+            }
+        }
+    }
+
+    async getImportedReservations(startDate = null, endDate = null, propertyId = null) {
+        try {
+            const importedFile = path.join(this.dataDir, 'imported-reservations.json');
+            
+            // Check if file exists
+            try {
+                await this.fs.access(importedFile);
+            } catch {
+                // File doesn't exist, return empty array
+                return [];
+            }
+            
+            const data = await this.readJSONFile(importedFile);
+            
+            if (!Array.isArray(data) || data.length === 0) {
+                return [];
+            }
+            
+            // Filter by date range and property if specified
+            let filtered = data;
+            
+            if (startDate && endDate) {
+                const periodStart = new Date(startDate);
+                const periodEnd = new Date(endDate);
+                
+                filtered = filtered.filter(res => {
+                    const checkOutDate = new Date(res.checkOutDate);
+                    return checkOutDate >= periodStart && checkOutDate <= periodEnd;
+                });
+            }
+            
+            if (propertyId) {
+                filtered = filtered.filter(res => 
+                    res.propertyId === parseInt(propertyId)
+                );
+            }
+            
+            console.log(`Loaded ${filtered.length} imported reservations (out of ${data.length} total)`);
+            return filtered;
+            
+        } catch (error) {
+            console.warn('Error loading imported reservations:', error.message);
             return [];
         }
     }

@@ -178,6 +178,7 @@ app.use('/api/statements', authMiddleware, require('./routes/statements-file'));
 app.use('/api/properties', authMiddleware, require('./routes/properties-file'));
 app.use('/api/listings', authMiddleware, require('./routes/listings'));
 app.use('/api/expenses', authMiddleware, require('./routes/expenses'));
+app.use('/api/reservations-import', authMiddleware, require('./routes/reservations'));
 app.use('/api/quickbooks', authMiddleware, require('./routes/quickbooks'));
 
 // Removed unused database routes

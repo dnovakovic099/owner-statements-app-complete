@@ -27,6 +27,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [error, setError] = useState<string | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'transactions'>('dashboard');
@@ -151,12 +152,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const handleUploadCSV = async (file: File) => {
     try {
-      const response = await expensesAPI.uploadCSV(file);
-      alert(`✅ CSV uploaded successfully: ${response.processed} processed, ${response.errors} errors`);
+      if (uploadModalType === 'reservations') {
+        const response = await reservationsAPI.uploadCSV(file);
+        if (response.success) {
+          alert(`✅ ${response.message}`);
+        } else {
+          alert(`❌ ${response.error || 'Failed to upload reservations'}`);
+        }
+      } else {
+        const response = await expensesAPI.uploadCSV(file);
+        alert(`✅ CSV uploaded successfully: ${response.processed} processed, ${response.errors} errors`);
+      }
       setIsUploadModalOpen(false);
       await loadInitialData();
     } catch (err) {
       alert(`❌ Failed to upload CSV: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleDownloadReservationTemplate = async () => {
+    try {
+      const blob = await reservationsAPI.downloadTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'reservation_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      alert(`❌ Failed to download template: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -286,9 +312,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Expense Upload */}
-        <div className="mb-8">
-          <ExpenseUpload onUploadSuccess={loadInitialData} />
+        {/* File Uploads */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Expense Upload */}
+          <div>
+            <ExpenseUpload onUploadSuccess={loadInitialData} />
+          </div>
+
+          {/* Reservation Upload */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
+            <h3 className="text-lg font-semibold text-purple-900 mb-2">Import Reservations</h3>
+            <p className="text-sm text-purple-700 mb-4">Upload a CSV file with manual reservations</p>
+            <button
+              onClick={() => {
+                setUploadModalType('reservations');
+                setIsUploadModalOpen(true);
+              }}
+              className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium"
+            >
+              Upload Reservations CSV
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -400,6 +444,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onUpload={handleUploadCSV}
+        type={uploadModalType}
+        onDownloadTemplate={uploadModalType === 'reservations' ? handleDownloadReservationTemplate : undefined}
       />
 
       <EditStatementModal

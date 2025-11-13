@@ -172,6 +172,25 @@ export const reservationsAPI = {
     const response = await api.post('/reservations/sync', data);
     return response.data;
   },
+
+  downloadTemplate: async (): Promise<Blob> => {
+    const response = await api.get('/reservations-import/template', { responseType: 'blob' });
+    return response.data;
+  },
+
+  uploadCSV: async (file: File): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+    error?: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('reservationFile', file);
+    const response = await api.post('/reservations-import/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
 };
 
 // Expenses API
