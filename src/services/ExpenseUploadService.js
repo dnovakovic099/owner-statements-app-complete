@@ -192,7 +192,8 @@ class ExpenseUploadService {
             throw new Error(`Invalid amount format: ${amountStr}. Please use numeric values like 123.45 or $123.45`);
         }
         
-        return Math.abs(amount); // Ensure positive amount
+        // Preserve original sign - expenses are negative, upsells are positive
+        return amount;
     }
 
     /**
