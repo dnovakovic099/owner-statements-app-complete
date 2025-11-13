@@ -70,7 +70,17 @@ class DatabaseService {
                 ]
             });
 
-            return statements.map(s => s.toJSON());
+            return statements.map(s => {
+                const json = s.toJSON();
+                // Ensure createdAt and updatedAt are in camelCase for frontend
+                if (json.created_at && !json.createdAt) {
+                    json.createdAt = json.created_at;
+                }
+                if (json.updated_at && !json.updatedAt) {
+                    json.updatedAt = json.updated_at;
+                }
+                return json;
+            });
         } catch (error) {
             console.error('Error fetching statements from database:', error);
             throw error;
@@ -80,7 +90,17 @@ class DatabaseService {
     async getStatementById(id) {
         try {
             const statement = await Statement.findByPk(id);
-            return statement ? statement.toJSON() : null;
+            if (!statement) return null;
+            
+            const json = statement.toJSON();
+            // Ensure createdAt and updatedAt are in camelCase for frontend
+            if (json.created_at && !json.createdAt) {
+                json.createdAt = json.created_at;
+            }
+            if (json.updated_at && !json.updatedAt) {
+                json.updatedAt = json.updated_at;
+            }
+            return json;
         } catch (error) {
             console.error(`Error fetching statement ${id} from database:`, error);
             throw error;
