@@ -276,7 +276,8 @@ class HostifyService {
         
         const baseReservation = {
             hostifyId: hostifyReservation.id ? hostifyReservation.id.toString() : 'undefined',
-            propertyId: parseInt(hostifyReservation.listing_id), // Use Hostify listing_id
+            // Use parent_id if available (for multi-channel/multi-unit properties), otherwise listing_id
+            propertyId: parseInt(hostifyReservation.parent_id || hostifyReservation.listing_id),
             guestName: guestName,
             guestEmail: hostifyReservation.guest?.email || hostifyReservation.guestEmail || '',
             checkInDate: hostifyReservation.checkIn,
@@ -413,6 +414,46 @@ class HostifyService {
         }
     }
 
+    /**
+     * Expands a list of listing IDs to include child listings
+     * Hostify creates child listings for multi-channel properties (e.g., Airbnb, VRBO on same property)
+     * @param {number[]} parentIds - Array of parent listing IDs
+     * @returns {Promise<number[]>} Array of listing IDs including parents and children
+     */
+    async expandListingIdsWithChildren(parentIds) {
+        try {
+            console.log(`🔍 Looking for child listings of: ${parentIds.join(', ')}`);
+            
+            // Fetch all listings
+            const response = await this.getProperties();
+            
+            if (!response.success || !response.result) {
+                console.warn('⚠️ Could not fetch listings, using original IDs only');
+                return parentIds;
+            }
+            
+            const allListings = response.result;
+            const expandedIds = new Set(parentIds); // Start with parent IDs
+            
+            // Find all child listings
+            allListings.forEach(listing => {
+                if (listing.parent_id && parentIds.includes(parseInt(listing.parent_id))) {
+                    expandedIds.add(parseInt(listing.id));
+                    console.log(`  ✅ Found child listing ${listing.id} (${listing.nickname || listing.name}) for parent ${listing.parent_id}`);
+                }
+            });
+            
+            const result = Array.from(expandedIds);
+            console.log(`📊 Expanded from ${parentIds.length} to ${result.length} listing IDs`);
+            return result;
+            
+        } catch (error) {
+            console.error('❌ Error expanding listing IDs:', error.message);
+            // If we can't fetch listings, just use the original IDs
+            return parentIds;
+        }
+    }
+
     async getConsolidatedFinanceReport(params = {}) {
         try {
             const {
@@ -429,8 +470,13 @@ class HostifyService {
             let allReservations = [];
             
             if (listingMapIds.length > 0) {
+                // Important: Hostify has parent/child listings for multi-channel properties
+                // We need to query for BOTH parent listings AND their children
+                const listingsToQuery = await this.expandListingIdsWithChildren(listingMapIds);
+                console.log(`📋 Expanded ${listingMapIds.length} listing(s) to ${listingsToQuery.length} (including children)`);
+                
                 // Fetch for specific listings
-                for (const listingId of listingMapIds) {
+                for (const listingId of listingsToQuery) {
                     const response = await this.getAllReservations(fromDate, toDate, listingId);
                     if (response.result) {
                         allReservations = allReservations.concat(response.result);
