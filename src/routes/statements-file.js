@@ -2027,6 +2027,20 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
         console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
 
+        // Fetch ALL reservations and expenses ONCE for the entire period (optimization)
+        console.log(`🔄 Fetching all reservations for period ${startDate} to ${endDate}...`);
+        const allReservations = await FileDataService.getReservations(
+            startDate,
+            endDate,
+            null,  // No property filter - get ALL reservations
+            calculationType
+        );
+        console.log(`✅ Fetched ${allReservations.length} total reservations`);
+        
+        console.log(`🔄 Fetching all expenses for period...`);
+        const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
+        console.log(`✅ Fetched ${allExpenses.length} total expenses`);
+
         // Calculate total items to process
         const totalProperties = owners.reduce((sum, owner) => {
             const ownerProperties = listings.filter(listing => 
@@ -2071,18 +2085,11 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 try {
                     console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
 
-                    const reservations = await FileDataService.getReservations(
-                        startDate,
-                        endDate,
-                        property.id,
-                        calculationType
-                    );
-
-                    const expenses = await FileDataService.getExpenses(startDate, endDate, property.id);
+                    // Use pre-fetched data instead of fetching again (optimization)
                     const periodStart = new Date(startDate);
                     const periodEnd = new Date(endDate);
 
-                    const periodReservations = reservations.filter(res => {
+                    const periodReservations = allReservations.filter(res => {
                         if (res.propertyId !== property.id) return false;
 
                         let dateMatch = true;
@@ -2099,7 +2106,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return dateMatch && statusMatch;
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-                    const periodExpenses = expenses.filter(exp => {
+                    const periodExpenses = allExpenses.filter(exp => {
                         if (property.id && exp.propertyId !== null && exp.propertyId !== property.id) {
                             return false;
                         }
