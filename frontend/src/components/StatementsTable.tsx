@@ -8,6 +8,13 @@ interface StatementsTableProps {
 }
 
 const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction }) => {
+  // Sort statements by creation date (newest first)
+  const sortedStatements = [...statements].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0);
+    const dateB = new Date(b.createdAt || 0);
+    return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -35,7 +42,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
       year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
+      timeZone: 'America/New_York'
     });
   };
 
@@ -109,7 +117,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {statements.map((statement) => (
+            {sortedStatements.map((statement) => (
               <tr key={statement.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{statement.ownerName}</div>
