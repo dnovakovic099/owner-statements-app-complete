@@ -361,7 +361,9 @@ class HostifyService {
                         const periodEnd = new Date(toDate);
                         
                         // Check if reservation overlaps with our period
-                        if (arrivalDate <= periodEnd && departureDate >= periodStart) {
+                        // Check-out date is exclusive (guest leaves that day, doesn't stay during it)
+                        // So we need: arrivalDate <= periodEnd AND departureDate > periodStart
+                        if (arrivalDate <= periodEnd && departureDate > periodStart) {
                             // Add required fields for compatibility
                             res.arrivalDate = res.checkInDate;
                             res.departureDate = res.checkOutDate;
