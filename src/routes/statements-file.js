@@ -1937,8 +1937,8 @@ router.get('/:id/view', async (req, res) => {
                         </tr>
                     `).join('')}
                     <tr class="totals-row">
-                        <td colspan="4"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
-                        <td class="amount-cell revenue-amount"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td class="amount-cell revenue-amount" style="color: white;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
         </table>
@@ -1959,6 +1959,12 @@ router.get('/:id/view', async (req, res) => {
                                     return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 })()}</td>
                             </tr>
+                            ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+                            <tr>
+                                <td class="summary-label">Additional Revenue</td>
+                                <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            ` : ''}
                             <tr>
                                 <td class="summary-label">Expenses</td>
                                 <td class="summary-value expense">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1968,7 +1974,8 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="summary-value total-amount"><strong>$${(() => {
                                     const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                                     const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                                    const grossPayout = clientRevenue - Math.abs(pmCommission);
+                                    const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+                                    const grossPayout = clientRevenue - Math.abs(pmCommission) + upsells;
                                     const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
                                     return (grossPayout - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 })()}</strong></td>
