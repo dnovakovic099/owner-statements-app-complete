@@ -557,13 +557,26 @@ router.put('/:id', async (req, res) => {
         if (expenseIdsToRemove && Array.isArray(expenseIdsToRemove) && expenseIdsToRemove.length > 0) {
             const originalItemsCount = statement.items.length;
             
-            // Filter out expense items by indices (assuming expenseIdsToRemove contains array indices)
-            statement.items = statement.items.filter((item, index) => {
-                // If it's an expense and its index is in the removal list, remove it
-                if (item.type === 'expense' && expenseIdsToRemove.includes(index)) {
-                    return false;
+            // Get all expense items with their indices in the expenses-only array
+            const expenses = [];
+            statement.items.forEach((item, globalIndex) => {
+                if (item.type === 'expense') {
+                    expenses.push({ item, globalIndex, expenseIndex: expenses.length });
                 }
-                return true;
+            });
+            
+            // Build a set of global indices to remove
+            const globalIndicesToRemove = new Set();
+            expenseIdsToRemove.forEach(expenseIndex => {
+                const expense = expenses.find(e => e.expenseIndex === expenseIndex);
+                if (expense) {
+                    globalIndicesToRemove.add(expense.globalIndex);
+                }
+            });
+            
+            // Filter out items at those global indices
+            statement.items = statement.items.filter((item, globalIndex) => {
+                return !globalIndicesToRemove.has(globalIndex);
             });
 
             if (statement.items.length < originalItemsCount) {
