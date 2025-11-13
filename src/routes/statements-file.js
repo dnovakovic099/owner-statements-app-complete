@@ -369,20 +369,9 @@ router.post('/generate', async (req, res) => {
                 ...periodExpenses.map(exp => {
                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
                     
-                    // Debug log for classification
-                    console.log(`💰 Classifying expense:`, {
-                    description: exp.description,
-                    amount: exp.amount,
-                        type: exp.type,
-                        category: exp.category,
-                        expenseType: exp.expenseType,
-                        isUpsell: isUpsell,
-                        finalType: isUpsell ? 'upsell' : 'expense'
-                    });
-                    
                     return {
                         type: isUpsell ? 'upsell' : 'expense',
-                        description: exp.description,
+                    description: exp.description,
                         amount: Math.abs(exp.amount), // Always store as positive, type determines if it's added or subtracted
                     date: exp.date,
                     category: exp.type || exp.category || 'expense',
