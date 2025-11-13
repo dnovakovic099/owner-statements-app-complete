@@ -424,11 +424,12 @@ class HostifyService {
         try {
             console.log(`🔍 Looking for child listings of: ${parentIds.join(', ')}`);
             
-            // Fetch all listings
-            const response = await this.getProperties();
+            // Fetch all listings with pagination
+            const response = await this.getAllProperties();
             
             if (!response.success || !response.result) {
                 console.warn('⚠️ Could not fetch listings, using original IDs only');
+                console.error('Response:', JSON.stringify(response).substring(0, 200));
                 return parentIds;
             }
             
