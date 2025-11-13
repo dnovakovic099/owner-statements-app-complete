@@ -60,6 +60,9 @@ class HostifyService {
             // Note: Hostify's start_date/end_date filter by check-in date by default
             // This means we might miss reservations that check in before our period but check out during it
             // For calendar-based calculations, we handle this in getOverlappingReservations by expanding the date range
+            
+            // IMPORTANT: Don't add any status filters or source filters
+            // We want ALL reservations regardless of source (Airbnb, VRBO, Booking.com)
         };
 
         // Add listing filter if specified
@@ -69,15 +72,23 @@ class HostifyService {
         }
 
         console.log(`🔍 Hostify API request - listing: ${listingId || 'ALL'}, dates: ${startDate} to ${endDate}`);
-        console.log(`📋 Params:`, JSON.stringify(params, null, 2));
+        console.log(`📋 Full params being sent:`, JSON.stringify(params, null, 2));
         
         const result = await this.makeRequest('/reservations', params);
         
+        console.log(`📦 Raw Hostify response:`, JSON.stringify(result, null, 2).substring(0, 500));
+        
         if (result.success && result.reservations) {
             console.log(`✅ Hostify returned ${result.reservations.length} reservations`);
-            // Log sources for debugging
+            // Log ALL reservation details for debugging
+            result.reservations.forEach((r, idx) => {
+                console.log(`  ${idx + 1}. ID: ${r.id}, Source: ${r.source}, Guest: ${r.guest_name || 'N/A'}, CheckIn: ${r.checkIn}, CheckOut: ${r.checkOut}, Status: ${r.status}`);
+            });
+            // Log unique sources
             const sources = result.reservations.map(r => r.source).filter((v, i, a) => a.indexOf(v) === i);
-            console.log(`📊 Sources in results: ${sources.join(', ')}`);
+            console.log(`📊 Unique sources in results: ${sources.join(', ')}`);
+        } else {
+            console.log(`❌ Hostify returned no reservations or error:`, result);
         }
         
         return result;
