@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, AlertCircle, LogOut, CreditCard, Search } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI } from '../services/api';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import GenerateModal from './GenerateModal';
