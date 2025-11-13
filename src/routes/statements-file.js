@@ -273,7 +273,11 @@ router.post('/generate', async (req, res) => {
 
         // Calculate totals
         const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
-        const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        // Separate expenses (negative/costs) from upsells (positive/revenue)
+        const totalExpenses = periodExpenses.reduce((sum, exp) => {
+            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+            return isUpsell ? sum : sum + Math.abs(exp.amount); // Only add actual expenses (costs)
+        }, 0);
         
         // Calculate PM commission: For multi-property statements, calculate per-reservation based on property PM fee
         let pmCommission = 0;
@@ -346,7 +350,7 @@ router.post('/generate', async (req, res) => {
             expenses: periodExpenses,
             duplicateWarnings: duplicateWarnings,
             items: [
-                // Revenue items
+                // Revenue items from reservations
                 ...periodReservations.map(res => ({
                     type: 'revenue',
                     description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
@@ -354,16 +358,19 @@ router.post('/generate', async (req, res) => {
                     date: res.checkOutDate,
                     category: 'booking'
                 })),
-                // Only real expenses from SecureStay or uploaded files
-                ...periodExpenses.map(exp => ({
-                    type: 'expense',
-                    description: exp.description,
-                    amount: exp.amount,
-                    date: exp.date,
-                    category: exp.type || exp.category || 'expense',
-                    vendor: exp.vendor,
-                    listing: exp.listing
-                }))
+                // Expenses and upsells - categorize based on amount sign and category
+                ...periodExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.description,
+                        amount: Math.abs(exp.amount), // Always store as positive, type determines if it's added or subtracted
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing
+                    };
+                })
             ]
         };
 
@@ -1850,7 +1857,8 @@ router.get('/:id/view', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                    ${statement.items?.filter(item => item.type === 'expense').map(expense => {
+                    ${statement.items?.filter(item => item.type === 'expense' || item.type === 'upsell').map(expense => {
+                        const isUpsell = expense.type === 'upsell';
                         // Check if this expense is part of a duplicate warning
                         const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
                             const matchesExpense1 = dup.expense1.description === expense.description && 
@@ -1874,7 +1882,7 @@ router.get('/:id/view', async (req, res) => {
                             <td class="description-cell">${expense.description}</td>
                             <td class="listing-cell">${expense.listing || '-'}</td>
                             <td class="category-cell">${expense.category}</td>
-                            <td class="amount-cell expense-amount">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="amount-cell ${isUpsell ? 'revenue-amount' : 'expense-amount'}">${isUpsell ? '+' : ''}$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
                     }).join('') || '<tr><td colspan="5" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No expenses for this period</td></tr>'}
@@ -2104,7 +2112,11 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     // Calculate totals
                     const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
-                    const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                    // Separate expenses (negative/costs) from upsells (positive/revenue)
+                    const totalExpenses = periodExpenses.reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum : sum + Math.abs(exp.amount);
+                    }, 0);
                     
                     // Get PM percentage from listing database (property-specific)
                     let pmPercentage = 15; // Default fallback
@@ -2152,15 +2164,18 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                 date: res.checkOutDate,
                                 category: 'booking'
                             })),
-                            ...periodExpenses.map(exp => ({
-                                type: 'expense',
-                                description: exp.description,
-                                amount: exp.amount,
-                                date: exp.date,
-                                category: exp.type || exp.category || 'expense',
-                                vendor: exp.vendor,
-                                listing: exp.listing
-                            }))
+                            ...periodExpenses.map(exp => {
+                                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                return {
+                                    type: isUpsell ? 'upsell' : 'expense',
+                                    description: exp.description,
+                                    amount: Math.abs(exp.amount),
+                                    date: exp.date,
+                                    category: exp.type || exp.category || 'expense',
+                                    vendor: exp.vendor,
+                                    listing: exp.listing
+                                };
+                            })
                         ]
                     };
 
@@ -2320,7 +2335,11 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
 
                     // Calculate totals
                     const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
-                    const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                    // Separate expenses (negative/costs) from upsells (positive/revenue)
+                    const totalExpenses = periodExpenses.reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum : sum + Math.abs(exp.amount);
+                    }, 0);
                     
                     // Get PM percentage from listing database (property-specific)
                     let pmPercentage = 15; // Default fallback
@@ -2370,15 +2389,18 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                                 date: res.checkOutDate,
                                 category: 'booking'
                             })),
-                            ...periodExpenses.map(exp => ({
-                                type: 'expense',
-                                description: exp.description,
-                                amount: exp.amount,
-                                date: exp.date,
-                                category: exp.type || exp.category || 'expense',
-                                vendor: exp.vendor,
-                                listing: exp.listing
-                            }))
+                            ...periodExpenses.map(exp => {
+                                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                return {
+                                    type: isUpsell ? 'upsell' : 'expense',
+                                    description: exp.description,
+                                    amount: Math.abs(exp.amount),
+                                    date: exp.date,
+                                    category: exp.type || exp.category || 'expense',
+                                    vendor: exp.vendor,
+                                    listing: exp.listing
+                                };
+                            })
                         ]
                     };
 
@@ -2970,7 +2992,8 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+                        return (clientRevenue - Math.abs(pmCommission) + upsells).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</td>
                 </tr>
                 <tr style="border-bottom: 2px solid var(--luxury-navy);">
@@ -2982,7 +3005,8 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 20px; text-align: right; font-weight: 700; font-size: 16px;"><strong>$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        const grossPayout = clientRevenue - Math.abs(pmCommission);
+                        const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+                        const grossPayout = clientRevenue - Math.abs(pmCommission) + upsells;
                         const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
                         return (grossPayout - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
