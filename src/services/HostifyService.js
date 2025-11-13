@@ -252,7 +252,7 @@ class HostifyService {
 
     // Get all users and transform them to owners
     async getAllOwners() {
-        console.log('Fetching all owners (users with Listing Owner role) from Hostify...');
+        console.log('Fetching all active users from Hostify...');
         
         try {
             const response = await this.getUsers();
@@ -263,15 +263,14 @@ class HostifyService {
                 return [];
             }
 
-            // Filter for users with "Listing Owner" role
+            console.log(`📋 Hostify returned ${response.users.length} total users`);
+
+            // Filter for active users only (no role filtering)
             const owners = response.users
-                .filter(user => {
-                    const roles = Array.isArray(user.roles) ? user.roles : [user.roles];
-                    return roles.includes('Listing Owner') && user.is_active === 1;
-                })
+                .filter(user => user.is_active === 1)
                 .map(user => this.transformUser(user));
 
-            console.log(`✅ Found ${owners.length} active listing owners in Hostify`);
+            console.log(`✅ Found ${owners.length} active users in Hostify`);
             return owners;
         } catch (error) {
             console.error('❌ Failed to fetch owners from Hostify:', error.message);
