@@ -69,29 +69,8 @@ class HostifyService {
         // NOTE: Hostify creates child listings for multi-channel properties (VRBO, Airbnb, etc)
         // When we filter by listing_id, we miss reservations on child listings
         // We must fetch ALL reservations and filter by parent_listing_id after
-        if (listingId) {
-            console.log(`⚠️ Listing filter ${listingId} will be applied after fetching (to include child listings)`);
-        }
 
-        console.log(`🔍 Hostify API request - listing: ${listingId || 'ALL'}, dates: ${startDate} to ${endDate}`);
-        console.log(`📋 Full params being sent:`, JSON.stringify(params, null, 2));
-        
         const result = await this.makeRequest('/reservations', params);
-        
-        console.log(`📦 Raw Hostify response:`, JSON.stringify(result, null, 2).substring(0, 500));
-        
-        if (result.success && result.reservations) {
-            console.log(`✅ Hostify returned ${result.reservations.length} reservations`);
-            // Log ALL reservation details for debugging
-            result.reservations.forEach((r, idx) => {
-                console.log(`  ${idx + 1}. ID: ${r.id}, Source: ${r.source}, Guest: ${r.guest_name || 'N/A'}, CheckIn: ${r.checkIn}, CheckOut: ${r.checkOut}, Status: ${r.status}`);
-            });
-            // Log unique sources
-            const sources = result.reservations.map(r => r.source).filter((v, i, a) => a.indexOf(v) === i);
-            console.log(`📊 Unique sources in results: ${sources.join(', ')}`);
-        } else {
-            console.log(`❌ Hostify returned no reservations or error:`, result);
-        }
         
         return result;
     }
@@ -127,29 +106,17 @@ class HostifyService {
             }
         }
 
-        console.log(`Total reservations fetched: ${allReservations.length}`);
-        
         // Filter by parent_listing_id if listing filter was specified
         // This handles Hostify's child listings (VRBO, Airbnb on same property have different listing_ids)
         if (listingId) {
-            const beforeFilter = allReservations.length;
             allReservations = allReservations.filter(res => {
                 const parentId = res.parent_listing_id || res.listing_id;
                 return parseInt(parentId) === parseInt(listingId);
             });
-            console.log(`🔍 Filtered by parent_listing_id ${listingId}: ${beforeFilter} → ${allReservations.length} reservations`);
         }
         
         // Transform all reservations to our format
         const transformedReservations = allReservations.map(reservation => this.transformReservation(reservation));
-        
-        // Debug: Log all transformed reservations for this property
-        if (listingId) {
-            console.log(`📋 Transformed ${transformedReservations.length} reservations for listing ${listingId}:`);
-            transformedReservations.forEach((r, idx) => {
-                console.log(`  ${idx + 1}. ${r.source} - ${r.guestName} (${r.checkInDate} to ${r.checkOutDate}) - Status: ${r.status} - PropertyID: ${r.propertyId}`);
-            });
-        }
         
         return { result: transformedReservations };
     }
@@ -252,33 +219,18 @@ class HostifyService {
 
     // Get all users and transform them to owners
     async getAllOwners() {
-        console.log('Fetching all active users from Hostify...');
-        
         try {
             const response = await this.getUsers();
             
-            console.log('🔍 Full Hostify response:', JSON.stringify(response, null, 2));
-            
-            // Fix: API returns "users" not "user"
             if (!response.success || !response.users) {
-                console.warn('No users found in Hostify response');
-                console.log('Response structure:', Object.keys(response));
                 return [];
             }
-
-            console.log(`📋 Hostify returned ${response.users.length} total users`);
-            
-            // Log each user
-            response.users.forEach((user, idx) => {
-                console.log(`   User ${idx + 1}: ${user.name || user.email} (ID: ${user.id}, Active: ${user.is_active})`);
-            });
 
             // Filter for active users only (no role filtering)
             const owners = response.users
                 .filter(user => user.is_active === 1)
                 .map(user => this.transformUser(user));
 
-            console.log(`✅ Found ${owners.length} active users in Hostify`);
             return owners;
         } catch (error) {
             console.error('❌ Failed to fetch owners from Hostify:', error.message);
@@ -307,14 +259,6 @@ class HostifyService {
         const listingId = hostifyReservation.listing_id;
         const finalPropertyId = parseInt(parentListingId || listingId);
         
-        if (hostifyReservation.source === 'Vrbo' || hostifyReservation.source === 'vrbo') {
-            console.log(`🔍 VRBO Reservation ${hostifyReservation.id}:`, {
-                listing_id: hostifyReservation.listing_id,
-                parent_id: hostifyReservation.parent_id,
-                parent_listing_id: hostifyReservation.parent_listing_id,
-                finalPropertyId: finalPropertyId
-            });
-        }
         
         const baseReservation = {
             hostifyId: hostifyReservation.id ? hostifyReservation.id.toString() : 'undefined',
