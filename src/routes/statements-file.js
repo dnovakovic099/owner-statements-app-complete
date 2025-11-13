@@ -2080,7 +2080,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
                     const periodExpenses = allExpenses.filter(exp => {
-                        if (property.id && exp.propertyId !== null && exp.propertyId !== property.id) {
+                        // Only include expenses that match this property
+                        if (exp.propertyId !== property.id) {
                             return false;
                         }
                         const expenseDate = new Date(exp.date);
