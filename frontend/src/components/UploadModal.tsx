@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { X, Upload } from 'lucide-react';
+import { X, Upload, Download } from 'lucide-react';
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpload: (file: File) => void;
+  type?: 'expenses' | 'reservations';
+  onDownloadTemplate?: () => void;
 }
 
-const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) => {
+const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload, type = 'expenses', onDownloadTemplate }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -56,11 +58,16 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
 
   if (!isOpen) return null;
 
+  const title = type === 'reservations' ? 'Upload Reservations CSV' : 'Upload Expenses CSV';
+  const helpText = type === 'reservations' 
+    ? 'Expected columns: guestName, guestEmail, checkInDate, checkOutDate, nights, grossAmount, propertyId, propertyName, status, source'
+    : 'Expected columns: propertyName, type, description, amount, date, vendor, invoiceNumber, category';
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Upload Expenses CSV</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -68,6 +75,19 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        {type === 'reservations' && onDownloadTemplate && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={onDownloadTemplate}
+              className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV Template
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -113,7 +133,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
             </div>
 
             <p className="text-xs text-gray-500 mt-2">
-              Expected columns: propertyName, type, description, amount, date, vendor, invoiceNumber, category
+              {helpText}
             </p>
           </div>
 
