@@ -143,6 +143,14 @@ class HostifyService {
         // Transform all reservations to our format
         const transformedReservations = allReservations.map(reservation => this.transformReservation(reservation));
         
+        // Debug: Log all transformed reservations for this property
+        if (listingId) {
+            console.log(`📋 Transformed ${transformedReservations.length} reservations for listing ${listingId}:`);
+            transformedReservations.forEach((r, idx) => {
+                console.log(`  ${idx + 1}. ${r.source} - ${r.guestName} (${r.checkInDate} to ${r.checkOutDate}) - Status: ${r.status} - PropertyID: ${r.propertyId}`);
+            });
+        }
+        
         return { result: transformedReservations };
     }
 
@@ -287,10 +295,24 @@ class HostifyService {
             guestName = `${hostifyReservation.guestFirstName || ''} ${hostifyReservation.guestLastName || ''}`.trim();
         }
         
+        // Debug logging for parent_id field
+        const parentListingId = hostifyReservation.parent_listing_id || hostifyReservation.parent_id;
+        const listingId = hostifyReservation.listing_id;
+        const finalPropertyId = parseInt(parentListingId || listingId);
+        
+        if (hostifyReservation.source === 'Vrbo' || hostifyReservation.source === 'vrbo') {
+            console.log(`🔍 VRBO Reservation ${hostifyReservation.id}:`, {
+                listing_id: hostifyReservation.listing_id,
+                parent_id: hostifyReservation.parent_id,
+                parent_listing_id: hostifyReservation.parent_listing_id,
+                finalPropertyId: finalPropertyId
+            });
+        }
+        
         const baseReservation = {
             hostifyId: hostifyReservation.id ? hostifyReservation.id.toString() : 'undefined',
-            // Use parent_id if available (for multi-channel/multi-unit properties), otherwise listing_id
-            propertyId: parseInt(hostifyReservation.parent_id || hostifyReservation.listing_id),
+            // Use parent_listing_id (or parent_id) if available (for multi-channel/multi-unit properties), otherwise listing_id
+            propertyId: finalPropertyId,
             guestName: guestName,
             guestEmail: hostifyReservation.guest?.email || hostifyReservation.guestEmail || '',
             checkInDate: hostifyReservation.checkIn,
