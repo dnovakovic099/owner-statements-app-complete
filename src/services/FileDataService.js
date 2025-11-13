@@ -486,25 +486,26 @@ class FileDataService {
             const hostifyService = require('./HostifyService');
             const owners = await hostifyService.getAllOwners();
             
+            // Always include "Default" option at the beginning
+            const defaultOwner = {
+                id: 'default',
+                name: 'Default',
+                email: null,
+                phone: null,
+                address: null,
+                defaultPmPercentage: 15.00,
+                techFeeEnabled: true,
+                insuranceFeeEnabled: true,
+                createdAt: new Date().toISOString()
+            };
+            
             if (!owners || owners.length === 0) {
-                console.warn('⚠️  No owners found in Hostify, creating default owner');
-                // If no owners exist, create a default one
-                const defaultOwner = {
-                    id: 1,
-                    name: 'Default Owner',
-                    email: 'owner@example.com',
-                    phone: '(555) 123-4567',
-                    address: 'Address not specified',
-                    defaultPmPercentage: 15.00,
-                    techFeeEnabled: true,
-                    insuranceFeeEnabled: true,
-                    createdAt: new Date().toISOString()
-                };
+                console.warn('⚠️  No owners found in Hostify, returning only default option');
                 return [defaultOwner];
             }
             
-            console.log(`✅ Fetched ${owners.length} owners from Hostify`);
-            return owners;
+            console.log(`✅ Fetched ${owners.length} owners from Hostify, adding Default option`);
+            return [defaultOwner, ...owners];
         } catch (error) {
             console.error('❌ Failed to fetch owners from Hostify, falling back to cached file:', error.message);
             // Fallback to cached file if API fails

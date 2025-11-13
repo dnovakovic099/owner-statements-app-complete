@@ -1733,10 +1733,12 @@ router.get('/:id/view', async (req, res) => {
             </div>
             </div>
                 
+                ${statement.ownerId !== 'default' ? `
                 <div class="owner-info">
                     <div class="owner-name">${statement.ownerName}</div>
                     <div class="owner-email">owner@example.com | (555) 000-0000</div>
             </div>
+                ` : ''}
             </div>
         </div>
 
