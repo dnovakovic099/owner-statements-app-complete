@@ -65,6 +65,13 @@ router.get('/', async (req, res) => {
             statements = statements.filter(s => new Date(s.weekStartDate) <= new Date(endDate));
         }
 
+        // Sort by creation date (newest first)
+        statements.sort((a, b) => {
+            const dateA = new Date(a.createdAt || a.created_at || 0);
+            const dateB = new Date(b.createdAt || b.created_at || 0);
+            return dateB - dateA; // Descending order (newest first)
+        });
+
         // Apply pagination
         const total = statements.length;
         const paginatedStatements = statements.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
@@ -364,8 +371,8 @@ router.post('/generate', async (req, res) => {
                     
                     // Debug log for classification
                     console.log(`💰 Classifying expense:`, {
-                        description: exp.description,
-                        amount: exp.amount,
+                    description: exp.description,
+                    amount: exp.amount,
                         type: exp.type,
                         category: exp.category,
                         expenseType: exp.expenseType,
@@ -377,10 +384,10 @@ router.post('/generate', async (req, res) => {
                         type: isUpsell ? 'upsell' : 'expense',
                         description: exp.description,
                         amount: Math.abs(exp.amount), // Always store as positive, type determines if it's added or subtracted
-                        date: exp.date,
-                        category: exp.type || exp.category || 'expense',
-                        vendor: exp.vendor,
-                        listing: exp.listing
+                    date: exp.date,
+                    category: exp.type || exp.category || 'expense',
+                    vendor: exp.vendor,
+                    listing: exp.listing
                     };
                 })
             ]
@@ -2228,12 +2235,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                 const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                 return {
                                     type: isUpsell ? 'upsell' : 'expense',
-                                    description: exp.description,
+                                description: exp.description,
                                     amount: Math.abs(exp.amount),
-                                    date: exp.date,
-                                    category: exp.type || exp.category || 'expense',
-                                    vendor: exp.vendor,
-                                    listing: exp.listing
+                                date: exp.date,
+                                category: exp.type || exp.category || 'expense',
+                                vendor: exp.vendor,
+                                listing: exp.listing
                                 };
                             })
                         ]
@@ -2453,12 +2460,12 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                                 const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                 return {
                                     type: isUpsell ? 'upsell' : 'expense',
-                                    description: exp.description,
+                                description: exp.description,
                                     amount: Math.abs(exp.amount),
-                                    date: exp.date,
-                                    category: exp.type || exp.category || 'expense',
-                                    vendor: exp.vendor,
-                                    listing: exp.listing
+                                date: exp.date,
+                                category: exp.type || exp.category || 'expense',
+                                vendor: exp.vendor,
+                                listing: exp.listing
                                 };
                             })
                         ]
