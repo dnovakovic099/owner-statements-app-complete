@@ -25,6 +25,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
+  const [showCustomReservationForm, setShowCustomReservationForm] = useState(false);
+  const [customReservation, setCustomReservation] = useState({
+    guestName: '',
+    checkInDate: '',
+    checkOutDate: '',
+    amount: '',
+    nights: '',
+    description: ''
+  });
   const [error, setError] = useState<string | null>(null);
 
   const loadStatement = useCallback(async () => {
@@ -93,6 +102,63 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
         ? prev.filter(id => id !== reservationId)
         : [...prev, reservationId]
     );
+  };
+
+  const handleAddCustomReservation = async () => {
+    if (!statement) return;
+
+    // Validate required fields
+    if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.amount) {
+      alert('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, and Amount');
+      return;
+    }
+
+    const amount = parseFloat(customReservation.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    if (!window.confirm(`Add custom reservation for ${customReservation.guestName} with amount $${amount}?`)) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+      
+      await statementsAPI.editStatement(statement.id, {
+        customReservationToAdd: {
+          guestName: customReservation.guestName,
+          checkInDate: customReservation.checkInDate,
+          checkOutDate: customReservation.checkOutDate,
+          amount: amount,
+          nights: customReservation.nights ? parseInt(customReservation.nights) : undefined,
+          description: customReservation.description || undefined
+        }
+      });
+
+      alert('✅ Custom reservation added successfully');
+      
+      // Reset form
+      setCustomReservation({
+        guestName: '',
+        checkInDate: '',
+        checkOutDate: '',
+        amount: '',
+        nights: '',
+        description: ''
+      });
+      setShowCustomReservationForm(false);
+      
+      onStatementUpdated();
+      onClose();
+    } catch (err) {
+      setError('Failed to add custom reservation');
+      console.error('Failed to add custom reservation:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveChanges = async () => {
@@ -486,6 +552,135 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         })}
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* Custom Reservation Section */}
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">
+                    Custom Reservation
+                  </h3>
+                  {!showCustomReservationForm ? (
+                    <button
+                      onClick={() => setShowCustomReservationForm(true)}
+                      className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Custom Reservation
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setShowCustomReservationForm(false);
+                        setCustomReservation({
+                          guestName: '',
+                          checkInDate: '',
+                          checkOutDate: '',
+                          amount: '',
+                          nights: '',
+                          description: ''
+                        });
+                      }}
+                      className="text-gray-600 hover:text-gray-800"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                {showCustomReservationForm && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Guest Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={customReservation.guestName}
+                          onChange={(e) => setCustomReservation({...customReservation, guestName: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="John Doe"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Amount ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.amount}
+                          onChange={(e) => setCustomReservation({...customReservation, amount: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="500.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Check-in Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={customReservation.checkInDate}
+                          onChange={(e) => setCustomReservation({...customReservation, checkInDate: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Check-out Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={customReservation.checkOutDate}
+                          onChange={(e) => setCustomReservation({...customReservation, checkOutDate: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Nights (optional)
+                        </label>
+                        <input
+                          type="number"
+                          value={customReservation.nights}
+                          onChange={(e) => setCustomReservation({...customReservation, nights: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="3"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={customReservation.description}
+                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="Direct booking"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleAddCustomReservation}
+                        disabled={saving}
+                        className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {saving ? 'Adding...' : 'Add Reservation'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
