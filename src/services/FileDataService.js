@@ -411,27 +411,31 @@ class FileDataService {
             return { factor: 1, daysInPeriod: reservation.nights || 0, totalDays: reservation.nights || 1 };
         }
         
-        const arrivalDate = new Date(checkIn);
-        const departureDate = new Date(checkOut);
-        const periodStartDate = new Date(periodStart);
-        // Period end date is inclusive, so we need to add 1 day to include the last day
-        const periodEndDate = new Date(periodEnd);
-        periodEndDate.setDate(periodEndDate.getDate() + 1);
+        // Parse dates at noon UTC to avoid timezone issues
+        const arrivalDate = new Date(checkIn + 'T12:00:00Z');
+        const departureDate = new Date(checkOut + 'T12:00:00Z');
+        const periodStartDate = new Date(periodStart + 'T12:00:00Z');
+        const periodEndDate = new Date(periodEnd + 'T12:00:00Z');
+        
+        // For proration, period end is inclusive (the last night of the period)
+        // So we need to add 1 day to make the comparison work correctly
+        // E.g., period 10/1-10/31 means nights from 10/1 through 10/31
+        // Check-out on 11/1 means last night was 10/31, so it should be fully included
+        const periodEndInclusive = new Date(periodEndDate);
+        periodEndInclusive.setDate(periodEndInclusive.getDate() + 1);
         
         // Calculate the overlap between reservation and period
         // Check-in is inclusive (guest stays starting this night)
         // Check-out is exclusive (guest leaves this day, doesn't stay this night)
         // Period start is inclusive (first night of the period)
-        // Period end is inclusive (last night of the period, but we added 1 day above)
+        // Period end is inclusive (last night of the period)
         const overlapStart = new Date(Math.max(arrivalDate.getTime(), periodStartDate.getTime()));
-        const overlapEnd = new Date(Math.min(departureDate.getTime(), periodEndDate.getTime()));
+        const overlapEnd = new Date(Math.min(departureDate.getTime(), periodEndInclusive.getTime()));
         
         // Calculate nights (not calendar days)
-        // Total nights for the reservation
-        const totalNights = Math.ceil((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
-        
-        // Nights in the period (could be 0 if no overlap)
-        const nightsInPeriod = Math.max(0, Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)));
+        // Use Math.round to avoid floating point issues
+        const totalNights = Math.round((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
+        const nightsInPeriod = Math.max(0, Math.round((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)));
         
         // Ensure we don't divide by zero
         const safeTotalNights = Math.max(1, totalNights);
