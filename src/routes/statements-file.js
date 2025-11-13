@@ -637,24 +637,117 @@ router.put('/:id', async (req, res) => {
                     statement.reservations = [];
                 }
 
-                // Add the reservations to the statement
-                statement.reservations.push(...reservationsToAdd);
+                // Get existing reservation IDs to prevent duplicates
+                const existingResIds = new Set(
+                    statement.reservations.map(r => r.hostifyId || r.id)
+                );
 
-                // Add revenue items for these reservations
-                for (const reservation of reservationsToAdd) {
-                    const revenueItem = {
-                        type: 'revenue',
-                        description: `${reservation.guestName} - ${reservation.checkInDate} to ${reservation.checkOutDate}`,
-                        amount: reservation.grossAmount || reservation.clientRevenue || 0,
-                        date: reservation.checkOutDate,
-                        category: 'booking'
-                    };
-                    statement.items.push(revenueItem);
+                // Filter out reservations that are already in the statement
+                const newReservationsToAdd = reservationsToAdd.filter(res => {
+                    const resId = res.hostifyId || res.id;
+                    return !existingResIds.has(resId);
+                });
+
+                if (newReservationsToAdd.length > 0) {
+                    // Add the reservations to the statement
+                    statement.reservations.push(...newReservationsToAdd);
+
+                    // Add revenue items for these reservations
+                    for (const reservation of newReservationsToAdd) {
+                        const revenueItem = {
+                            type: 'revenue',
+                            description: `${reservation.guestName} - ${reservation.checkInDate} to ${reservation.checkOutDate}`,
+                            amount: reservation.grossAmount || reservation.clientRevenue || 0,
+                            date: reservation.checkOutDate,
+                            category: 'booking'
+                        };
+                        statement.items.push(revenueItem);
+                    }
+
+                    modified = true;
+                    console.log(`Added ${newReservationsToAdd.length} new reservations to statement ${id}`);
+                } else {
+                    console.log(`No new reservations to add (all ${reservationsToAdd.length} already exist in statement ${id})`);
                 }
-
-                modified = true;
-                console.log(`Added ${reservationsToAdd.length} reservations to statement ${id}`);
+            } else {
+                console.log(`No matching reservations found for IDs: ${reservationIdsToAdd.join(', ')}`);
             }
+        }
+
+        // Add custom reservation
+        if (customReservationToAdd && typeof customReservationToAdd === 'object') {
+            // Validate required fields
+            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'amount'];
+            const missingFields = requiredFields.filter(field => !customReservationToAdd[field]);
+            
+            if (missingFields.length > 0) {
+                return res.status(400).json({ 
+                    error: `Missing required fields for custom reservation: ${missingFields.join(', ')}` 
+                });
+            }
+
+            // Check for duplicate custom reservation (same guest, dates, and amount)
+            const isDuplicate = (statement.reservations || []).some(res => 
+                res.guestName === customReservationToAdd.guestName &&
+                res.checkInDate === customReservationToAdd.checkInDate &&
+                res.checkOutDate === customReservationToAdd.checkOutDate &&
+                res.grossAmount === parseFloat(customReservationToAdd.amount)
+            );
+
+            if (isDuplicate) {
+                return res.status(400).json({ 
+                    error: `Duplicate reservation: ${customReservationToAdd.guestName} (${customReservationToAdd.checkInDate} - ${customReservationToAdd.checkOutDate}) already exists in this statement` 
+                });
+            }
+
+            // Initialize reservations array if needed
+            if (!statement.reservations) {
+                statement.reservations = [];
+            }
+
+            // Create custom reservation object
+            const nights = parseInt(customReservationToAdd.nights) || 
+                Math.ceil((new Date(customReservationToAdd.checkOutDate) - new Date(customReservationToAdd.checkInDate)) / (1000 * 60 * 60 * 24));
+            
+            const customReservation = {
+                id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                guestName: customReservationToAdd.guestName,
+                guestEmail: '',
+                checkInDate: customReservationToAdd.checkInDate,
+                checkOutDate: customReservationToAdd.checkOutDate,
+                nights: nights,
+                grossAmount: parseFloat(customReservationToAdd.amount),
+                clientRevenue: parseFloat(customReservationToAdd.amount),
+                baseRate: parseFloat(customReservationToAdd.amount),
+                cleaningAndOtherFees: 0,
+                platformFees: 0,
+                luxuryLodgingFee: 0,
+                clientTaxResponsibility: 0,
+                clientPayout: parseFloat(customReservationToAdd.amount),
+                hostPayoutAmount: parseFloat(customReservationToAdd.amount),
+                status: 'confirmed',
+                source: 'custom',
+                description: customReservationToAdd.description || null,
+                isCustom: true,
+                isProrated: false,
+                weeklyPayoutDate: null,
+                hasDetailedFinance: false
+            };
+
+            statement.reservations.push(customReservation);
+
+            // Add revenue item for this custom reservation
+            const revenueItem = {
+                type: 'revenue',
+                description: `${customReservation.guestName}${customReservation.description ? ` - ${customReservation.description}` : ''} (${customReservation.checkInDate} to ${customReservation.checkOutDate})`,
+                amount: customReservation.grossAmount,
+                date: customReservation.checkOutDate,
+                category: 'custom-booking'
+            };
+            statement.items.push(revenueItem);
+
+            modified = true;
+            console.log(`Added custom reservation for ${customReservation.guestName} with amount $${customReservation.grossAmount}`);
         }
 
         // Add cancelled reservations (legacy support)
@@ -699,77 +792,34 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // Add custom reservation
-        if (customReservationToAdd && typeof customReservationToAdd === 'object') {
-            // Validate required fields
-            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'amount'];
-            const missingFields = requiredFields.filter(field => !customReservationToAdd[field]);
-            
-            if (missingFields.length > 0) {
-                return res.status(400).json({ 
-                    error: 'Missing required fields for custom reservation',
-                    missingFields 
-                });
-            }
-
-            // Initialize reservations array if it doesn't exist
-            if (!statement.reservations) {
-                statement.reservations = [];
-            }
-
-            // Create a custom reservation object
-            const customReservation = {
-                id: `custom-${Date.now()}`,
-                hostifyId: null,
-                hostawayId: null,
-                guestName: customReservationToAdd.guestName,
-                checkInDate: customReservationToAdd.checkInDate,
-                checkOutDate: customReservationToAdd.checkOutDate,
-                grossAmount: parseFloat(customReservationToAdd.amount),
-                clientRevenue: parseFloat(customReservationToAdd.amount),
-                nights: customReservationToAdd.nights || 1,
-                status: 'confirmed',
-                source: 'manual',
-                propertyId: statement.propertyId,
-                isCustom: true,
-                description: customReservationToAdd.description || null
-            };
-
-            // Add the custom reservation to the statement
-            statement.reservations.push(customReservation);
-
-            // Add revenue item for this custom reservation
-            const revenueItem = {
-                type: 'revenue',
-                description: `${customReservation.guestName}${customReservation.description ? ` - ${customReservation.description}` : ''} (${customReservation.checkInDate} to ${customReservation.checkOutDate})`,
-                amount: customReservation.grossAmount,
-                date: customReservation.checkOutDate,
-                category: 'custom-booking'
-            };
-            statement.items.push(revenueItem);
-
-            modified = true;
-            console.log(`Added custom reservation for ${customReservation.guestName} with amount $${customReservation.grossAmount}`);
-        }
-
         if (modified) {
-            // Recalculate totals after removing expenses
+            // Recalculate totals after modifications
             const expenses = statement.items.filter(item => item.type === 'expense');
             const revenues = statement.items.filter(item => item.type === 'revenue');
             
             statement.totalRevenue = revenues.reduce((sum, item) => sum + item.amount, 0);
             statement.totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
             
-            // Recalculate specific fee types
-            statement.pmCommission = expenses.filter(e => e.category === 'commission').reduce((sum, item) => sum + item.amount, 0);
-            statement.techFees = expenses.filter(e => e.description.includes('Technology')).reduce((sum, item) => sum + item.amount, 0);
-            statement.insuranceFees = expenses.filter(e => e.description.includes('Insurance')).reduce((sum, item) => sum + item.amount, 0);
+            // Recalculate PM Commission based on total revenue and percentage
+            // PM Commission is calculated from revenue, not from expense items
+            const pmPercentage = parseFloat(statement.pmPercentage || 10);
+            statement.pmCommission = Math.round((statement.totalRevenue * (pmPercentage / 100)) * 100) / 100;
+            
+            // Recalculate other fee types from expense items
+            statement.techFees = expenses.filter(e => e.description && e.description.includes('Technology')).reduce((sum, item) => sum + item.amount, 0);
+            statement.insuranceFees = expenses.filter(e => e.description && e.description.includes('Insurance')).reduce((sum, item) => sum + item.amount, 0);
             
             // Recalculate owner payout
-            statement.ownerPayout = statement.totalRevenue - statement.totalExpenses - statement.adjustments;
+            const adjustments = parseFloat(statement.adjustments || 0);
+            statement.ownerPayout = Math.round((statement.totalRevenue - statement.totalExpenses - statement.pmCommission - statement.techFees - statement.insuranceFees - adjustments) * 100) / 100;
 
-            // Update the statement to show it was modified
-            statement.status = 'modified';
+            // Update the statement status (only if not already sent)
+            if (statement.status !== 'sent') {
+                statement.status = 'modified';
+            }
+            
+            // Update timestamp
+            statement.updatedAt = new Date().toISOString();
             
             // Save updated statement
             await FileDataService.saveStatement(statement);
@@ -780,9 +830,14 @@ router.put('/:id', async (req, res) => {
                     id: statement.id,
                     totalRevenue: statement.totalRevenue,
                     totalExpenses: statement.totalExpenses,
+                    pmCommission: statement.pmCommission,
+                    techFees: statement.techFees,
+                    insuranceFees: statement.insuranceFees,
                     ownerPayout: statement.ownerPayout,
+                    status: statement.status,
                     itemsCount: statement.items.length,
-                    reservationsCount: statement.reservations?.length || 0
+                    reservationsCount: statement.reservations?.length || 0,
+                    updatedAt: statement.updatedAt
                 }
             });
         } else {
