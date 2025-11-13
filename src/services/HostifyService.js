@@ -55,7 +55,9 @@ class HostifyService {
             start_date: startDate,
             end_date: endDate,
             page,
-            per_page: perPage
+            per_page: perPage,
+            // Include all sources (Airbnb, VRBO, Booking.com, direct, etc.)
+            // If Hostify has a source filter, we want to exclude it to get all channels
         };
 
         // Add listing filter if specified
@@ -64,6 +66,7 @@ class HostifyService {
             console.log(`Property filter enabled for listing_id: ${listingId}`);
         }
 
+        console.log(`Hostify API params:`, JSON.stringify(params, null, 2));
         return await this.makeRequest('/reservations', params);
     }
 
