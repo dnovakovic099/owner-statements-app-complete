@@ -198,7 +198,7 @@ router.post('/generate', async (req, res) => {
             owner = owners[0]; // Default owner
         } else {
             // Generate consolidated statement for all owner's properties
-            owner = owners.find(o => o.id === parseInt(ownerId));
+            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId));
             if (!owner) {
                 return res.status(404).json({ error: 'Owner not found' });
             }
@@ -335,7 +335,7 @@ router.post('/generate', async (req, res) => {
         // Create statement object
         const statement = {
             id: newId,
-            ownerId: owner.id,
+            ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
             ownerName: owner.name,
             propertyId: propertyId ? parseInt(propertyId) : null,
             propertyName: propertyId ? targetListings[0].name : 'All Properties',
@@ -1729,7 +1729,7 @@ router.get('/:id/view', async (req, res) => {
             </div>
             </div>
                 
-                ${statement.ownerId !== 'default' ? `
+                ${statement.ownerId !== 1 && statement.ownerName !== 'Default' && statement.ownerName !== 'Default Owner' ? `
                 <div class="owner-info">
                     <div class="owner-name">${statement.ownerName}</div>
                     <div class="owner-email">owner@example.com | (555) 000-0000</div>
