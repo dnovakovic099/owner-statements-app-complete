@@ -2142,7 +2142,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         createdAt: new Date().toISOString(),
                         reservations: periodReservations,
                         expenses: periodExpenses,
-                        duplicateWarnings: expenses.duplicateWarnings || [],
+                        duplicateWarnings: [],
                         items: [
                             ...periodReservations.map(res => ({
                                 type: 'revenue',
@@ -2360,7 +2360,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         createdAt: new Date().toISOString(),
                         reservations: periodReservations,
                         expenses: periodExpenses,
-                        duplicateWarnings: expenses.duplicateWarnings || [],
+                        duplicateWarnings: [],
                         items: [
                             ...periodReservations.map(res => ({
                                 type: 'revenue',
