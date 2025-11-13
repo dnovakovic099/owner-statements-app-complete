@@ -10,19 +10,29 @@ class DatabaseService {
             if (statementData.id) {
                 const existing = await Statement.findByPk(statementData.id);
                 if (existing) {
+                    // Remove fields that Sequelize manages automatically
+                    const { createdAt, updatedAt, created_at, updated_at, ...dataToUpdate } = statementData;
+                    
                     // Update existing statement
-                    await existing.update(statementData);
-                    console.log(`✅ Updated statement ${statementData.id} in database`);
+                    // Sequelize will automatically update the updated_at timestamp
+                    await existing.update(dataToUpdate);
+                    
+                    // Reload to get the updated timestamp
+                    await existing.reload();
+                    
+                    console.log(`✅ Updated statement ${statementData.id} in database (updated_at: ${existing.updatedAt})`);
                     return existing.toJSON();
                 }
             }
             
             // Create new statement if it doesn't exist
-            const statement = await Statement.create(statementData);
+            const { createdAt, updatedAt, created_at, updated_at, ...dataToCreate } = statementData;
+            const statement = await Statement.create(dataToCreate);
             console.log(`✅ Created statement ${statement.id} in database`);
             return statement.toJSON();
         } catch (error) {
             console.error('Error saving statement to database:', error);
+            console.error('Statement data:', JSON.stringify(statementData, null, 2).substring(0, 500));
             throw error;
         }
     }

@@ -818,11 +818,11 @@ router.put('/:id', async (req, res) => {
                 statement.status = 'modified';
             }
             
-            // Update timestamp
-            statement.updatedAt = new Date().toISOString();
+            // Save updated statement (Sequelize will automatically update the timestamp)
+            const updatedStatement = await FileDataService.saveStatement(statement);
             
-            // Save updated statement
-            await FileDataService.saveStatement(statement);
+            // Use the updated statement data from database
+            statement.updatedAt = updatedStatement.updatedAt || updatedStatement.updated_at;
 
             res.json({ 
                 message: 'Statement updated successfully',
