@@ -122,6 +122,14 @@ export const statementsAPI = {
     cancelledReservationIdsToAdd?: number[];
     reservationIdsToAdd?: number[];
     reservationIdsToRemove?: number[];
+    customReservationToAdd?: {
+      guestName: string;
+      checkInDate: string;
+      checkOutDate: string;
+      amount: number;
+      nights?: number;
+      description?: string;
+    };
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;

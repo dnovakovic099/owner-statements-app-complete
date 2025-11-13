@@ -544,7 +544,7 @@ router.get('/:id/available-reservations', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -697,6 +697,59 @@ router.put('/:id', async (req, res) => {
                 modified = true;
                 console.log(`Added ${reservationsToAdd.length} cancelled reservations to statement ${id}`);
             }
+        }
+
+        // Add custom reservation
+        if (customReservationToAdd && typeof customReservationToAdd === 'object') {
+            // Validate required fields
+            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'amount'];
+            const missingFields = requiredFields.filter(field => !customReservationToAdd[field]);
+            
+            if (missingFields.length > 0) {
+                return res.status(400).json({ 
+                    error: 'Missing required fields for custom reservation',
+                    missingFields 
+                });
+            }
+
+            // Initialize reservations array if it doesn't exist
+            if (!statement.reservations) {
+                statement.reservations = [];
+            }
+
+            // Create a custom reservation object
+            const customReservation = {
+                id: `custom-${Date.now()}`,
+                hostifyId: null,
+                hostawayId: null,
+                guestName: customReservationToAdd.guestName,
+                checkInDate: customReservationToAdd.checkInDate,
+                checkOutDate: customReservationToAdd.checkOutDate,
+                grossAmount: parseFloat(customReservationToAdd.amount),
+                clientRevenue: parseFloat(customReservationToAdd.amount),
+                nights: customReservationToAdd.nights || 1,
+                status: 'confirmed',
+                source: 'manual',
+                propertyId: statement.propertyId,
+                isCustom: true,
+                description: customReservationToAdd.description || null
+            };
+
+            // Add the custom reservation to the statement
+            statement.reservations.push(customReservation);
+
+            // Add revenue item for this custom reservation
+            const revenueItem = {
+                type: 'revenue',
+                description: `${customReservation.guestName}${customReservation.description ? ` - ${customReservation.description}` : ''} (${customReservation.checkInDate} to ${customReservation.checkOutDate})`,
+                amount: customReservation.grossAmount,
+                date: customReservation.checkOutDate,
+                category: 'custom-booking'
+            };
+            statement.items.push(revenueItem);
+
+            modified = true;
+            console.log(`Added custom reservation for ${customReservation.guestName} with amount $${customReservation.grossAmount}`);
         }
 
         if (modified) {
