@@ -487,11 +487,64 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
     }
 });
 
+// GET /api/statements-file/:id/available-reservations - Get all available reservations for a statement period
+router.get('/:id/available-reservations', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const statement = await FileDataService.getStatementById(id);
+        
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Get the appropriate service based on what's being used
+        const hostifyService = require('../services/HostifyService');
+        
+        console.log(`Fetching all reservations for property ${statement.propertyId}, period ${statement.weekStartDate} to ${statement.weekEndDate}, calculationType: ${statement.calculationType || 'checkout'}`);
+        
+        // Get all reservations for this property and period
+        const reservations = await FileDataService.getReservations(
+            statement.weekStartDate,
+            statement.weekEndDate,
+            statement.propertyId,
+            statement.calculationType || 'checkout'
+        );
+        
+        console.log(`Got ${reservations.length} total reservations from service`);
+        
+        // Separate into included and available
+        const includedReservationIds = new Set(
+            (statement.reservations || []).map(r => r.hostifyId || r.id)
+        );
+        
+        const availableReservations = reservations.filter(res => {
+            const resId = res.hostifyId || res.id;
+            return !includedReservationIds.has(resId);
+        });
+        
+        console.log(`${availableReservations.length} available reservations not yet in statement`);
+
+        res.json({ 
+            availableReservations,
+            count: availableReservations.length,
+            statementPeriod: {
+                start: statement.weekStartDate,
+                end: statement.weekEndDate,
+                propertyId: statement.propertyId,
+                calculationType: statement.calculationType || 'checkout'
+            }
+        });
+    } catch (error) {
+        console.error('Get available reservations error:', error);
+        res.status(500).json({ error: 'Failed to get available reservations' });
+    }
+});
+
 // PUT /api/statements-file/:id - Edit statement (remove expenses, add cancelled reservations, etc.)
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -519,13 +572,92 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // Add cancelled reservations
-        if (cancelledReservationIdsToAdd && Array.isArray(cancelledReservationIdsToAdd) && cancelledReservationIdsToAdd.length > 0) {
-            // Get all reservations to find the cancelled ones
-            const allReservations = await FileDataService.getReservations();
-            const reservationsToAdd = allReservations.filter(res => 
-                cancelledReservationIdsToAdd.includes(res.id) && res.status === 'cancelled'
+        // Remove reservations
+        if (reservationIdsToRemove && Array.isArray(reservationIdsToRemove) && reservationIdsToRemove.length > 0) {
+            const originalReservationsCount = (statement.reservations || []).length;
+            
+            // Remove reservations from the reservations array
+            statement.reservations = (statement.reservations || []).filter(res => {
+                const resId = res.hostifyId || res.id;
+                return !reservationIdsToRemove.includes(resId);
+            });
+            
+            // Also remove corresponding revenue items
+            statement.items = statement.items.filter(item => {
+                if (item.type !== 'revenue') return true;
+                
+                // Check if this revenue item corresponds to a removed reservation
+                // Match by guest name and dates in the description
+                for (const removedId of reservationIdsToRemove) {
+                    const removedRes = statement.reservations?.find(r => (r.hostifyId || r.id) === removedId);
+                    if (removedRes && item.description.includes(removedRes.guestName)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+            
+            if (statement.reservations.length < originalReservationsCount) {
+                modified = true;
+                console.log(`Removed ${originalReservationsCount - statement.reservations.length} reservations from statement ${id}`);
+            }
+        }
+
+        // Add regular reservations
+        if (reservationIdsToAdd && Array.isArray(reservationIdsToAdd) && reservationIdsToAdd.length > 0) {
+            // Get all reservations for this statement's period to find the ones to add
+            const allReservations = await FileDataService.getReservations(
+                statement.weekStartDate,
+                statement.weekEndDate,
+                statement.propertyId,
+                statement.calculationType || 'checkout'
             );
+            
+            const reservationsToAdd = allReservations.filter(res => {
+                const resId = res.hostifyId || res.id;
+                return reservationIdsToAdd.includes(resId);
+            });
+
+            if (reservationsToAdd.length > 0) {
+                // Initialize reservations array if it doesn't exist
+                if (!statement.reservations) {
+                    statement.reservations = [];
+                }
+
+                // Add the reservations to the statement
+                statement.reservations.push(...reservationsToAdd);
+
+                // Add revenue items for these reservations
+                for (const reservation of reservationsToAdd) {
+                    const revenueItem = {
+                        type: 'revenue',
+                        description: `${reservation.guestName} - ${reservation.checkInDate} to ${reservation.checkOutDate}`,
+                        amount: reservation.grossAmount || reservation.clientRevenue || 0,
+                        date: reservation.checkOutDate,
+                        category: 'booking'
+                    };
+                    statement.items.push(revenueItem);
+                }
+
+                modified = true;
+                console.log(`Added ${reservationsToAdd.length} reservations to statement ${id}`);
+            }
+        }
+
+        // Add cancelled reservations (legacy support)
+        if (cancelledReservationIdsToAdd && Array.isArray(cancelledReservationIdsToAdd) && cancelledReservationIdsToAdd.length > 0) {
+            // Get all reservations for this statement's period
+            const allReservations = await FileDataService.getReservations(
+                statement.weekStartDate,
+                statement.weekEndDate,
+                statement.propertyId,
+                statement.calculationType || 'checkout'
+            );
+            
+            const reservationsToAdd = allReservations.filter(res => {
+                const resId = res.hostifyId || res.id;
+                return cancelledReservationIdsToAdd.includes(resId) && res.status === 'cancelled';
+            });
 
             if (reservationsToAdd.length > 0) {
                 // Initialize reservations array if it doesn't exist

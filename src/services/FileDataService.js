@@ -353,28 +353,37 @@ class FileDataService {
         const arrivalDate = new Date(checkIn);
         const departureDate = new Date(checkOut);
         const periodStartDate = new Date(periodStart);
+        // Period end date is inclusive, so we need to add 1 day to include the last day
         const periodEndDate = new Date(periodEnd);
+        periodEndDate.setDate(periodEndDate.getDate() + 1);
         
         // Calculate the overlap between reservation and period
+        // Check-in is inclusive (guest stays starting this night)
+        // Check-out is exclusive (guest leaves this day, doesn't stay this night)
+        // Period start is inclusive (first night of the period)
+        // Period end is inclusive (last night of the period, but we added 1 day above)
         const overlapStart = new Date(Math.max(arrivalDate.getTime(), periodStartDate.getTime()));
         const overlapEnd = new Date(Math.min(departureDate.getTime(), periodEndDate.getTime()));
         
-        // Calculate days (nights stayed, not calendar days)
-        const totalDays = Math.ceil((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
-        const daysInPeriod = Math.max(0, Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)));
+        // Calculate nights (not calendar days)
+        // Total nights for the reservation
+        const totalNights = Math.ceil((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
+        
+        // Nights in the period (could be 0 if no overlap)
+        const nightsInPeriod = Math.max(0, Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)));
         
         // Ensure we don't divide by zero
-        const safeTotalDays = Math.max(1, totalDays);
-        const safeDaysInPeriod = Math.max(0, daysInPeriod);
+        const safeTotalNights = Math.max(1, totalNights);
+        const safeNightsInPeriod = Math.max(0, nightsInPeriod);
         
-        const factor = safeDaysInPeriod / safeTotalDays;
+        const factor = safeNightsInPeriod / safeTotalNights;
         
-        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId}: ${checkIn} to ${checkOut} - ${safeDaysInPeriod}/${safeTotalDays} days (${(factor * 100).toFixed(1)}%) overlap with period ${periodStart} to ${periodEnd}`);
+        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId}: ${checkIn} to ${checkOut} - ${safeNightsInPeriod}/${safeTotalNights} nights (${(factor * 100).toFixed(1)}%) overlap with period ${periodStart} to ${periodEnd}`);
         
         return {
             factor: factor,
-            daysInPeriod: safeDaysInPeriod,
-            totalDays: safeTotalDays
+            daysInPeriod: safeNightsInPeriod,
+            totalDays: safeTotalNights
         };
     }
 
