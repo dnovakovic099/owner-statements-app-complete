@@ -90,6 +90,12 @@ const Statement = sequelize.define('Statement', {
         defaultValue: 0,
         field: 'owner_payout'
     },
+    isCohostOnAirbnb: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'is_cohost_on_airbnb'
+    },
     status: {
         type: DataTypes.STRING,
         allowNull: false,
