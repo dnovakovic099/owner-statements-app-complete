@@ -2049,9 +2049,20 @@ router.get('/:id/download', async (req, res) => {
         // Generate PDF
         const pdfBuffer = await htmlPdf.generatePdf(file, options);
         
+        // Create filename with property name and date
+        const propertyName = (statement.propertyName || `Property-${statement.propertyId}`)
+            .replace(/[^a-zA-Z0-9-_]/g, '-') // Replace special chars with dash
+            .replace(/-+/g, '-') // Replace multiple dashes with single dash
+            .replace(/^-|-$/g, ''); // Remove leading/trailing dashes
+        
+        const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
+        const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
+        
+        const filename = `${propertyName}_${startDate}_to_${endDate}.pdf`;
+        
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="statement-${id}.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdfBuffer.length);
         
         // Send PDF buffer
