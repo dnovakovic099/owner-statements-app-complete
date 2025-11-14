@@ -216,6 +216,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       } else if (action === 'edit') {
         setEditingStatementId(id);
         setIsEditModalOpen(true);
+      } else if (action === 'refresh') {
+        if (!window.confirm('🔄 Regenerate this statement with the latest data? This will replace the existing statement.')) {
+          return;
+        }
+        // Find the statement to get its parameters
+        const statement = statements.find(s => s.id === id);
+        if (!statement) {
+          alert('❌ Statement not found');
+          return;
+        }
+        
+        // Delete the old statement first
+        await statementsAPI.deleteStatement(id);
+        
+        // Regenerate with the same parameters
+        await handleGenerateStatement({
+          ownerId: statement.ownerId.toString(),
+          propertyId: statement.propertyId?.toString() || '',
+          startDate: statement.weekStartDate,
+          endDate: statement.weekEndDate,
+          calculationType: statement.calculationType || 'checkout'
+        });
+        
+        alert('✅ Statement regenerated successfully');
       } else if (action === 'delete') {
         if (!window.confirm('⚠️ Are you sure you want to delete this statement? This action cannot be undone.')) {
           return;

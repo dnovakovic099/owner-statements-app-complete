@@ -242,6 +242,8 @@ router.post('/generate', async (req, res) => {
                 const checkoutDate = new Date(res.checkOutDate);
                 dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                 
+                console.log(`Checking reservation ${res.guestName}: checkout=${res.checkOutDate}, checkoutDate=${checkoutDate.toISOString()}, periodStart=${periodStart.toISOString()}, periodEnd=${periodEnd.toISOString()}, match=${dateMatch}`);
+                
                 if (!dateMatch) {
                     console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
                     return false;
