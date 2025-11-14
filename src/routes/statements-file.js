@@ -608,12 +608,12 @@ router.put('/:id', async (req, res) => {
                 for (const removedId of reservationIdsToRemove) {
                     const removedRes = statement.reservations?.find(r => (r.hostifyId || r.id) === removedId);
                     if (removedRes && item.description.includes(removedRes.guestName)) {
-                        return false;
+                    return false;
                     }
                 }
                 return true;
             });
-            
+
             if (statement.reservations.length < originalReservationsCount) {
                 modified = true;
                 console.log(`Removed ${originalReservationsCount - statement.reservations.length} reservations from statement ${id}`);
@@ -2931,7 +2931,12 @@ function generateStatementHTML(statement, id) {
                     // PM Commission is always calculated based on statement's pmPercentage (from property's PM fee in database)
                     const luxuryFee = reservation.grossAmount * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
-                    const clientPayout = reservation.hasDetailedFinance ? reservation.clientPayout : (clientRevenue - luxuryFee - taxResponsibility);
+                    
+                    // For non-Airbnb bookings, add tax to gross payout (client collects and remits taxes)
+                    // For Airbnb bookings, don't add tax (Airbnb handles taxes)
+                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                    const taxToAdd = isAirbnb ? 0 : taxResponsibility;
+                    const clientPayout = clientRevenue - luxuryFee + taxToAdd;
                     
                     return `
                     <tr>
@@ -2956,8 +2961,8 @@ function generateStatementHTML(statement, id) {
                         <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="amount-cell expense-amount">-$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="amount-cell payout-amount">$${(clientRevenue - luxuryFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="amount-cell ${isAirbnb ? 'expense-amount' : 'revenue-amount'}">${isAirbnb ? '-' : '+'}$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="amount-cell payout-amount">$${clientPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
                 }).join('') || '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #666;">No reservations for this period</td></tr>'}
@@ -2972,7 +2977,13 @@ function generateStatementHTML(statement, id) {
                     <td class="amount-cell payout-cell"><strong>$${(() => {
                         const totalRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const totalPmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        return (totalRevenue - totalPmCommission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        // Add tax for non-Airbnb bookings only
+                        const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
+                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                            const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                            return sum + (isAirbnb ? 0 : taxAmount);
+                        }, 0) || 0;
+                        return (totalRevenue - totalPmCommission + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
                 </tr>
             </tbody>
@@ -3028,6 +3039,44 @@ function generateStatementHTML(statement, id) {
             </table>
         </div>
 
+        <!-- Additional Revenue Section (Upsells) -->
+        ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+        <div style="margin-top: 30px;">
+            <h3 style="color: var(--luxury-navy); font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; border-bottom: 3px solid var(--luxury-gold); padding-bottom: 10px;">ADDITIONAL REVENUE</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">DATE</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">DESCRIPTION</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">PROPERTY</th>
+                        <th style="padding: 14px 12px; text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">CATEGORY</th>
+                        <th style="padding: 14px 12px; text-align: right; font-weight: 600; font-size: 10px; letter-spacing: 0.5px;">AMOUNT</th>
+                </tr>
+                </thead>
+                <tbody>
+                    ${statement.items?.filter(item => item.type === 'upsell').map(upsell => `
+                        <tr style="background-color: white; transition: background-color 0.2s;">
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: 500; font-size: 10px; color: #374151;">
+                                ${(() => {
+                                    const [year, month, day] = upsell.date.split('-').map(Number);
+                                    return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                                })()}
+                            </td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 10px; line-height: 1.4; color: #1f2937; font-weight: 500;">${upsell.description}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 9px;">${upsell.listing || '-'}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-transform: capitalize; color: #6b7280; font-size: 10px;">${upsell.category}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 700; font-size: 11px; color: #059669;">+$${upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+                    `).join('')}
+                    <tr style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); color: white;">
+                        <td colspan="4" style="padding: 16px 12px; font-weight: 700; border: none; font-size: 11px; letter-spacing: 0.5px;"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td style="padding: 16px 12px; text-align: right; font-weight: 700; border: none; font-size: 12px;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        ` : ''}
+
         <!-- Summary Section -->
         <div class="summary-box" style="margin-top: 40px; background: linear-gradient(135deg, #f8fafc 0%, #e5e7eb 100%); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
             <h3 style="color: var(--luxury-navy); font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; border-bottom: 3px solid var(--luxury-gold); padding-bottom: 10px;">STATEMENT SUMMARY</h3>
@@ -3037,7 +3086,13 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        // Add tax for non-Airbnb bookings only
+                        const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
+                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                            const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                            return sum + (isAirbnb ? 0 : taxAmount);
+                        }, 0) || 0;
+                        return (clientRevenue - Math.abs(pmCommission) + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</td>
                 </tr>
                 ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
@@ -3055,8 +3110,14 @@ function generateStatementHTML(statement, id) {
                     <td style="padding: 20px; text-align: right; font-weight: 700; font-size: 16px;"><strong>$${(() => {
                         const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
                         const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
+                        // Add tax for non-Airbnb bookings only
+                        const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
+                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                            const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                            return sum + (isAirbnb ? 0 : taxAmount);
+                        }, 0) || 0;
                         const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-                        const grossPayout = clientRevenue - Math.abs(pmCommission) + upsells;
+                        const grossPayout = clientRevenue - Math.abs(pmCommission) + totalTaxToAdd + upsells;
                         const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
                         return (grossPayout - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
