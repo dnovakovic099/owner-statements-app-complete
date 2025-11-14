@@ -1951,11 +1951,7 @@ router.get('/:id/view', async (req, res) => {
                         <table class="summary-table">
                             <tr>
                                 <td class="summary-label">Gross Payout</td>
-                                <td class="summary-value revenue">$${(() => {
-                                    const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
-                                    const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                                    return (clientRevenue - Math.abs(pmCommission)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                })()}</td>
+                                <td class="summary-value ${statement.ownerPayout >= 0 ? 'revenue' : 'expense'}">${statement.ownerPayout >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
                             <tr>
@@ -3110,17 +3106,7 @@ function generateStatementHTML(statement, id) {
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
                 <tr style="border-bottom: 1px solid #e5e7eb;">
                     <td style="padding: 16px 20px; font-weight: 600; color: #1f2937; font-size: 12px;">Gross Payout</td>
-                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: #059669; font-size: 13px;">$${(() => {
-                        const clientRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
-                        const pmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
-                        // Add tax for non-Airbnb bookings only
-                        const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
-                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                            const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                            return sum + (isAirbnb ? 0 : taxAmount);
-                        }, 0) || 0;
-                        return (clientRevenue - Math.abs(pmCommission) + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    })()}</td>
+                    <td style="padding: 16px 20px; text-align: right; font-weight: 700; color: ${statement.ownerPayout >= 0 ? '#059669' : '#dc2626'}; font-size: 13px;">${statement.ownerPayout >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
                 <tr style="border-bottom: 1px solid #e5e7eb;">
