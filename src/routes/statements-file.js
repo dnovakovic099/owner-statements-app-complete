@@ -242,8 +242,6 @@ router.post('/generate', async (req, res) => {
                 const checkoutDate = new Date(res.checkOutDate);
                 dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                 
-                console.log(`Checking reservation ${res.guestName}: checkout=${res.checkOutDate}, checkoutDate=${checkoutDate.toISOString()}, periodStart=${periodStart.toISOString()}, periodEnd=${periodEnd.toISOString()}, match=${dateMatch}`);
-                
                 if (!dateMatch) {
                     console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
                     return false;
@@ -1792,8 +1790,9 @@ router.get('/:id/view', async (req, res) => {
                                 const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
                                 const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                                 const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                                // PM Commission is always calculated based on statement's pmPercentage (from property's PM fee in database)
-                                const luxuryFee = reservation.grossAmount * (statement.pmPercentage / 100);
+                                // PM Commission is calculated based on clientRevenue (which accounts for proration)
+                                // This ensures prorated reservations have prorated PM commission
+                                const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
                                 const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                                 
                                 // For co-hosted Airbnb: Gross Payout is negative PM commission only (client already got the money)
@@ -1842,16 +1841,20 @@ router.get('/:id/view', async (req, res) => {
                                     const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
                                     return sum + clientRevenue;
                                 }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => {
+                                    const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                                    return sum + (clientRevenue * (statement.pmPercentage / 100));
+                                }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell payout-cell"><strong>${(() => {
                                     // Calculate total gross payout by summing individual row payouts
                                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const luxuryFee = res.grossAmount * (statement.pmPercentage / 100);
-                                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
+                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
                                         return sum + grossPayout;
                                     }, 0) || 0;
                                     return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2003,9 +2006,10 @@ router.get('/:id/view', async (req, res) => {
                                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const luxuryFee = res.grossAmount * (statement.pmPercentage / 100);
-                                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
+                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
                                         return sum + grossPayout;
                                     }, 0) || 0;
                                     return totalGrossPayout >= 0 ? 'revenue' : 'expense';
@@ -2013,9 +2017,10 @@ router.get('/:id/view', async (req, res) => {
                                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const luxuryFee = res.grossAmount * (statement.pmPercentage / 100);
-                                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
+                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
                                         return sum + grossPayout;
                                     }, 0) || 0;
                                     return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2037,9 +2042,10 @@ router.get('/:id/view', async (req, res) => {
                                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const luxuryFee = res.grossAmount * (statement.pmPercentage / 100);
-                                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
+                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
                                         return sum + grossPayout;
                                     }, 0) || 0;
                                     const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
@@ -3033,20 +3039,29 @@ function generateStatementHTML(statement, id) {
             </thead>
             <tbody>
                 ${statement.reservations?.map(reservation => {
+                    // Check if this is an Airbnb reservation on a co-hosted property
+                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                    const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+                    
                     // Use detailed financial data if available, otherwise fall back to calculated values
                     const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
                     const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
                     const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                     const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                    // PM Commission is always calculated based on statement's pmPercentage (from property's PM fee in database)
-                    const luxuryFee = reservation.grossAmount * (statement.pmPercentage / 100);
+                    // PM Commission is calculated based on clientRevenue (which accounts for proration)
+                    const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                     
                     // For non-Airbnb bookings, add tax to gross payout (client collects and remits taxes)
                     // For Airbnb bookings, don't add tax (Airbnb handles taxes)
-                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
                     const taxToAdd = isAirbnb ? 0 : taxResponsibility;
-                    const clientPayout = clientRevenue - luxuryFee + taxToAdd;
+                    
+                    // For co-hosted Airbnb: Gross Payout is negative PM commission only
+                    // For others: Normal calculation
+                    const grossPayout = isCohostAirbnb 
+                        ? -luxuryFee 
+                        : (clientRevenue - luxuryFee);
+                    const clientPayout = grossPayout + taxToAdd;
                     
                     return `
                     <tr>
@@ -3082,11 +3097,17 @@ function generateStatementHTML(statement, id) {
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                    <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => {
+                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                        return sum + (clientRevenue * (statement.pmPercentage / 100));
+                    }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell payout-cell"><strong>$${(() => {
                         const totalRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
-                        const totalPmCommission = statement.reservations?.reduce((sum, res) => sum + (res.grossAmount * (statement.pmPercentage / 100)), 0) || 0;
+                        const totalPmCommission = statement.reservations?.reduce((sum, res) => {
+                            const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                            return sum + (clientRevenue * (statement.pmPercentage / 100));
+                        }, 0) || 0;
                         // Add tax for non-Airbnb bookings only
                         const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
                             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
