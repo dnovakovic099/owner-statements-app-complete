@@ -281,8 +281,28 @@ router.post('/generate', async (req, res) => {
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
 
-        // Calculate totals
-        const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
+        // Check if this is a co-host on Airbnb property (need this early for revenue calculation)
+        let isCohostOnAirbnb = false;
+        let listingInfo = null;
+        if (propertyId) {
+            listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
+            isCohostOnAirbnb = listingInfo?.isCohostOnAirbnb || false;
+        }
+
+        // Calculate totals - exclude Airbnb revenue if co-host is enabled
+        const totalRevenue = periodReservations.reduce((sum, res) => {
+            // Check if this is an Airbnb reservation
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            
+            // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
+            if (isAirbnb && isCohostOnAirbnb) {
+                console.log(`Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
+                return sum;
+            }
+            
+            return sum + (res.grossAmount || 0);
+        }, 0);
+        
         // Separate expenses (negative/costs) from upsells (positive/revenue)
         const totalExpenses = periodExpenses.reduce((sum, exp) => {
             const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
@@ -290,14 +310,14 @@ router.post('/generate', async (req, res) => {
         }, 0);
         
         // Calculate PM commission: For multi-property statements, calculate per-reservation based on property PM fee
+        // For co-hosted properties, only calculate PM commission on non-Airbnb reservations
         let pmCommission = 0;
         let pmPercentage = 15; // For display purposes
         
         if (propertyId) {
-            // Single property - use its PM fee for all revenue
-            const listing = await ListingService.getListingWithPmFee(parseInt(propertyId));
-            if (listing && listing.pmFeePercentage !== null) {
-                pmPercentage = listing.pmFeePercentage;
+            // Single property - use its PM fee for revenue (excluding co-hosted Airbnb)
+            if (listingInfo && listingInfo.pmFeePercentage !== null) {
+                pmPercentage = listingInfo.pmFeePercentage;
                 console.log(`Using PM fee from database for listing ${propertyId}: ${pmPercentage}%`);
             } else {
                 console.log(`No PM fee found for listing ${propertyId}, using default: ${pmPercentage}%`);
@@ -307,12 +327,25 @@ router.post('/generate', async (req, res) => {
             // Multi-property statement - calculate PM commission per reservation
             console.log(`Calculating PM commission per-reservation for ${periodReservations.length} reservations...`);
             const propertyPmFees = {}; // Cache PM fees to avoid repeated DB calls
+            const propertyListings = {}; // Cache listing info
             
             for (const res of periodReservations) {
                 if (!propertyPmFees[res.propertyId]) {
                     const listing = await ListingService.getListingWithPmFee(res.propertyId);
                     propertyPmFees[res.propertyId] = listing?.pmFeePercentage ?? 15;
+                    propertyListings[res.propertyId] = listing;
                 }
+                
+                // Check if this is Airbnb and co-hosted
+                const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                const isCohostForProperty = propertyListings[res.propertyId]?.isCohostOnAirbnb || false;
+                
+                // Skip PM commission for co-hosted Airbnb reservations
+                if (isAirbnb && isCohostForProperty) {
+                    console.log(`  Property ${res.propertyId}: Airbnb co-host - no PM commission on this reservation`);
+                    continue;
+                }
+                
                 const resPmFee = propertyPmFees[res.propertyId];
                 const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
                 pmCommission += resCommission;
@@ -329,18 +362,8 @@ router.post('/generate', async (req, res) => {
         const techFees = propertyCount * 50; // $50 per property
         const insuranceFees = propertyCount * 25; // $25 per property
         
-        // Check if this is a co-host on Airbnb property
-        let isCohostOnAirbnb = false;
-        if (propertyId) {
-            const listing = await ListingService.getListingWithPmFee(parseInt(propertyId));
-            isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
-        }
-        
-        // For co-host properties, gross payout is just negative PM commission
-        // (client already received all Airbnb revenue directly)
-        const ownerPayout = isCohostOnAirbnb 
-            ? -pmCommission 
-            : totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+        // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
+        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
         // Generate unique ID
         const existingStatements = await FileDataService.getStatements();
@@ -2173,8 +2196,24 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         continue;
                     }
 
-                    // Calculate totals
-                    const totalRevenue = periodReservations.reduce((sum, res) => sum + (res.grossAmount || 0), 0);
+                    // Get listing info (needed early for co-host check)
+                    const listing = await ListingService.getListingWithPmFee(property.id);
+                    const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    
+                    // Calculate totals - exclude Airbnb revenue if co-host is enabled
+                    const totalRevenue = periodReservations.reduce((sum, res) => {
+                        // Check if this is an Airbnb reservation
+                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                        
+                        // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
+                        if (isAirbnb && isCohostOnAirbnb) {
+                            console.log(`   Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
+                            return sum;
+                        }
+                        
+                        return sum + (res.grossAmount || 0);
+                    }, 0);
+                    
                     // Separate expenses (negative/costs) from upsells (positive/revenue)
                     const totalExpenses = periodExpenses.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
@@ -2183,20 +2222,17 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     
                     // Get PM percentage from listing database (property-specific)
                     let pmPercentage = 15; // Default fallback
-                    const listing = await ListingService.getListingWithPmFee(property.id);
                     if (listing && listing.pmFeePercentage !== null) {
                         pmPercentage = listing.pmFeePercentage;
                     }
                     
+                    // Calculate PM commission (only on non-Airbnb revenue for co-hosted properties)
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50;
                     const insuranceFees = 25;
                     
-                    // For co-host properties, gross payout is just negative PM commission
-                    const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
-                    const ownerPayout = isCohostOnAirbnb 
-                        ? -pmCommission 
-                        : totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+                    // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
+                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
                     const existingStatements = await FileDataService.getStatements();
                     const newId = FileDataService.generateId(existingStatements);
