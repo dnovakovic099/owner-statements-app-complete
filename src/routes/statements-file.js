@@ -571,26 +571,12 @@ router.put('/:id', async (req, res) => {
 
         let modified = false;
 
-        // Remove expenses by index or identifier
+        // Remove expenses and upsells by global index
         if (expenseIdsToRemove && Array.isArray(expenseIdsToRemove) && expenseIdsToRemove.length > 0) {
             const originalItemsCount = statement.items.length;
             
-            // Get all expense items with their indices in the expenses-only array
-            const expenses = [];
-            statement.items.forEach((item, globalIndex) => {
-                if (item.type === 'expense') {
-                    expenses.push({ item, globalIndex, expenseIndex: expenses.length });
-                }
-            });
-            
-            // Build a set of global indices to remove
-            const globalIndicesToRemove = new Set();
-            expenseIdsToRemove.forEach(expenseIndex => {
-                const expense = expenses.find(e => e.expenseIndex === expenseIndex);
-                if (expense) {
-                    globalIndicesToRemove.add(expense.globalIndex);
-                }
-            });
+            // The frontend now sends global indices directly
+            const globalIndicesToRemove = new Set(expenseIdsToRemove);
             
             // Filter out items at those global indices
             statement.items = statement.items.filter((item, globalIndex) => {
@@ -599,7 +585,7 @@ router.put('/:id', async (req, res) => {
 
             if (statement.items.length < originalItemsCount) {
                 modified = true;
-                console.log(`Removed ${originalItemsCount - statement.items.length} expenses from statement ${id}`);
+                console.log(`Removed ${originalItemsCount - statement.items.length} items (expenses/upsells) from statement ${id}`);
             }
         }
 
