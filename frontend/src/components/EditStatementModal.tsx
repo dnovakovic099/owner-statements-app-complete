@@ -20,12 +20,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedExpenseIndices, setSelectedExpenseIndices] = useState<number[]>([]);
+  const [selectedUpsellIndices, setSelectedUpsellIndices] = useState<number[]>([]);
   const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
   const [selectedReservationIdsToAdd, setSelectedReservationIdsToAdd] = useState<number[]>([]);
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
   const [showCustomReservationForm, setShowCustomReservationForm] = useState(false);
+  const [showCustomExpenseForm, setShowCustomExpenseForm] = useState(false);
+  const [showCustomUpsellForm, setShowCustomUpsellForm] = useState(false);
   const [customReservation, setCustomReservation] = useState({
     guestName: '',
     checkInDate: '',
@@ -33,6 +36,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     amount: '',
     nights: '',
     description: ''
+  });
+  const [customExpense, setCustomExpense] = useState({
+    description: '',
+    amount: '',
+    date: '',
+    category: 'expense'
+  });
+  const [customUpsell, setCustomUpsell] = useState({
+    description: '',
+    amount: '',
+    date: '',
+    category: 'upsell'
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -45,10 +60,13 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       const response = await statementsAPI.getStatement(statementId);
       setStatement(response);
       setSelectedExpenseIndices([]);
+      setSelectedUpsellIndices([]);
       setSelectedReservationIdsToRemove([]);
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
       setShowAvailableSection(false);
+      setShowCustomExpenseForm(false);
+      setShowCustomUpsellForm(false);
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -82,6 +100,14 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   const handleExpenseToggle = (index: number) => {
     setSelectedExpenseIndices(prev => 
+      prev.includes(index) 
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handleUpsellToggle = (index: number) => {
+    setSelectedUpsellIndices(prev => 
       prev.includes(index) 
         ? prev.filter(i => i !== index)
         : [...prev, index]
@@ -162,13 +188,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleSaveChanges = async () => {
-    if (!statement || (selectedExpenseIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0)) {
+    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0)) {
       return;
     }
 
     const actions = [];
     if (selectedExpenseIndices.length > 0) {
       actions.push(`remove ${selectedExpenseIndices.length} expense(s)`);
+    }
+    if (selectedUpsellIndices.length > 0) {
+      actions.push(`remove ${selectedUpsellIndices.length} upsell(s)`);
     }
     if (selectedReservationIdsToRemove.length > 0) {
       actions.push(`remove ${selectedReservationIdsToRemove.length} reservation(s)`);
@@ -187,8 +216,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSaving(true);
       setError(null);
       
+      // Combine expense and upsell indices for removal
+      const allItemIndicesToRemove = [...selectedExpenseIndices, ...selectedUpsellIndices];
+      
       await statementsAPI.editStatement(statement.id, {
-        expenseIdsToRemove: selectedExpenseIndices.length > 0 ? selectedExpenseIndices : undefined,
+        expenseIdsToRemove: allItemIndicesToRemove.length > 0 ? allItemIndicesToRemove : undefined,
         reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
         reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
       });
@@ -207,10 +239,13 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const handleClose = () => {
     setStatement(null);
     setSelectedExpenseIndices([]);
+    setSelectedUpsellIndices([]);
     setSelectedReservationIdsToRemove([]);
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
     setShowAvailableSection(false);
+    setShowCustomExpenseForm(false);
+    setShowCustomUpsellForm(false);
     setError(null);
     onClose();
   };
@@ -218,10 +253,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   if (!isOpen) return null;
 
   const expenses = statement?.items?.filter(item => item.type === 'expense') || [];
+  const upsells = statement?.items?.filter(item => item.type === 'upsell') || [];
   const reservations = statement?.reservations || [];
   
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
     return sum + (expenses[index]?.amount || 0);
+  }, 0);
+
+  const selectedUpsellsTotal = selectedUpsellIndices.reduce((sum, index) => {
+    return sum + (upsells[index]?.amount || 0);
   }, 0);
 
   const selectedReservationsToRemoveTotal = selectedReservationIdsToRemove.reduce((sum, id) => {
@@ -289,7 +329,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               </div>
 
               {/* Selection Info */}
-              {(selectedExpenseIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0) && (
+              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -301,6 +341,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             </h4>
                             <p className="text-sm text-amber-700">
                               Expense reduction: ${selectedExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedUpsellIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-amber-800">
+                              {selectedUpsellIndices.length} upsell(s) selected for removal
+                            </h4>
+                            <p className="text-sm text-amber-700">
+                              Revenue reduction: ${selectedUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </p>
                           </>
                         )}
@@ -325,7 +375,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           </>
                         )}
                         <p className="text-xs text-amber-600 font-semibold pt-1">
-                          Net change: ${((selectedExpensesTotal - selectedReservationsToRemoveTotal + selectedReservationsToAddTotal)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                          Net change: ${((selectedExpensesTotal - selectedUpsellsTotal - selectedReservationsToRemoveTotal + selectedReservationsToAddTotal)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                         </p>
                       </div>
                     </div>
@@ -385,6 +435,60 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             <div className="flex items-center text-red-600 font-semibold">
                               <DollarSign className="w-4 h-4 mr-1" />
                               {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Additional Revenue (Upsells) List */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">
+                  Additional Revenue / Upsells ({upsells.length})
+                </h3>
+                
+                {upsells.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No additional revenue/upsells in this statement
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {upsells.map((upsell, index) => {
+                      const isSelected = selectedUpsellIndices.includes(index);
+                      return (
+                        <div
+                          key={index}
+                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                            isSelected 
+                              ? 'bg-red-50 border-red-200' 
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleUpsellToggle(index)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleUpsellToggle(index)}
+                                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                />
+                                <div>
+                                  <h4 className="font-medium">{upsell.description}</h4>
+                                  <div className="text-sm text-gray-500">
+                                    <span className="capitalize">{upsell.category}</span> • {upsell.date}
+                                    {upsell.listing && <span className="ml-2">• {upsell.listing}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center text-green-600 font-semibold">
+                              <Plus className="w-4 h-4 mr-1" />
+                              {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </div>
                           </div>
                         </div>
