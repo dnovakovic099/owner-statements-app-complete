@@ -2,14 +2,12 @@ const sequelize = require('../config/database');
 const Statement = require('./Statement');
 const UploadedExpense = require('./UploadedExpense');
 const Listing = require('./Listing');
-const PropertyMapping = require('./PropertyMapping');
 
 // Initialize models
 const models = {
     Statement,
     UploadedExpense,
     Listing,
-    PropertyMapping,
     sequelize
 };
 
