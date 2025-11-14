@@ -329,7 +329,18 @@ router.post('/generate', async (req, res) => {
         const techFees = propertyCount * 50; // $50 per property
         const insuranceFees = propertyCount * 25; // $25 per property
         
-        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+        // Check if this is a co-host on Airbnb property
+        let isCohostOnAirbnb = false;
+        if (propertyId) {
+            const listing = await ListingService.getListingWithPmFee(parseInt(propertyId));
+            isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+        }
+        
+        // For co-host properties, gross payout is just negative PM commission
+        // (client already received all Airbnb revenue directly)
+        const ownerPayout = isCohostOnAirbnb 
+            ? -pmCommission 
+            : totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
         // Generate unique ID
         const existingStatements = await FileDataService.getStatements();
@@ -2184,7 +2195,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50;
                     const insuranceFees = 25;
-                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+                    
+                    // For co-host properties, gross payout is just negative PM commission
+                    const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    const ownerPayout = isCohostOnAirbnb 
+                        ? -pmCommission 
+                        : totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
                     const existingStatements = await FileDataService.getStatements();
                     const newId = FileDataService.generateId(existingStatements);

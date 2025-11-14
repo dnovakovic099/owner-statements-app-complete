@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, AlertCircle, LogOut, CreditCard, Search } from 'lucide-react';
+import { Plus, AlertCircle, LogOut, Home, Search } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -8,7 +8,7 @@ import UploadModal from './UploadModal';
 import ExpenseUpload from './ExpenseUpload';
 import EditStatementModal from './EditStatementModal';
 import LoadingSpinner from './LoadingSpinner';
-import TransactionsPage from './TransactionsPage';
+import ListingsPage from './ListingsPage';
 
 interface User {
   username: string;
@@ -30,7 +30,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'transactions'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings'>('dashboard');
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -253,10 +253,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   }
 
-  // Show transactions page if selected
-  if (currentPage === 'transactions') {
+  // Show listings page if selected
+  if (currentPage === 'listings') {
     return (
-      <TransactionsPage 
+      <ListingsPage 
         onBack={() => setCurrentPage('dashboard')} 
       />
     );
@@ -276,12 +276,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => setCurrentPage('transactions')}
+                onClick={() => setCurrentPage('listings')}
                 className="flex items-center px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors"
-                title="QuickBooks Transactions"
+                title="Manage Listings"
               >
-                <CreditCard className="w-4 h-4 mr-2" />
-                Transactions
+                <Home className="w-4 h-4 mr-2" />
+                Listings
               </button>
               <button
                 onClick={onLogout}
