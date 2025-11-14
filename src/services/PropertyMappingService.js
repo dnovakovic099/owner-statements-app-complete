@@ -13,6 +13,8 @@ class PropertyMappingService {
         this.manualOverrides = {
             // St Louis property - Hostify has "St Louis" but SecureStay uses "St Louis (#2E)"
             300017057: "St Louis (#2E)",
+            // 101st property - Hostify has "101st - Kurush" but SecureStay uses "101st full house - Kurush"
+            300017826: "101st full house - Kurush",
         };
         
         // Cache for Hostify listing data to avoid repeated API calls
