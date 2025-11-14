@@ -216,11 +216,31 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSaving(true);
       setError(null);
       
-      // Combine expense and upsell indices for removal
-      const allItemIndicesToRemove = [...selectedExpenseIndices, ...selectedUpsellIndices];
+      // Map expense and upsell indices to their global item indices
+      // We need to find the actual position in statement.items array
+      const globalIndicesToRemove: number[] = [];
+      
+      if (statement.items) {
+        let expenseCount = 0;
+        let upsellCount = 0;
+        
+        statement.items.forEach((item, globalIndex) => {
+          if (item.type === 'expense') {
+            if (selectedExpenseIndices.includes(expenseCount)) {
+              globalIndicesToRemove.push(globalIndex);
+            }
+            expenseCount++;
+          } else if (item.type === 'upsell') {
+            if (selectedUpsellIndices.includes(upsellCount)) {
+              globalIndicesToRemove.push(globalIndex);
+            }
+            upsellCount++;
+          }
+        });
+      }
       
       await statementsAPI.editStatement(statement.id, {
-        expenseIdsToRemove: allItemIndicesToRemove.length > 0 ? allItemIndicesToRemove : undefined,
+        expenseIdsToRemove: globalIndicesToRemove.length > 0 ? globalIndicesToRemove : undefined,
         reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
         reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
       });
