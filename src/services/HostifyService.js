@@ -50,20 +50,36 @@ class HostifyService {
         }
     }
 
-    async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null) {
+    async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn') {
         const params = {
-            start_date: startDate,
-            end_date: endDate,
             page,
             per_page: perPage,
             // Include all sources (Airbnb, VRBO, Booking.com, direct, etc.)
-            // Note: Hostify's start_date/end_date filter by check-in date by default
-            // This means we might miss reservations that check in before our period but check out during it
-            // For calendar-based calculations, we handle this in getOverlappingReservations by expanding the date range
-            
             // IMPORTANT: Don't add any status filters or source filters
             // We want ALL reservations regardless of source (Airbnb, VRBO, Booking.com)
         };
+
+        // Use filters parameter to filter by checkout date if specified
+        if (dateType === 'checkOut' || dateType === 'departureDate') {
+            // Hostify expects filters as a JSON string
+            params.filters = JSON.stringify([
+                {
+                    field: 'checkOut',
+                    operator: '>=',
+                    value: startDate
+                },
+                {
+                    field: 'checkOut',
+                    operator: '<=',
+                    value: endDate
+                }
+            ]);
+            console.log(`Using checkout date filters: ${startDate} to ${endDate}`);
+        } else {
+            // Default to check-in date filtering
+            params.start_date = startDate;
+            params.end_date = endDate;
+        }
 
         // Add listing filter if specified
         // NOTE: Hostify creates child listings for multi-channel properties (VRBO, Airbnb, etc)
@@ -75,8 +91,8 @@ class HostifyService {
         return result;
     }
 
-    async getAllReservations(startDate, endDate, listingId = null) {
-        console.log(`Fetching reservations for period: ${startDate} to ${endDate}${listingId ? ` for listing ${listingId}` : ''}`);
+    async getAllReservations(startDate, endDate, listingId = null, dateType = 'checkIn') {
+        console.log(`Fetching reservations for period: ${startDate} to ${endDate}${listingId ? ` for listing ${listingId}` : ''} (dateType: ${dateType})`);
 
         let allReservations = [];
         let page = 1;
@@ -86,7 +102,7 @@ class HostifyService {
         while (hasMore) {
             console.log(`Fetching reservations page ${page}`);
             
-            const response = await this.getReservations(startDate, endDate, page, perPage, listingId);
+            const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType);
             
             if (response.success && response.reservations && response.reservations.length > 0) {
                 allReservations = allReservations.concat(response.reservations);
@@ -410,10 +426,10 @@ class HostifyService {
                 dateType = 'checkOut'
             } = params;
 
-            console.log(`Fetching reservations for listings: ${listingMapIds.join(', ')}, dates: ${fromDate} to ${toDate}`);
+            console.log(`Fetching reservations for listings: ${listingMapIds.join(', ')}, dates: ${fromDate} to ${toDate}, dateType: ${dateType}`);
 
             // Hostify doesn't have a consolidated finance report endpoint
-            // We'll fetch reservations and filter them
+            // We'll fetch reservations using the filters parameter for checkout date filtering
             let allReservations = [];
             
             if (listingMapIds.length > 0) {
@@ -421,14 +437,14 @@ class HostifyService {
                 // Note: We fetch ALL reservations and filter by parent_listing_id in getAllReservations
                 // This handles child listings automatically
                 for (const listingId of listingMapIds) {
-                    const response = await this.getAllReservations(fromDate, toDate, listingId);
+                    const response = await this.getAllReservations(fromDate, toDate, listingId, dateType);
                     if (response.result) {
                         allReservations = allReservations.concat(response.result);
                     }
                 }
             } else {
                 // Fetch all reservations
-                const response = await this.getAllReservations(fromDate, toDate);
+                const response = await this.getAllReservations(fromDate, toDate, null, dateType);
                 if (response.result) {
                     allReservations = response.result;
                 }

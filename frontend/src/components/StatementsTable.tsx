@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Edit, Send, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Edit, Send, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Statement } from '../types';
 
 interface StatementsTableProps {
@@ -187,6 +187,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                     >
                       <Eye className="w-4 h-4" />
                     </a>
+                    <button
+                      onClick={() => onAction(statement.id, 'refresh')}
+                      className="text-indigo-600 hover:text-indigo-900"
+                      title="Regenerate Statement"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
                     {(statement.status === 'draft' || statement.status === 'modified') && (
                       <button
                         onClick={() => onAction(statement.id, 'edit')}
