@@ -27,8 +27,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
   const [showCustomReservationForm, setShowCustomReservationForm] = useState(false);
-  const [showCustomExpenseForm, setShowCustomExpenseForm] = useState(false);
-  const [showCustomUpsellForm, setShowCustomUpsellForm] = useState(false);
   const [customReservation, setCustomReservation] = useState({
     guestName: '',
     checkInDate: '',
@@ -36,18 +34,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     amount: '',
     nights: '',
     description: ''
-  });
-  const [customExpense, setCustomExpense] = useState({
-    description: '',
-    amount: '',
-    date: '',
-    category: 'expense'
-  });
-  const [customUpsell, setCustomUpsell] = useState({
-    description: '',
-    amount: '',
-    date: '',
-    category: 'upsell'
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -65,8 +51,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
       setShowAvailableSection(false);
-      setShowCustomExpenseForm(false);
-      setShowCustomUpsellForm(false);
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -264,8 +248,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
     setShowAvailableSection(false);
-    setShowCustomExpenseForm(false);
-    setShowCustomUpsellForm(false);
     setError(null);
     onClose();
   };
