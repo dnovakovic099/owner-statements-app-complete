@@ -296,4 +296,49 @@ export const quickBooksAPI = {
   },
 };
 
+// Listings API
+export const listingsAPI = {
+  getListings: async (listingIds?: number[]): Promise<{ success: boolean; listings: Listing[] }> => {
+    const params = listingIds && listingIds.length > 0 
+      ? `?ids=${listingIds.join(',')}` 
+      : '';
+    const response = await api.get(`/listings${params}`);
+    return response.data;
+  },
+
+  getListing: async (id: number): Promise<{ success: boolean; listing: Listing }> => {
+    const response = await api.get(`/listings/${id}`);
+    return response.data;
+  },
+
+  updateListingConfig: async (id: number, config: {
+    displayName?: string;
+    isCohostOnAirbnb?: boolean;
+    pmFeePercentage?: number;
+  }): Promise<{ success: boolean; message: string; listing: Listing }> => {
+    const response = await api.put(`/listings/${id}/config`, config);
+    return response.data;
+  },
+
+  updateDisplayName: async (id: number, displayName: string): Promise<{ success: boolean; message: string; listing: Listing }> => {
+    const response = await api.put(`/listings/${id}/display-name`, { displayName });
+    return response.data;
+  },
+
+  updateCohostStatus: async (id: number, isCohostOnAirbnb: boolean): Promise<{ success: boolean; message: string; listing: Listing }> => {
+    const response = await api.put(`/listings/${id}/cohost-status`, { isCohostOnAirbnb });
+    return response.data;
+  },
+
+  updatePmFee: async (id: number, pmFeePercentage: number): Promise<{ success: boolean; message: string; listing: Listing }> => {
+    const response = await api.put(`/listings/${id}/pm-fee`, { pmFeePercentage });
+    return response.data;
+  },
+
+  syncListings: async (): Promise<{ success: boolean; message: string; synced: number; errors: number }> => {
+    const response = await api.post('/listings/sync');
+    return response.data;
+  },
+};
+
 export default api;

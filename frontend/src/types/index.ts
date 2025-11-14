@@ -122,23 +122,31 @@ export interface SyncResponse {
 export interface Listing {
   id: number;
   name: string;
+  displayName?: string | null;
   nickname?: string | null;
-  address: string;
-  country: string;
-  city: string;
-  personCapacity: number;
-  bedroomsNumber: number;
-  bathroomsNumber: number;
-  currency: string;
-  price: number;
-  cleaningFee: number;
-  checkInTimeStart: number;
-  checkInTimeEnd: number;
-  checkOutTime: number;
-  minNights: number;
-  maxNights: number;
+  street?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  personCapacity?: number;
+  bedroomsNumber?: number;
+  bathroomsNumber?: number;
+  currency?: string;
+  price?: number;
+  cleaningFee?: number;
+  checkInTimeStart?: number;
+  checkInTimeEnd?: number;
+  checkOutTime?: number;
+  minNights?: number;
+  maxNights?: number;
+  pmFeePercentage?: number;
+  isCohostOnAirbnb: boolean;
   isActive: boolean;
-  syncedAt: string;
+  lastSyncedAt?: string;
+  syncedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface QuickBooksTransaction {

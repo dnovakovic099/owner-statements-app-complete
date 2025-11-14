@@ -159,6 +159,81 @@ class ListingService {
             return [];
         }
     }
+
+    /**
+     * Update listing display name
+     */
+    async updateDisplayName(listingId, displayName) {
+        try {
+            const listing = await Listing.findByPk(listingId);
+            
+            if (!listing) {
+                throw new Error(`Listing ${listingId} not found`);
+            }
+
+            await listing.update({ displayName });
+            console.log(`✅ Updated display name for listing ${listingId}: ${displayName}`);
+            
+            return listing.toJSON();
+        } catch (error) {
+            console.error(`Error updating display name for listing ${listingId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update co-host on Airbnb status
+     */
+    async updateCohostStatus(listingId, isCohostOnAirbnb) {
+        try {
+            const listing = await Listing.findByPk(listingId);
+            
+            if (!listing) {
+                throw new Error(`Listing ${listingId} not found`);
+            }
+
+            await listing.update({ isCohostOnAirbnb });
+            console.log(`✅ Updated co-host status for listing ${listingId}: ${isCohostOnAirbnb}`);
+            
+            return listing.toJSON();
+        } catch (error) {
+            console.error(`Error updating co-host status for listing ${listingId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update listing configuration (display name, co-host status, PM fee)
+     */
+    async updateListingConfig(listingId, config) {
+        try {
+            const listing = await Listing.findByPk(listingId);
+            
+            if (!listing) {
+                throw new Error(`Listing ${listingId} not found`);
+            }
+
+            const updates = {};
+            if (config.displayName !== undefined) updates.displayName = config.displayName;
+            if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
+            if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
+
+            await listing.update(updates);
+            console.log(`✅ Updated listing ${listingId} configuration`);
+            
+            return listing.toJSON();
+        } catch (error) {
+            console.error(`Error updating listing ${listingId} configuration:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get display name for a listing (returns displayName if set, otherwise name)
+     */
+    getDisplayName(listing) {
+        return listing.displayName || listing.nickname || listing.name;
+    }
 }
 
 module.exports = new ListingService();
