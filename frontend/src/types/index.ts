@@ -50,11 +50,13 @@ export interface Reservation {
 }
 
 export interface StatementItem {
-  type: 'revenue' | 'expense';
+  type: 'revenue' | 'expense' | 'upsell';
   description: string;
   amount: number;
   date: string;
   category: string;
+  vendor?: string;
+  listing?: string;
 }
 
 export interface Statement {
