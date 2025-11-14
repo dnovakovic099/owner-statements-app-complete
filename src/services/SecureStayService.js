@@ -70,6 +70,7 @@ class SecureStayService {
                         date: expense.dateAdded || expense.dateOfWork,
                         type: expense.categories || expense.type || 'expense',
                         propertyId: null, // SecureStay uses listing names, not IDs
+                        secureStayListingId: expense.listingMapId, // SecureStay's internal listing ID
                         vendor: expense.contractorName,
                         listing: expense.listing,
                         status: expense.status,
