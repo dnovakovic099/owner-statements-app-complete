@@ -15,7 +15,6 @@ const PropertyMapping = sequelize.define('PropertyMapping', {
     hostifyPropertyId: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        unique: true,
         field: 'hostify_property_id',
         comment: 'Hostify property ID (e.g., 300017826)'
     },
