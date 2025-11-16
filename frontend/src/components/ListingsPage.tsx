@@ -22,6 +22,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [displayName, setDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
 
   useEffect(() => {
     loadListings();
@@ -34,6 +36,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
+        setTags(listing.tags || []);
       }
     } else {
       resetForm();
@@ -79,6 +82,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setDisplayName('');
     setIsCohostOnAirbnb(false);
     setPmFeePercentage(15);
+    setTags([]);
+    setNewTag('');
   };
 
   const handleSave = async () => {
@@ -92,6 +97,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         displayName: displayName.trim() || undefined,
         isCohostOnAirbnb,
         pmFeePercentage,
+        tags,
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -247,6 +253,18 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         </span>
                       )}
                     </div>
+                    {listing.tags && listing.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {listing.tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </button>
                 ))
               )}
@@ -335,6 +353,71 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                     <p className="text-xs text-gray-500 mt-2">
                       The percentage charged for property management services (e.g., 15% = 15.00)
                     </p>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-blue-900 mb-2">
+                      Tags
+                    </label>
+                    <p className="text-xs text-blue-700 mb-3">
+                      Add tags to group and filter listings. Use tags like "Downtown", "Luxury", "Pet-Friendly", etc.
+                    </p>
+                    
+                    {/* Existing Tags */}
+                    {tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                          >
+                            {tag}
+                            <button
+                              onClick={() => setTags(tags.filter((_, i) => i !== idx))}
+                              className="ml-2 text-blue-600 hover:text-blue-800"
+                              type="button"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Add New Tag */}
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const trimmedTag = newTag.trim();
+                            if (trimmedTag && !tags.includes(trimmedTag)) {
+                              setTags([...tags, trimmedTag]);
+                              setNewTag('');
+                            }
+                          }
+                        }}
+                        placeholder="Add a tag..."
+                        className="flex-1 border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmedTag = newTag.trim();
+                          if (trimmedTag && !tags.includes(trimmedTag)) {
+                            setTags([...tags, trimmedTag]);
+                            setNewTag('');
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
 
                   {/* Location Info */}

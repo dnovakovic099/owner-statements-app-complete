@@ -53,6 +53,24 @@ const Listing = sequelize.define('Listing', {
         field: 'is_cohost_on_airbnb',
         comment: 'If true, Airbnb revenue will be excluded from statement calculations'
     },
+    tags: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: 'Comma-separated tags for grouping and filtering listings',
+        get() {
+            const value = this.getDataValue('tags');
+            return value ? value.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+        },
+        set(value) {
+            if (Array.isArray(value)) {
+                this.setDataValue('tags', value.filter(tag => tag).join(','));
+            } else if (typeof value === 'string') {
+                this.setDataValue('tags', value);
+            } else {
+                this.setDataValue('tags', null);
+            }
+        }
+    },
     isActive: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

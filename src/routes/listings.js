@@ -156,15 +156,16 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, pmFeePercentage } = req.body;
+        const { displayName, isCohostOnAirbnb, pmFeePercentage, tags } = req.body;
         
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
         if (isCohostOnAirbnb !== undefined) config.isCohostOnAirbnb = isCohostOnAirbnb;
+        if (tags !== undefined) config.tags = tags;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);
             if (isNaN(pmFee) || pmFee < 0 || pmFee > 100) {
