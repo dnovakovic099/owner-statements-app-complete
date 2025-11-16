@@ -132,30 +132,31 @@ router.get('/:id', async (req, res) => {
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, ownerId, startDate, endDate, calculationType = 'checkout' } = req.body;
+        const { propertyId, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
         }
 
-        if (!propertyId && !ownerId) {
-            return res.status(400).json({ error: 'Either property ID or owner ID is required' });
+        if (!propertyId && !ownerId && !tag) {
+            return res.status(400).json({ error: 'Either property ID, owner ID, or tag is required' });
         }
 
-        // Handle "Generate All" option - run in background
-        if (ownerId === 'all') {
-            console.log('🚀 Starting bulk generation as background job...');
+        // Handle "Generate All" option or tag-based generation - run in background
+        if (ownerId === 'all' || (tag && !propertyId)) {
+            const jobType = tag ? `tag-based generation (${tag})` : 'bulk generation';
+            console.log(`🚀 Starting ${jobType} as background job...`);
             
             const jobId = await BackgroundJobService.runInBackground(
                 'bulk_statement_generation',
                 async (jobId) => {
-                    await generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType);
+                    await generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag);
                 },
-                { startDate, endDate, calculationType }
+                { startDate, endDate, calculationType, tag }
             );
             
             return res.status(202).json({
-                message: 'Bulk statement generation started in background',
+                message: tag ? `Tag-based statement generation started for "${tag}"` : 'Bulk statement generation started in background',
                 jobId,
                 status: 'processing',
                 note: 'This may take several minutes to complete. Check back later or use the job status endpoint.',
@@ -199,6 +200,21 @@ router.post('/generate', async (req, res) => {
             }
             targetListings = [listing];
             owner = owners[0]; // Default owner
+        } else if (tag) {
+            // Generate statements for all properties with the specified tag
+            console.log(`🏷️  Filtering listings by tag: ${tag}`);
+            const taggedListings = listings.filter(l => {
+                const listingTags = l.tags || [];
+                return listingTags.includes(tag);
+            });
+            
+            if (taggedListings.length === 0) {
+                return res.status(404).json({ error: `No properties found with tag: ${tag}` });
+            }
+            
+            console.log(`   Found ${taggedListings.length} properties with tag "${tag}"`);
+            targetListings = taggedListings;
+            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
         } else {
             // Generate consolidated statement for all owner's properties
             owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId));
@@ -2165,11 +2181,14 @@ router.get('/:id/download', async (req, res) => {
 /**
  * Background version of bulk statement generation with progress tracking
  */
-async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType) {
+async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag = null) {
     try {
         console.log(`🔄 Starting background bulk statement generation (Job: ${jobId})...`);
         console.log(`   Period: ${startDate} to ${endDate}`);
         console.log(`   Calculation Type: ${calculationType}`);
+        if (tag) {
+            console.log(`   Tag Filter: ${tag}`);
+        }
 
         // Get all listings
         const listings = await FileDataService.getListings();
@@ -2190,8 +2209,18 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         console.log(`✅ Fetched ${allExpenses.length} total expenses`);
 
         // Filter to only active listings
-        const activeListings = listings.filter(l => l.isActive);
-        console.log(`   Found ${activeListings.length} active listings (out of ${listings.length} total)`);
+        let activeListings = listings.filter(l => l.isActive);
+        
+        // Apply tag filter if specified
+        if (tag) {
+            activeListings = activeListings.filter(l => {
+                const listingTags = l.tags || [];
+                return listingTags.includes(tag);
+            });
+            console.log(`   Found ${activeListings.length} active listings with tag "${tag}" (out of ${listings.length} total)`);
+        } else {
+            console.log(`   Found ${activeListings.length} active listings (out of ${listings.length} total)`);
+        }
 
         BackgroundJobService.startJob(jobId, activeListings.length);
 

@@ -37,3 +37,4 @@ dropPropertyMappingsTable()
         process.exit(1);
     });
 
+

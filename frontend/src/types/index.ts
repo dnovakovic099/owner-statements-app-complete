@@ -142,6 +142,7 @@ export interface Listing {
   maxNights?: number;
   pmFeePercentage?: number;
   isCohostOnAirbnb: boolean;
+  tags?: string[];
   isActive: boolean;
   lastSyncedAt?: string;
   syncedAt?: string;

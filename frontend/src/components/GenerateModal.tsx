@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search } from 'lucide-react';
-import { Owner, Property } from '../types';
+import { X, Search, Tag } from 'lucide-react';
+import { Owner, Property, Listing } from '../types';
+import { listingsAPI } from '../services/api';
 
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (data: { ownerId: string; propertyId?: string; startDate: string; endDate: string; calculationType: string }) => Promise<void>;
+  onGenerate: (data: { ownerId: string; propertyId?: string; tag?: string; startDate: string; endDate: string; calculationType: string }) => Promise<void>;
   owners: Owner[];
   properties: Property[];
 }
@@ -19,6 +20,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 }) => {
   const [ownerId, setOwnerId] = useState('');
   const [propertyId, setPropertyId] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [calculationType, setCalculationType] = useState('checkout');
@@ -26,6 +28,8 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [generateAll, setGenerateAll] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (ownerId) {
@@ -62,7 +66,28 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     
     setStartDate(firstDay.toISOString().split('T')[0]);
     setEndDate(lastDay.toISOString().split('T')[0]);
+    
+    // Load listings to get tags
+    loadListings();
   }, []);
+  
+  const loadListings = async () => {
+    try {
+      const response = await listingsAPI.getListings();
+      setListings(response.listings);
+      
+      // Extract unique tags from all listings
+      const allTags = new Set<string>();
+      response.listings.forEach((listing: Listing) => {
+        if (listing.tags && listing.tags.length > 0) {
+          listing.tags.forEach(tag => allTags.add(tag));
+        }
+      });
+      setAvailableTags(Array.from(allTags).sort());
+    } catch (error) {
+      console.error('Failed to load listings:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +113,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       await onGenerate({
         ownerId: generateAll ? 'all' : ownerId,
         propertyId: propertyId || undefined,
+        tag: selectedTag || undefined,
         startDate,
         endDate,
         calculationType,
@@ -96,6 +122,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       // Reset form and close modal on success
       setOwnerId('');
       setPropertyId('');
+      setSelectedTag('');
       setGenerateAll(false);
       setPropertySearch('');
       setIsGenerating(false);
@@ -225,6 +252,40 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Tag Filter */}
+              {availableTags.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <label className="flex items-center text-sm font-medium text-blue-900 mb-2">
+                    <Tag className="w-4 h-4 mr-2" />
+                    Filter by Tag (Optional)
+                  </label>
+                  <select
+                    value={selectedTag}
+                    onChange={(e) => {
+                      setSelectedTag(e.target.value);
+                      // Clear property selection when tag is selected
+                      if (e.target.value) {
+                        setPropertyId('');
+                      }
+                    }}
+                    className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    disabled={!ownerId}
+                  >
+                    <option value="">All Tags</option>
+                    {availableTags.map((tag) => (
+                      <option key={tag} value={tag}>
+                        {tag}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTag && (
+                    <p className="text-xs text-blue-700 mt-2">
+                      Will generate statements for all properties with the "{selectedTag}" tag
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
 

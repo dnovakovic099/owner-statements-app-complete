@@ -203,12 +203,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         console.log('View URL:', viewUrl);
         window.open(viewUrl, '_blank');
       } else if (action === 'download') {
-        // Download statement as PDF file
+        // Download statement as PDF file with cache-busting timestamp
         const blob = await statementsAPI.downloadStatement(id);
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `statement-${id}.pdf`;
+        // Add timestamp to filename to prevent browser caching
+        const timestamp = new Date().getTime();
+        a.download = `statement-${id}-${timestamp}.pdf`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -238,6 +240,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           endDate: statement.weekEndDate,
           calculationType: statement.calculationType || 'checkout'
         });
+        
+        // Reload statements to get the new statement ID
+        await loadStatements();
         
         alert('✅ Statement regenerated successfully');
       } else if (action === 'delete') {
