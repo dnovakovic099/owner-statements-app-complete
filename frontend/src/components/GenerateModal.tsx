@@ -83,7 +83,9 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           listing.tags.forEach(tag => allTags.add(tag));
         }
       });
-      setAvailableTags(Array.from(allTags).sort());
+      const tagsArray = Array.from(allTags).sort();
+      console.log('Available tags loaded:', tagsArray);
+      setAvailableTags(tagsArray);
     } catch (error) {
       console.error('Failed to load listings:', error);
     }
@@ -254,38 +256,43 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
               </div>
 
               {/* Tag Filter */}
-              {availableTags.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                  <label className="flex items-center text-sm font-medium text-blue-900 mb-2">
-                    <Tag className="w-4 h-4 mr-2" />
-                    Filter by Tag (Optional)
-                  </label>
-                  <select
-                    value={selectedTag}
-                    onChange={(e) => {
-                      setSelectedTag(e.target.value);
-                      // Clear property selection when tag is selected
-                      if (e.target.value) {
-                        setPropertyId('');
-                      }
-                    }}
-                    className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    disabled={!ownerId}
-                  >
-                    <option value="">All Tags</option>
-                    {availableTags.map((tag) => (
-                      <option key={tag} value={tag}>
-                        {tag}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedTag && (
-                    <p className="text-xs text-blue-700 mt-2">
-                      Will generate statements for all properties with the "{selectedTag}" tag
-                    </p>
-                  )}
-                </div>
-              )}
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <label className="flex items-center text-sm font-medium text-blue-900 mb-2">
+                  <Tag className="w-4 h-4 mr-2" />
+                  Filter by Tag (Optional)
+                </label>
+                <select
+                  value={selectedTag}
+                  onChange={(e) => {
+                    setSelectedTag(e.target.value);
+                    // Clear property selection when tag is selected
+                    if (e.target.value) {
+                      setPropertyId('');
+                    }
+                  }}
+                  className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  disabled={!ownerId}
+                >
+                  <option value="">
+                    {availableTags.length === 0 ? 'No tags available' : 'All Tags'}
+                  </option>
+                  {availableTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
+                {selectedTag && (
+                  <p className="text-xs text-blue-700 mt-2">
+                    Will generate statements for all properties with the "{selectedTag}" tag
+                  </p>
+                )}
+                {availableTags.length === 0 && (
+                  <p className="text-xs text-blue-700 mt-2">
+                    No tags found. You can add tags to listings in the Listings page.
+                  </p>
+                )}
+              </div>
             </>
           )}
 
