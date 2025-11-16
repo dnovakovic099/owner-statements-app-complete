@@ -217,6 +217,7 @@ class ListingService {
             if (config.displayName !== undefined) updates.displayName = config.displayName;
             if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
+            if (config.tags !== undefined) updates.tags = config.tags;
 
             await listing.update(updates);
             console.log(`✅ Updated listing ${listingId} configuration`);

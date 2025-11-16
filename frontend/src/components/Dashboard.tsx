@@ -95,6 +95,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleGenerateStatement = async (data: {
     ownerId: string;
     propertyId?: string;
+    tag?: string;
     startDate: string;
     endDate: string;
     calculationType: string;
@@ -102,15 +103,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const response = await statementsAPI.generateStatement(data);
       
-      // Check if this is a background job (bulk generation)
-      if (data.ownerId === 'all' && response.jobId) {
-        alert(
-          `🚀 Bulk Statement Generation Started!\n\n` +
-          `This process is running in the background and may take several minutes to complete.\n\n` +
-          `✅ You can close this window and check back later.\n` +
-          `📊 The statements will appear in the list once generation is complete.\n\n` +
-          `Tip: Refresh the page to see newly generated statements.`
-        );
+      // Check if this is a background job (bulk generation or tag-based generation)
+      if (response.jobId && (data.ownerId === 'all' || (data.tag && !data.propertyId))) {
+        const isTagBased = data.tag && !data.propertyId;
+        const message = isTagBased
+          ? `🏷️  Tag-Based Statement Generation Started!\n\n` +
+            `Generating statements for all properties with tag: "${data.tag}"\n\n` +
+            `This process is running in the background and may take several minutes to complete.\n\n` +
+            `✅ You can close this window and check back later.\n` +
+            `📊 The statements will appear in the list once generation is complete.\n\n` +
+            `Tip: Refresh the page to see newly generated statements.`
+          : `🚀 Bulk Statement Generation Started!\n\n` +
+            `This process is running in the background and may take several minutes to complete.\n\n` +
+            `✅ You can close this window and check back later.\n` +
+            `📊 The statements will appear in the list once generation is complete.\n\n` +
+            `Tip: Refresh the page to see newly generated statements.`;
+        
+        alert(message);
         
         setIsGenerateModalOpen(false);
         // Refresh statements after a short delay to show any initial progress

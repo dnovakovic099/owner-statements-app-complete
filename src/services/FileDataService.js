@@ -74,6 +74,40 @@ class FileDataService {
                 syncedAt: new Date().toISOString()
             }));
 
+            // Merge database fields (tags, displayName, pmFeePercentage, isCohostOnAirbnb) from database
+            try {
+                const ListingService = require('./ListingService');
+                const dbListings = await ListingService.getListingsWithPmFees();
+                const dbListingMap = new Map(dbListings.map(l => [l.id, l]));
+                
+                // Merge database fields into Hostify listings
+                listings.forEach(listing => {
+                    const dbListing = dbListingMap.get(listing.id);
+                    if (dbListing) {
+                        // Merge tags, displayName, pmFeePercentage, isCohostOnAirbnb from database
+                        listing.tags = dbListing.tags || [];
+                        listing.displayName = dbListing.displayName;
+                        listing.pmFeePercentage = dbListing.pmFeePercentage;
+                        listing.isCohostOnAirbnb = dbListing.isCohostOnAirbnb || false;
+                    } else {
+                        // Set defaults if not in database
+                        listing.tags = [];
+                        listing.pmFeePercentage = 15.00;
+                        listing.isCohostOnAirbnb = false;
+                    }
+                });
+                
+                console.log(`✅ Merged database fields (tags, PM fees, etc.) into ${listings.length} listings`);
+            } catch (dbError) {
+                console.warn('⚠️  Could not merge database fields, continuing without them:', dbError.message);
+                // Set defaults if database merge fails
+                listings.forEach(listing => {
+                    listing.tags = [];
+                    listing.pmFeePercentage = 15.00;
+                    listing.isCohostOnAirbnb = false;
+                });
+            }
+
             console.log(`✅ Fetched ${listings.length} listings from Hostify`);
             return listings;
         } catch (error) {
