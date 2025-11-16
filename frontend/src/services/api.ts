@@ -113,6 +113,26 @@ export const statementsAPI = {
     return response.data;
   },
 
+  downloadStatementWithHeaders: async (id: number): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get(`/statements/${id}/download`, { responseType: 'blob' });
+    
+    // Extract filename from Content-Disposition header
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `statement-${id}.pdf`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+    
+    return {
+      blob: response.data,
+      filename
+    };
+  },
+
   deleteStatement: async (id: number): Promise<void> => {
     await api.delete(`/statements/${id}`);
   },

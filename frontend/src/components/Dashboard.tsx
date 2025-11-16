@@ -203,14 +203,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         console.log('View URL:', viewUrl);
         window.open(viewUrl, '_blank');
       } else if (action === 'download') {
-        // Download statement as PDF file with cache-busting timestamp
-        const blob = await statementsAPI.downloadStatement(id);
+        // Download statement as PDF file using server-provided filename
+        const response = await statementsAPI.downloadStatementWithHeaders(id);
+        const blob = response.blob;
+        const filename = response.filename || `statement-${id}.pdf`;
+        
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        // Add timestamp to filename to prevent browser caching
-        const timestamp = new Date().getTime();
-        a.download = `statement-${id}-${timestamp}.pdf`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
