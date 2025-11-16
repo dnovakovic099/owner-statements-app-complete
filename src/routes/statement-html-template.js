@@ -31,7 +31,7 @@ function generateStatementHTML(statement, id) {
             line-height: 1.6;
             color: var(--luxury-navy);
             background: white;
-            font-size: 13px;
+            font-size: 14px;
         }
         
         /* Page break controls */
@@ -65,7 +65,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .company-info h1 {
-            font-size: 32px;
+            font-size: 36px;
             font-weight: 700;
             color: white;
             margin-bottom: 10px;
@@ -73,7 +73,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .contact-info {
-            font-size: 12px;
+            font-size: 13px;
             color: rgba(255, 255, 255, 0.9);
             font-weight: 400;
             line-height: 1.6;
@@ -109,7 +109,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .meta-label {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             color: rgba(255, 255, 255, 0.7);
             text-transform: uppercase;
@@ -117,7 +117,7 @@ function generateStatementHTML(statement, id) {
         }
         
         .meta-value {
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 600;
             color: white;
         }
@@ -134,7 +134,7 @@ function generateStatementHTML(statement, id) {
         
         .summary-box h3 {
             color: var(--luxury-navy);
-            font-size: 20px;
+            font-size: 22px;
             margin-bottom: 22px;
             text-transform: uppercase;
             letter-spacing: 1.5px;
@@ -146,7 +146,7 @@ function generateStatementHTML(statement, id) {
         .summary-box table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 15px;
             background: white;
             border-radius: 8px;
             overflow: hidden;
@@ -168,13 +168,13 @@ function generateStatementHTML(statement, id) {
         .summary-label {
             font-weight: 600;
             color: #1f2937;
-            font-size: 14px;
+            font-size: 15px;
         }
         
         .summary-value {
             text-align: right;
             font-weight: 700;
-            font-size: 15px;
+            font-size: 16px;
         }
         
         .summary-value.revenue {
@@ -196,18 +196,18 @@ function generateStatementHTML(statement, id) {
         }
         
         .total-row .summary-label {
-            font-size: 16px;
+            font-size: 17px;
             letter-spacing: 0.5px;
             color: white !important;
         }
         
         .total-row .summary-value {
-            font-size: 18px;
+            font-size: 20px;
             color: white !important;
         }
         
         .section-title {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 700;
             color: var(--luxury-navy);
             margin-bottom: 20px;
@@ -216,27 +216,27 @@ function generateStatementHTML(statement, id) {
             border-bottom: 3px solid var(--luxury-gold);
             text-transform: uppercase;
             letter-spacing: 1.5px;
+            page-break-after: avoid;
         }
         
         .rental-table {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            font-size: 12px;
+            font-size: 13px;
             border: 1px solid var(--luxury-border);
             margin-bottom: 25px;
             table-layout: fixed;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            page-break-inside: avoid;
         }
         
         .rental-table th {
             background: var(--luxury-dark);
             color: white;
-            padding: 14px 8px;
+            padding: 16px 10px;
             text-align: center;
             font-weight: 700;
-            font-size: 12px;
+            font-size: 13px;
             text-transform: uppercase;
             line-height: 1.4;
             border-right: 1px solid rgba(255,255,255,0.2);
@@ -244,14 +244,23 @@ function generateStatementHTML(statement, id) {
             hyphens: auto;
         }
         
+        .rental-table thead {
+            page-break-after: avoid;
+            page-break-inside: avoid;
+        }
+        
         .rental-table td {
-            padding: 12px 8px;
+            padding: 14px 10px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
-            font-size: 12px;
+            font-size: 13px;
             text-align: center;
             vertical-align: middle;
             line-height: 1.5;
+        }
+        
+        .rental-table tbody tr {
+            page-break-inside: avoid;
         }
         
         /* Column widths for better layout */
@@ -275,13 +284,13 @@ function generateStatementHTML(statement, id) {
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 13px;
+            font-size: 14px;
             margin-bottom: 5px;
             line-height: 1.3;
         }
         
         .guest-info {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--luxury-gray);
             margin-bottom: 5px;
             line-height: 1.3;
@@ -291,22 +300,22 @@ function generateStatementHTML(statement, id) {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 3px 7px;
+            padding: 4px 8px;
             border-radius: 4px;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
         }
         
         .proration-info {
-            font-size: 9px;
+            font-size: 10px;
             color: #007bff;
             margin-top: 3px;
         }
         
         .amount-cell {
             text-align: right;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 700;
             padding-right: 10px !important;
         }
@@ -315,12 +324,17 @@ function generateStatementHTML(statement, id) {
         .revenue-amount { color: var(--luxury-navy); }
         .payout-amount { color: var(--luxury-navy); font-weight: 700; }
         
+        .totals-row {
+            page-break-inside: avoid;
+            page-break-before: avoid;
+        }
+        
         .totals-row td {
             background: var(--luxury-navy);
             color: white;
             font-weight: 700;
-            font-size: 12px;
-            padding: 14px 8px;
+            font-size: 13px;
+            padding: 16px 10px;
             border-top: 2px solid var(--luxury-navy);
         }
         
@@ -338,22 +352,28 @@ function generateStatementHTML(statement, id) {
         
         .expenses-section h3, .upsells-section h3 {
             color: var(--luxury-navy);
-            font-size: 18px;
+            font-size: 20px;
             margin-bottom: 20px;
             text-transform: uppercase;
             letter-spacing: 1.5px;
             font-weight: 700;
             border-bottom: 3px solid var(--luxury-gold);
             padding-bottom: 12px;
+            page-break-after: avoid;
         }
         
         .expense-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
+            font-size: 13px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             border-radius: 8px;
             overflow: hidden;
+        }
+        
+        .expense-table thead {
+            page-break-after: avoid;
+            page-break-inside: avoid;
         }
         
         .expense-table thead tr {
@@ -365,7 +385,7 @@ function generateStatementHTML(statement, id) {
             padding: 16px 14px;
             text-align: left;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 13px;
             letter-spacing: 0.5px;
         }
         
@@ -376,7 +396,11 @@ function generateStatementHTML(statement, id) {
         .expense-table td {
             padding: 14px;
             border-bottom: 1px solid #e5e7eb;
-            font-size: 12px;
+            font-size: 13px;
+        }
+        
+        .expense-table tbody tr {
+            page-break-inside: avoid;
         }
         
         .expense-table tr:hover {
@@ -386,13 +410,15 @@ function generateStatementHTML(statement, id) {
         .expense-table .total-row {
             background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%);
             color: white;
+            page-break-inside: avoid;
+            page-break-before: avoid;
         }
         
         .expense-table .total-row td {
             padding: 18px 14px;
             font-weight: 700;
             border: none;
-            font-size: 13px;
+            font-size: 14px;
             letter-spacing: 0.5px;
         }
         
@@ -407,7 +433,7 @@ function generateStatementHTML(statement, id) {
         
         .generated-info {
             color: var(--luxury-gray);
-            font-size: 12px;
+            font-size: 13px;
         }
         
         @media print {
@@ -417,6 +443,27 @@ function generateStatementHTML(statement, id) {
             
             .page-break-avoid {
                 page-break-inside: avoid !important;
+            }
+            
+            .section-title {
+                page-break-after: avoid !important;
+            }
+            
+            .rental-table thead,
+            .expense-table thead {
+                page-break-after: avoid !important;
+                page-break-inside: avoid !important;
+            }
+            
+            .rental-table tbody tr,
+            .expense-table tbody tr,
+            .totals-row {
+                page-break-inside: avoid !important;
+            }
+            
+            .totals-row,
+            .expense-table .total-row {
+                page-break-before: avoid !important;
             }
         }
     </style>
@@ -648,7 +695,7 @@ function generateStatementHTML(statement, id) {
                     }).join('') || '<tr><td colspan="5" style="text-align: center; padding: 24px; color: #9ca3af; font-style: italic;">No expenses for this period</td></tr>'}
                     <tr class="total-row">
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
-                        <td style="text-align: right;"><strong>$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td style="text-align: right;"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>
             </table>
