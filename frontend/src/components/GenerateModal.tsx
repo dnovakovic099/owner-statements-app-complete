@@ -28,7 +28,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [generateAll, setGenerateAll] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [, setListings] = useState<Listing[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   useEffect(() => {
