@@ -74,6 +74,7 @@ export const statementsAPI = {
   generateStatement: async (data: {
     ownerId: string;
     propertyId?: string;
+    tag?: string;
     startDate: string;
     endDate: string;
     calculationType: string;
@@ -335,6 +336,7 @@ export const listingsAPI = {
     displayName?: string;
     isCohostOnAirbnb?: boolean;
     pmFeePercentage?: number;
+    tags?: string[];
   }): Promise<{ success: boolean; message: string; listing: Listing }> => {
     const response = await api.put(`/listings/${id}/config`, config);
     return response.data;
