@@ -333,14 +333,73 @@ class FileDataService {
                 
                 // Filter by property if propertyId is provided
                 if (propertyId) {
-                    const secureStayListingName = await propertyMappingService.getSecureStayListingName(propertyId);
-                    if (secureStayListingName) {
-                        secureStayExpenses = apiExpenses.filter(expense => 
-                            expense.listing === secureStayListingName
-                        );
-                        console.log(`Filtered to ${secureStayExpenses.length} SecureStay expenses for property ${propertyId} (${secureStayListingName})`);
+                    const propertyIdInt = parseInt(propertyId);
+                    
+                    // First, try to match by SecureStay listingMapId (should match Hostify property ID)
+                    secureStayExpenses = apiExpenses.filter(expense => {
+                        if (expense.secureStayListingId) {
+                            return parseInt(expense.secureStayListingId) === propertyIdInt;
+                        }
+                        return false;
+                    });
+                    
+                    if (secureStayExpenses.length > 0) {
+                        console.log(`✅ Found ${secureStayExpenses.length} SecureStay expenses for property ${propertyId} by listingMapId match`);
                     } else {
-                        console.warn(`No SecureStay mapping found for property ${propertyId}, skipping SecureStay expenses`);
+                        // Fall back to name-based matching if ID matching doesn't work
+                        console.log(`⚠️  No expenses found by listingMapId for property ${propertyId}, trying name-based matching...`);
+                        const secureStayListingName = await propertyMappingService.getSecureStayListingName(propertyId);
+                        if (secureStayListingName) {
+                            // Debug: Log unique listing IDs and names from SecureStay
+                            const uniqueListingIds = [...new Set(apiExpenses.map(e => e.secureStayListingId).filter(Boolean))];
+                            const uniqueListings = [...new Set(apiExpenses.map(e => e.listing).filter(Boolean))];
+                            if (uniqueListingIds.length > 0 && uniqueListingIds.length <= 20) {
+                                console.log(`🔍 Debug: SecureStay returned ${uniqueListingIds.length} unique listing IDs:`, uniqueListingIds);
+                            }
+                            if (uniqueListings.length > 0 && uniqueListings.length <= 20) {
+                                console.log(`🔍 Debug: SecureStay returned ${uniqueListings.length} unique listing names:`, uniqueListings);
+                            }
+                            
+                            secureStayExpenses = apiExpenses.filter(expense => 
+                                expense.listing === secureStayListingName
+                            );
+                            
+                            if (secureStayExpenses.length === 0 && apiExpenses.length > 0) {
+                                // Try case-insensitive and trimmed matching
+                                const matchingExpenses = apiExpenses.filter(expense => {
+                                    if (!expense.listing) return false;
+                                    return expense.listing.trim().toLowerCase() === secureStayListingName.trim().toLowerCase();
+                                });
+                                if (matchingExpenses.length > 0) {
+                                    console.log(`⚠️  Found ${matchingExpenses.length} expenses with case-insensitive match. Expected: "${secureStayListingName}", Found: "${matchingExpenses[0].listing}"`);
+                                    secureStayExpenses = matchingExpenses;
+                                } else {
+                                    // Find close matches and use the first one
+                                    const closeMatches = uniqueListings.filter(l => {
+                                        if (!l) return false;
+                                        const lLower = l.toLowerCase();
+                                        const expectedLower = secureStayListingName.toLowerCase();
+                                        // Check if they're very similar (same words, just punctuation differences)
+                                        const lNormalized = lLower.replace(/[.,]/g, '').trim();
+                                        const expectedNormalized = expectedLower.replace(/[.,]/g, '').trim();
+                                        return lNormalized === expectedNormalized;
+                                    });
+                                    if (closeMatches.length > 0) {
+                                        console.log(`⚠️  No exact match found. Expected: "${secureStayListingName}". Using close match: "${closeMatches[0]}"`);
+                                        secureStayExpenses = apiExpenses.filter(expense => 
+                                            expense.listing === closeMatches[0]
+                                        );
+                                        console.log(`✅ Found ${secureStayExpenses.length} expenses using close match`);
+                                    } else {
+                                        console.log(`⚠️  No exact or close match found. Expected: "${secureStayListingName}". Available listings:`, uniqueListings.slice(0, 10));
+                                    }
+                                }
+                            }
+                            
+                            console.log(`Filtered to ${secureStayExpenses.length} SecureStay expenses for property ${propertyId} by name (${secureStayListingName})`);
+                        } else {
+                            console.warn(`No SecureStay mapping found for property ${propertyId}, skipping SecureStay expenses`);
+                        }
                     }
                 } else {
                     secureStayExpenses = apiExpenses;
@@ -372,13 +431,21 @@ class FileDataService {
                 
                 // Property filtering
                 if (propertyId) {
-                    // If expense has propertyId, match it
-                    if (expense.propertyId && expense.propertyId !== parseInt(propertyId)) {
+                    // If expense has propertyId, it must match
+                    if (expense.propertyId) {
+                        if (expense.propertyId !== parseInt(propertyId)) {
+                            return false;
+                        }
+                    } else {
+                        // If expense doesn't have propertyId, try to match by listing name
+                        // If listing name doesn't match or is missing, exclude it
+                        if (!expense.listing) {
+                            return false; // No propertyId and no listing name - exclude
+                        }
+                        // TODO: Implement property name mapping for uploaded expenses
+                        // For now, exclude expenses without propertyId when filtering for specific property
                         return false;
                     }
-                    // If expense has listing name, try to match it
-                    // For now, include all uploaded expenses if no propertyId match
-                    // TODO: Implement property name mapping for uploaded expenses
                 }
                 
                 return true;
