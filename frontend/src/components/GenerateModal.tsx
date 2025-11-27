@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Tag } from 'lucide-react';
+import { X, Search, Tag, Check } from 'lucide-react';
 import { Owner, Property, Listing } from '../types';
 import { listingsAPI } from '../services/api';
+import { useToast } from './ui/toast';
 
 interface GenerateModalProps {
   isOpen: boolean;
@@ -18,8 +19,9 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   owners,
   properties,
 }) => {
+  const { showToast } = useToast();
   const [ownerId, setOwnerId] = useState('');
-  const [propertyId, setPropertyId] = useState('');
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -43,7 +45,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     } else {
       setFilteredProperties([]);
     }
-    setPropertyId(''); // Reset property selection when owner changes
+    setSelectedPropertyIds([]); // Reset property selection when owner changes
     setPropertySearch(''); // Reset search when owner changes
   }, [ownerId, properties]);
 
@@ -93,37 +95,51 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!generateAll && !ownerId) {
-      alert('Please select an owner');
+      showToast('Please select an owner', 'error');
       return;
     }
 
     if (!startDate || !endDate) {
-      alert('Please select start date and end date');
+      showToast('Please select start date and end date', 'error');
       return;
     }
 
     if (new Date(startDate) > new Date(endDate)) {
-      alert('Start date must be before end date');
+      showToast('Start date must be before end date', 'error');
       return;
     }
 
     try {
       setIsGenerating(true);
-      
-      await onGenerate({
-        ownerId: generateAll ? 'all' : ownerId,
-        propertyId: propertyId || undefined,
-        tag: selectedTag || undefined,
-        startDate,
-        endDate,
-        calculationType,
-      });
+
+      // If multiple properties selected, generate for each one
+      if (selectedPropertyIds.length > 1) {
+        for (const propId of selectedPropertyIds) {
+          await onGenerate({
+            ownerId: generateAll ? 'all' : ownerId,
+            propertyId: propId,
+            tag: selectedTag || undefined,
+            startDate,
+            endDate,
+            calculationType,
+          });
+        }
+      } else {
+        await onGenerate({
+          ownerId: generateAll ? 'all' : ownerId,
+          propertyId: selectedPropertyIds[0] || undefined,
+          tag: selectedTag || undefined,
+          startDate,
+          endDate,
+          calculationType,
+        });
+      }
 
       // Reset form and close modal on success
       setOwnerId('');
-      setPropertyId('');
+      setSelectedPropertyIds([]);
       setSelectedTag('');
       setGenerateAll(false);
       setPropertySearch('');
@@ -134,6 +150,25 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setIsGenerating(false);
       // Don't close modal on error so user can try again
     }
+  };
+
+  const togglePropertySelection = (propertyId: string) => {
+    setSelectedPropertyIds(prev => {
+      if (prev.includes(propertyId)) {
+        return prev.filter(id => id !== propertyId);
+      } else {
+        return [...prev, propertyId];
+      }
+    });
+  };
+
+  const selectAllProperties = () => {
+    const allIds = searchFilteredProperties.map(p => p.id.toString());
+    setSelectedPropertyIds(allIds);
+  };
+
+  const clearPropertySelection = () => {
+    setSelectedPropertyIds([]);
   };
 
   if (!isOpen) return null;
@@ -162,7 +197,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                   setGenerateAll(e.target.checked);
                   if (e.target.checked) {
                     setOwnerId('');
-                    setPropertyId('');
+                    setSelectedPropertyIds([]);
                   }
                 }}
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -201,55 +236,107 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Property (Optional)
+                  Properties (Optional - Select multiple)
                 </label>
                 <div className="space-y-2">
                   {/* Search Input - Only show if owner is selected and has properties */}
                   {ownerId && filteredProperties.length > 0 && (
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <input
-                        type="text"
-                        placeholder="Search properties by name, nickname, or ID..."
-                        value={propertySearch}
-                        onChange={(e) => setPropertySearch(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md pl-10 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      {propertySearch && (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          placeholder="Search properties..."
+                          value={propertySearch}
+                          onChange={(e) => setPropertySearch(e.target.value)}
+                          className="w-full border border-gray-300 rounded-md pl-10 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {propertySearch && (
+                          <button
+                            onClick={() => setPropertySearch('')}
+                            type="button"
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+                          >
+                            X
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Select All / Clear buttons */}
+                      <div className="flex gap-2 text-xs">
                         <button
-                          onClick={() => setPropertySearch('')}
                           type="button"
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+                          onClick={selectAllProperties}
+                          className="text-blue-600 hover:text-blue-800"
                         >
-                          ✕
+                          Select All ({searchFilteredProperties.length})
                         </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearPropertySelection}
+                          className="text-gray-600 hover:text-gray-800"
+                        >
+                          Clear Selection
+                        </button>
+                        {selectedPropertyIds.length > 0 && (
+                          <span className="ml-auto text-blue-600 font-medium">
+                            {selectedPropertyIds.length} selected
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Property List with checkboxes */}
+                  {ownerId ? (
+                    <div className="border border-gray-300 rounded-md max-h-40 overflow-y-auto">
+                      {searchFilteredProperties.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500 italic">
+                          {propertySearch ? `No properties found matching "${propertySearch}"` : 'No properties available'}
+                        </div>
+                      ) : (
+                        searchFilteredProperties.map((property) => (
+                          <label
+                            key={property.id}
+                            className={`flex items-center px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                              selectedPropertyIds.includes(property.id.toString()) ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className={`w-4 h-4 border rounded mr-3 flex items-center justify-center ${
+                              selectedPropertyIds.includes(property.id.toString())
+                                ? 'bg-blue-600 border-blue-600'
+                                : 'border-gray-300'
+                            }`}>
+                              {selectedPropertyIds.includes(property.id.toString()) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <span className="text-sm text-gray-700 truncate">
+                              {property.nickname || property.name}
+                            </span>
+                            <span className="ml-auto text-xs text-gray-400">
+                              ID: {property.id}
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={selectedPropertyIds.includes(property.id.toString())}
+                              onChange={() => togglePropertySelection(property.id.toString())}
+                              className="sr-only"
+                            />
+                          </label>
+                        ))
                       )}
                     </div>
+                  ) : (
+                    <div className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50">
+                      Select an owner first
+                    </div>
                   )}
-                  
-                  {/* Property Dropdown */}
-                  <select
-                    value={propertyId}
-                    onChange={(e) => setPropertyId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={!ownerId}
-                  >
-                    <option value="">
-                      {ownerId 
-                        ? `All Properties (${searchFilteredProperties.length})` 
-                        : 'Select an owner first'}
-                    </option>
-                    {searchFilteredProperties.map((property) => (
-                      <option key={property.id} value={property.id}>
-                        {property.nickname || property.name} (ID: {property.id})
-                      </option>
-                    ))}
-                  </select>
-                  
-                  {/* No results message */}
-                  {ownerId && propertySearch && searchFilteredProperties.length === 0 && (
-                    <p className="text-sm text-gray-500 italic">
-                      No properties found matching "{propertySearch}"
+
+                  {selectedPropertyIds.length === 0 && ownerId && (
+                    <p className="text-xs text-gray-500">
+                      Leave empty to generate for all properties
                     </p>
                   )}
                 </div>
@@ -267,7 +354,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                     setSelectedTag(e.target.value);
                     // Clear property selection when tag is selected
                     if (e.target.value) {
-                      setPropertyId('');
+                      setSelectedPropertyIds([]);
                     }
                   }}
                   className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
