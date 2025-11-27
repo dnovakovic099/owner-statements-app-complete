@@ -24,14 +24,15 @@ router.get('/jobs/:jobId', async (req, res) => {
 // GET /api/statements-file - Get all statements from files
 router.get('/', async (req, res) => {
     try {
-        const { 
-            ownerId, 
-            propertyId, 
-            status, 
+        const {
+            ownerId,
+            propertyId,
+            propertyIds, // Support multi-select filtering
+            status,
             startDate,
             endDate,
-            limit = 50, 
-            offset = 0 
+            limit = 50,
+            offset = 0
         } = req.query;
 
         let statements = await FileDataService.getStatements();
@@ -40,8 +41,12 @@ router.get('/', async (req, res) => {
         if (ownerId) {
             statements = statements.filter(s => s.ownerId === parseInt(ownerId));
         }
-        
-        if (propertyId) {
+
+        // Support both single propertyId and multiple propertyIds
+        if (propertyIds) {
+            const ids = propertyIds.split(',').map(id => parseInt(id.trim()));
+            statements = statements.filter(s => ids.includes(s.propertyId));
+        } else if (propertyId) {
             statements = statements.filter(s => s.propertyId === parseInt(propertyId));
         }
         
@@ -173,7 +178,7 @@ router.post('/generate', async (req, res) => {
 
         // Get data from files
         const listings = await FileDataService.getListings();
-        
+
         // Only get reservations for the exact period and property needed
         const reservations = await FileDataService.getReservations(
             startDate,
@@ -377,7 +382,7 @@ router.post('/generate', async (req, res) => {
         const propertyCount = targetListings.length;
         const techFees = propertyCount * 50; // $50 per property
         const insuranceFees = propertyCount * 25; // $25 per property
-        
+
         // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
         const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
@@ -1325,6 +1330,31 @@ function generateViewStatementHTML(statement, id) {
             body { padding: 0; background: white; }
             .document { box-shadow: none; }
             .print-button { display: none; }
+
+            /* PDF-specific table styles */
+            .rental-table, .expenses-table, .items-table {
+                font-size: 10px !important;
+                width: 100% !important;
+            }
+
+            .rental-table th, .expenses-table th, .items-table th {
+                padding: 8px 4px !important;
+                font-size: 9px !important;
+            }
+
+            .rental-table td, .expenses-table td, .items-table td {
+                padding: 6px 4px !important;
+                font-size: 10px !important;
+            }
+
+            /* Ensure page breaks work properly */
+            .section {
+                page-break-inside: avoid;
+            }
+
+            tr {
+                page-break-inside: avoid;
+            }
         }
         
         @media (max-width: 768px) {
@@ -1903,41 +1933,10 @@ function generateViewStatementHTML(statement, id) {
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => {
-                                    // For co-hosted Airbnb: Revenue is $0 (client already got paid directly)
-                                    const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                                    const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                    const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                                    return sum + clientRevenue;
-                                }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => {
-                                    const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                                    return sum + (clientRevenue * (statement.pmPercentage / 100));
-                                }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>$${(statement.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>-$${Math.abs(statement.pmCommission || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell payout-cell"><strong>${(() => {
-                                    // Calculate total gross payout by summing individual row payouts
-                                    const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
-                                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                                        const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                                        const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                                        // For co-hosted Airbnb: only negative PM fee
-                                        // For Airbnb (not co-hosted): Revenue - PM Commission
-                                        // For non-Airbnb: Revenue - PM Commission + Tax
-                                        let grossPayout;
-                                        if (isCohostAirbnb) {
-                                            grossPayout = -luxuryFee;
-                                        } else if (isAirbnb) {
-                                            grossPayout = clientRevenue - luxuryFee;
-                                        } else {
-                                            grossPayout = clientRevenue - luxuryFee + taxResponsibility;
-                                        }
-                                        return sum + grossPayout;
-                                    }, 0) || 0;
-                                    return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                })()}</strong></td>
+                                <td class="amount-cell payout-cell"><strong>${((statement.totalRevenue - statement.pmCommission) >= 0 ? '$' : '-$')}${Math.abs(statement.totalRevenue - statement.pmCommission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                             </tr>
             </tbody>
         </table>
@@ -2081,29 +2080,7 @@ function generateViewStatementHTML(statement, id) {
                         <table class="summary-table">
                             <tr>
                                 <td class="summary-label">Gross Payout</td>
-                                <td class="summary-value ${(() => {
-                                    const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
-                                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                                        const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
-                                        return sum + grossPayout;
-                                    }, 0) || 0;
-                                    return totalGrossPayout >= 0 ? 'revenue' : 'expense';
-                                })()}">${(() => {
-                                    const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
-                                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                                        const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
-                                        return sum + grossPayout;
-                                    }, 0) || 0;
-                                    return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                })()}</td>
+                                <td class="summary-value ${(statement.totalRevenue - statement.pmCommission) >= 0 ? 'revenue' : 'expense'}">${((statement.totalRevenue - statement.pmCommission) >= 0 ? '$' : '-$')}${Math.abs(statement.totalRevenue - statement.pmCommission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
                             <tr>
@@ -2113,24 +2090,11 @@ function generateViewStatementHTML(statement, id) {
                             ` : ''}
                             <tr>
                                 <td class="summary-label">Expenses</td>
-                                <td class="summary-value expense">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-value expense">-$${(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr class="total-row">
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
-                                <td class="summary-value total-amount"><strong>$${(() => {
-                                    const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
-                                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                                        const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                                        const cohostClientRevenue = isCohostAirbnb ? 0 : clientRevenue;
-                                        const grossPayout = isCohostAirbnb ? -luxuryFee : (cohostClientRevenue - luxuryFee);
-                                        return sum + grossPayout;
-                                    }, 0) || 0;
-                                    const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-                                    const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
-                                    return (totalGrossPayout + upsells - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                })()}</strong></td>
+                                <td class="summary-value total-amount"><strong>${(statement.ownerPayout || 0) >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                             </tr>
                         </table>
                     </div>
@@ -2193,21 +2157,15 @@ router.get('/:id/download', async (req, res) => {
 
         const options = {
             format: 'A4',
-            border: {
-                top: '0.5in',
-                right: '0.5in',
-                bottom: '0.5in',
-                left: '0.5in'
+            landscape: false, // Use portrait orientation
+            margin: {
+                top: '10mm',
+                right: '10mm',
+                bottom: '10mm',
+                left: '10mm'
             },
-            paginationOffset: 1,
-            header: {
-                height: '0mm',
-                contents: ''
-            },
-            footer: {
-                height: '0mm',
-                contents: ''
-            },
+            printBackground: true, // Ensure backgrounds are printed
+            preferCSSPageSize: false,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -2226,21 +2184,21 @@ router.get('/:id/download', async (req, res) => {
         // Generate PDF
         const pdfBuffer = await htmlPdf.generatePdf(file, options);
 
-        // Get property nickname for filename
-        let propertyDisplayName = statement.propertyName || 'Statement';
+        // Get property nickname for filename (nickname only, no ID)
+        let propertyNickname = 'Statement';
         if (statement.propertyId) {
             try {
                 const listing = await ListingService.getListingWithPmFee(statement.propertyId);
-                if (listing) {
-                    propertyDisplayName = listing.nickname || listing.displayName || listing.name || propertyDisplayName;
+                if (listing && listing.nickname) {
+                    propertyNickname = listing.nickname;
                 }
             } catch (err) {
                 console.error('Error fetching listing for filename:', err);
             }
         }
 
-        // Clean property name for filename
-        const cleanPropertyName = propertyDisplayName
+        // Clean property nickname for filename
+        const cleanPropertyName = propertyNickname
             .replace(/[^a-zA-Z0-9\s\-\.]/g, '') // Remove special chars but keep spaces, hyphens, dots
             .replace(/\s+/g, ' ') // Replace multiple spaces with single space
             .trim();
@@ -2402,9 +2360,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     
                     // Calculate PM commission (only on non-Airbnb revenue for co-hosted properties)
                     const pmCommission = totalRevenue * (pmPercentage / 100);
-                    const techFees = 50;
-                    const insuranceFees = 25;
-                    
+                    const techFees = 50; // $50 per property
+                    const insuranceFees = 25; // $25 per property
+
                     // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
                     const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
 
