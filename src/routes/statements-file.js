@@ -1327,24 +1327,55 @@ function generateViewStatementHTML(statement, id) {
         .status-paid { background: #e0e7ff; color: #5b21b6; }
         
         @media print {
-            body { padding: 0; background: white; }
-            .document { box-shadow: none; }
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+
+            body {
+                padding: 0;
+                background: white;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .document {
+                box-shadow: none;
+                max-width: 100%;
+                margin: 0;
+                padding: 0;
+            }
             .print-button { display: none; }
+            .footer { display: none; }
 
             /* PDF-specific table styles */
             .rental-table, .expenses-table, .items-table {
-                font-size: 10px !important;
+                font-size: 9px !important;
                 width: 100% !important;
             }
 
             .rental-table th, .expenses-table th, .items-table th {
-                padding: 8px 4px !important;
-                font-size: 9px !important;
+                padding: 6px 3px !important;
+                font-size: 8px !important;
+                background-color: #1e3a5f !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
 
             .rental-table td, .expenses-table td, .items-table td {
-                padding: 6px 4px !important;
-                font-size: 10px !important;
+                padding: 5px 3px !important;
+                font-size: 9px !important;
+            }
+
+            .totals-row {
+                background-color: #1e3a5f !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            .totals-row td {
+                color: white !important;
             }
 
             /* Ensure page breaks work properly */
@@ -1354,6 +1385,11 @@ function generateViewStatementHTML(statement, id) {
 
             tr {
                 page-break-inside: avoid;
+            }
+
+            .header {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
         }
         
@@ -2113,7 +2149,7 @@ function generateViewStatementHTML(statement, id) {
                         minute: '2-digit'
                     })}
                 </div>
-                <button onclick="window.print()" class="print-button">Print Statement</button>
+                <button onclick="window.open('/api/statements/${id}/download', '_blank')" class="print-button">Download PDF</button>
             </div>
         </div>
     </div>
