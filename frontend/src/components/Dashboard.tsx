@@ -64,6 +64,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [filters, setFilters] = useState({
     ownerId: '',
     propertyId: '',
+    propertyIds: [] as string[], // Multi-select for combined statement generation
     status: '',
     startDate: '',
     endDate: '',
@@ -141,14 +142,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleGenerateStatement = async (data: {
     ownerId: string;
     propertyId?: string;
+    propertyIds?: string[];
     tag?: string;
     startDate: string;
     endDate: string;
     calculationType: string;
   }) => {
-    // Show loading toast for single statement generation
-    const isBulk = data.ownerId === 'all' || (data.tag && !data.propertyId);
-    const toastId = !isBulk ? showToast('Generating statement...', 'loading') : '';
+    // No toast here - the modal has its own loading overlay
 
     try {
       const response = await statementsAPI.generateStatement(data);
@@ -176,23 +176,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         showToast(message, errors > 0 ? 'error' : 'success');
         setIsGenerateModalOpen(false);
         await loadStatements();
-      } 
+      }
       // Single statement generation
       else {
-        if (toastId) {
-          updateToast(toastId, 'Statement generated successfully', 'success');
-        }
-        setIsGenerateModalOpen(false);
-        await loadStatements();
+        // Don't close modal here - let GenerateModal handle it
       }
     } catch (err) {
-      if (toastId) {
-        updateToast(toastId, `Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
-      } else {
-        showToast(`Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
-      }
-      throw err; // Re-throw to keep modal open on error
+      console.error('Statement generation error:', err);
+      throw err; // Re-throw so GenerateModal knows there was an error
     }
+  };
+
+  // Called when GenerateModal closes after successful generation
+  const handleGenerateModalClose = () => {
+    setIsGenerateModalOpen(false);
+    loadStatements(); // Refresh the statements list
   };
 
   const handleUploadCSV = async (file: File) => {
@@ -508,7 +506,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   )}
                 </div>
 
-                {/* Property Dropdown */}
+                {/* Property Dropdown - Multi-select */}
                 <div className="relative" ref={propertyDropdownRef}>
                   <button
                     type="button"
@@ -516,13 +514,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
                   >
                     <span className="text-gray-900 truncate">
-                      {filters.propertyId
-                        ? (() => {
-                            const selected = properties.find(p => p.id.toString() === filters.propertyId);
-                            return selected
-                              ? `${selected.nickname || selected.displayName || selected.name} (ID: ${selected.id})`
-                              : 'Select Property';
-                          })()
+                      {filters.propertyIds.length > 0
+                        ? `${filters.propertyIds.length} properties selected`
                         : `All Properties (${filteredProperties.length})`}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
@@ -530,39 +523,74 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
                   {/* Custom Dropdown Popup */}
                   {isPropertyDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-72 overflow-y-auto">
-                      {/* All Properties Option */}
-                      <div
-                        onClick={() => {
-                          setFilters({ ...filters, propertyId: '' });
-                          setIsPropertyDropdownOpen(false);
-                        }}
-                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center justify-between ${
-                          !filters.propertyId ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
-                        }`}
-                      >
-                        <span className="font-medium">All Properties ({filteredProperties.length})</span>
-                        {!filters.propertyId && <Check className="w-4 h-4 text-blue-600" />}
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-hidden">
+                      {/* Action buttons */}
+                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                        <span className="text-xs text-gray-600">
+                          {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFilters({ ...filters, propertyIds: filteredProperties.map(p => p.id.toString()), propertyId: '' })}
+                            className="text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
+                            className="text-xs text-gray-600 hover:text-gray-800"
+                          >
+                            Clear
+                          </button>
+                        </div>
                       </div>
 
                       {/* Property List */}
-                      {filteredProperties.map((property) => (
-                        <div
-                          key={property.id}
-                          onClick={() => {
-                            setFilters({ ...filters, propertyId: property.id.toString() });
-                            setIsPropertyDropdownOpen(false);
-                          }}
-                          className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center justify-between border-t border-gray-100 ${
-                            filters.propertyId === property.id.toString() ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
-                          }`}
+                      <div className="max-h-64 overflow-y-auto">
+                        {filteredProperties.map((property) => {
+                          const isSelected = filters.propertyIds.includes(property.id.toString());
+                          return (
+                            <div
+                              key={property.id}
+                              onClick={() => {
+                                const newIds = isSelected
+                                  ? filters.propertyIds.filter(id => id !== property.id.toString())
+                                  : [...filters.propertyIds, property.id.toString()];
+                                setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
+                              }}
+                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center border-b border-gray-100 last:border-b-0 ${
+                                isSelected ? 'bg-blue-50' : ''
+                              }`}
+                            >
+                              <div className={`w-4 h-4 border rounded mr-3 flex items-center justify-center flex-shrink-0 ${
+                                isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                              }`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className="text-sm text-gray-900 truncate flex-1">
+                                {property.nickname || property.displayName || property.name}
+                              </span>
+                              <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                                ID: {property.id}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Done button */}
+                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50">
+                        <button
+                          type="button"
+                          onClick={() => setIsPropertyDropdownOpen(false)}
+                          className="w-full px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                         >
-                          <span className="truncate">
-                            {property.nickname || property.displayName || property.name} (ID: {property.id})
-                          </span>
-                          {filters.propertyId === property.id.toString() && <Check className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" />}
-                        </div>
-                      ))}
+                          Done
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -610,7 +638,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       {/* Modals */}
       <GenerateModal
         isOpen={isGenerateModalOpen}
-        onClose={() => setIsGenerateModalOpen(false)}
+        onClose={handleGenerateModalClose}
         onGenerate={handleGenerateStatement}
         owners={owners}
         properties={properties}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, Tag, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Search, Tag, Check, ChevronDown } from 'lucide-react';
 import { Owner, Property, Listing } from '../types';
 import { listingsAPI } from '../services/api';
 import { useToast } from './ui/toast';
@@ -7,7 +7,7 @@ import { useToast } from './ui/toast';
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (data: { ownerId: string; propertyId?: string; tag?: string; startDate: string; endDate: string; calculationType: string }) => Promise<void>;
+  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; tag?: string; startDate: string; endDate: string; calculationType: string }) => Promise<void>;
   owners: Owner[];
   properties: Property[];
 }
@@ -32,6 +32,31 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [, setListings] = useState<Listing[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+
+  // Progress tracking for multi-property generation
+  const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
+
+  // Owner dropdown state
+  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const ownerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close owner dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
+        setIsOwnerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter owners based on search
+  const filteredOwners = owners.filter((owner) => {
+    if (!ownerSearch) return true;
+    return owner.name.toLowerCase().includes(ownerSearch.toLowerCase());
+  });
 
   useEffect(() => {
     if (ownerId) {
@@ -114,22 +139,34 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     try {
       setIsGenerating(true);
 
-      // If multiple properties selected, generate for each one
-      if (selectedPropertyIds.length > 1) {
-        for (const propId of selectedPropertyIds) {
-          await onGenerate({
-            ownerId: generateAll ? 'all' : ownerId,
-            propertyId: propId,
-            tag: selectedTag || undefined,
-            startDate,
-            endDate,
-            calculationType,
-          });
+      // Generate separate statement for each selected property with progress
+      if (selectedPropertyIds.length > 0) {
+        const total = selectedPropertyIds.length;
+        setGenerationProgress({ current: 0, total });
+
+        for (let i = 0; i < selectedPropertyIds.length; i++) {
+          const propId = selectedPropertyIds[i];
+          setGenerationProgress({ current: i + 1, total });
+
+          try {
+            await onGenerate({
+              ownerId: generateAll ? 'all' : ownerId,
+              propertyId: propId,
+              tag: selectedTag || undefined,
+              startDate,
+              endDate,
+              calculationType,
+            });
+          } catch (err) {
+            console.error(`Error generating statement for property ${propId}:`, err);
+            // Continue with next property even if one fails
+          }
         }
       } else {
+        // No specific properties selected - generate for all or by tag
+        setGenerationProgress({ current: 0, total: 1 });
         await onGenerate({
           ownerId: generateAll ? 'all' : ownerId,
-          propertyId: selectedPropertyIds[0] || undefined,
           tag: selectedTag || undefined,
           startDate,
           endDate,
@@ -143,10 +180,12 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setSelectedTag('');
       setGenerateAll(false);
       setPropertySearch('');
+      setGenerationProgress({ current: 0, total: 0 });
       setIsGenerating(false);
       onClose();
     } catch (error) {
       console.error('Error generating statement:', error);
+      setGenerationProgress({ current: 0, total: 0 });
       setIsGenerating(false);
       // Don't close modal on error so user can try again
     }
@@ -219,19 +258,66 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Owner *
                 </label>
-                <select
-                  value={ownerId}
-                  onChange={(e) => setOwnerId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required={!generateAll}
-                >
-                  <option value="">Select Owner</option>
-                  {owners.map((owner) => (
-                    <option key={owner.id} value={owner.id}>
-                      {owner.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative" ref={ownerDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                  >
+                    <span className={ownerId ? 'text-gray-900' : 'text-gray-500'}>
+                      {ownerId
+                        ? owners.find(o => o.id.toString() === ownerId)?.name || 'Select Owner'
+                        : 'Select Owner'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Custom Owner Dropdown */}
+                  {isOwnerDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-64 overflow-hidden">
+                      {/* Search Input */}
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input
+                            type="text"
+                            placeholder="Search owners..."
+                            value={ownerSearch}
+                            onChange={(e) => setOwnerSearch(e.target.value)}
+                            className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Owner List */}
+                      <div className="max-h-48 overflow-y-auto">
+                        {filteredOwners.length === 0 ? (
+                          <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                            No owners found
+                          </div>
+                        ) : (
+                          filteredOwners.map((owner) => (
+                            <div
+                              key={owner.id}
+                              onClick={() => {
+                                setOwnerId(owner.id.toString());
+                                setIsOwnerDropdownOpen(false);
+                                setOwnerSearch('');
+                              }}
+                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center justify-between border-b border-gray-100 last:border-b-0 ${
+                                ownerId === owner.id.toString() ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                              }`}
+                            >
+                              <span className="text-sm">{owner.name}</span>
+                              {ownerId === owner.id.toString() && <Check className="w-4 h-4 text-blue-600" />}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -488,9 +574,24 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
             <p className="text-lg font-semibold text-gray-900 mb-1">
               {generateAll ? 'Generating Statements for All Owners...' : 'Generating Statement...'}
             </p>
-            <p className="text-sm text-gray-600">
-              This may take a few moments
-            </p>
+            {generationProgress.total > 1 ? (
+              <>
+                <p className="text-sm text-blue-600 font-medium mb-2">
+                  {generationProgress.current} of {generationProgress.total} statements
+                </p>
+                {/* Progress bar */}
+                <div className="w-48 bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                  ></div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-600">
+                This may take a few moments
+              </p>
+            )}
           </div>
         )}
       </div>
