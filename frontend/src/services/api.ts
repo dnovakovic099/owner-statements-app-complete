@@ -320,10 +320,15 @@ export const quickBooksAPI = {
 // Listings API
 export const listingsAPI = {
   getListings: async (listingIds?: number[]): Promise<{ success: boolean; listings: Listing[] }> => {
-    const params = listingIds && listingIds.length > 0 
-      ? `?ids=${listingIds.join(',')}` 
+    const params = listingIds && listingIds.length > 0
+      ? `?ids=${listingIds.join(',')}`
       : '';
     const response = await api.get(`/listings${params}`);
+    return response.data;
+  },
+
+  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname'>[] }> => {
+    const response = await api.get('/listings/names');
     return response.data;
   },
 
