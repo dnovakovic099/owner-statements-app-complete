@@ -1495,9 +1495,9 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             vertical-align: middle;
         }
         
-        .expenses-table tr:hover {
-            background: #f8f9fa;
-        }
+        // .expenses-table tr:hover {
+        //     background: #f8f9fa;
+        // }
         
         .expenses-table .date-cell {
             width: 12%;
@@ -2436,9 +2436,11 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         );
         console.log(`[Success] Fetched ${allReservations.length} total reservations`);
         
-        console.log(`[Info] Fetching all expenses for period...`);
-        const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
-        console.log(`[Success] Fetched ${allExpenses.length} total expenses`);
+
+        // Option1: fetch all expenses at once (may be large data set)
+        // console.log(`[Info] Fetching all expenses for period...`);
+        // const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
+        // console.log(`[Success] Fetched ${allExpenses.length} total expenses`);
 
         // Filter to only active listings
         let activeListings = listings.filter(l => l.isActive);
@@ -2490,9 +2492,30 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return dateMatch && statusMatch;
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-                    const periodExpenses = allExpenses.filter(exp => {
-                        // Only include expenses that match this property
-                        if (exp.propertyId !== property.id) {
+
+                    // Option2: call getExpenses property by property (performance issue may come with many properties)
+                    const expenses = await FileDataService.getExpenses(startDate, endDate, property.id);
+
+                    // Check for duplicate warnings
+                    const duplicateWarnings = expenses.duplicateWarnings || [];
+                    if (duplicateWarnings.length > 0) {
+                        console.warn(`[Warning]  Found ${duplicateWarnings.length} potential duplicate expenses in statement`);
+                    }
+                    
+                    // Option1
+                    // const periodExpenses = allExpenses.filter(exp => {
+                    //     // Only include expenses that match this property
+                    //     if (exp.propertyId !== property.id) {
+                    //         return false;
+                    //     }
+                    //     const expenseDate = new Date(exp.date);
+                    //     return expenseDate >= periodStart && expenseDate <= periodEnd;
+                    // });
+
+                    // Option2
+                    const periodExpenses = expenses.filter(exp => {
+                        // For file-based expenses, filter by propertyId
+                        if (property.id && exp.propertyId !== null && exp.propertyId !== parseInt(property.id)) {
                             return false;
                         }
                         const expenseDate = new Date(exp.date);
