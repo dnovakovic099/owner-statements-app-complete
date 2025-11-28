@@ -45,6 +45,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings'>('dashboard');
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
 
+  // Pagination state
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+    total: 0,
+  });
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -105,8 +112,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
+    // Reset to first page when filters change
+    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+  }, [filters.ownerId, filters.propertyId, filters.propertyIds, filters.status, filters.startDate, filters.endDate]);
+
+  useEffect(() => {
     loadStatements();
-  }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters, pagination.pageIndex, pagination.pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadInitialData = async () => {
     try {
@@ -131,8 +143,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const loadStatements = async () => {
     try {
-      const response = await statementsAPI.getStatements(filters);
+      const response = await statementsAPI.getStatements({
+        ...filters,
+        limit: pagination.pageSize,
+        offset: pagination.pageIndex * pagination.pageSize,
+      });
       setStatements(response.statements);
+      setPagination(prev => ({ ...prev, total: response.total }));
     } catch (err) {
       console.error('Failed to load statements:', err);
     }
@@ -632,7 +649,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Statements Table */}
-        <StatementsTable statements={statements} listings={listings} onAction={handleStatementAction} regeneratingId={regeneratingStatementId} />
+        <StatementsTable
+          statements={statements}
+          listings={listings}
+          onAction={handleStatementAction}
+          regeneratingId={regeneratingStatementId}
+          pagination={pagination}
+          onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
+        />
       </div>
 
       {/* Modals */}
