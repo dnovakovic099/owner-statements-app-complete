@@ -7,7 +7,6 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
@@ -40,11 +39,19 @@ interface ListingName {
   nickname?: string | null;
 }
 
+interface PaginationState {
+  pageIndex: number;
+  pageSize: number;
+  total: number;
+}
+
 interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
   regeneratingId?: number | null;
+  pagination: PaginationState;
+  onPaginationChange: (pageIndex: number, pageSize: number) => void;
 }
 
 const formatCurrency = (amount: number) => {
@@ -97,7 +104,14 @@ const getStatusBadge = (status: string) => {
   );
 };
 
-const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings = [], onAction, regeneratingId }) => {
+const StatementsTable: React.FC<StatementsTableProps> = ({
+  statements,
+  listings = [],
+  onAction,
+  regeneratingId,
+  pagination,
+  onPaginationChange,
+}) => {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'createdAt', desc: true }
   ]);
@@ -325,32 +339,37 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
     },
   ];
 
+  // Calculate derived pagination values
+  const pageCount = Math.ceil(pagination.total / pagination.pageSize);
+  const canPreviousPage = pagination.pageIndex > 0;
+  const canNextPage = pagination.pageIndex < pageCount - 1;
+
   const table = useReactTable({
     data: statements,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: 'includesString',
+    manualPagination: true, // Server-side pagination
+    pageCount,
     state: {
       sorting,
       columnFilters,
       columnVisibility,
       globalFilter,
-    },
-    initialState: {
       pagination: {
-        pageSize: 10,
+        pageIndex: pagination.pageIndex,
+        pageSize: pagination.pageSize,
       },
     },
   });
 
-  if (statements.length === 0) {
+  if (statements.length === 0 && pagination.total === 0) {
     return (
       <div className="bg-white rounded-lg shadow-md p-8">
         <div className="text-center">
@@ -389,38 +408,6 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
                 className="pl-9 w-full sm:w-64"
               />
             </div>
-
-            {/* Status Filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10">
-                  Status
-                  <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {['draft', 'generated', 'sent', 'paid'].map((status) => {
-                  const filterValue = (table.getColumn('status')?.getFilterValue() as string[]) || [];
-                  const isChecked = filterValue.includes(status);
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={status}
-                      checked={isChecked}
-                      onCheckedChange={(checked) => {
-                        const newValue = checked
-                          ? [...filterValue, status]
-                          : filterValue.filter((v) => v !== status);
-                        table.getColumn('status')?.setFilterValue(newValue.length ? newValue : undefined);
-                      }}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {/* Type Filter */}
             <DropdownMenu>
@@ -557,19 +544,19 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
       <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-sm text-gray-700">
           <span>
-            Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}-
+            Showing {pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}-
             {Math.min(
-              (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-              table.getFilteredRowModel().rows.length
+              (pagination.pageIndex + 1) * pagination.pageSize,
+              pagination.total
             )}{' '}
-            of {table.getFilteredRowModel().rows.length}
+            of {pagination.total}
           </span>
           <span className="mx-2 text-gray-300">|</span>
           <span>Rows per page:</span>
           <select
-            value={table.getState().pagination.pageSize}
+            value={pagination.pageSize}
             onChange={(e) => {
-              table.setPageSize(Number(e.target.value));
+              onPaginationChange(0, Number(e.target.value));
             }}
             className="h-8 w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -584,16 +571,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
+            disabled={!canPreviousPage}
           >
             <ChevronLeft className="h-4 w-4" />
             Previous
           </Button>
           <div className="flex items-center gap-1">
-            {Array.from({ length: table.getPageCount() }, (_, i) => i).map((page) => {
-              const currentPage = table.getState().pagination.pageIndex;
-              const totalPages = table.getPageCount();
+            {Array.from({ length: pageCount }, (_, i) => i).map((page) => {
+              const currentPage = pagination.pageIndex;
+              const totalPages = pageCount;
 
               // Show first, last, current, and adjacent pages
               if (
@@ -606,7 +593,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
                     key={page}
                     variant={page === currentPage ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => table.setPageIndex(page)}
+                    onClick={() => onPaginationChange(page, pagination.pageSize)}
                     className="w-8 h-8 p-0"
                   >
                     {page + 1}
@@ -621,8 +608,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, listings 
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
+            disabled={!canNextPage}
           >
             Next
             <ChevronRight className="h-4 w-4" />

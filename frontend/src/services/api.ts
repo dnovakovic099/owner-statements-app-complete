@@ -60,7 +60,9 @@ export const statementsAPI = {
     status?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<{ statements: Statement[] }> => {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ statements: Statement[]; total: number; limit: number; offset: number }> => {
     const params = new URLSearchParams();
     if (filters?.ownerId) params.append('ownerId', filters.ownerId);
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
@@ -71,6 +73,8 @@ export const statementsAPI = {
     if (filters?.status) params.append('status', filters.status);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());
+    if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());
 
     const response = await api.get(`/statements?${params.toString()}`);
     return response.data;
