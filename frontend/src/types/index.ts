@@ -12,7 +12,6 @@ export interface Property {
   hostawayId: string;
   name: string;
   nickname?: string | null;
-  displayName?: string | null;
   address: string;
   ownerId: number;
   pmPercentage: number | null;

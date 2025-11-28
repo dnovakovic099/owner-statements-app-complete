@@ -62,18 +62,6 @@ router.post('/bulk-update-pm-fees', async (req, res) => {
     }
 });
 
-// GET /api/listings/names - Get lightweight listing names for lookups (id, name, displayName, nickname only)
-// NOTE: This must come BEFORE /:id routes
-router.get('/names', async (req, res) => {
-    try {
-        const listings = await ListingService.getListingNames();
-        res.json({ success: true, listings });
-    } catch (error) {
-        console.error('Error fetching listing names:', error);
-        res.status(500).json({ error: 'Failed to fetch listing names' });
-    }
-});
-
 // POST /api/listings/sync - Sync listings from Hostify
 // NOTE: This must come BEFORE /:id routes
 router.post('/sync', async (req, res) => {

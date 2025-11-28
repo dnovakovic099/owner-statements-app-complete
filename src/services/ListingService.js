@@ -82,7 +82,7 @@ class ListingService {
      */
     async getListingsWithPmFees(listingIds = []) {
         try {
-            const where = listingIds.length > 0
+            const where = listingIds.length > 0 
                 ? { id: { [Op.in]: listingIds } }
                 : {};
 
@@ -90,21 +90,6 @@ class ListingService {
             return listings.map(l => l.toJSON());
         } catch (error) {
             console.error('Error fetching listings:', error);
-            return [];
-        }
-    }
-
-    /**
-     * Get lightweight listing names for lookups (id, name, displayName, nickname only)
-     */
-    async getListingNames() {
-        try {
-            const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname']
-            });
-            return listings.map(l => l.toJSON());
-        } catch (error) {
-            console.error('Error fetching listing names:', error);
             return [];
         }
     }

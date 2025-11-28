@@ -1,6 +1,5 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ToastProvider } from './components/ui/toast';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import './App.css';
@@ -30,9 +29,7 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <AppContent />
     </AuthProvider>
   );
 }
