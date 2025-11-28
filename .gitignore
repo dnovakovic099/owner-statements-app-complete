@@ -17,3 +17,13 @@ database/
 
 # Exports
 exports/
+
+# Documentation
+*.md
+
+.claude/
+CLAUDE.md
+.cursorrules
+.aider*
+.continue/
+.copilot/
