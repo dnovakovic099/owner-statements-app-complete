@@ -65,6 +65,7 @@ router.get('/properties', async (req, res) => {
                     hostawayId: listing.id.toString(),
                     name: listing.name,
                     nickname: listing.nickname,
+                    displayName: listing.displayName,
                     address: listing.address,
                     ownerId: owner.id,
                     pmPercentage: null,
@@ -79,7 +80,7 @@ router.get('/properties', async (req, res) => {
                     }
                 };
             }
-            
+
             // Fallback to default owner if no owner found for this listing
             const defaultOwner = owners.find(o => o.email === 'owner@example.com') || owners[0];
             return {
@@ -87,6 +88,7 @@ router.get('/properties', async (req, res) => {
                 hostawayId: listing.id.toString(),
                 name: listing.name,
                 nickname: listing.nickname,
+                displayName: listing.displayName,
                 address: listing.address,
                 ownerId: defaultOwner?.id || 1,
                 pmPercentage: null,

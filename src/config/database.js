@@ -7,9 +7,11 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 let sequelize;
 
-if (databaseUrl) {
+if (databaseUrl && databaseUrl.startsWith('postgres')) {
     // Production: Use PostgreSQL from Railway
-    console.log('🔧 Connecting to PostgreSQL database...');
+    // Mask the password in the URL for logging
+    const maskedUrl = databaseUrl.replace(/:([^:@]+)@/, ':****@');
+    console.log(`[DB] Connecting to PostgreSQL database: ${maskedUrl}`);
     sequelize = new Sequelize(databaseUrl, {
         dialect: 'postgres',
         dialectOptions: {
@@ -26,9 +28,18 @@ if (databaseUrl) {
             idle: 10000
         }
     });
+} else if (databaseUrl && databaseUrl.startsWith('sqlite')) {
+    // SQLite from DATABASE_URL
+    const sqlitePath = databaseUrl.replace('sqlite:', '');
+    console.log(`[DB] Connecting to SQLite database: ${sqlitePath}`);
+    sequelize = new Sequelize({
+        dialect: 'sqlite',
+        storage: sqlitePath,
+        logging: false
+    });
 } else {
-    // Local development: Use SQLite
-    console.log('🔧 Using SQLite database for local development...');
+    // Fallback: Use default SQLite location
+    console.log('[DB] Using default SQLite database: ./database.sqlite');
     sequelize = new Sequelize({
         dialect: 'sqlite',
         storage: './database.sqlite',
@@ -39,10 +50,10 @@ if (databaseUrl) {
 // Test connection
 sequelize.authenticate()
     .then(() => {
-        console.log('✅ Database connection established successfully');
+        console.log('[DB] Connection established successfully');
     })
     .catch(err => {
-        console.error('❌ Unable to connect to database:', err.message);
+        console.error('[DB] Error: Unable to connect to database:', err.message);
     });
 
 module.exports = sequelize;
