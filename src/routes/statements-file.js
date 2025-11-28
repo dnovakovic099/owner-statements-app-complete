@@ -934,7 +934,10 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Helper function to generate statement HTML for both view and PDF download
-function generateViewStatementHTML(statement, id) {
+function generateViewStatementHTML(statement, id, isPdf = false) {
+    // When generating PDF, add body class to apply print styles directly
+    const bodyClass = isPdf ? 'pdf-mode' : '';
+
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -1845,9 +1848,145 @@ function generateViewStatementHTML(statement, id) {
             background: var(--luxury-navy) !important;
             color: white !important;
         }
+        /* PDF-specific styles - apply print styles when body has pdf-mode class */
+        body.pdf-mode {
+            padding: 0;
+            font-size: 9px;
+            background: white !important;
+            color: #333 !important;
+        }
+
+        body.pdf-mode .document {
+            background: white !important;
+            box-shadow: none !important;
+        }
+
+        body.pdf-mode .header {
+            padding: 15px 20px;
+            background: white !important;
+            color: #1e3a5f !important;
+            border-bottom: 2px solid #1e3a5f;
+        }
+
+        body.pdf-mode .content {
+            padding: 20px;
+            background: white !important;
+        }
+
+        body.pdf-mode .rental-table {
+            font-size: 8px;
+            page-break-inside: avoid;
+        }
+
+        body.pdf-mode .rental-table th {
+            font-size: 7px;
+            padding: 6px 4px;
+            background: #1e3a5f !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body.pdf-mode .rental-table td {
+            font-size: 8px;
+            padding: 6px 4px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        body.pdf-mode .rental-table .totals-row td {
+            background: #1e3a5f !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body.pdf-mode .guest-details-cell {
+            padding: 6px 4px !important;
+        }
+
+        body.pdf-mode .guest-name {
+            font-size: 8px;
+            color: #333 !important;
+        }
+
+        body.pdf-mode .guest-info,
+        body.pdf-mode .booking-details {
+            font-size: 7px;
+            color: #666 !important;
+        }
+
+        body.pdf-mode .amount-cell {
+            font-size: 8px;
+        }
+
+        body.pdf-mode .channel-badge {
+            font-size: 6px;
+            padding: 2px 4px;
+            background: #e5e7eb !important;
+            color: #333 !important;
+        }
+
+        body.pdf-mode .section-title {
+            font-size: 14px;
+            color: #1e3a5f !important;
+        }
+
+        body.pdf-mode .expense-amount {
+            color: #dc2626 !important;
+        }
+
+        body.pdf-mode .revenue-amount {
+            color: #059669 !important;
+        }
+
+        body.pdf-mode .print-button {
+            display: none !important;
+        }
+
+        body.pdf-mode .footer {
+            display: none !important;
+        }
+
+        body.pdf-mode .expenses-table {
+            font-size: 9px !important;
+            width: 100% !important;
+        }
+
+        body.pdf-mode .expenses-table th {
+            padding: 6px 3px !important;
+            font-size: 8px !important;
+            background-color: #1e3a5f !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body.pdf-mode .expenses-table td {
+            padding: 5px 3px !important;
+            font-size: 9px !important;
+        }
+
+        body.pdf-mode .totals-row {
+            background-color: #1e3a5f !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body.pdf-mode .totals-row td {
+            color: white !important;
+        }
+
+        body.pdf-mode .section {
+            page-break-inside: avoid;
+        }
+
+        body.pdf-mode tr {
+            page-break-inside: avoid;
+        }
     </style>
 </head>
-<body>
+<body class="${bodyClass}">
     <div class="document">
     <div class="header">
             <div class="company-header">
@@ -2189,7 +2328,8 @@ router.get('/:id/download', async (req, res) => {
         const htmlPdf = require('html-pdf-node');
 
         // Use the same HTML as the view route for consistent design
-        const statementHTML = generateViewStatementHTML(statement, id);
+        // Add isPdf=true to apply print-specific styles directly
+        const statementHTML = generateViewStatementHTML(statement, id, true);
 
         const options = {
             format: 'A4',
@@ -2202,6 +2342,7 @@ router.get('/:id/download', async (req, res) => {
             },
             printBackground: true, // Ensure backgrounds are printed
             preferCSSPageSize: false,
+            displayHeaderFooter: false,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -2239,11 +2380,19 @@ router.get('/:id/download', async (req, res) => {
             .replace(/\s+/g, ' ') // Replace multiple spaces with single space
             .trim();
 
+        // Get owner name for filename
+        const ownerName = statement.ownerName || 'Owner';
+        const cleanOwnerName = ownerName
+            .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
         const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
 
-        const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
+        // Format: "Property - Owner - StartDate to EndDate.pdf"
+        const filename = `${cleanPropertyName} - ${cleanOwnerName} - ${statementPeriod}.pdf`;
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
