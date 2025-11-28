@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, AlertCircle, LogOut, Home, Search } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown } from 'lucide-react';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import GenerateModal from './GenerateModal';
@@ -9,6 +9,8 @@ import ExpenseUpload from './ExpenseUpload';
 import EditStatementModal from './EditStatementModal';
 import LoadingSpinner from './LoadingSpinner';
 import ListingsPage from './ListingsPage';
+import ConfirmDialog from './ui/confirm-dialog';
+import { useToast } from './ui/toast';
 
 interface User {
   username: string;
@@ -19,9 +21,19 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
+// Lightweight listing type for name lookups
+interface ListingName {
+  id: number;
+  name: string;
+  displayName?: string | null;
+  nickname?: string | null;
+}
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
+  const { showToast, updateToast } = useToast();
   const [owners, setOwners] = useState<Owner[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [listings, setListings] = useState<ListingName[]>([]);
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +43,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings'>('dashboard');
+  const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning',
+    onConfirm: () => {},
+  });
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -44,6 +72,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Property search state
   const [propertySearch, setPropertySearch] = useState('');
 
+  // Property dropdown state
+  const [isPropertyDropdownOpen, setIsPropertyDropdownOpen] = useState(false);
+  const propertyDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (propertyDropdownRef.current && !propertyDropdownRef.current.contains(event.target as Node)) {
+        setIsPropertyDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Filter properties based on search
   const filteredProperties = properties.filter((property) => {
     if (!propertySearch) return true;
@@ -51,6 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return (
       property.name.toLowerCase().includes(searchLower) ||
       property.nickname?.toLowerCase().includes(searchLower) ||
+      property.displayName?.toLowerCase().includes(searchLower) ||
       property.id.toString().includes(searchLower)
     );
   });
@@ -68,12 +112,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setLoading(true);
       setError(null);
 
-      const [ownersResponse, propertiesResponse] = await Promise.all([
+      const [ownersResponse, propertiesResponse, listingsResponse] = await Promise.all([
         dashboardAPI.getOwners(),
         dashboardAPI.getProperties(),
+        listingsAPI.getListingNames(),
       ]);
       setOwners(ownersResponse);
       setProperties(propertiesResponse);
+      setListings(listingsResponse.listings || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
       console.error('Failed to load initial data:', err);
@@ -100,61 +146,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     endDate: string;
     calculationType: string;
   }) => {
+    // Show loading toast for single statement generation
+    const isBulk = data.ownerId === 'all' || (data.tag && !data.propertyId);
+    const toastId = !isBulk ? showToast('Generating statement...', 'loading') : '';
+
     try {
       const response = await statementsAPI.generateStatement(data);
-      
+
       // Check if this is a background job (bulk generation or tag-based generation)
       if (response.jobId && (data.ownerId === 'all' || (data.tag && !data.propertyId))) {
         const isTagBased = data.tag && !data.propertyId;
         const message = isTagBased
-          ? `🏷️  Tag-Based Statement Generation Started!\n\n` +
-            `Generating statements for all properties with tag: "${data.tag}"\n\n` +
-            `This process is running in the background and may take several minutes to complete.\n\n` +
-            `✅ You can close this window and check back later.\n` +
-            `📊 The statements will appear in the list once generation is complete.\n\n` +
-            `Tip: Refresh the page to see newly generated statements.`
-          : `🚀 Bulk Statement Generation Started!\n\n` +
-            `This process is running in the background and may take several minutes to complete.\n\n` +
-            `✅ You can close this window and check back later.\n` +
-            `📊 The statements will appear in the list once generation is complete.\n\n` +
-            `Tip: Refresh the page to see newly generated statements.`;
-        
-        alert(message);
-        
+          ? `Generating statements for properties with tag "${data.tag}". This runs in the background.`
+          : 'Bulk statement generation started. This runs in the background.';
+
+        showToast(message, 'info');
+
         setIsGenerateModalOpen(false);
         // Refresh statements after a short delay to show any initial progress
         setTimeout(() => loadStatements(), 3000);
-      } 
+      }
       // Check if this was a completed bulk generation (old format, shouldn't happen anymore)
       else if (data.ownerId === 'all' && response.summary) {
         const { generated, skipped, errors } = response.summary;
-        let message = `✅ Bulk Generation Complete!\n\n`;
-        message += `📊 Generated: ${generated} statement(s)\n`;
-        if (skipped > 0) message += `⏭️  Skipped: ${skipped} (no activity)\n`;
-        if (errors > 0) message += `❌ Errors: ${errors}\n`;
-        
-        if (response.results?.errors && response.results.errors.length > 0) {
-          message += `\nErrors:\n`;
-          response.results.errors.slice(0, 3).forEach((err: any) => {
-            message += `  • ${err.ownerName} - ${err.propertyName}: ${err.error}\n`;
-          });
-          if (response.results.errors.length > 3) {
-            message += `  ... and ${response.results.errors.length - 3} more\n`;
-          }
-        }
-        
-        alert(message);
+        let message = `Generated ${generated} statement(s)`;
+        if (skipped > 0) message += `, skipped ${skipped}`;
+        if (errors > 0) message += `, ${errors} errors`;
+
+        showToast(message, errors > 0 ? 'error' : 'success');
         setIsGenerateModalOpen(false);
         await loadStatements();
       } 
       // Single statement generation
       else {
-        alert('✅ Statement generated successfully');
+        if (toastId) {
+          updateToast(toastId, 'Statement generated successfully', 'success');
+        }
         setIsGenerateModalOpen(false);
         await loadStatements();
       }
     } catch (err) {
-      alert(`❌ Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      if (toastId) {
+        updateToast(toastId, `Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+      } else {
+        showToast(`Failed to generate statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+      }
       throw err; // Re-throw to keep modal open on error
     }
   };
@@ -164,18 +200,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       if (uploadModalType === 'reservations') {
         const response = await reservationsAPI.uploadCSV(file);
         if (response.success) {
-          alert(`✅ ${response.message}`);
+          showToast(response.message, 'success');
         } else {
-          alert(`❌ ${response.error || 'Failed to upload reservations'}`);
+          showToast(response.error || 'Failed to upload reservations', 'error');
         }
       } else {
         const response = await expensesAPI.uploadCSV(file);
-        alert(`✅ CSV uploaded successfully: ${response.processed} processed, ${response.errors} errors`);
+        showToast(`CSV uploaded: ${response.processed} processed, ${response.errors} errors`, response.errors > 0 ? 'error' : 'success');
       }
       setIsUploadModalOpen(false);
       await loadInitialData();
     } catch (err) {
-      alert(`❌ Failed to upload CSV: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      showToast(`Failed to upload CSV: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
   };
 
@@ -191,19 +227,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      alert(`❌ Failed to download template: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      showToast(`Failed to download template: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
   };
 
   const handleStatementAction = async (id: number, action: string) => {
     try {
       if (action === 'send') {
-        if (!window.confirm('Are you sure you want to send this statement?')) {
-          return;
-        }
-        await statementsAPI.updateStatementStatus(id, 'sent');
-        alert('✅ Statement sent successfully');
-        await loadStatements();
+        // Use confirm dialog for send
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Send Statement',
+          message: 'Are you sure you want to send this statement?',
+          type: 'info',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'sent');
+              showToast('Statement sent successfully', 'success');
+              await loadStatements();
+            } catch (err) {
+              showToast(`Failed to send statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+            }
+          },
+        });
+        return;
       } else if (action === 'view') {
         // Navigate to statement view in same window for debugging
         console.log('Opening view for statement:', id);
@@ -212,59 +259,104 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         console.log('View URL:', viewUrl);
         window.open(viewUrl, '_blank');
       } else if (action === 'download') {
-        // Download statement as PDF file using server-provided filename
-        const response = await statementsAPI.downloadStatementWithHeaders(id);
-        const blob = response.blob;
-        const filename = response.filename || `statement-${id}.pdf`;
-        
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        // Show loading toast
+        const toastId = showToast('Preparing PDF download...', 'loading');
+
+        try {
+          // Download statement as PDF file using server-provided filename
+          const response = await statementsAPI.downloadStatementWithHeaders(id);
+          const blob = response.blob;
+          const filename = response.filename || `statement-${id}.pdf`;
+
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+
+          // Update toast to success
+          updateToast(toastId, `Downloaded: ${filename}`, 'success');
+        } catch (err) {
+          updateToast(toastId, `Download failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
+        return;
       } else if (action === 'edit') {
         setEditingStatementId(id);
         setIsEditModalOpen(true);
       } else if (action === 'refresh') {
-        if (!window.confirm('🔄 Regenerate this statement with the latest data? This will replace the existing statement.')) {
-          return;
-        }
         // Find the statement to get its parameters
         const statement = statements.find(s => s.id === id);
         if (!statement) {
-          alert('❌ Statement not found');
+          setConfirmDialog({
+            isOpen: true,
+            title: 'Error',
+            message: 'Statement not found',
+            type: 'danger',
+            onConfirm: () => {},
+          });
           return;
         }
-        
-        // Delete the old statement first
-        await statementsAPI.deleteStatement(id);
-        
-        // Regenerate with the same parameters
-        await handleGenerateStatement({
-          ownerId: statement.ownerId.toString(),
-          propertyId: statement.propertyId?.toString() || '',
-          startDate: statement.weekStartDate,
-          endDate: statement.weekEndDate,
-          calculationType: statement.calculationType || 'checkout'
+
+        // Show confirmation dialog
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Regenerate Statement',
+          message: 'Regenerate this statement with the latest data? This will replace the existing statement.',
+          type: 'info',
+          onConfirm: async () => {
+            setRegeneratingStatementId(id);
+            try {
+              await statementsAPI.deleteStatement(id);
+              await handleGenerateStatement({
+                ownerId: statement.ownerId.toString(),
+                propertyId: statement.propertyId?.toString() || '',
+                startDate: statement.weekStartDate,
+                endDate: statement.weekEndDate,
+                calculationType: statement.calculationType || 'checkout'
+              });
+              await loadStatements();
+            } catch (err) {
+              setConfirmDialog({
+                isOpen: true,
+                title: 'Error',
+                message: `Failed to regenerate statement: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                type: 'danger',
+                onConfirm: () => {},
+              });
+            } finally {
+              setRegeneratingStatementId(null);
+            }
+          },
         });
-        
-        // Reload statements to get the new statement ID
-        await loadStatements();
-        
-        alert('✅ Statement regenerated successfully');
+        return;
       } else if (action === 'delete') {
-        if (!window.confirm('⚠️ Are you sure you want to delete this statement? This action cannot be undone.')) {
-          return;
-        }
-        await statementsAPI.deleteStatement(id);
-        alert('✅ Statement deleted successfully');
-        await loadStatements();
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Delete Statement',
+          message: 'Are you sure you want to delete this statement? This action cannot be undone.',
+          type: 'danger',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.deleteStatement(id);
+              await loadStatements();
+            } catch (err) {
+              setConfirmDialog({
+                isOpen: true,
+                title: 'Error',
+                message: `Failed to delete statement: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                type: 'danger',
+                onConfirm: () => {},
+              });
+            }
+          },
+        });
+        return;
       }
     } catch (err) {
-      alert(`❌ Failed to ${action} statement: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      showToast(`Failed to ${action} statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
   };
 
@@ -308,7 +400,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold">📊 Owner Statements</h1>
+              <h1 className="text-2xl font-bold">Owner Statements</h1>
               {user && (
                 <p className="text-white/80 text-sm mt-1">Welcome, {user.username}</p>
               )}
@@ -411,24 +503,69 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       onClick={() => setPropertySearch('')}
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      ✕
+                      x
                     </button>
                   )}
                 </div>
-                
+
                 {/* Property Dropdown */}
-                <select
-                  value={filters.propertyId}
-                  onChange={(e) => setFilters({ ...filters, propertyId: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Properties ({filteredProperties.length})</option>
-                  {filteredProperties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.nickname || property.name} (ID: {property.id})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative" ref={propertyDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                  >
+                    <span className="text-gray-900 truncate">
+                      {filters.propertyId
+                        ? (() => {
+                            const selected = properties.find(p => p.id.toString() === filters.propertyId);
+                            return selected
+                              ? `${selected.nickname || selected.displayName || selected.name} (ID: ${selected.id})`
+                              : 'Select Property';
+                          })()
+                        : `All Properties (${filteredProperties.length})`}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Custom Dropdown Popup */}
+                  {isPropertyDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-72 overflow-y-auto">
+                      {/* All Properties Option */}
+                      <div
+                        onClick={() => {
+                          setFilters({ ...filters, propertyId: '' });
+                          setIsPropertyDropdownOpen(false);
+                        }}
+                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center justify-between ${
+                          !filters.propertyId ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                        }`}
+                      >
+                        <span className="font-medium">All Properties ({filteredProperties.length})</span>
+                        {!filters.propertyId && <Check className="w-4 h-4 text-blue-600" />}
+                      </div>
+
+                      {/* Property List */}
+                      {filteredProperties.map((property) => (
+                        <div
+                          key={property.id}
+                          onClick={() => {
+                            setFilters({ ...filters, propertyId: property.id.toString() });
+                            setIsPropertyDropdownOpen(false);
+                          }}
+                          className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center justify-between border-t border-gray-100 ${
+                            filters.propertyId === property.id.toString() ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                          }`}
+                        >
+                          <span className="truncate">
+                            {property.nickname || property.displayName || property.name} (ID: {property.id})
+                          </span>
+                          {filters.propertyId === property.id.toString() && <Check className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div>
@@ -467,7 +604,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Statements Table */}
-        <StatementsTable statements={statements} onAction={handleStatementAction} />
+        <StatementsTable statements={statements} listings={listings} onAction={handleStatementAction} regeneratingId={regeneratingStatementId} />
       </div>
 
       {/* Modals */}
@@ -495,6 +632,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }}
         statementId={editingStatementId}
         onStatementUpdated={loadStatements}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        confirmText={confirmDialog.type === 'danger' ? 'Delete' : 'Confirm'}
       />
     </div>
   );
