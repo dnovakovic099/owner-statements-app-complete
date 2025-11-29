@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect  } from 'react';
 import { Eye, Edit, Send, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Statement } from '../types';
+import { statementsAPI } from '../services/api';
 
 interface StatementsTableProps {
   statements: Statement[];
@@ -23,6 +24,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentStatements = sortedStatements.slice(startIndex, endIndex);
+  const [loadedStatements, setLoadedStatements] = useState<Record<number, Statement>>({});
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -79,6 +81,27 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
       </span>
     );
   };
+  // Add this useEffect hook after the state declarations
+  useEffect(() => {
+      // Load statement data for each statement
+      currentStatements.forEach(statement => {
+        if (!loadedStatements[statement.id]) {
+          loadStatements(statement.id);
+        }
+      });
+    }, [currentStatements]);
+  // Update the loadStatements function
+  const loadStatements = async (id: number) => {
+    try {
+      const response = await statementsAPI.getStatementData(id);
+      setLoadedStatements(prev => ({
+        ...prev,
+        [id]: response
+      }));
+    } catch (err) {
+      console.error('Failed to load statement:', err);
+    }
+  };
 
   if (statements.length === 0) {
     return (
@@ -116,9 +139,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Type
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Revenue
-              </th>
+              </th> */}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Payout
               </th>
@@ -158,15 +181,43 @@ const StatementsTable: React.FC<StatementsTableProps> = ({ statements, onAction 
                     {statement.calculationType === 'calendar' ? '📅 Calendar' : '✓ Checkout'}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                {/* <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">
                     {formatCurrency(statement.totalRevenue)}
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                </td> */}
+                {/* <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-bold text-gray-900">
                     {formatCurrency(statement.ownerPayout)}
                   </div>
+                </td> */}
+                <td className="px-6 py-4 whitespace-nowrap">
+                <div className="text-sm font-bold text-gray-900">
+                  {loadedStatements[statement.id] ? (
+                    (() => {
+                      const statementData = loadedStatements[statement.id];
+                      const totalGrossPayout = statementData?.reservations?.reduce((sum, res) => {
+                        const isAirbnb = res.source?.toLowerCase().includes('airbnb') || false;
+                        const clientRevenue = res.clientRevenue ?? res.grossAmount;
+                        const luxuryFee = clientRevenue * (statementData.pmPercentage / 100);
+                        const grossPayout = clientRevenue - luxuryFee;
+                        return sum + grossPayout;
+                      }, 0) || 0;
+                      
+                      const upsells = statementData.items
+                        ?.filter(item => item.type === 'upsell')
+                        .reduce((sum, item) => sum + item.amount, 0) || 0;
+                        
+                      const expenses = statementData.items
+                        ?.filter(item => item.type === 'expense')
+                        .reduce((sum, item) => sum + Math.abs(item.amount), 0) || 0;
+                        
+                      return formatCurrency(totalGrossPayout + upsells - expenses);
+                    })()
+                  ) : (
+                    <span className="text-gray-400">Calculating...</span>
+                  )}
+                </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(statement.status)}
