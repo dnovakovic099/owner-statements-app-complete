@@ -2477,19 +2477,7 @@ router.get('/:id/view', async (req, res) => {
     </div>
 </body>
 </html>`;
-}
 
-// GET /api/statements-file/:id/view - View statement in browser
-router.get('/:id/view', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const statement = await FileDataService.getStatementById(id);
-
-        if (!statement) {
-            return res.status(404).json({ error: 'Statement not found' });
-        }
-
-        const statementHTML = generateViewStatementHTML(statement, id);
         res.setHeader('Content-Type', 'text/html');
         res.send(statementHTML);
     } catch (error) {
@@ -2651,7 +2639,10 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     const periodExpenses = allExpenses.filter(exp => {
                         // Only include expenses that match this property
-                        if (exp.propertyId !== property.id) {
+                        // Check both propertyId (for uploaded expenses) and secureStayListingId (for SecureStay expenses)
+                        const matchesPropertyId = exp.propertyId === property.id;
+                        const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === property.id;
+                        if (!matchesPropertyId && !matchesSecureStayId) {
                             return false;
                         }
                         const expenseDate = new Date(exp.date);
