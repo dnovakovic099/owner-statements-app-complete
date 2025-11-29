@@ -1080,13 +1080,36 @@ router.delete('/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete statement' });
     }
 });
+// GET /api/statements-file/:id/view - get
+router.get('/:id/view/data', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const statement = await FileDataService.getStatementById(id);
+        console.log("statement-",statement);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+        res.json({
+            data: statement
+        });
+    } catch (error) {
+        console.error('Statement delete error:', error);
+        res.status(500).json({ error: 'Failed to delete statement' });
+    }
+});
 
-// Helper function to generate statement HTML for both view and PDF download
-function generateViewStatementHTML(statement, id, isPdf = false) {
-    // When generating PDF, add body class to apply print styles directly
-    const bodyClass = isPdf ? 'pdf-mode' : '';
+// GET /api/statements-file/:id/view - View statement in browser
+router.get('/:id/view', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const statement = await FileDataService.getStatementById(id);
+        console.log("statement-",statement);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
 
-    return `
+        // Generate HTML view of the statement
+        const statementHTML = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2543,9 +2566,9 @@ router.get('/:id/download', async (req, res) => {
         const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
-
-        // Format: "Property - StartDate to EndDate.pdf"
-        const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
+        
+        const filename = `${clientName} - ${statementPeriod}.pdf`;
+        console.log("filename",filename);
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
