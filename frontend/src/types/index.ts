@@ -77,7 +77,7 @@ export interface Statement {
   insuranceFees: number;
   adjustments: number;
   ownerPayout: number;
-  status: 'draft' | 'generated' | 'sent' | 'paid' | 'modified';
+  status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;
   reservations?: Reservation[];
@@ -143,6 +143,8 @@ export interface Listing {
   maxNights?: number;
   pmFeePercentage?: number;
   isCohostOnAirbnb: boolean;
+  airbnbPassThroughTax?: boolean;
+  disregardTax?: boolean;
   tags?: string[];
   isActive: boolean;
   lastSyncedAt?: string;

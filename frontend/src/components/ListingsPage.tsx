@@ -21,6 +21,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
+  const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
+  const [disregardTax, setDisregardTax] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -35,6 +37,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
       if (listing) {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
+        setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
+        setDisregardTax(listing.disregardTax || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
         setTags(listing.tags || []);
       }
@@ -81,6 +85,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const resetForm = () => {
     setDisplayName('');
     setIsCohostOnAirbnb(false);
+    setAirbnbPassThroughTax(false);
+    setDisregardTax(false);
     setPmFeePercentage(15);
     setTags([]);
     setNewTag('');
@@ -96,6 +102,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
       const config = {
         displayName: displayName.trim() || undefined,
         isCohostOnAirbnb,
+        airbnbPassThroughTax,
+        disregardTax,
         pmFeePercentage,
         tags,
       };
@@ -147,7 +155,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center">
               <button
@@ -175,7 +183,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Error Display */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
@@ -328,6 +336,56 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         <p className="text-xs text-purple-700 mt-1">
                           When enabled, Airbnb revenue will be <strong>excluded</strong> from statement calculations.
                           The client receives all payments directly, so only PM commission will be calculated.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Airbnb Pass-Through Tax */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="passThroughTax"
+                        checked={airbnbPassThroughTax}
+                        onChange={(e) => setAirbnbPassThroughTax(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="passThroughTax"
+                          className="text-sm font-medium text-amber-900 cursor-pointer"
+                        >
+                          Airbnb Pass-Through Tax
+                        </label>
+                        <p className="text-xs text-amber-700 mt-1">
+                          Enable this if Airbnb collects the tax but does <strong>not remit</strong> it (passes it to you).
+                          When enabled, tax will be <strong>added</strong> to the gross payout for Airbnb bookings.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Disregard Tax (Company Remits) */}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="disregardTax"
+                        checked={disregardTax}
+                        onChange={(e) => setDisregardTax(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="disregardTax"
+                          className="text-sm font-medium text-red-900 cursor-pointer"
+                        >
+                          Disregard Tax (Company Remits)
+                        </label>
+                        <p className="text-xs text-red-700 mt-1">
+                          Enable this for clients where the company has agreed to remit the tax on their behalf.
+                          When enabled, tax will <strong>never be added</strong> to the gross payout.
                         </p>
                       </div>
                     </div>
