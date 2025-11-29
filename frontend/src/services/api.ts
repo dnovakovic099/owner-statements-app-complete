@@ -118,6 +118,10 @@ export const statementsAPI = {
     const response = await api.get(`/statements/${id}`);
     return response.data;
   },
+   getStatementData: async (id: number): Promise<Statement> => {
+    const response = await api.get(`/statements/${id}/view/data`);
+    return response.data.data;
+  },
 
   downloadStatement: async (id: number): Promise<Blob> => {
     const response = await api.get(`/statements/${id}/download`, { responseType: 'blob' });
