@@ -928,13 +928,30 @@ router.delete('/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete statement' });
     }
 });
+// GET /api/statements-file/:id/view - get
+router.get('/:id/view/data', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const statement = await FileDataService.getStatementById(id);
+        console.log("statement-",statement);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+        res.json({
+            data: statement
+        });
+    } catch (error) {
+        console.error('Statement delete error:', error);
+        res.status(500).json({ error: 'Failed to delete statement' });
+    }
+});
 
 // GET /api/statements-file/:id/view - View statement in browser
 router.get('/:id/view', async (req, res) => {
     try {
         const { id } = req.params;
         const statement = await FileDataService.getStatementById(id);
-
+        console.log("statement-",statement);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
@@ -2164,6 +2181,7 @@ router.get('/:id/download', async (req, res) => {
         const statementPeriod = `${startDate} to ${endDate}`;
         
         const filename = `${clientName} - ${statementPeriod}.pdf`;
+        console.log("filename",filename);
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
