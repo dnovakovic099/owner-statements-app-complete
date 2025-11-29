@@ -499,10 +499,14 @@ router.post('/generate', async (req, res) => {
 
         // Check if this is a co-host on Airbnb property (need this early for revenue calculation)
         let isCohostOnAirbnb = false;
+        let airbnbPassThroughTax = false;
+        let disregardTax = false;
         let listingInfo = null;
         if (propertyId) {
             listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
             isCohostOnAirbnb = listingInfo?.isCohostOnAirbnb || false;
+            airbnbPassThroughTax = listingInfo?.airbnbPassThroughTax || false;
+            disregardTax = listingInfo?.disregardTax || false;
         }
 
         // Calculate totals - exclude Airbnb revenue if co-host is enabled
@@ -596,6 +600,8 @@ router.post('/generate', async (req, res) => {
             adjustments: 0,
             ownerPayout: Math.round(ownerPayout * 100) / 100,
             isCohostOnAirbnb: isCohostOnAirbnb,
+            airbnbPassThroughTax: airbnbPassThroughTax,
+            disregardTax: disregardTax,
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
@@ -1748,7 +1754,7 @@ router.get('/:id/view', async (req, res) => {
         .rental-table th:nth-child(4) { width: 11%; }   /* Platform Fees */
         .rental-table th:nth-child(5) { width: 11%; }   /* Revenue */
         .rental-table th:nth-child(6) { width: 11%; }   /* PM Commission */
-        .rental-table th:nth-child(7) { width: 10%; }   /* Tax Responsibility */
+        .rental-table th:nth-child(7) { width: 10%; }   /* Tax */
         .rental-table th:nth-child(8) { width: 10%; }   /* Gross Payout */
         
         .rental-table td {
@@ -2209,11 +2215,11 @@ router.get('/:id/view', async (req, res) => {
                 <tr>
                                 <th>Guest Details</th>
                                 <th>Base Rate</th>
-                                <th>Cleaning and Other Fees</th>
+                                <th>Guest Paid Cleaning, Pet Extra & Others</th>
                                 <th>Platform Fees</th>
                                 <th>Revenue</th>
                                 <th>PM Commission</th>
-                                <th>Tax Responsibility</th>
+                                <th>Tax</th>
                                 <th>Gross Payout</th>
                 </tr>
             </thead>
@@ -2233,17 +2239,22 @@ router.get('/:id/view', async (req, res) => {
                                 const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
                                 const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                                 
-                                // For co-hosted Airbnb: Gross Payout is negative PM commission only (client already got the money)
-                                // For Airbnb (not co-hosted): Revenue - PM Commission
-                                // For non-Airbnb (VRBO, Direct, etc.): Revenue - PM Commission + Tax Responsibility
+                                // Tax calculation priority:
+                                // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
+                                // 2. For co-hosted Airbnb: Gross Payout is negative PM commission only
+                                // 3. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
+                                // 4. For non-Airbnb OR Airbnb with pass-through: include tax responsibility
                                 let grossPayout;
+                                const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+
                                 if (isCohostAirbnb) {
                                     grossPayout = -luxuryFee;
-                                } else if (isAirbnb) {
-                                    grossPayout = clientRevenue - luxuryFee;
-                                } else {
-                                    // Non-Airbnb: include tax responsibility
+                                } else if (shouldAddTax) {
+                                    // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
                                     grossPayout = clientRevenue - luxuryFee + taxResponsibility;
+                                } else {
+                                    // No tax: Airbnb without pass-through OR disregardTax is enabled
+                                    grossPayout = clientRevenue - luxuryFee;
                                 }
                                 
                                 return `
@@ -2379,10 +2390,10 @@ router.get('/:id/view', async (req, res) => {
         </div>
     </div>
 
-    <!-- Additional Revenue Section (Upsells) -->
+    <!-- Additional Payouts Section (Upsells) -->
     ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
     <div class="section">
-        <h2 class="section-title">ADDITIONAL REVENUE</h2>
+        <h2 class="section-title">ADDITIONAL PAYOUTS</h2>
         <div class="expenses-container">
             <table class="expenses-table">
             <thead>
@@ -2410,7 +2421,7 @@ router.get('/:id/view', async (req, res) => {
                         </tr>
                     `).join('')}
                     <tr class="totals-row">
-                        <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL PAYOUTS</strong></td>
                         <td class="amount-cell revenue-amount" style="color: white;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
@@ -2430,7 +2441,7 @@ router.get('/:id/view', async (req, res) => {
                             </tr>
                             ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
                             <tr>
-                                <td class="summary-label">Additional Revenue</td>
+                                <td class="summary-label">Additional Payouts</td>
                                 <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             ` : ''}
@@ -2663,6 +2674,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Get listing info (needed early for co-host check)
                     const listing = await ListingService.getListingWithPmFee(property.id);
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
+                    const disregardTax = listing?.disregardTax || false;
                     
                     // Calculate totals - exclude Airbnb revenue if co-host is enabled
                     const totalRevenue = periodReservations.reduce((sum, res) => {
@@ -2718,6 +2731,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         adjustments: 0,
                         ownerPayout: Math.round(ownerPayout * 100) / 100,
                         isCohostOnAirbnb: isCohostOnAirbnb,
+                        airbnbPassThroughTax: airbnbPassThroughTax,
+                        disregardTax: disregardTax,
                         status: 'draft',
                         sentAt: null,
                         createdAt: new Date().toISOString(),

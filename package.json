@@ -14,7 +14,11 @@
     "reset-db": "node scripts/reset-database.js",
     "import-listings": "node scripts/import-listings-to-db.js",
     "migrate-db": "node scripts/migrate-to-database.js",
-    "test": "node src/tests/statementCalculations.test.js"
+    "test": "node src/tests/statementCalculations.test.js && node src/tests/statement-fixes.test.js && node src/tests/tax-calculation.test.js",
+    "test:calculations": "node src/tests/statementCalculations.test.js",
+    "test:fixes": "node src/tests/statement-fixes.test.js",
+    "test:tax": "node src/tests/tax-calculation.test.js",
+    "test:api": "node src/tests/api-integration.test.js"
   },
   "keywords": [
     "property-management",

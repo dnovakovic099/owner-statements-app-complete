@@ -357,6 +357,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           },
         });
         return;
+      } else if (action === 'finalize') {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Finalize Statement',
+          message: 'Mark this statement as final? You can return it to draft later if needed.',
+          type: 'info',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'final');
+              showToast('Statement finalized successfully', 'success');
+              await loadStatements();
+            } catch (err) {
+              showToast(`Failed to finalize statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+            }
+          },
+        });
+        return;
+      } else if (action === 'revert-to-draft') {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Return to Draft',
+          message: 'Return this statement to draft status?',
+          type: 'info',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'draft');
+              showToast('Statement returned to draft', 'success');
+              await loadStatements();
+            } catch (err) {
+              showToast(`Failed to update statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+            }
+          },
+        });
+        return;
       } else if (action === 'delete') {
         setConfirmDialog({
           isOpen: true,
@@ -422,7 +456,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Owner Statements</h1>
@@ -452,7 +486,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Quick Actions */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
