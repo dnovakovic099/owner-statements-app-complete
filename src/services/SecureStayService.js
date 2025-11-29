@@ -8,7 +8,6 @@ class SecureStayService {
 
     async makeRequest(endpoint, params = {}) {
         if (!this.apiKey || this.apiKey === 'your_securestay_api_key') {
-            console.warn('SecureStay API key not configured, skipping API call');
             return { expenses: [] };
         }
 
@@ -29,15 +28,11 @@ class SecureStayService {
             
             return response.data;
         } catch (error) {
-            console.error(`SecureStay API request failed: ${endpoint}`, error.response?.data || error.message);
             throw error;
         }
     }
 
     async getExpensesForPeriod(startDate, endDate, propertyIds = null, type = null) {
-        const typeLabel = type ? ` (type: ${type})` : ' (all types)';
-        console.log(`Fetching SecureStay expenses for period: ${startDate} to ${endDate}${typeLabel}`);
-        
         try {
             let allExpenses = [];
             let currentPage = 1;
@@ -59,7 +54,6 @@ class SecureStayService {
                     params.type = type;
                 }
 
-                console.log(`Fetching SecureStay expenses page ${currentPage} (limit: ${limit})${typeLabel}`);
                 const response = await this.makeRequest('/accounting/getexpenses', params);
                 
                 if (response.data && Array.isArray(response.data)) {
@@ -88,39 +82,30 @@ class SecureStayService {
                     } else {
                         currentPage++;
                     }
-                    
-                    console.log(`Page ${currentPage - 1}: Got ${response.data.length} expenses (total so far: ${allExpenses.length})`);
                 } else {
                     hasMorePages = false;
                 }
             }
-            
-            console.log(`✅ Fetched ${allExpenses.length} total expenses from SecureStay API across ${currentPage - 1} pages${typeLabel}`);
+
             return allExpenses;
-            
+
         } catch (error) {
-            console.warn('SecureStay API not available, returning empty expenses:', error.message);
             return [];
         }
     }
 
     async getExtrasForPeriod(startDate, endDate, propertyIds = null) {
-        console.log(`Fetching SecureStay extras for period: ${startDate} to ${endDate}`);
         return this.getExpensesForPeriod(startDate, endDate, propertyIds, 'extras');
     }
 
     async getAllExpensesAndExtras(startDate, endDate, propertyIds = null) {
-        console.log(`Fetching all SecureStay expenses and extras for period: ${startDate} to ${endDate}`);
-        
         // Fetch both expenses and extras in parallel
         const [expenses, extras] = await Promise.all([
             this.getExpensesForPeriod(startDate, endDate, propertyIds, 'expense'),
             this.getExpensesForPeriod(startDate, endDate, propertyIds, 'extras')
         ]);
 
-        const combined = [...expenses, ...extras];
-        console.log(`✅ Combined total: ${expenses.length} expenses + ${extras.length} extras = ${combined.length} items`);
-        return combined;
+        return [...expenses, ...extras];
     }
 
     async getCleaningFees(startDate, endDate, propertyIds = null) {
@@ -138,7 +123,6 @@ class SecureStayService {
             const response = await this.makeRequest('/cleaning-fees', params);
             return response.fees || [];
         } catch (error) {
-            console.warn('SecureStay cleaning fees API not available');
             return [];
         }
     }
@@ -158,7 +142,6 @@ class SecureStayService {
             const response = await this.makeRequest('/maintenance', params);
             return response.invoices || [];
         } catch (error) {
-            console.warn('SecureStay maintenance API not available');
             return [];
         }
     }
@@ -178,7 +161,6 @@ class SecureStayService {
             const response = await this.makeRequest('/upsells', params);
             return response.upsells || [];
         } catch (error) {
-            console.warn('SecureStay upsells API not available');
             return [];
         }
     }
@@ -232,8 +214,6 @@ class SecureStayService {
         const startDateStr = startDate.toISOString().split('T')[0];
         const endDateStr = endDate.toISOString().split('T')[0];
 
-        console.log(`Fetching SecureStay expenses for week: ${startDateStr} to ${endDateStr}`);
-
         const [expenses, cleaningFees, maintenanceInvoices, upsells] = await Promise.all([
             this.getExpensesForPeriod(startDateStr, endDateStr, propertyIds),
             this.getCleaningFees(startDateStr, endDateStr, propertyIds),
@@ -248,7 +228,6 @@ class SecureStayService {
             ...upsells.map(e => this.transformExpense(e, 'upsell'))
         ];
 
-        console.log(`Found ${allExpenses.length} expenses from SecureStay for the week`);
         return allExpenses;
     }
 }

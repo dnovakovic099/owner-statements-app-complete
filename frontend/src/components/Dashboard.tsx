@@ -80,15 +80,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Property search state
   const [propertySearch, setPropertySearch] = useState('');
 
-  // Property dropdown state
+  // Dropdown states
   const [isPropertyDropdownOpen, setIsPropertyDropdownOpen] = useState(false);
+  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const propertyDropdownRef = useRef<HTMLDivElement>(null);
+  const ownerDropdownRef = useRef<HTMLDivElement>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (propertyDropdownRef.current && !propertyDropdownRef.current.contains(event.target as Node)) {
         setIsPropertyDropdownOpen(false);
+      }
+      if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
+        setIsOwnerDropdownOpen(false);
+      }
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -482,23 +492,55 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8 relative z-20">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Filters</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Owner</label>
-              <select
-                value={filters.ownerId}
-                onChange={(e) => setFilters({ ...filters, ownerId: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Owners</option>
-                {owners.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={ownerDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                >
+                  <span className="text-gray-900 truncate">
+                    {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isOwnerDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    <div
+                      onClick={() => {
+                        setFilters({ ...filters, ownerId: '' });
+                        setIsOwnerDropdownOpen(false);
+                      }}
+                      className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === '' ? 'bg-blue-50' : ''}`}
+                    >
+                      <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === '' ? 'border-blue-600' : 'border-gray-300'}`}>
+                        {filters.ownerId === '' && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                      </div>
+                      <span className="text-sm text-gray-900">All Owners</span>
+                    </div>
+                    {owners.map((owner) => (
+                      <div
+                        key={owner.id}
+                        onClick={() => {
+                          setFilters({ ...filters, ownerId: owner.id.toString() });
+                          setIsOwnerDropdownOpen(false);
+                        }}
+                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === owner.id.toString() ? 'bg-blue-50' : ''}`}
+                      >
+                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === owner.id.toString() ? 'border-blue-600' : 'border-gray-300'}`}>
+                          {filters.ownerId === owner.id.toString() && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                        </div>
+                        <span className="text-sm text-gray-900">{owner.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Property Search</label>
@@ -540,9 +582,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
                   {/* Custom Dropdown Popup */}
                   {isPropertyDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-hidden">
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg flex flex-col">
                       {/* Action buttons */}
-                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
                         <span className="text-xs text-gray-600">
                           {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
                         </span>
@@ -566,7 +608,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </div>
 
                       {/* Property List */}
-                      <div className="max-h-64 overflow-y-auto">
+                      <div className="max-h-60 overflow-y-auto flex-1">
                         {filteredProperties.map((property) => {
                           const isSelected = filters.propertyIds.includes(property.id.toString());
                           return (
@@ -599,7 +641,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </div>
 
                       {/* Done button */}
-                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50">
+                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
                         <button
                           type="button"
                           onClick={() => setIsPropertyDropdownOpen(false)}
@@ -615,17 +657,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Statuses</option>
-                <option value="draft">Draft</option>
-                <option value="generated">Generated</option>
-                <option value="sent">Sent</option>
-                <option value="paid">Paid</option>
-              </select>
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                >
+                  <span className="text-gray-900 truncate">
+                    {filters.status ? filters.status.charAt(0).toUpperCase() + filters.status.slice(1) : 'All Statuses'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isStatusDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
+                    {[
+                      { value: '', label: 'All Statuses' },
+                      { value: 'draft', label: 'Draft' },
+                      { value: 'generated', label: 'Generated' },
+                      { value: 'sent', label: 'Sent' },
+                      { value: 'paid', label: 'Paid' },
+                    ].map((status) => (
+                      <div
+                        key={status.value}
+                        onClick={() => {
+                          setFilters({ ...filters, status: status.value });
+                          setIsStatusDropdownOpen(false);
+                        }}
+                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.status === status.value ? 'bg-blue-50' : ''}`}
+                      >
+                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.status === status.value ? 'border-blue-600' : 'border-gray-300'}`}>
+                          {filters.status === status.value && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                        </div>
+                        <span className="text-sm text-gray-900">{status.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
