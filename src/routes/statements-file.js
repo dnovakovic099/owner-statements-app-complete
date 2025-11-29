@@ -134,23 +134,256 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Helper function to generate a COMBINED statement for multiple properties
+async function generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType) {
+    try {
+        const periodStart = new Date(startDate);
+        const periodEnd = new Date(endDate);
+
+        // Get data from files
+        const listings = await FileDataService.getListings();
+        const owners = await FileDataService.getOwners();
+
+        // Get the owner - handle both 'default'/1 as default owner
+        const owner = owners.find(o => {
+            if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                return o.id === 'default';
+            }
+            return o.id === ownerId || o.id === parseInt(ownerId);
+        }) || owners[0];
+
+        // Parse property IDs to integers
+        const parsedPropertyIds = propertyIds.map(id => parseInt(id));
+
+        // Find all the target listings
+        const targetListings = listings.filter(l => parsedPropertyIds.includes(l.id));
+        if (targetListings.length === 0) {
+            return res.status(404).json({ error: 'No properties found for the given IDs' });
+        }
+
+        // OPTIMIZED: Batch fetch all data in parallel
+
+        // Get listing info for PM fees and co-host status (batch fetch)
+        const dbListings = await ListingService.getListingsWithPmFees(parsedPropertyIds);
+        const listingInfoMap = {};
+        dbListings.forEach(l => { listingInfoMap[l.id] = l; });
+
+        // Fetch reservations and expenses in parallel using batch methods
+        const [reservationsByProperty, expensesByProperty] = await Promise.all([
+            FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType),
+            FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds)
+        ]);
+
+        // Combine all reservations and expenses
+        let allReservations = [];
+        let allExpenses = [];
+        let allDuplicateWarnings = [];
+
+        for (const propId of parsedPropertyIds) {
+            const propReservations = reservationsByProperty[propId] || [];
+            const propExpenseData = expensesByProperty[propId] || { expenses: [], duplicateWarnings: [] };
+
+            allReservations.push(...propReservations);
+            allExpenses.push(...propExpenseData.expenses);
+            allDuplicateWarnings.push(...propExpenseData.duplicateWarnings);
+        }
+
+        // Filter reservations by date and status
+        const periodReservations = allReservations.filter(res => {
+            // Check property ID is in our list
+            if (!parsedPropertyIds.includes(res.propertyId)) {
+                return false;
+            }
+
+            // Check date match based on calculation type
+            let dateMatch = true;
+            if (calculationType === 'calendar') {
+                // For calendar-based calculation, reservations are already filtered and prorated
+                dateMatch = true;
+            } else {
+                // For checkout-based calculation, filter by checkout date
+                const checkoutDate = new Date(res.checkOutDate);
+                dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                if (!dateMatch) return false;
+            }
+
+            // Only include confirmed, modified, and new status reservations
+            const allowedStatuses = ['confirmed', 'modified', 'new'];
+            return allowedStatuses.includes(res.status);
+        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+        // Filter expenses by date
+        const periodExpenses = allExpenses.filter(exp => {
+            // Check property ID is in our list (or is null for SecureStay)
+            if (exp.propertyId !== null && !parsedPropertyIds.includes(exp.propertyId)) {
+                return false;
+            }
+            const expenseDate = new Date(exp.date);
+            return expenseDate >= periodStart && expenseDate <= periodEnd;
+        });
+
+        // Calculate totals - handle co-host properties per reservation
+        let totalRevenue = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            const isCohostForProperty = listingInfoMap[res.propertyId]?.isCohostOnAirbnb || false;
+
+            // Exclude Airbnb revenue for co-hosted properties
+            if (isAirbnb && isCohostForProperty) {
+                continue;
+            }
+
+            totalRevenue += (res.grossAmount || 0);
+        }
+
+        // Calculate total expenses (only actual costs, not upsells)
+        const totalExpenses = periodExpenses.reduce((sum, exp) => {
+            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+            return isUpsell ? sum : sum + Math.abs(exp.amount);
+        }, 0);
+
+        // Calculate PM commission per-reservation based on each property's PM fee
+        let pmCommission = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            const listing = listingInfoMap[res.propertyId];
+            const isCohostForProperty = listing?.isCohostOnAirbnb || false;
+
+            // Skip PM commission for co-hosted Airbnb reservations
+            if (isAirbnb && isCohostForProperty) {
+                continue;
+            }
+
+            const resPmFee = listing?.pmFeePercentage ?? 15;
+            const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
+            pmCommission += resCommission;
+        }
+
+        // Calculate average PM percentage for display
+        const avgPmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
+
+        // Calculate fees per property
+        const propertyCount = targetListings.length;
+        const techFees = propertyCount * 50; // $50 per property
+        const insuranceFees = propertyCount * 25; // $25 per property
+
+        // Calculate owner payout
+        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+
+        // Generate unique ID
+        const existingStatements = await FileDataService.getStatements();
+        const newId = FileDataService.generateId(existingStatements);
+
+        // Create property names string for display
+        const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
+        const shortPropertyNames = targetListings.length <= 3
+            ? propertyNames
+            : `${targetListings.slice(0, 2).map(l => l.nickname || l.displayName || l.name).join(', ')} +${targetListings.length - 2} more`;
+
+        // Create statement object
+        const statement = {
+            id: newId,
+            ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
+            ownerName: owner.name,
+            propertyId: null, // Combined statement has no single property
+            propertyIds: parsedPropertyIds, // Store all property IDs
+            propertyName: shortPropertyNames,
+            propertyNames: propertyNames, // Full list for detail view
+            weekStartDate: startDate,
+            weekEndDate: endDate,
+            calculationType,
+            totalRevenue: Math.round(totalRevenue * 100) / 100,
+            totalExpenses: Math.round(totalExpenses * 100) / 100,
+            pmCommission: Math.round(pmCommission * 100) / 100,
+            pmPercentage: Math.round(avgPmPercentage * 100) / 100,
+            techFees: Math.round(techFees * 100) / 100,
+            insuranceFees: Math.round(insuranceFees * 100) / 100,
+            adjustments: 0,
+            ownerPayout: Math.round(ownerPayout * 100) / 100,
+            isCombinedStatement: true,
+            propertyCount: propertyCount,
+            status: 'draft',
+            sentAt: null,
+            createdAt: new Date().toISOString(),
+            reservations: periodReservations,
+            expenses: periodExpenses,
+            duplicateWarnings: allDuplicateWarnings,
+            items: [
+                // Revenue items from reservations (grouped by property)
+                ...periodReservations.map(res => {
+                    const listing = targetListings.find(l => l.id === res.propertyId);
+                    const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : `Property ${res.propertyId}`;
+                    return {
+                        type: 'revenue',
+                        description: `[${propertyLabel}] ${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                        amount: res.grossAmount,
+                        date: res.checkOutDate,
+                        category: 'booking',
+                        propertyId: res.propertyId
+                    };
+                }),
+                // Expenses and upsells
+                ...periodExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
+                    const listing = exp.propertyId ? targetListings.find(l => l.id === exp.propertyId) : null;
+                    const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : (exp.listing || 'General');
+
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing,
+                        propertyId: exp.propertyId
+                    };
+                })
+            ]
+        };
+
+        // Save statement to file
+        await FileDataService.saveStatement(statement);
+
+
+        res.status(201).json({
+            message: `Combined statement generated for ${propertyCount} properties`,
+            statement: {
+                id: statement.id,
+                ownerPayout: statement.ownerPayout,
+                totalRevenue: statement.totalRevenue,
+                totalExpenses: statement.totalExpenses,
+                itemCount: statement.items.length,
+                propertyCount: propertyCount,
+                isCombinedStatement: true
+            }
+        });
+    } catch (error) {
+        console.error('Combined statement generation error:', error);
+        res.status(500).json({ error: 'Failed to generate combined statement' });
+    }
+}
+
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
+        const { propertyId, propertyIds, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
         }
 
-        if (!propertyId && !ownerId && !tag) {
-            return res.status(400).json({ error: 'Either property ID, owner ID, or tag is required' });
+        if (!propertyId && !propertyIds && !ownerId && !tag) {
+            return res.status(400).json({ error: 'Either property ID, property IDs, owner ID, or tag is required' });
+        }
+
+        // Handle combined multi-property statement generation
+        if (propertyIds && Array.isArray(propertyIds) && propertyIds.length > 1) {
+            return await generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType);
         }
 
         // Handle "Generate All" option or tag-based generation - run in background
         if (ownerId === 'all' || (tag && !propertyId)) {
-            const jobType = tag ? `tag-based generation (${tag})` : 'bulk generation';
-            console.log(`🚀 Starting ${jobType} as background job...`);
             
             const jobId = await BackgroundJobService.runInBackground(
                 'bulk_statement_generation',
@@ -171,23 +404,18 @@ router.post('/generate', async (req, res) => {
 
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
-        
+
         if (periodStart > periodEnd) {
             return res.status(400).json({ error: 'Start date must be before end date' });
         }
 
-        // Get data from files
-        const listings = await FileDataService.getListings();
-
-        // Only get reservations for the exact period and property needed
-        const reservations = await FileDataService.getReservations(
-            startDate,
-            endDate,
-            propertyId,
-            calculationType
-        );
-        const expenses = await FileDataService.getExpenses(startDate, endDate, propertyId);
-        const owners = await FileDataService.getOwners();
+        // OPTIMIZED: Fetch all data in parallel
+        const [listings, reservations, expenses, owners] = await Promise.all([
+            FileDataService.getListings(),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
+            FileDataService.getExpenses(startDate, endDate, propertyId),
+            FileDataService.getOwners()
+        ]);
         
         // Check for duplicate warnings
         const duplicateWarnings = expenses.duplicateWarnings || [];
@@ -207,7 +435,6 @@ router.post('/generate', async (req, res) => {
             owner = owners[0]; // Default owner
         } else if (tag) {
             // Generate statements for all properties with the specified tag
-            console.log(`[Tag]  Filtering listings by tag: ${tag}`);
             const taggedListings = listings.filter(l => {
                 const listingTags = l.tags || [];
                 return listingTags.includes(tag);
@@ -217,78 +444,46 @@ router.post('/generate', async (req, res) => {
                 return res.status(404).json({ error: `No properties found with tag: ${tag}` });
             }
             
-            console.log(`   Found ${taggedListings.length} properties with tag "${tag}"`);
             targetListings = taggedListings;
-            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
+            owner = owners.find(o => {
+                if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                    return o.id === 'default';
+                }
+                return o.id === ownerId || o.id === parseInt(ownerId);
+            }) || owners[0];
         } else {
             // Generate consolidated statement for all owner's properties
-            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId));
+            // Find owner - handle both 'default'/1 as default owner, and other owner IDs
+            owner = owners.find(o => {
+                if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                    return o.id === 'default';
+                }
+                return o.id === ownerId || o.id === parseInt(ownerId);
+            });
             if (!owner) {
-                return res.status(404).json({ error: 'Owner not found' });
+                // Fallback to default owner if not found
+                owner = owners[0];
             }
             targetListings = listings; // All properties for now
         }
 
-        // Debug: Log what we got from API
-        console.log(`Total reservations fetched from API: ${reservations.length}`);
-        if (reservations.length > 0) {
-            console.log(`Sample reservation:`, {
-                id: reservations[0].id,
-                propertyId: reservations[0].propertyId,
-                guestName: reservations[0].guestName,
-                status: reservations[0].status,
-                checkInDate: reservations[0].checkInDate,
-                checkOutDate: reservations[0].checkOutDate
-            });
-        }
-
-        // Get reservations for the date range
-        // For calendar calculation, reservations are already filtered by overlap in FileDataService
-        // For checkout calculation, filter by checkout date
+        // Filter reservations - optimized with reduced logging
+        const allowedStatuses = ['confirmed', 'modified', 'new'];
         const periodReservations = reservations.filter(res => {
             if (propertyId && res.propertyId !== parseInt(propertyId)) {
-                console.log(`Excluded reservation - wrong property: ${res.propertyId} (expected ${propertyId})`);
                 return false;
             }
-            
+
             // Check date match based on calculation type
-            let dateMatch = true;
-            
-            if (calculationType === 'calendar') {
-                // For calendar-based calculation, reservations are already filtered and prorated
-                console.log(`Including prorated reservation: ${res.hostifyId || res.id} - ${res.prorationNote || 'no proration'}`);
-                dateMatch = true; // Already filtered by overlap in FileDataService
-            } else {
-                // For checkout-based calculation, filter by checkout date
+            if (calculationType !== 'calendar') {
                 const checkoutDate = new Date(res.checkOutDate);
-                dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
-                
-                if (!dateMatch) {
-                    console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
+                if (checkoutDate < periodStart || checkoutDate > periodEnd) {
                     return false;
                 }
             }
-            
-            // Only include confirmed, modified, and new status reservations by default
-            // Cancelled reservations can be added later through the edit functionality
-            // Explicitly exclude inquiry, expired, declined, and unknown statuses
-            const allowedStatuses = ['confirmed', 'modified', 'new'];
-            const excludedStatuses = ['cancelled', 'inquiry', 'expired', 'declined', 'unknown', 'completed'];
-            const statusMatch = allowedStatuses.includes(res.status);
-            
-            // Log any reservations that don't match status filter for debugging
-            if (dateMatch && !statusMatch) {
-                if (excludedStatuses.includes(res.status)) {
-                    console.log(`Excluded reservation with status: "${res.status}" for guest: ${res.guestName} (${res.hostawayId}) - Status not allowed in statements`);
-                } else {
-                    console.log(`WARNING: Excluded reservation with unexpected status: "${res.status}" for guest: ${res.guestName} (${res.hostawayId})`);
-                }
-            }
-            
-            return dateMatch && statusMatch;
-        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-        console.log(`Found ${periodReservations.length} reservations with allowed statuses for statement generation`);
+            return allowedStatuses.includes(res.status);
+        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
         // Get expenses for the date range
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
@@ -317,7 +512,6 @@ router.post('/generate', async (req, res) => {
             
             // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
             if (isAirbnb && isCohostOnAirbnb) {
-                console.log(`Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
                 return sum;
             }
             
@@ -339,43 +533,36 @@ router.post('/generate', async (req, res) => {
             // Single property - use its PM fee for revenue (excluding co-hosted Airbnb)
             if (listingInfo && listingInfo.pmFeePercentage !== null) {
                 pmPercentage = listingInfo.pmFeePercentage;
-                console.log(`Using PM fee from database for listing ${propertyId}: ${pmPercentage}%`);
-            } else {
-                console.log(`No PM fee found for listing ${propertyId}, using default: ${pmPercentage}%`);
             }
             pmCommission = totalRevenue * (pmPercentage / 100);
         } else {
             // Multi-property statement - calculate PM commission per reservation
-            console.log(`Calculating PM commission per-reservation for ${periodReservations.length} reservations...`);
             const propertyPmFees = {}; // Cache PM fees to avoid repeated DB calls
             const propertyListings = {}; // Cache listing info
-            
+
             for (const res of periodReservations) {
                 if (!propertyPmFees[res.propertyId]) {
                     const listing = await ListingService.getListingWithPmFee(res.propertyId);
                     propertyPmFees[res.propertyId] = listing?.pmFeePercentage ?? 15;
                     propertyListings[res.propertyId] = listing;
                 }
-                
+
                 // Check if this is Airbnb and co-hosted
                 const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                 const isCohostForProperty = propertyListings[res.propertyId]?.isCohostOnAirbnb || false;
-                
+
                 // Skip PM commission for co-hosted Airbnb reservations
                 if (isAirbnb && isCohostForProperty) {
-                    console.log(`  Property ${res.propertyId}: Airbnb co-host - no PM commission on this reservation`);
                     continue;
                 }
-                
+
                 const resPmFee = propertyPmFees[res.propertyId];
                 const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
                 pmCommission += resCommission;
-                console.log(`  Property ${res.propertyId}: $${res.grossAmount} × ${resPmFee}% = $${resCommission.toFixed(2)}`);
             }
-            
+
             // Calculate average PM percentage for display
             pmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
-            console.log(`Total PM Commission: $${pmCommission.toFixed(2)} (avg ${pmPercentage.toFixed(2)}%)`);
         }
         
         // Calculate fees per property
@@ -444,7 +631,6 @@ router.post('/generate', async (req, res) => {
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
-        console.log(`Statement generated: ID ${statement.id}, Payout: $${statement.ownerPayout}`);
 
         res.status(201).json({
             message: 'Statement generated successfully',
@@ -501,9 +687,7 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
 
         // Make direct API call to Hostaway to get all reservations for this period and property
         const hostawayService = require('../services/HostawayService');
-        
-        console.log(`DEBUG: Fetching reservations directly from Hostaway API for property ${statement.propertyId}, period ${statement.weekStartDate} to ${statement.weekEndDate}`);
-        
+
         // Get all reservations for this property and period from Hostaway
         const apiResponse = await hostawayService.getAllReservations(
             statement.weekStartDate,
@@ -512,37 +696,19 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
         );
         
         const allReservations = apiResponse.result || [];
-        console.log(`DEBUG: Got ${allReservations.length} reservations from Hostaway API`);
-        
-        // Log status counts for debugging
-        const statusCounts = {};
-        allReservations.forEach(res => {
-            statusCounts[res.status] = (statusCounts[res.status] || 0) + 1;
-        });
-        console.log('DEBUG: Reservation status counts from API:', statusCounts);
-        
+
         // Filter for ALL cancelled reservations (including those already in statement)
         const cancelledReservations = allReservations.filter(res => {
-            console.log(`DEBUG: Checking reservation ${res.hostawayId} - Status: ${res.status}, Guest: ${res.guestName}`);
-            
             // Only cancelled reservations
             const isCancelled = res.status === 'cancelled';
             if (!isCancelled) {
-                console.log(`DEBUG: Excluded - not cancelled: ${res.status}`);
                 return false;
             }
-            
+
             // Check if already in statement (for informational purposes)
             const alreadyIncluded = statement.reservations?.some(existing => existing.hostawayId === res.hostawayId) || false;
-            if (alreadyIncluded) {
-                console.log(`DEBUG: INCLUDED cancelled reservation (already in statement): ${res.hostawayId} - ${res.guestName}`);
-                // Mark it as already included but still include it in results
-                res.alreadyInStatement = true;
-            } else {
-                console.log(`DEBUG: INCLUDED cancelled reservation (not in statement): ${res.hostawayId} - ${res.guestName}`);
-                res.alreadyInStatement = false;
-            }
-            
+            res.alreadyInStatement = alreadyIncluded;
+
             return true;
         });
 
@@ -571,11 +737,6 @@ router.get('/:id/available-reservations', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        // Get the appropriate service based on what's being used
-        const hostifyService = require('../services/HostifyService');
-        
-        console.log(`Fetching all reservations for property ${statement.propertyId}, period ${statement.weekStartDate} to ${statement.weekEndDate}, calculationType: ${statement.calculationType || 'checkout'}`);
-        
         // Get all reservations for this property and period
         const reservations = await FileDataService.getReservations(
             statement.weekStartDate,
@@ -583,9 +744,7 @@ router.get('/:id/available-reservations', async (req, res) => {
             statement.propertyId,
             statement.calculationType || 'checkout'
         );
-        
-        console.log(`Got ${reservations.length} total reservations from service`);
-        
+
         // Separate into included and available
         const includedReservationIds = new Set(
             (statement.reservations || []).map(r => r.hostifyId || r.id)
@@ -595,8 +754,6 @@ router.get('/:id/available-reservations', async (req, res) => {
             const resId = res.hostifyId || res.id;
             return !includedReservationIds.has(resId);
         });
-        
-        console.log(`${availableReservations.length} available reservations not yet in statement`);
 
         res.json({ 
             availableReservations,
@@ -641,7 +798,6 @@ router.put('/:id', async (req, res) => {
 
             if (statement.items.length < originalItemsCount) {
                 modified = true;
-                console.log(`Removed ${originalItemsCount - statement.items.length} items (expenses/upsells) from statement ${id}`);
             }
         }
 
@@ -672,7 +828,6 @@ router.put('/:id', async (req, res) => {
 
             if (statement.reservations.length < originalReservationsCount) {
                 modified = true;
-                console.log(`Removed ${originalReservationsCount - statement.reservations.length} reservations from statement ${id}`);
             }
         }
 
@@ -725,12 +880,7 @@ router.put('/:id', async (req, res) => {
                     }
 
                     modified = true;
-                    console.log(`Added ${newReservationsToAdd.length} new reservations to statement ${id}`);
-                } else {
-                    console.log(`No new reservations to add (all ${reservationsToAdd.length} already exist in statement ${id})`);
                 }
-            } else {
-                console.log(`No matching reservations found for IDs: ${reservationIdsToAdd.join(', ')}`);
             }
         }
 
@@ -807,7 +957,6 @@ router.put('/:id', async (req, res) => {
             statement.items.push(revenueItem);
 
             modified = true;
-            console.log(`Added custom reservation for ${customReservation.guestName} with amount $${customReservation.grossAmount}`);
         }
 
         // Add cancelled reservations (legacy support)
@@ -848,7 +997,6 @@ router.put('/:id', async (req, res) => {
                 }
 
                 modified = true;
-                console.log(`Added ${reservationsToAdd.length} cancelled reservations to statement ${id}`);
             }
         }
 
@@ -2267,6 +2415,18 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                                 <td class="summary-label">Expenses</td>
                                 <td class="summary-value expense">-$${(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
+                            ${(statement.techFees || 0) > 0 ? `
+                            <tr>
+                                <td class="summary-label">Technology Fee</td>
+                                <td class="summary-value expense">-$${(statement.techFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            ` : ''}
+                            ${(statement.insuranceFees || 0) > 0 ? `
+                            <tr>
+                                <td class="summary-label">Insurance Fee</td>
+                                <td class="summary-value expense">-$${(statement.insuranceFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            ` : ''}
                             <tr class="total-row">
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
                                 <td class="summary-value total-amount"><strong>${(statement.ownerPayout || 0) >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -2380,19 +2540,12 @@ router.get('/:id/download', async (req, res) => {
             .replace(/\s+/g, ' ') // Replace multiple spaces with single space
             .trim();
 
-        // Get owner name for filename
-        const ownerName = statement.ownerName || 'Owner';
-        const cleanOwnerName = ownerName
-            .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
         const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
 
-        // Format: "Property - Owner - StartDate to EndDate.pdf"
-        const filename = `${cleanPropertyName} - ${cleanOwnerName} - ${statementPeriod}.pdf`;
+        // Format: "Property - StartDate to EndDate.pdf"
+        const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
@@ -2415,30 +2568,18 @@ router.get('/:id/download', async (req, res) => {
  */
 async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag = null) {
     try {
-        console.log(`[Info] Starting background bulk statement generation (Job: ${jobId})...`);
-        console.log(`   Period: ${startDate} to ${endDate}`);
-        console.log(`   Calculation Type: ${calculationType}`);
-        if (tag) {
-            console.log(`   Tag Filter: ${tag}`);
-        }
-
         // Get all listings
         const listings = await FileDataService.getListings();
-        console.log(`   Found ${listings.length} listings`);
 
         // Fetch ALL reservations and expenses ONCE for the entire period (optimization)
-        console.log(`[Info] Fetching all reservations for period ${startDate} to ${endDate}...`);
         const allReservations = await FileDataService.getReservations(
             startDate,
             endDate,
             null,  // No property filter - get ALL reservations
             calculationType
         );
-        console.log(`[Success] Fetched ${allReservations.length} total reservations`);
-        
-        console.log(`[Info] Fetching all expenses for period...`);
+
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
-        console.log(`[Success] Fetched ${allExpenses.length} total expenses`);
 
         // Filter to only active listings
         let activeListings = listings.filter(l => l.isActive);
@@ -2449,9 +2590,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 const listingTags = l.tags || [];
                 return listingTags.includes(tag);
             });
-            console.log(`   Found ${activeListings.length} active listings with tag "${tag}" (out of ${listings.length} total)`);
-        } else {
-            console.log(`   Found ${activeListings.length} active listings (out of ${listings.length} total)`);
         }
 
         BackgroundJobService.startJob(jobId, activeListings.length);
@@ -2467,8 +2605,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         // Generate a statement for each active listing using "Default Owner"
         for (const property of activeListings) {
                 try {
-                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
-
                     // Use pre-fetched data instead of fetching again (optimization)
                     const periodStart = new Date(startDate);
                     const periodEnd = new Date(endDate);
@@ -2499,10 +2635,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    console.log(`   [Stats] Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
-
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
-                        console.log(`   [Skip]  Skipping ${property.name} - no activity in this period`);
                         results.skipped.push({
                             propertyId: property.id,
                             propertyName: property.nickname || property.displayName || property.name,
@@ -2524,10 +2657,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         
                         // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
                         if (isAirbnb && isCohostOnAirbnb) {
-                            console.log(`   Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
                             return sum;
                         }
-                        
+
                         return sum + (res.grossAmount || 0);
                     }, 0);
                     
@@ -2603,8 +2735,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     await FileDataService.saveStatement(statement);
 
-                    console.log(`   [Success] Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
-
                     results.generated.push({
                         id: newId,
                         propertyId: property.id,
@@ -2630,11 +2760,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             }
         }
 
-        console.log(`[Success] Background bulk statement generation completed (Job: ${jobId}):`);
-        console.log(`   Generated: ${results.generated.length} statements`);
-        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
-        console.log(`   Errors: ${results.errors.length}`);
-
         BackgroundJobService.completeJob(jobId, {
             summary: {
                 generated: results.generated.length,
@@ -2645,7 +2770,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         });
 
     } catch (error) {
-        console.error(`[Error] Background bulk statement generation failed (Job: ${jobId}):`, error);
         BackgroundJobService.failJob(jobId, error);
         throw error;
     }
@@ -2656,15 +2780,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
  */
 async function generateAllOwnerStatements(req, res, startDate, endDate, calculationType) {
     try {
-        console.log(`[Info] Starting bulk statement generation for all owners...`);
-        console.log(`   Period: ${startDate} to ${endDate}`);
-        console.log(`   Calculation Type: ${calculationType}`);
-
         // Get all owners and all listings
         const owners = await FileDataService.getOwners();
         const listings = await FileDataService.getListings();
-
-        console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
 
         const results = {
             generated: [],
@@ -2674,8 +2792,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
 
         // Loop through each owner
         for (const owner of owners) {
-            console.log(`\n📋 Processing owner: ${owner.name} (ID: ${owner.id})`);
-
             // Find properties for this owner
             const ownerProperties = listings.filter(listing => {
                 // Check if this listing belongs to the current owner
@@ -2683,10 +2799,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                 return belongsToOwner && listing.isActive;
             });
 
-            console.log(`   Found ${ownerProperties.length} properties for ${owner.name}`);
-
             if (ownerProperties.length === 0) {
-                console.log(`   [Warning]  Skipping ${owner.name} - no properties found`);
                 results.skipped.push({
                     ownerId: owner.id,
                     ownerName: owner.name,
@@ -2698,8 +2811,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
             // Generate a statement for each property
             for (const property of ownerProperties) {
                 try {
-                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
-
                     // Get reservations and expenses for this specific property
                     const reservations = await FileDataService.getReservations(
                         startDate,
@@ -2740,11 +2851,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    console.log(`   [Stats] Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
-
                     // Skip if no activity
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
-                        console.log(`   Skipping ${property.name} - no activity in this period`);
                         results.skipped.push({
                             ownerId: owner.id,
                             ownerName: owner.name,
@@ -2829,8 +2937,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     // Save statement
                     await FileDataService.saveStatement(statement);
 
-                    console.log(`   Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
-
                     results.generated.push({
                         id: newId,
                         ownerId: owner.id,
@@ -2844,7 +2950,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     });
 
                 } catch (error) {
-                    console.error(`   [Error] Error generating statement for ${property.name}:`, error.message);
                     results.errors.push({
                         ownerId: owner.id,
                         ownerName: owner.name,
@@ -2855,11 +2960,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                 }
             }
         }
-
-        console.log(`\nBulk statement generation completed:`);
-        console.log(`   Generated: ${results.generated.length} statements`);
-        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
-        console.log(`   Errors: ${results.errors.length}`);
 
         res.status(201).json({
             message: 'Bulk statement generation completed',

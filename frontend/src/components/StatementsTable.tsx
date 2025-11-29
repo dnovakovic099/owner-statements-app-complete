@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -112,11 +112,31 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   pagination,
   onPaginationChange,
 }) => {
+  const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
+
+  // Load column visibility from localStorage on mount
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_VISIBILITY_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Save column visibility to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
+    } catch (e) {
+      console.error('Failed to save column visibility:', e);
+    }
+  }, [columnVisibility]);
+
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'createdAt', desc: true }
   ]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [globalFilter, setGlobalFilter] = useState('');
 
   // Create a lookup map for property names to display names/nicknames
@@ -170,7 +190,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
         return (
-          <div className="text-gray-900 max-w-[200px] truncate" title={displayName}>
+          <div className="text-gray-900 max-w-[300px] truncate" title={displayName}>
             {displayName}
           </div>
         );
