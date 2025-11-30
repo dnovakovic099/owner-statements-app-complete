@@ -231,6 +231,8 @@ class ListingService {
             const updates = {};
             if (config.displayName !== undefined) updates.displayName = config.displayName;
             if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
+            if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
+            if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
             if (config.tags !== undefined) updates.tags = config.tags;
 

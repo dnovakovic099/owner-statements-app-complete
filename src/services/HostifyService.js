@@ -4,27 +4,48 @@ class HostifyService {
     constructor() {
         this.baseURL = process.env.HOSTIFY_API_URL || 'https://api-rms.hostify.com';
         this.apiKey = process.env.HOSTIFY_API_KEY || 'CePFsroZu03LA6C5szMsRuA2Eh62rGDS';
+
+        // AGGRESSIVE CACHING
+        this._reservationsCache = new Map(); // key: "startDate|endDate|listingId|dateType"
+        this._reservationsCacheTTL = 2 * 60 * 1000; // 2 minutes
+        this._propertiesCache = null;
+        this._propertiesCacheTime = null;
+        this._propertiesCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._usersCache = null;
+        this._usersCacheTime = null;
+        this._usersCacheTTL = 10 * 60 * 1000; // 10 minutes
+    }
+
+    _getCacheKey(startDate, endDate, listingId, dateType) {
+        return `${startDate}|${endDate}|${listingId || 'all'}|${dateType}`;
+    }
+
+    _isReservationsCacheValid(key) {
+        const cached = this._reservationsCache.get(key);
+        if (!cached) return false;
+        return (Date.now() - cached.time) < this._reservationsCacheTTL;
+    }
+
+    clearAllCaches() {
+        this._reservationsCache.clear();
+        this._propertiesCache = null;
+        this._propertiesCacheTime = null;
+        this._usersCache = null;
+        this._usersCacheTime = null;
     }
 
     async makeRequest(endpoint, params = {}, method = 'GET') {
         if (!this.apiKey) {
-            throw new Error('Hostify API Key is required. Please check your .env file.');
+            throw new Error('Hostify API Key is required.');
         }
-        
+
         try {
-            console.log(`Making Hostify API request to: ${this.baseURL}${endpoint}`);
-            console.log(`Using API key: ${this.apiKey ? this.apiKey.substring(0, 10) + '...' : 'Not set'}`);
-            
-            const headers = {
-                'x-api-key': this.apiKey,
-                'Content-Type': 'application/json'
-            };
-            
-            console.log('Request params:', params);
-            
             const config = {
-                headers,
-                timeout: 30000
+                headers: {
+                    'x-api-key': this.apiKey,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 15000 // Reduced from 30s to 15s for faster failures
             };
 
             let response;
@@ -34,65 +55,38 @@ class HostifyService {
             } else if (method === 'POST') {
                 response = await axios.post(`${this.baseURL}${endpoint}`, params, config);
             }
-            
+
             return response.data;
         } catch (error) {
-            console.error(`Hostify API request failed: ${endpoint}`, error.message);
-            if (error.response) {
-                console.error('Response status:', error.response.status);
-                console.error('Response data:', error.response.data);
-                
-                if (error.response.status === 401 || error.response.status === 403) {
-                    throw new Error(`Hostify API Authentication Error: ${error.response.data.message || 'Invalid API key'}. Please check your API key.`);
-                }
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                throw new Error('Hostify API Authentication Error. Check API key.');
             }
             throw new Error(`Hostify API Error: ${error.message}`);
         }
     }
 
     async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn') {
-        const params = {
-            page,
-            per_page: perPage,
-            // Include all sources (Airbnb, VRBO, Booking.com, direct, etc.)
-            // IMPORTANT: Don't add any status filters or source filters
-            // We want ALL reservations regardless of source (Airbnb, VRBO, Booking.com)
-        };
+        const params = { page, per_page: perPage };
 
-        // Use filters parameter to filter by checkout date if specified
         if (dateType === 'checkOut' || dateType === 'departureDate') {
-            // Hostify expects filters as a JSON string
             params.filters = JSON.stringify([
-                {
-                    field: 'checkOut',
-                    operator: '>=',
-                    value: startDate
-                },
-                {
-                    field: 'checkOut',
-                    operator: '<=',
-                    value: endDate
-                }
+                { field: 'checkOut', operator: '>=', value: startDate },
+                { field: 'checkOut', operator: '<=', value: endDate }
             ]);
-            console.log(`Using checkout date filters: ${startDate} to ${endDate}`);
         } else {
-            // Default to check-in date filtering
             params.start_date = startDate;
             params.end_date = endDate;
         }
 
-        // Add listing filter if specified
-        // NOTE: Hostify creates child listings for multi-channel properties (VRBO, Airbnb, etc)
-        // When we filter by listing_id, we miss reservations on child listings
-        // We must fetch ALL reservations and filter by parent_listing_id after
-
-        const result = await this.makeRequest('/reservations', params);
-        
-        return result;
+        return await this.makeRequest('/reservations', params);
     }
 
     async getAllReservations(startDate, endDate, listingId = null, dateType = 'checkIn') {
-        console.log(`Fetching reservations for period: ${startDate} to ${endDate}${listingId ? ` for listing ${listingId}` : ''} (dateType: ${dateType})`);
+        // Check cache first
+        const cacheKey = this._getCacheKey(startDate, endDate, listingId, dateType);
+        if (this._isReservationsCacheValid(cacheKey)) {
+            return this._reservationsCache.get(cacheKey).data;
+        }
 
         let allReservations = [];
         let page = 1;
@@ -100,62 +94,46 @@ class HostifyService {
         let hasMore = true;
 
         while (hasMore) {
-            console.log(`Fetching reservations page ${page}`);
-            
             const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType);
-            
-            if (response.success && response.reservations && response.reservations.length > 0) {
+
+            if (response.success && response.reservations?.length > 0) {
                 allReservations = allReservations.concat(response.reservations);
-                console.log(`Page ${page}: Got ${response.reservations.length} reservations (total so far: ${allReservations.length})`);
-                
-                // Check if there are more results
                 hasMore = response.reservations.length === perPage && response.total > allReservations.length;
                 page++;
-                
-                // Safety check to prevent infinite loops
-                if (page > 100) {
-                    console.log('Reached maximum reservation pages for safety');
-                    break;
-                }
+                if (page > 100) break; // Safety limit
             } else {
                 hasMore = false;
             }
         }
 
         // Filter by parent_listing_id if listing filter was specified
-        // This handles Hostify's child listings (VRBO, Airbnb on same property have different listing_ids)
         if (listingId) {
             allReservations = allReservations.filter(res => {
                 const parentId = res.parent_listing_id || res.listing_id;
                 return parseInt(parentId) === parseInt(listingId);
             });
         }
-        
-        // Transform all reservations to our format
-        const transformedReservations = allReservations.map(reservation => this.transformReservation(reservation));
-        
-        return { result: transformedReservations };
+
+        const result = { result: allReservations.map(r => this.transformReservation(r)) };
+
+        // Cache the result
+        this._reservationsCache.set(cacheKey, { data: result, time: Date.now() });
+
+        return result;
     }
 
     async getAllReservationsWithFinanceData(startDate, endDate, listingId = null) {
-        console.log(`Fetching reservations with detailed finance data for period: ${startDate} to ${endDate}${listingId ? ` for listing ${listingId}` : ''}`);
-        
-        // Hostify includes financial data by default in reservations, so we can just use getAllReservations
         return await this.getAllReservations(startDate, endDate, listingId);
     }
 
     async getReservationsForWeek(weekStartDate) {
-        // Convert Tuesday start to Monday end (7 days)
         const startDate = new Date(weekStartDate);
         const endDate = new Date(startDate);
         endDate.setDate(startDate.getDate() + 6);
-
-        const startDateStr = startDate.toISOString().split('T')[0];
-        const endDateStr = endDate.toISOString().split('T')[0];
-
-        console.log(`Fetching reservations for week: ${startDateStr} to ${endDateStr}`);
-
-        const response = await this.getAllReservations(startDateStr, endDateStr);
+        const response = await this.getAllReservations(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0]
+        );
         return response.result || [];
     }
 
@@ -164,7 +142,11 @@ class HostifyService {
     }
 
     async getAllProperties() {
-        console.log(`Fetching ALL properties/listings with pagination...`);
+        // Check cache first
+        if (this._propertiesCache && this._propertiesCacheTime &&
+            (Date.now() - this._propertiesCacheTime) < this._propertiesCacheTTL) {
+            return this._propertiesCache;
+        }
 
         let allProperties = [];
         let page = 1;
@@ -172,44 +154,43 @@ class HostifyService {
         let hasMore = true;
 
         while (hasMore) {
-            console.log(`Fetching properties page ${page}`);
-            
             const response = await this.makeRequest('/listings', { page, per_page: perPage, service_pms: 1 });
-            
-            if (response.success && response.listings && response.listings.length > 0) {
+
+            if (response.success && response.listings?.length > 0) {
                 allProperties = allProperties.concat(response.listings);
-                console.log(`Page ${page}: Got ${response.listings.length} properties (total so far: ${allProperties.length})`);
-                
-                // Check if there are more results
                 hasMore = response.listings.length === perPage && response.total > allProperties.length;
                 page++;
-                
-                // Safety check to prevent infinite loops
-                if (page > 50) {
-                    console.log('Reached maximum property pages for safety');
-                    break;
-                }
+                if (page > 50) break; // Safety limit
             } else {
                 hasMore = false;
             }
         }
 
-        console.log(`Total properties fetched: ${allProperties.length}`);
-        return { result: allProperties };
+        const result = { result: allProperties };
+        this._propertiesCache = result;
+        this._propertiesCacheTime = Date.now();
+
+        return result;
     }
 
     async getProperty(listingId) {
         return await this.makeRequest(`/listings/${listingId}`);
     }
 
-    // Users API (for owners)
     async getUsers() {
-        console.log('Fetching all users from Hostify...');
-        return await this.makeRequest('/users');
+        // Check cache first
+        if (this._usersCache && this._usersCacheTime &&
+            (Date.now() - this._usersCacheTime) < this._usersCacheTTL) {
+            return this._usersCache;
+        }
+
+        const result = await this.makeRequest('/users');
+        this._usersCache = result;
+        this._usersCacheTime = Date.now();
+        return result;
     }
 
     async getUser(userId) {
-        console.log(`Fetching user ${userId} from Hostify...`);
         return await this.makeRequest(`/users/${userId}`);
     }
 
@@ -233,23 +214,14 @@ class HostifyService {
         };
     }
 
-    // Get all users and transform them to owners
     async getAllOwners() {
         try {
             const response = await this.getUsers();
-            
-            if (!response.success || !response.users) {
-                return [];
-            }
-
-            // Filter for active users only (no role filtering)
-            const owners = response.users
+            if (!response.success || !response.users) return [];
+            return response.users
                 .filter(user => user.is_active === 1)
                 .map(user => this.transformUser(user));
-
-            return owners;
         } catch (error) {
-            console.error('❌ Failed to fetch owners from Hostify:', error.message);
             throw error;
         }
     }
@@ -335,7 +307,6 @@ class HostifyService {
             'denied': 'cancelled',
             'completed': 'completed',
             'no_show': 'cancelled',
-            // Explicitly map invalid statuses that should be excluded
             'inquiry': 'inquiry',
             'expired': 'expired',
             'declined': 'declined',
@@ -343,120 +314,68 @@ class HostifyService {
             'offer': 'new',
             'withdrawn': 'cancelled'
         };
-        
-        // Log any unmapped statuses to catch unexpected ones
-        if (!statusMap[hostifyStatus]) {
-            console.log(`WARNING: Unknown Hostify status '${hostifyStatus}' - mapping to 'unknown'`);
-            return 'unknown';
-        }
-        
-        return statusMap[hostifyStatus];
+        return statusMap[hostifyStatus] || 'unknown';
     }
 
-    /**
-     * Get overlapping reservations for calendar-based calculations
-     * Fetches all reservations that have any overlap with the specified date range
-     * @param {Array} listingIds - Array of listing IDs
-     * @param {string} fromDate - Start date (YYYY-MM-DD)
-     * @param {string} toDate - End date (YYYY-MM-DD)
-     * @returns {Promise<Array>} - Array of unique reservation data
-     */
     async getOverlappingReservations(listingIds, fromDate, toDate) {
         try {
-            console.log(`Fetching overlapping reservations for listings: ${listingIds.join(',')}, dates: ${fromDate} to ${toDate}`);
-            
-            const allReservations = new Map(); // Use Map to deduplicate by reservation ID
-            
-            // Look back some days to catch long stays that started before the period
+            const allReservations = new Map();
+
+            // Look back/forward to catch long stays
             const lookbackDate = new Date(fromDate);
             lookbackDate.setDate(lookbackDate.getDate() - 90);
-            const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
-            
-            // Look forward some days to catch reservations that checkout after the period ends
             const lookforwardDate = new Date(toDate);
             lookforwardDate.setDate(lookforwardDate.getDate() + 90);
-            const lookforwardDateStr = lookforwardDate.toISOString().split('T')[0];
-            
-            // For each listing, fetch reservations
-            for (const listingId of listingIds) {
-                console.log(`Fetching reservations for listing ${listingId}...`);
-                const response = await this.getAllReservations(lookbackDateStr, lookforwardDateStr, listingId);
-                
-                if (response.result) {
-                    // Filter to only include reservations that actually overlap our period
-                    response.result.forEach(res => {
-                        const arrivalDate = new Date(res.checkInDate);
-                        const departureDate = new Date(res.checkOutDate);
-                        const periodStart = new Date(fromDate);
-                        const periodEnd = new Date(toDate);
-                        
-                        // Check if reservation overlaps with our period
-                        // Check-out date is exclusive (guest leaves that day, doesn't stay during it)
-                        // So we need: arrivalDate <= periodEnd AND departureDate > periodStart
-                        if (arrivalDate <= periodEnd && departureDate > periodStart) {
-                            // Add required fields for compatibility
-                            res.arrivalDate = res.checkInDate;
-                            res.departureDate = res.checkOutDate;
-                            res.id = res.hostifyId;
-                            
-                            allReservations.set(res.hostifyId, res);
-                        }
-                    });
-                }
+
+            // Fetch all reservations at once (uses cache)
+            const response = await this.getAllReservations(
+                lookbackDate.toISOString().split('T')[0],
+                lookforwardDate.toISOString().split('T')[0],
+                null
+            );
+
+            if (response.result) {
+                const listingIdSet = new Set(listingIds.map(id => parseInt(id)));
+                const periodStart = new Date(fromDate);
+                const periodEnd = new Date(toDate);
+
+                response.result.forEach(res => {
+                    // Filter by listing
+                    if (!listingIdSet.has(res.propertyId)) return;
+
+                    const arrivalDate = new Date(res.checkInDate);
+                    const departureDate = new Date(res.checkOutDate);
+
+                    // Check overlap
+                    if (arrivalDate <= periodEnd && departureDate > periodStart) {
+                        res.arrivalDate = res.checkInDate;
+                        res.departureDate = res.checkOutDate;
+                        res.id = res.hostifyId;
+                        allReservations.set(res.hostifyId, res);
+                    }
+                });
             }
-            
-            const uniqueReservations = Array.from(allReservations.values());
-            console.log(`✅ Found ${uniqueReservations.length} unique overlapping reservations`);
-            
-            return uniqueReservations;
-            
+
+            return Array.from(allReservations.values());
         } catch (error) {
-            console.error('❌ Error fetching overlapping reservations:', error);
             throw error;
         }
     }
 
-
     async getConsolidatedFinanceReport(params = {}) {
-        try {
-            const {
-                listingMapIds = [],
-                fromDate,
-                toDate,
-                dateType = 'checkOut'
-            } = params;
+        const { listingMapIds = [], fromDate, toDate, dateType = 'checkOut' } = params;
 
-            console.log(`Fetching reservations for listings: ${listingMapIds.join(', ')}, dates: ${fromDate} to ${toDate}, dateType: ${dateType}`);
+        // Fetch all reservations at once (uses cache)
+        const response = await this.getAllReservations(fromDate, toDate, null, dateType);
+        let allReservations = response.result || [];
 
-            // Hostify doesn't have a consolidated finance report endpoint
-            // We'll fetch reservations using the filters parameter for checkout date filtering
-            let allReservations = [];
-            
-            if (listingMapIds.length > 0) {
-                // Fetch for specific listings
-                // Note: We fetch ALL reservations and filter by parent_listing_id in getAllReservations
-                // This handles child listings automatically
-                for (const listingId of listingMapIds) {
-                    const response = await this.getAllReservations(fromDate, toDate, listingId, dateType);
-                    if (response.result) {
-                        allReservations = allReservations.concat(response.result);
-                    }
-                }
-            } else {
-                // Fetch all reservations
-                const response = await this.getAllReservations(fromDate, toDate, null, dateType);
-                if (response.result) {
-                    allReservations = response.result;
-                }
-            }
-
-            console.log(`✅ Got ${allReservations.length} reservations`);
-            return allReservations;
-            
-        } catch (error) {
-            console.error('❌ Hostify reservations fetch error:', error.response?.data || error.message);
-            throw new Error('Failed to fetch reservations from Hostify');
+        // Filter by property IDs if specified
+        if (listingMapIds.length > 0) {
+            const listingIdSet = new Set(listingMapIds.map(id => parseInt(id)));
+            allReservations = allReservations.filter(res => listingIdSet.has(res.propertyId));
         }
+
+        return allReservations;
     }
 }
 

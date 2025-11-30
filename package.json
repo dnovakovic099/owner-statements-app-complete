@@ -14,7 +14,14 @@
     "reset-db": "node scripts/reset-database.js",
     "import-listings": "node scripts/import-listings-to-db.js",
     "migrate-db": "node scripts/migrate-to-database.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node src/tests/master-test-suite.test.js",
+    "test:all": "node src/tests/statementCalculations.test.js && node src/tests/statement-fixes.test.js && node src/tests/tax-calculation.test.js && node src/tests/statement-colors-comprehensive.test.js && node src/tests/master-test-suite.test.js",
+    "test:calculations": "node src/tests/statementCalculations.test.js",
+    "test:fixes": "node src/tests/statement-fixes.test.js",
+    "test:tax": "node src/tests/tax-calculation.test.js",
+    "test:colors": "node src/tests/statement-colors-comprehensive.test.js",
+    "test:master": "node src/tests/master-test-suite.test.js",
+    "test:api": "node src/tests/api-integration.test.js"
   },
   "keywords": [
     "property-management",

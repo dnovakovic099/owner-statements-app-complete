@@ -134,23 +134,256 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Helper function to generate a COMBINED statement for multiple properties
+async function generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType) {
+    try {
+        const periodStart = new Date(startDate);
+        const periodEnd = new Date(endDate);
+
+        // Get data from files
+        const listings = await FileDataService.getListings();
+        const owners = await FileDataService.getOwners();
+
+        // Get the owner - handle both 'default'/1 as default owner
+        const owner = owners.find(o => {
+            if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                return o.id === 'default';
+            }
+            return o.id === ownerId || o.id === parseInt(ownerId);
+        }) || owners[0];
+
+        // Parse property IDs to integers
+        const parsedPropertyIds = propertyIds.map(id => parseInt(id));
+
+        // Find all the target listings
+        const targetListings = listings.filter(l => parsedPropertyIds.includes(l.id));
+        if (targetListings.length === 0) {
+            return res.status(404).json({ error: 'No properties found for the given IDs' });
+        }
+
+        // OPTIMIZED: Batch fetch all data in parallel
+
+        // Get listing info for PM fees and co-host status (batch fetch)
+        const dbListings = await ListingService.getListingsWithPmFees(parsedPropertyIds);
+        const listingInfoMap = {};
+        dbListings.forEach(l => { listingInfoMap[l.id] = l; });
+
+        // Fetch reservations and expenses in parallel using batch methods
+        const [reservationsByProperty, expensesByProperty] = await Promise.all([
+            FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType),
+            FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds)
+        ]);
+
+        // Combine all reservations and expenses
+        let allReservations = [];
+        let allExpenses = [];
+        let allDuplicateWarnings = [];
+
+        for (const propId of parsedPropertyIds) {
+            const propReservations = reservationsByProperty[propId] || [];
+            const propExpenseData = expensesByProperty[propId] || { expenses: [], duplicateWarnings: [] };
+
+            allReservations.push(...propReservations);
+            allExpenses.push(...propExpenseData.expenses);
+            allDuplicateWarnings.push(...propExpenseData.duplicateWarnings);
+        }
+
+        // Filter reservations by date and status
+        const periodReservations = allReservations.filter(res => {
+            // Check property ID is in our list
+            if (!parsedPropertyIds.includes(res.propertyId)) {
+                return false;
+            }
+
+            // Check date match based on calculation type
+            let dateMatch = true;
+            if (calculationType === 'calendar') {
+                // For calendar-based calculation, reservations are already filtered and prorated
+                dateMatch = true;
+            } else {
+                // For checkout-based calculation, filter by checkout date
+                const checkoutDate = new Date(res.checkOutDate);
+                dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                if (!dateMatch) return false;
+            }
+
+            // Only include confirmed, modified, and new status reservations
+            const allowedStatuses = ['confirmed', 'modified', 'new'];
+            return allowedStatuses.includes(res.status);
+        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+        // Filter expenses by date
+        const periodExpenses = allExpenses.filter(exp => {
+            // Check property ID is in our list (or is null for SecureStay)
+            if (exp.propertyId !== null && !parsedPropertyIds.includes(exp.propertyId)) {
+                return false;
+            }
+            const expenseDate = new Date(exp.date);
+            return expenseDate >= periodStart && expenseDate <= periodEnd;
+        });
+
+        // Calculate totals - handle co-host properties per reservation
+        let totalRevenue = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            const isCohostForProperty = listingInfoMap[res.propertyId]?.isCohostOnAirbnb || false;
+
+            // Exclude Airbnb revenue for co-hosted properties
+            if (isAirbnb && isCohostForProperty) {
+                continue;
+            }
+
+            totalRevenue += (res.grossAmount || 0);
+        }
+
+        // Calculate total expenses (only actual costs, not upsells)
+        const totalExpenses = periodExpenses.reduce((sum, exp) => {
+            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+            return isUpsell ? sum : sum + Math.abs(exp.amount);
+        }, 0);
+
+        // Calculate PM commission per-reservation based on each property's PM fee
+        let pmCommission = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            const listing = listingInfoMap[res.propertyId];
+            const isCohostForProperty = listing?.isCohostOnAirbnb || false;
+
+            // Skip PM commission for co-hosted Airbnb reservations
+            if (isAirbnb && isCohostForProperty) {
+                continue;
+            }
+
+            const resPmFee = listing?.pmFeePercentage ?? 15;
+            const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
+            pmCommission += resCommission;
+        }
+
+        // Calculate average PM percentage for display
+        const avgPmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
+
+        // Calculate fees per property
+        const propertyCount = targetListings.length;
+        const techFees = propertyCount * 50; // $50 per property
+        const insuranceFees = propertyCount * 25; // $25 per property
+
+        // Calculate owner payout
+        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+
+        // Generate unique ID
+        const existingStatements = await FileDataService.getStatements();
+        const newId = FileDataService.generateId(existingStatements);
+
+        // Create property names string for display
+        const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
+        const shortPropertyNames = targetListings.length <= 3
+            ? propertyNames
+            : `${targetListings.slice(0, 2).map(l => l.nickname || l.displayName || l.name).join(', ')} +${targetListings.length - 2} more`;
+
+        // Create statement object
+        const statement = {
+            id: newId,
+            ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
+            ownerName: owner.name,
+            propertyId: null, // Combined statement has no single property
+            propertyIds: parsedPropertyIds, // Store all property IDs
+            propertyName: shortPropertyNames,
+            propertyNames: propertyNames, // Full list for detail view
+            weekStartDate: startDate,
+            weekEndDate: endDate,
+            calculationType,
+            totalRevenue: Math.round(totalRevenue * 100) / 100,
+            totalExpenses: Math.round(totalExpenses * 100) / 100,
+            pmCommission: Math.round(pmCommission * 100) / 100,
+            pmPercentage: Math.round(avgPmPercentage * 100) / 100,
+            techFees: Math.round(techFees * 100) / 100,
+            insuranceFees: Math.round(insuranceFees * 100) / 100,
+            adjustments: 0,
+            ownerPayout: Math.round(ownerPayout * 100) / 100,
+            isCombinedStatement: true,
+            propertyCount: propertyCount,
+            status: 'draft',
+            sentAt: null,
+            createdAt: new Date().toISOString(),
+            reservations: periodReservations,
+            expenses: periodExpenses,
+            duplicateWarnings: allDuplicateWarnings,
+            items: [
+                // Revenue items from reservations (grouped by property)
+                ...periodReservations.map(res => {
+                    const listing = targetListings.find(l => l.id === res.propertyId);
+                    const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : `Property ${res.propertyId}`;
+                    return {
+                        type: 'revenue',
+                        description: `[${propertyLabel}] ${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                        amount: res.grossAmount,
+                        date: res.checkOutDate,
+                        category: 'booking',
+                        propertyId: res.propertyId
+                    };
+                }),
+                // Expenses and upsells
+                ...periodExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
+                    const listing = exp.propertyId ? targetListings.find(l => l.id === exp.propertyId) : null;
+                    const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : (exp.listing || 'General');
+
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing,
+                        propertyId: exp.propertyId
+                    };
+                })
+            ]
+        };
+
+        // Save statement to file
+        await FileDataService.saveStatement(statement);
+
+
+        res.status(201).json({
+            message: `Combined statement generated for ${propertyCount} properties`,
+            statement: {
+                id: statement.id,
+                ownerPayout: statement.ownerPayout,
+                totalRevenue: statement.totalRevenue,
+                totalExpenses: statement.totalExpenses,
+                itemCount: statement.items.length,
+                propertyCount: propertyCount,
+                isCombinedStatement: true
+            }
+        });
+    } catch (error) {
+        console.error('Combined statement generation error:', error);
+        res.status(500).json({ error: 'Failed to generate combined statement' });
+    }
+}
+
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
+        const { propertyId, propertyIds, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
         }
 
-        if (!propertyId && !ownerId && !tag) {
-            return res.status(400).json({ error: 'Either property ID, owner ID, or tag is required' });
+        if (!propertyId && !propertyIds && !ownerId && !tag) {
+            return res.status(400).json({ error: 'Either property ID, property IDs, owner ID, or tag is required' });
+        }
+
+        // Handle combined multi-property statement generation
+        if (propertyIds && Array.isArray(propertyIds) && propertyIds.length > 1) {
+            return await generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType);
         }
 
         // Handle "Generate All" option or tag-based generation - run in background
         if (ownerId === 'all' || (tag && !propertyId)) {
-            const jobType = tag ? `tag-based generation (${tag})` : 'bulk generation';
-            console.log(`🚀 Starting ${jobType} as background job...`);
             
             const jobId = await BackgroundJobService.runInBackground(
                 'bulk_statement_generation',
@@ -171,23 +404,18 @@ router.post('/generate', async (req, res) => {
 
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
-        
+
         if (periodStart > periodEnd) {
             return res.status(400).json({ error: 'Start date must be before end date' });
         }
 
-        // Get data from files
-        const listings = await FileDataService.getListings();
-
-        // Only get reservations for the exact period and property needed
-        const reservations = await FileDataService.getReservations(
-            startDate,
-            endDate,
-            propertyId,
-            calculationType
-        );
-        const expenses = await FileDataService.getExpenses(startDate, endDate, propertyId);
-        const owners = await FileDataService.getOwners();
+        // OPTIMIZED: Fetch all data in parallel
+        const [listings, reservations, expenses, owners] = await Promise.all([
+            FileDataService.getListings(),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
+            FileDataService.getExpenses(startDate, endDate, propertyId),
+            FileDataService.getOwners()
+        ]);
         
         // Check for duplicate warnings
         const duplicateWarnings = expenses.duplicateWarnings || [];
@@ -207,7 +435,6 @@ router.post('/generate', async (req, res) => {
             owner = owners[0]; // Default owner
         } else if (tag) {
             // Generate statements for all properties with the specified tag
-            console.log(`[Tag]  Filtering listings by tag: ${tag}`);
             const taggedListings = listings.filter(l => {
                 const listingTags = l.tags || [];
                 return listingTags.includes(tag);
@@ -217,78 +444,46 @@ router.post('/generate', async (req, res) => {
                 return res.status(404).json({ error: `No properties found with tag: ${tag}` });
             }
             
-            console.log(`   Found ${taggedListings.length} properties with tag "${tag}"`);
             targetListings = taggedListings;
-            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
+            owner = owners.find(o => {
+                if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                    return o.id === 'default';
+                }
+                return o.id === ownerId || o.id === parseInt(ownerId);
+            }) || owners[0];
         } else {
             // Generate consolidated statement for all owner's properties
-            owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId));
+            // Find owner - handle both 'default'/1 as default owner, and other owner IDs
+            owner = owners.find(o => {
+                if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
+                    return o.id === 'default';
+                }
+                return o.id === ownerId || o.id === parseInt(ownerId);
+            });
             if (!owner) {
-                return res.status(404).json({ error: 'Owner not found' });
+                // Fallback to default owner if not found
+                owner = owners[0];
             }
             targetListings = listings; // All properties for now
         }
 
-        // Debug: Log what we got from API
-        console.log(`Total reservations fetched from API: ${reservations.length}`);
-        if (reservations.length > 0) {
-            console.log(`Sample reservation:`, {
-                id: reservations[0].id,
-                propertyId: reservations[0].propertyId,
-                guestName: reservations[0].guestName,
-                status: reservations[0].status,
-                checkInDate: reservations[0].checkInDate,
-                checkOutDate: reservations[0].checkOutDate
-            });
-        }
-
-        // Get reservations for the date range
-        // For calendar calculation, reservations are already filtered by overlap in FileDataService
-        // For checkout calculation, filter by checkout date
+        // Filter reservations - optimized with reduced logging
+        const allowedStatuses = ['confirmed', 'modified', 'new'];
         const periodReservations = reservations.filter(res => {
             if (propertyId && res.propertyId !== parseInt(propertyId)) {
-                console.log(`Excluded reservation - wrong property: ${res.propertyId} (expected ${propertyId})`);
                 return false;
             }
-            
+
             // Check date match based on calculation type
-            let dateMatch = true;
-            
-            if (calculationType === 'calendar') {
-                // For calendar-based calculation, reservations are already filtered and prorated
-                console.log(`Including prorated reservation: ${res.hostifyId || res.id} - ${res.prorationNote || 'no proration'}`);
-                dateMatch = true; // Already filtered by overlap in FileDataService
-            } else {
-                // For checkout-based calculation, filter by checkout date
+            if (calculationType !== 'calendar') {
                 const checkoutDate = new Date(res.checkOutDate);
-                dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
-                
-                if (!dateMatch) {
-                    console.log(`Excluded reservation - wrong date: ${res.checkOutDate} (period: ${startDate} to ${endDate})`);
+                if (checkoutDate < periodStart || checkoutDate > periodEnd) {
                     return false;
                 }
             }
-            
-            // Only include confirmed, modified, and new status reservations by default
-            // Cancelled reservations can be added later through the edit functionality
-            // Explicitly exclude inquiry, expired, declined, and unknown statuses
-            const allowedStatuses = ['confirmed', 'modified', 'new'];
-            const excludedStatuses = ['cancelled', 'inquiry', 'expired', 'declined', 'unknown', 'completed'];
-            const statusMatch = allowedStatuses.includes(res.status);
-            
-            // Log any reservations that don't match status filter for debugging
-            if (dateMatch && !statusMatch) {
-                if (excludedStatuses.includes(res.status)) {
-                    console.log(`Excluded reservation with status: "${res.status}" for guest: ${res.guestName} (${res.hostawayId}) - Status not allowed in statements`);
-                } else {
-                    console.log(`WARNING: Excluded reservation with unexpected status: "${res.status}" for guest: ${res.guestName} (${res.hostawayId})`);
-                }
-            }
-            
-            return dateMatch && statusMatch;
-        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-        console.log(`Found ${periodReservations.length} reservations with allowed statuses for statement generation`);
+            return allowedStatuses.includes(res.status);
+        }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
         // Get expenses for the date range
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
@@ -304,10 +499,14 @@ router.post('/generate', async (req, res) => {
 
         // Check if this is a co-host on Airbnb property (need this early for revenue calculation)
         let isCohostOnAirbnb = false;
+        let airbnbPassThroughTax = false;
+        let disregardTax = false;
         let listingInfo = null;
         if (propertyId) {
             listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
             isCohostOnAirbnb = listingInfo?.isCohostOnAirbnb || false;
+            airbnbPassThroughTax = listingInfo?.airbnbPassThroughTax || false;
+            disregardTax = listingInfo?.disregardTax || false;
         }
 
         // Calculate totals - exclude Airbnb revenue if co-host is enabled
@@ -317,7 +516,6 @@ router.post('/generate', async (req, res) => {
             
             // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
             if (isAirbnb && isCohostOnAirbnb) {
-                console.log(`Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
                 return sum;
             }
             
@@ -339,43 +537,36 @@ router.post('/generate', async (req, res) => {
             // Single property - use its PM fee for revenue (excluding co-hosted Airbnb)
             if (listingInfo && listingInfo.pmFeePercentage !== null) {
                 pmPercentage = listingInfo.pmFeePercentage;
-                console.log(`Using PM fee from database for listing ${propertyId}: ${pmPercentage}%`);
-            } else {
-                console.log(`No PM fee found for listing ${propertyId}, using default: ${pmPercentage}%`);
             }
             pmCommission = totalRevenue * (pmPercentage / 100);
         } else {
             // Multi-property statement - calculate PM commission per reservation
-            console.log(`Calculating PM commission per-reservation for ${periodReservations.length} reservations...`);
             const propertyPmFees = {}; // Cache PM fees to avoid repeated DB calls
             const propertyListings = {}; // Cache listing info
-            
+
             for (const res of periodReservations) {
                 if (!propertyPmFees[res.propertyId]) {
                     const listing = await ListingService.getListingWithPmFee(res.propertyId);
                     propertyPmFees[res.propertyId] = listing?.pmFeePercentage ?? 15;
                     propertyListings[res.propertyId] = listing;
                 }
-                
+
                 // Check if this is Airbnb and co-hosted
                 const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                 const isCohostForProperty = propertyListings[res.propertyId]?.isCohostOnAirbnb || false;
-                
+
                 // Skip PM commission for co-hosted Airbnb reservations
                 if (isAirbnb && isCohostForProperty) {
-                    console.log(`  Property ${res.propertyId}: Airbnb co-host - no PM commission on this reservation`);
                     continue;
                 }
-                
+
                 const resPmFee = propertyPmFees[res.propertyId];
                 const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
                 pmCommission += resCommission;
-                console.log(`  Property ${res.propertyId}: $${res.grossAmount} × ${resPmFee}% = $${resCommission.toFixed(2)}`);
             }
-            
+
             // Calculate average PM percentage for display
             pmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
-            console.log(`Total PM Commission: $${pmCommission.toFixed(2)} (avg ${pmPercentage.toFixed(2)}%)`);
         }
         
         // Calculate fees per property
@@ -409,6 +600,8 @@ router.post('/generate', async (req, res) => {
             adjustments: 0,
             ownerPayout: Math.round(ownerPayout * 100) / 100,
             isCohostOnAirbnb: isCohostOnAirbnb,
+            airbnbPassThroughTax: airbnbPassThroughTax,
+            disregardTax: disregardTax,
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
@@ -444,7 +637,6 @@ router.post('/generate', async (req, res) => {
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
-        console.log(`Statement generated: ID ${statement.id}, Payout: $${statement.ownerPayout}`);
 
         res.status(201).json({
             message: 'Statement generated successfully',
@@ -501,9 +693,7 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
 
         // Make direct API call to Hostaway to get all reservations for this period and property
         const hostawayService = require('../services/HostawayService');
-        
-        console.log(`DEBUG: Fetching reservations directly from Hostaway API for property ${statement.propertyId}, period ${statement.weekStartDate} to ${statement.weekEndDate}`);
-        
+
         // Get all reservations for this property and period from Hostaway
         const apiResponse = await hostawayService.getAllReservations(
             statement.weekStartDate,
@@ -512,37 +702,19 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
         );
         
         const allReservations = apiResponse.result || [];
-        console.log(`DEBUG: Got ${allReservations.length} reservations from Hostaway API`);
-        
-        // Log status counts for debugging
-        const statusCounts = {};
-        allReservations.forEach(res => {
-            statusCounts[res.status] = (statusCounts[res.status] || 0) + 1;
-        });
-        console.log('DEBUG: Reservation status counts from API:', statusCounts);
-        
+
         // Filter for ALL cancelled reservations (including those already in statement)
         const cancelledReservations = allReservations.filter(res => {
-            console.log(`DEBUG: Checking reservation ${res.hostawayId} - Status: ${res.status}, Guest: ${res.guestName}`);
-            
             // Only cancelled reservations
             const isCancelled = res.status === 'cancelled';
             if (!isCancelled) {
-                console.log(`DEBUG: Excluded - not cancelled: ${res.status}`);
                 return false;
             }
-            
+
             // Check if already in statement (for informational purposes)
             const alreadyIncluded = statement.reservations?.some(existing => existing.hostawayId === res.hostawayId) || false;
-            if (alreadyIncluded) {
-                console.log(`DEBUG: INCLUDED cancelled reservation (already in statement): ${res.hostawayId} - ${res.guestName}`);
-                // Mark it as already included but still include it in results
-                res.alreadyInStatement = true;
-            } else {
-                console.log(`DEBUG: INCLUDED cancelled reservation (not in statement): ${res.hostawayId} - ${res.guestName}`);
-                res.alreadyInStatement = false;
-            }
-            
+            res.alreadyInStatement = alreadyIncluded;
+
             return true;
         });
 
@@ -571,11 +743,6 @@ router.get('/:id/available-reservations', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        // Get the appropriate service based on what's being used
-        const hostifyService = require('../services/HostifyService');
-        
-        console.log(`Fetching all reservations for property ${statement.propertyId}, period ${statement.weekStartDate} to ${statement.weekEndDate}, calculationType: ${statement.calculationType || 'checkout'}`);
-        
         // Get all reservations for this property and period
         const reservations = await FileDataService.getReservations(
             statement.weekStartDate,
@@ -583,9 +750,7 @@ router.get('/:id/available-reservations', async (req, res) => {
             statement.propertyId,
             statement.calculationType || 'checkout'
         );
-        
-        console.log(`Got ${reservations.length} total reservations from service`);
-        
+
         // Separate into included and available
         const includedReservationIds = new Set(
             (statement.reservations || []).map(r => r.hostifyId || r.id)
@@ -595,8 +760,6 @@ router.get('/:id/available-reservations', async (req, res) => {
             const resId = res.hostifyId || res.id;
             return !includedReservationIds.has(resId);
         });
-        
-        console.log(`${availableReservations.length} available reservations not yet in statement`);
 
         res.json({ 
             availableReservations,
@@ -641,7 +804,6 @@ router.put('/:id', async (req, res) => {
 
             if (statement.items.length < originalItemsCount) {
                 modified = true;
-                console.log(`Removed ${originalItemsCount - statement.items.length} items (expenses/upsells) from statement ${id}`);
             }
         }
 
@@ -672,7 +834,6 @@ router.put('/:id', async (req, res) => {
 
             if (statement.reservations.length < originalReservationsCount) {
                 modified = true;
-                console.log(`Removed ${originalReservationsCount - statement.reservations.length} reservations from statement ${id}`);
             }
         }
 
@@ -725,12 +886,7 @@ router.put('/:id', async (req, res) => {
                     }
 
                     modified = true;
-                    console.log(`Added ${newReservationsToAdd.length} new reservations to statement ${id}`);
-                } else {
-                    console.log(`No new reservations to add (all ${reservationsToAdd.length} already exist in statement ${id})`);
                 }
-            } else {
-                console.log(`No matching reservations found for IDs: ${reservationIdsToAdd.join(', ')}`);
             }
         }
 
@@ -807,7 +963,6 @@ router.put('/:id', async (req, res) => {
             statement.items.push(revenueItem);
 
             modified = true;
-            console.log(`Added custom reservation for ${customReservation.guestName} with amount $${customReservation.grossAmount}`);
         }
 
         // Add cancelled reservations (legacy support)
@@ -848,7 +1003,6 @@ router.put('/:id', async (req, res) => {
                 }
 
                 modified = true;
-                console.log(`Added ${reservationsToAdd.length} cancelled reservations to statement ${id}`);
             }
         }
 
@@ -932,13 +1086,36 @@ router.delete('/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete statement' });
     }
 });
+// GET /api/statements-file/:id/view - get
+router.get('/:id/view/data', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const statement = await FileDataService.getStatementById(id);
+        console.log("statement-",statement);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+        res.json({
+            data: statement
+        });
+    } catch (error) {
+        console.error('Statement delete error:', error);
+        res.status(500).json({ error: 'Failed to delete statement' });
+    }
+});
 
-// Helper function to generate statement HTML for both view and PDF download
-function generateViewStatementHTML(statement, id, isPdf = false) {
-    // When generating PDF, add body class to apply print styles directly
-    const bodyClass = isPdf ? 'pdf-mode' : '';
+// GET /api/statements-file/:id/view - View statement in browser
+router.get('/:id/view', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isPdf = req.query.pdf === 'true'; // Hide download button for PDF generation
+        const statement = await FileDataService.getStatementById(id);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
 
-    return `
+        // Generate HTML view of the statement
+        const statementHTML = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1407,62 +1584,89 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             display: flex;
             justify-content: flex-end;
             margin-top: 30px;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
         }
         
         .summary-box {
             background: white;
             padding: 25px;
-            border: 2px solid var(--luxury-navy);
+            border: none;
             border-radius: 12px;
             width: 450px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 0 2px var(--luxury-navy), 0 4px 12px rgba(0, 0, 0, 0.1);
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            orphans: 5;
+            widows: 5;
         }
-        
+
         .summary-table {
             width: 100%;
             border-collapse: collapse;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
         }
-        
+
         .summary-table td {
             padding: 12px 0;
             border-bottom: 1px solid #eee;
             font-size: 14px;
         }
-        
+
         .summary-table tr:last-child td {
             border-bottom: none;
         }
-        
+
         .summary-label {
             font-weight: 500;
             color: var(--luxury-navy);
         }
-        
+
         .summary-value {
             text-align: right;
             font-weight: 600;
             font-size: 15px;
         }
-        
+
         .summary-value.revenue {
             color: #28a745;
         }
-        
+
         .summary-value.expense {
             color: #dc3545;
         }
-        
-        .total-row td {
-            padding-top: 15px;
-            border-top: 2px solid var(--luxury-navy);
-            font-size: 16px;
+
+        .total-row {
+            page-break-before: avoid !important;
+            break-before: avoid !important;
         }
-        
+
+        .total-row td {
+            padding-top: 20px;
+            margin-top: 10px;
+            border-top: none;
+            border-bottom: none !important;
+            font-size: 16px;
+            position: relative;
+        }
+
+        .total-row td::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: var(--luxury-navy);
+        }
+
         .total-amount {
             color: var(--luxury-navy);
             font-size: 18px;
         }
-        
+
         .expenses-container {
             overflow-x: auto;
             margin-bottom: 30px;
@@ -1473,69 +1677,72 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         
         .expenses-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             background: white;
-            font-size: 12px;
+            font-size: 11px;
         }
-        
+
         .expenses-table th {
             background: var(--luxury-navy);
             color: white;
             padding: 12px 8px;
-            text-align: left;
+            text-align: center;
             font-weight: 600;
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
         }
-        
+
         .expenses-table td {
-            padding: 10px 8px;
+            padding: 12px 8px;
             border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
+            text-align: center;
         }
-        
+
         .expenses-table tr:hover {
             background: #f8f9fa;
         }
-        
+
         .expenses-table .date-cell {
             width: 12%;
             font-weight: 500;
         }
-        
+
         .expenses-table .description-cell {
             width: 30%;
+            text-align: left;
         }
-        
+
         .expenses-table .vendor-cell {
-            width: 15%;
+            width: 16%;
             color: var(--luxury-gray);
         }
-        
+
         .expenses-table .listing-cell {
-            width: 15%;
+            width: 16%;
             color: var(--luxury-gray);
-            font-size: 11px;
+            font-size: 10px;
         }
-        
+
         .expenses-table .category-cell {
-            width: 13%;
+            width: 12%;
             text-transform: capitalize;
             color: var(--luxury-gray);
         }
-        
+
         .expenses-table .amount-cell {
-            width: 15%;
+            width: 14%;
             text-align: right;
             font-weight: 600;
         }
-        
+
         .expenses-table .totals-row {
             background: var(--luxury-navy);
             color: white;
         }
-        
+
         .expenses-table .totals-row td {
             border-bottom: none;
             padding: 12px 8px;
@@ -1552,6 +1759,7 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         
         .rental-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             background: white;
             font-size: 9px;
@@ -1560,64 +1768,69 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
-            padding: 8px 4px;
+            padding: 10px 4px;
             text-align: center;
             font-weight: 600;
             font-size: 8px;
             text-transform: uppercase;
             letter-spacing: 0.3px;
             border-right: 1px solid rgba(255,255,255,0.2);
-            white-space: nowrap;
-            line-height: 1.3;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.4;
+            vertical-align: middle;
         }
         
-        .rental-table th:nth-child(1) { width: 25%; }   /* Guest Details with dates */
-        .rental-table th:nth-child(2) { width: 11%; }   /* Base Rate */
-        .rental-table th:nth-child(3) { width: 11%; }   /* Cleaning */
-        .rental-table th:nth-child(4) { width: 11%; }   /* Platform Fees */
-        .rental-table th:nth-child(5) { width: 11%; }   /* Revenue */
-        .rental-table th:nth-child(6) { width: 11%; }   /* PM Commission */
-        .rental-table th:nth-child(7) { width: 10%; }   /* Tax Responsibility */
-        .rental-table th:nth-child(8) { width: 10%; }   /* Gross Payout */
+        .rental-table th:nth-child(1) { width: 20%; }   /* Guest Details with dates */
+        .rental-table th:nth-child(2) { width: 10%; }   /* Base Rate */
+        .rental-table th:nth-child(3) { width: 12%; }   /* Cleaning */
+        .rental-table th:nth-child(4) { width: 10%; }   /* Platform Fees */
+        .rental-table th:nth-child(5) { width: 10%; }   /* Revenue */
+        .rental-table th:nth-child(6) { width: 12%; }   /* PM Commission */
+        .rental-table th:nth-child(7) { width: 10%; }   /* Tax */
+        .rental-table th:nth-child(8) { width: 11%; }   /* Gross Payout */
         
         .rental-table td {
-            padding: 6px 4px;
+            padding: 10px 6px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
             font-size: 9px;
             text-align: center;
             vertical-align: middle;
-            line-height: 1.4;
+            line-height: 1.5;
         }
-        
+
         .booking-cell {
-            text-align: left !important;
-            padding: 14px 10px !important;
+            text-align: center !important;
+            padding: 12px 8px !important;
         }
-        
+
         .guest-details-cell {
             text-align: left !important;
-            padding: 6px 4px !important;
+            padding: 12px 8px !important;
+            vertical-align: middle;
         }
-        
+
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 9px;
-            margin-bottom: 2px;
+            font-size: 10px;
+            margin-bottom: 4px;
+            text-align: left;
         }
-        
+
         .guest-info {
-            font-size: 8px;
+            font-size: 9px;
             color: var(--luxury-gray);
-            line-height: 1.3;
-            margin-bottom: 2px;
+            line-height: 1.5;
+            margin-bottom: 4px;
+            text-align: left;
         }
-        
+
         .booking-details {
             font-size: 8px;
             color: var(--luxury-gray);
-            line-height: 1.3;
+            line-height: 1.4;
         }
         
         .listing-info {
@@ -1644,18 +1857,18 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 1px 4px;
-            border-radius: 3px;
-            font-size: 7px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 8px;
             font-weight: 600;
             text-transform: uppercase;
-            margin-top: 2px;
+            margin-top: 4px;
         }
-        
+
         .proration-info {
-            font-size: 7px !important;
+            font-size: 8px !important;
             color: #007bff !important;
-            margin-top: 2px !important;
+            margin-top: 4px !important;
         }
         
         .amount-cell {
@@ -1673,9 +1886,13 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         .expense-amount {
             color: var(--luxury-red);
         }
-        
+
         .revenue-amount {
-            color: var(--luxury-navy);
+            color: var(--luxury-green);
+        }
+
+        .info-amount {
+            color: #2563eb;
         }
         
         .rental-table tr:nth-child(even) {
@@ -1687,11 +1904,11 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             color: white;
             font-weight: 700;
         }
-        
+
         .rental-table .totals-row td {
-            padding: 8px 4px;
+            padding: 12px 6px;
             border-bottom: none;
-            font-size: 9px;
+            font-size: 10px;
         }
         
         /* Page setup for PDF - Portrait mode */
@@ -1748,19 +1965,24 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             .rental-table {
                 font-size: 8px;
                 page-break-inside: avoid;
+                table-layout: fixed;
+                width: 100%;
             }
 
             .rental-table th {
                 font-size: 7px;
-                padding: 6px 4px;
+                padding: 4px 2px;
                 background: #1e3a5f !important;
                 color: white !important;
             }
 
             .rental-table td {
                 font-size: 8px;
-                padding: 6px 4px;
+                padding: 8px 4px;
                 border-bottom: 1px solid #e9ecef;
+                word-wrap: break-word;
+                overflow: hidden;
+                vertical-align: middle;
             }
 
             .rental-table .totals-row td {
@@ -1769,17 +1991,23 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             }
 
             .guest-details-cell {
-                padding: 6px 4px !important;
+                padding: 10px 6px !important;
+                text-align: left !important;
+                vertical-align: middle;
             }
 
             .guest-name {
-                font-size: 8px;
+                font-size: 9px;
                 color: #333 !important;
+                margin-bottom: 3px;
+                text-align: left;
             }
 
             .guest-info, .booking-details {
-                font-size: 7px;
+                font-size: 8px;
                 color: #666 !important;
+                margin-bottom: 3px;
+                text-align: left;
             }
 
             .amount-cell {
@@ -1804,6 +2032,10 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
 
             .revenue-amount {
                 color: #059669 !important;
+            }
+
+            .info-amount {
+                color: #2563eb !important;
             }
 
             .print-button {
@@ -1876,6 +2108,8 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         body.pdf-mode .rental-table {
             font-size: 8px;
             page-break-inside: avoid;
+            table-layout: fixed;
+            width: 100%;
         }
 
         body.pdf-mode .rental-table th {
@@ -1889,8 +2123,9 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
 
         body.pdf-mode .rental-table td {
             font-size: 8px;
-            padding: 6px 4px;
+            padding: 8px 4px;
             border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
         }
 
         body.pdf-mode .rental-table .totals-row td {
@@ -1901,18 +2136,24 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         }
 
         body.pdf-mode .guest-details-cell {
-            padding: 6px 4px !important;
+            padding: 10px 6px !important;
+            text-align: left !important;
+            vertical-align: middle;
         }
 
         body.pdf-mode .guest-name {
-            font-size: 8px;
+            font-size: 9px;
             color: #333 !important;
+            margin-bottom: 3px;
+            text-align: left;
         }
 
         body.pdf-mode .guest-info,
         body.pdf-mode .booking-details {
-            font-size: 7px;
+            font-size: 8px;
             color: #666 !important;
+            margin-bottom: 3px;
+            text-align: left;
         }
 
         body.pdf-mode .amount-cell {
@@ -1939,6 +2180,10 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
             color: #059669 !important;
         }
 
+        body.pdf-mode .info-amount {
+            color: #2563eb !important;
+        }
+
         body.pdf-mode .print-button {
             display: none !important;
         }
@@ -1948,13 +2193,13 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         }
 
         body.pdf-mode .expenses-table {
-            font-size: 9px !important;
+            font-size: 10px !important;
             width: 100% !important;
         }
 
         body.pdf-mode .expenses-table th {
-            padding: 6px 3px !important;
-            font-size: 8px !important;
+            padding: 10px 6px !important;
+            font-size: 9px !important;
             background-color: #1e3a5f !important;
             color: white !important;
             -webkit-print-color-adjust: exact !important;
@@ -1962,8 +2207,9 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         }
 
         body.pdf-mode .expenses-table td {
-            padding: 5px 3px !important;
-            font-size: 9px !important;
+            padding: 10px 6px !important;
+            font-size: 10px !important;
+            vertical-align: middle;
         }
 
         body.pdf-mode .totals-row {
@@ -1979,10 +2225,34 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
 
         body.pdf-mode .section {
             page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         body.pdf-mode tr {
             page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        body.pdf-mode .summary-box {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
+        }
+
+        body.pdf-mode .summary-table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+
+        body.pdf-mode .statement-summary {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
+        }
+
+        body.pdf-mode .total-row {
+            page-break-before: avoid !important;
+            break-before: avoid !important;
         }
     </style>
 </head>
@@ -2038,11 +2308,11 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                 <tr>
                                 <th>Guest Details</th>
                                 <th>Base Rate</th>
-                                <th>Cleaning and Other Fees</th>
+                                <th>Guest Paid Cleaning, Pet Extra & Others</th>
                                 <th>Platform Fees</th>
                                 <th>Revenue</th>
                                 <th>PM Commission</th>
-                                <th>Tax Responsibility</th>
+                                <th>Tax</th>
                                 <th>Gross Payout</th>
                 </tr>
             </thead>
@@ -2062,17 +2332,22 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                                 const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
                                 const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                                 
-                                // For co-hosted Airbnb: Gross Payout is negative PM commission only (client already got the money)
-                                // For Airbnb (not co-hosted): Revenue - PM Commission
-                                // For non-Airbnb (VRBO, Direct, etc.): Revenue - PM Commission + Tax Responsibility
+                                // Tax calculation priority:
+                                // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
+                                // 2. For co-hosted Airbnb: Gross Payout is negative PM commission only
+                                // 3. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
+                                // 4. For non-Airbnb OR Airbnb with pass-through: include tax responsibility
                                 let grossPayout;
+                                const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+
                                 if (isCohostAirbnb) {
                                     grossPayout = -luxuryFee;
-                                } else if (isAirbnb) {
-                                    grossPayout = clientRevenue - luxuryFee;
-                                } else {
-                                    // Non-Airbnb: include tax responsibility
+                                } else if (shouldAddTax) {
+                                    // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
                                     grossPayout = clientRevenue - luxuryFee + taxResponsibility;
+                                } else {
+                                    // No tax: Airbnb without pass-through OR disregardTax is enabled
+                                    grossPayout = clientRevenue - luxuryFee;
                                 }
                                 
                                 return `
@@ -2093,13 +2368,13 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                                             </div>` : ''
                                         }
                                     </td>
-                                    <td class="amount-cell">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell revenue-amount">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell revenue-amount">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : ''}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'info-amount'}">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
                             }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
@@ -2208,10 +2483,10 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
         </div>
     </div>
 
-    <!-- Additional Revenue Section (Upsells) -->
+    <!-- Additional Payouts Section (Upsells) -->
     ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
     <div class="section">
-        <h2 class="section-title">ADDITIONAL REVENUE</h2>
+        <h2 class="section-title">ADDITIONAL PAYOUTS</h2>
         <div class="expenses-container">
             <table class="expenses-table">
             <thead>
@@ -2239,7 +2514,7 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                         </tr>
                     `).join('')}
                     <tr class="totals-row">
-                        <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL PAYOUTS</strong></td>
                         <td class="amount-cell revenue-amount" style="color: white;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
@@ -2259,7 +2534,7 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                             </tr>
                             ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
                             <tr>
-                                <td class="summary-label">Additional Revenue</td>
+                                <td class="summary-label">Additional Payouts</td>
                                 <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             ` : ''}
@@ -2267,6 +2542,18 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                                 <td class="summary-label">Expenses</td>
                                 <td class="summary-value expense">-$${(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
+                            ${(statement.techFees || 0) > 0 ? `
+                            <tr>
+                                <td class="summary-label">Technology Fee</td>
+                                <td class="summary-value expense">-$${(statement.techFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            ` : ''}
+                            ${(statement.insuranceFees || 0) > 0 ? `
+                            <tr>
+                                <td class="summary-label">Insurance Fee</td>
+                                <td class="summary-value expense">-$${(statement.insuranceFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            ` : ''}
                             <tr class="total-row">
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
                                 <td class="summary-value total-amount"><strong>${(statement.ownerPayout || 0) >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -2276,13 +2563,13 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                 </div>
             </div>
 
-        <div class="footer">
+        ${isPdf ? '' : `<div class="footer">
             <div class="footer-content">
                 <div class="generated-info">
-                    Statement generated on ${new Date().toLocaleDateString('en-US', { 
+                    Statement generated on ${new Date().toLocaleDateString('en-US', {
                         weekday: 'long',
-                        year: 'numeric', 
-                        month: 'long', 
+                        year: 'numeric',
+                        month: 'long',
                         day: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit'
@@ -2290,7 +2577,7 @@ function generateViewStatementHTML(statement, id, isPdf = false) {
                 </div>
                 <button onclick="window.open('/api/statements/${id}/download', '_blank')" class="print-button">Download PDF</button>
             </div>
-        </div>
+        </div>`}
     </div>
 </body>
 </html>`;
@@ -2326,10 +2613,28 @@ router.get('/:id/download', async (req, res) => {
         }
 
         const htmlPdf = require('html-pdf-node');
+        const http = require('http');
 
-        // Use the same HTML as the view route for consistent design
-        // Add isPdf=true to apply print-specific styles directly
-        const statementHTML = generateViewStatementHTML(statement, id, true);
+        // Fetch HTML from the view route internally (with pdf=true to hide download button)
+        const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true`;
+
+        const fetchHTML = () => {
+            return new Promise((resolve, reject) => {
+                const authHeader = req.headers.authorization;
+                const options = {
+                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                };
+
+                http.get(viewUrl, options, (response) => {
+                    let data = '';
+                    response.on('data', chunk => data += chunk);
+                    response.on('end', () => resolve(data));
+                    response.on('error', reject);
+                }).on('error', reject);
+            });
+        };
+
+        const statementHTML = await fetchHTML();
 
         const options = {
             format: 'A4',
@@ -2380,9 +2685,9 @@ router.get('/:id/download', async (req, res) => {
             .replace(/\s+/g, ' ') // Replace multiple spaces with single space
             .trim();
 
-        // Get owner name for filename
-        const ownerName = statement.ownerName || 'Owner';
-        const cleanOwnerName = ownerName
+        // Get owner/client name for filename
+        const clientName = statement.ownerName || 'Owner';
+        const cleanClientName = clientName
             .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
@@ -2391,8 +2696,7 @@ router.get('/:id/download', async (req, res) => {
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
 
-        // Format: "Property - Owner - StartDate to EndDate.pdf"
-        const filename = `${cleanPropertyName} - ${cleanOwnerName} - ${statementPeriod}.pdf`;
+        const filename = `${cleanClientName} - ${statementPeriod}.pdf`;
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
@@ -2415,30 +2719,18 @@ router.get('/:id/download', async (req, res) => {
  */
 async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag = null) {
     try {
-        console.log(`[Info] Starting background bulk statement generation (Job: ${jobId})...`);
-        console.log(`   Period: ${startDate} to ${endDate}`);
-        console.log(`   Calculation Type: ${calculationType}`);
-        if (tag) {
-            console.log(`   Tag Filter: ${tag}`);
-        }
-
         // Get all listings
         const listings = await FileDataService.getListings();
-        console.log(`   Found ${listings.length} listings`);
 
         // Fetch ALL reservations and expenses ONCE for the entire period (optimization)
-        console.log(`[Info] Fetching all reservations for period ${startDate} to ${endDate}...`);
         const allReservations = await FileDataService.getReservations(
             startDate,
             endDate,
             null,  // No property filter - get ALL reservations
             calculationType
         );
-        console.log(`[Success] Fetched ${allReservations.length} total reservations`);
-        
-        console.log(`[Info] Fetching all expenses for period...`);
+
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
-        console.log(`[Success] Fetched ${allExpenses.length} total expenses`);
 
         // Filter to only active listings
         let activeListings = listings.filter(l => l.isActive);
@@ -2449,9 +2741,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 const listingTags = l.tags || [];
                 return listingTags.includes(tag);
             });
-            console.log(`   Found ${activeListings.length} active listings with tag "${tag}" (out of ${listings.length} total)`);
-        } else {
-            console.log(`   Found ${activeListings.length} active listings (out of ${listings.length} total)`);
         }
 
         BackgroundJobService.startJob(jobId, activeListings.length);
@@ -2467,8 +2756,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         // Generate a statement for each active listing using "Default Owner"
         for (const property of activeListings) {
                 try {
-                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
-
                     // Use pre-fetched data instead of fetching again (optimization)
                     const periodStart = new Date(startDate);
                     const periodEnd = new Date(endDate);
@@ -2492,17 +2779,17 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     const periodExpenses = allExpenses.filter(exp => {
                         // Only include expenses that match this property
-                        if (exp.propertyId !== property.id) {
+                        // Check both propertyId (for uploaded expenses) and secureStayListingId (for SecureStay expenses)
+                        const matchesPropertyId = exp.propertyId === property.id;
+                        const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === property.id;
+                        if (!matchesPropertyId && !matchesSecureStayId) {
                             return false;
                         }
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    console.log(`   [Stats] Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
-
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
-                        console.log(`   [Skip]  Skipping ${property.name} - no activity in this period`);
                         results.skipped.push({
                             propertyId: property.id,
                             propertyName: property.nickname || property.displayName || property.name,
@@ -2516,6 +2803,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Get listing info (needed early for co-host check)
                     const listing = await ListingService.getListingWithPmFee(property.id);
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
+                    const disregardTax = listing?.disregardTax || false;
                     
                     // Calculate totals - exclude Airbnb revenue if co-host is enabled
                     const totalRevenue = periodReservations.reduce((sum, res) => {
@@ -2524,10 +2813,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         
                         // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
                         if (isAirbnb && isCohostOnAirbnb) {
-                            console.log(`   Excluding Airbnb reservation revenue (co-host): ${res.guestName} - $${res.grossAmount}`);
                             return sum;
                         }
-                        
+
                         return sum + (res.grossAmount || 0);
                     }, 0);
                     
@@ -2572,6 +2860,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         adjustments: 0,
                         ownerPayout: Math.round(ownerPayout * 100) / 100,
                         isCohostOnAirbnb: isCohostOnAirbnb,
+                        airbnbPassThroughTax: airbnbPassThroughTax,
+                        disregardTax: disregardTax,
                         status: 'draft',
                         sentAt: null,
                         createdAt: new Date().toISOString(),
@@ -2603,8 +2893,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     await FileDataService.saveStatement(statement);
 
-                    console.log(`   [Success] Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
-
                     results.generated.push({
                         id: newId,
                         propertyId: property.id,
@@ -2630,11 +2918,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             }
         }
 
-        console.log(`[Success] Background bulk statement generation completed (Job: ${jobId}):`);
-        console.log(`   Generated: ${results.generated.length} statements`);
-        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
-        console.log(`   Errors: ${results.errors.length}`);
-
         BackgroundJobService.completeJob(jobId, {
             summary: {
                 generated: results.generated.length,
@@ -2645,7 +2928,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         });
 
     } catch (error) {
-        console.error(`[Error] Background bulk statement generation failed (Job: ${jobId}):`, error);
         BackgroundJobService.failJob(jobId, error);
         throw error;
     }
@@ -2656,15 +2938,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
  */
 async function generateAllOwnerStatements(req, res, startDate, endDate, calculationType) {
     try {
-        console.log(`[Info] Starting bulk statement generation for all owners...`);
-        console.log(`   Period: ${startDate} to ${endDate}`);
-        console.log(`   Calculation Type: ${calculationType}`);
-
         // Get all owners and all listings
         const owners = await FileDataService.getOwners();
         const listings = await FileDataService.getListings();
-
-        console.log(`   Found ${owners.length} owners and ${listings.length} listings`);
 
         const results = {
             generated: [],
@@ -2674,8 +2950,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
 
         // Loop through each owner
         for (const owner of owners) {
-            console.log(`\n📋 Processing owner: ${owner.name} (ID: ${owner.id})`);
-
             // Find properties for this owner
             const ownerProperties = listings.filter(listing => {
                 // Check if this listing belongs to the current owner
@@ -2683,10 +2957,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                 return belongsToOwner && listing.isActive;
             });
 
-            console.log(`   Found ${ownerProperties.length} properties for ${owner.name}`);
-
             if (ownerProperties.length === 0) {
-                console.log(`   [Warning]  Skipping ${owner.name} - no properties found`);
                 results.skipped.push({
                     ownerId: owner.id,
                     ownerName: owner.name,
@@ -2698,8 +2969,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
             // Generate a statement for each property
             for (const property of ownerProperties) {
                 try {
-                    console.log(`   📝 Generating statement for property: ${property.name} (ID: ${property.id})`);
-
                     // Get reservations and expenses for this specific property
                     const reservations = await FileDataService.getReservations(
                         startDate,
@@ -2740,11 +3009,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    console.log(`   [Stats] Found ${periodReservations.length} reservations and ${periodExpenses.length} expenses`);
-
                     // Skip if no activity
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
-                        console.log(`   Skipping ${property.name} - no activity in this period`);
                         results.skipped.push({
                             ownerId: owner.id,
                             ownerName: owner.name,
@@ -2829,8 +3095,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     // Save statement
                     await FileDataService.saveStatement(statement);
 
-                    console.log(`   Generated statement ${newId} for ${property.name} - Payout: $${statement.ownerPayout}`);
-
                     results.generated.push({
                         id: newId,
                         ownerId: owner.id,
@@ -2844,7 +3108,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     });
 
                 } catch (error) {
-                    console.error(`   [Error] Error generating statement for ${property.name}:`, error.message);
                     results.errors.push({
                         ownerId: owner.id,
                         ownerName: owner.name,
@@ -2855,11 +3118,6 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                 }
             }
         }
-
-        console.log(`\nBulk statement generation completed:`);
-        console.log(`   Generated: ${results.generated.length} statements`);
-        console.log(`   Skipped: ${results.skipped.length} (no activity)`);
-        console.log(`   Errors: ${results.errors.length}`);
 
         res.status(201).json({
             message: 'Bulk statement generation completed',

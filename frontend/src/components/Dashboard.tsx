@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
-import GenerateModal from './GenerateModal';
-import UploadModal from './UploadModal';
-import ExpenseUpload from './ExpenseUpload';
-import EditStatementModal from './EditStatementModal';
 import LoadingSpinner from './LoadingSpinner';
 import ListingsPage from './ListingsPage';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
+
+// Lazy load modals for better initial bundle size
+const GenerateModal = lazy(() => import('./GenerateModal'));
+const UploadModal = lazy(() => import('./UploadModal'));
+const ExpenseUpload = lazy(() => import('./ExpenseUpload'));
+const EditStatementModal = lazy(() => import('./EditStatementModal'));
 
 interface User {
   username: string;
@@ -80,32 +82,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Property search state
   const [propertySearch, setPropertySearch] = useState('');
 
-  // Property dropdown state
+  // Dropdown states
   const [isPropertyDropdownOpen, setIsPropertyDropdownOpen] = useState(false);
+  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
   const propertyDropdownRef = useRef<HTMLDivElement>(null);
+  const ownerDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (propertyDropdownRef.current && !propertyDropdownRef.current.contains(event.target as Node)) {
         setIsPropertyDropdownOpen(false);
+      }
+      if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
+        setIsOwnerDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter properties based on search
-  const filteredProperties = properties.filter((property) => {
-    if (!propertySearch) return true;
+  // Memoize filtered properties to prevent recalculation on every render
+  const filteredProperties = useMemo(() => {
+    if (!propertySearch) return properties;
     const searchLower = propertySearch.toLowerCase();
-    return (
+    return properties.filter((property) =>
       property.name.toLowerCase().includes(searchLower) ||
       property.nickname?.toLowerCase().includes(searchLower) ||
       property.displayName?.toLowerCase().includes(searchLower) ||
       property.id.toString().includes(searchLower)
     );
-  });
+  }, [properties, propertySearch]);
 
   useEffect(() => {
     loadInitialData();
@@ -135,7 +142,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setListings(listingsResponse.listings || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-      console.error('Failed to load initial data:', err);
     } finally {
       setLoading(false);
     }
@@ -151,7 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setStatements(response.statements);
       setPagination(prev => ({ ...prev, total: response.total }));
     } catch (err) {
-      console.error('Failed to load statements:', err);
+      // Statement loading errors are handled silently - data will be stale
     }
   };
 
@@ -199,7 +205,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         // Don't close modal here - let GenerateModal handle it
       }
     } catch (err) {
-      console.error('Statement generation error:', err);
       throw err; // Re-throw so GenerateModal knows there was an error
     }
   };
@@ -267,12 +272,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'view') {
-        // Navigate to statement view in same window for debugging
-        console.log('Opening view for statement:', id);
         const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-        const viewUrl = `${baseUrl}/api/statements/${id}/view`;
-        console.log('View URL:', viewUrl);
-        window.open(viewUrl, '_blank');
+        window.open(`${baseUrl}/api/statements/${id}/view`, '_blank');
       } else if (action === 'download') {
         // Show loading toast
         const toastId = showToast('Preparing PDF download...', 'loading');
@@ -347,6 +348,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           },
         });
         return;
+      } else if (action === 'finalize') {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Finalize Statement',
+          message: 'Mark this statement as final? You can return it to draft later if needed.',
+          type: 'info',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'final');
+              showToast('Statement finalized successfully', 'success');
+              await loadStatements();
+            } catch (err) {
+              showToast(`Failed to finalize statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+            }
+          },
+        });
+        return;
+      } else if (action === 'revert-to-draft') {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Return to Draft',
+          message: 'Return this statement to draft status?',
+          type: 'info',
+          onConfirm: async () => {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'draft');
+              showToast('Statement returned to draft', 'success');
+              await loadStatements();
+            } catch (err) {
+              showToast(`Failed to update statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+            }
+          },
+        });
+        return;
       } else if (action === 'delete') {
         setConfirmDialog({
           isOpen: true,
@@ -412,7 +447,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Owner Statements</h1>
@@ -442,7 +477,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 py-8">
 
         {/* Quick Actions */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
@@ -461,9 +496,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         {/* File Uploads */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Expense Upload */}
-          <div>
+          <Suspense fallback={<div className="bg-gray-50 rounded-lg p-6 animate-pulse h-32" />}>
             <ExpenseUpload onUploadSuccess={loadInitialData} />
-          </div>
+          </Suspense>
 
           {/* Reservation Upload */}
           <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
@@ -482,26 +517,57 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Filters</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Owner</label>
-              <select
-                value={filters.ownerId}
-                onChange={(e) => setFilters({ ...filters, ownerId: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Owners</option>
-                {owners.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.name}
-                  </option>
-                ))}
-              </select>
+        <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="w-40">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
+              <div className="relative" ref={ownerDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                >
+                  <span className="text-gray-900 truncate">
+                    {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isOwnerDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    <div
+                      onClick={() => {
+                        setFilters({ ...filters, ownerId: '' });
+                        setIsOwnerDropdownOpen(false);
+                      }}
+                      className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === '' ? 'bg-blue-50' : ''}`}
+                    >
+                      <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === '' ? 'border-blue-600' : 'border-gray-300'}`}>
+                        {filters.ownerId === '' && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                      </div>
+                      <span className="text-sm text-gray-900">All Owners</span>
+                    </div>
+                    {owners.map((owner) => (
+                      <div
+                        key={owner.id}
+                        onClick={() => {
+                          setFilters({ ...filters, ownerId: owner.id.toString() });
+                          setIsOwnerDropdownOpen(false);
+                        }}
+                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === owner.id.toString() ? 'bg-blue-50' : ''}`}
+                      >
+                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === owner.id.toString() ? 'border-blue-600' : 'border-gray-300'}`}>
+                          {filters.ownerId === owner.id.toString() && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                        </div>
+                        <span className="text-sm text-gray-900">{owner.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Property Search</label>
+            <div className="flex-1 min-w-[300px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
               <div className="space-y-2">
                 {/* Search Input */}
                 <div className="relative">
@@ -540,9 +606,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
                   {/* Custom Dropdown Popup */}
                   {isPropertyDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-hidden">
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg flex flex-col">
                       {/* Action buttons */}
-                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
                         <span className="text-xs text-gray-600">
                           {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
                         </span>
@@ -566,7 +632,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </div>
 
                       {/* Property List */}
-                      <div className="max-h-64 overflow-y-auto">
+                      <div className="max-h-60 overflow-y-auto flex-1">
                         {filteredProperties.map((property) => {
                           const isSelected = filters.propertyIds.includes(property.id.toString());
                           return (
@@ -599,7 +665,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </div>
 
                       {/* Done button */}
-                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50">
+                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
                         <button
                           type="button"
                           onClick={() => setIsPropertyDropdownOpen(false)}
@@ -613,36 +679,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Statuses</option>
-                <option value="draft">Draft</option>
-                <option value="generated">Generated</option>
-                <option value="sent">Sent</option>
-                <option value="paid">Paid</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
               <input
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
               <input
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -659,32 +711,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         />
       </div>
 
-      {/* Modals */}
-      <GenerateModal
-        isOpen={isGenerateModalOpen}
-        onClose={handleGenerateModalClose}
-        onGenerate={handleGenerateStatement}
-        owners={owners}
-        properties={properties}
-      />
+      {/* Modals - Lazy loaded for better initial bundle size */}
+      <Suspense fallback={null}>
+        {isGenerateModalOpen && (
+          <GenerateModal
+            isOpen={isGenerateModalOpen}
+            onClose={handleGenerateModalClose}
+            onGenerate={handleGenerateStatement}
+            owners={owners}
+            properties={properties}
+          />
+        )}
 
-      <UploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUploadCSV}
-        type={uploadModalType}
-        onDownloadTemplate={uploadModalType === 'reservations' ? handleDownloadReservationTemplate : undefined}
-      />
+        {isUploadModalOpen && (
+          <UploadModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setIsUploadModalOpen(false)}
+            onUpload={handleUploadCSV}
+            type={uploadModalType}
+            onDownloadTemplate={uploadModalType === 'reservations' ? handleDownloadReservationTemplate : undefined}
+          />
+        )}
 
-      <EditStatementModal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingStatementId(null);
-        }}
-        statementId={editingStatementId}
-        onStatementUpdated={loadStatements}
-      />
+        {isEditModalOpen && (
+          <EditStatementModal
+            isOpen={isEditModalOpen}
+            onClose={() => {
+              setIsEditModalOpen(false);
+              setEditingStatementId(null);
+            }}
+            statementId={editingStatementId}
+            onStatementUpdated={loadStatements}
+          />
+        )}
+      </Suspense>
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}

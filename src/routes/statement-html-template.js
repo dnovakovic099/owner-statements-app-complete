@@ -270,7 +270,7 @@ function generateStatementHTML(statement, id) {
         .rental-table th:nth-child(4) { width: 10%; }  /* Platform Fees */
         .rental-table th:nth-child(5) { width: 11%; }  /* Client Revenue */
         .rental-table th:nth-child(6) { width: 12%; }  /* Luxury Lodging Fee */
-        .rental-table th:nth-child(7) { width: 10%; }  /* Client Tax Responsibility */
+        .rental-table th:nth-child(7) { width: 10%; }  /* Tax */
         .rental-table th:nth-child(8) { width: 12%; }  /* Client Payout */
         
         .guest-details-cell {
@@ -526,7 +526,7 @@ function generateStatementHTML(statement, id) {
             </tr>
             ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
             <tr>
-                <td class="summary-label">Additional Revenue</td>
+                <td class="summary-label">Additional Payouts</td>
                 <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             ` : ''}
@@ -560,11 +560,11 @@ function generateStatementHTML(statement, id) {
                 <tr>
                     <th>Guest Details</th>
                     <th>Base Rate</th>
-                    <th>Cleaning and Other Fees</th>
+                    <th>Guest Paid Cleaning, Pet Extra & Others</th>
                     <th>Platform Fees</th>
                     <th>Revenue</th>
                     <th>PM Commission</th>
-                    <th>Tax Responsibility</th>
+                    <th>Tax</th>
                     <th>Gross Payout</th>
                 </tr>
             </thead>
@@ -583,14 +583,17 @@ function generateStatementHTML(statement, id) {
                     const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
                     
-                    // For non-Airbnb bookings, add tax to gross payout (client collects and remits taxes)
-                    // For Airbnb bookings, don't add tax (Airbnb handles taxes)
-                    const taxToAdd = isAirbnb ? 0 : taxResponsibility;
-                    
+                    // Tax calculation priority:
+                    // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
+                    // 2. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
+                    // 3. For non-Airbnb OR Airbnb with pass-through: include tax responsibility
+                    const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+                    const taxToAdd = shouldAddTax ? taxResponsibility : 0;
+
                     // For co-hosted Airbnb: Gross Payout is negative PM commission only
                     // For others: Normal calculation
-                    const grossPayout = isCohostAirbnb 
-                        ? -luxuryFee 
+                    const grossPayout = isCohostAirbnb
+                        ? -luxuryFee
                         : (clientRevenue - luxuryFee);
                     const clientPayout = grossPayout + taxToAdd;
                     
@@ -617,7 +620,7 @@ function generateStatementHTML(statement, id) {
                         <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="amount-cell ${isAirbnb ? 'expense-amount' : 'revenue-amount'}">${isAirbnb ? '-' : '+'}$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'expense-amount'}">${shouldAddTax ? '+' : '-'}$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell payout-amount">$${clientPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
@@ -639,11 +642,13 @@ function generateStatementHTML(statement, id) {
                             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                             return sum + (clientRevenue * (statement.pmPercentage / 100));
                         }, 0) || 0;
-                        // Add tax for non-Airbnb bookings only
+                        // Add tax for non-Airbnb bookings, or Airbnb with pass-through tax enabled
+                        // But never add if disregardTax is enabled
                         const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
                             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                             const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                            return sum + (isAirbnb ? 0 : taxAmount);
+                            const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+                            return sum + (shouldAddTax ? taxAmount : 0);
                         }, 0) || 0;
                         return (totalRevenue - totalPmCommission + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
@@ -701,10 +706,10 @@ function generateStatementHTML(statement, id) {
             </table>
         </div>
 
-        <!-- Additional Revenue Section (Upsells) -->
+        <!-- Additional Payouts Section (Upsells) -->
         ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
         <div class="upsells-section page-break-avoid">
-            <h3>ADDITIONAL REVENUE</h3>
+            <h3>ADDITIONAL PAYOUTS</h3>
             <table class="expense-table">
                 <thead>
                     <tr>
@@ -731,7 +736,7 @@ function generateStatementHTML(statement, id) {
                         </tr>
                     `).join('')}
                     <tr class="total-row">
-                        <td colspan="4"><strong>TOTAL ADDITIONAL REVENUE</strong></td>
+                        <td colspan="4"><strong>TOTAL ADDITIONAL PAYOUTS</strong></td>
                         <td style="text-align: right;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>

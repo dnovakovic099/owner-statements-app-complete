@@ -53,6 +53,20 @@ const Listing = sequelize.define('Listing', {
         field: 'is_cohost_on_airbnb',
         comment: 'If true, Airbnb revenue will be excluded from statement calculations'
     },
+    airbnbPassThroughTax: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'airbnb_pass_through_tax',
+        comment: 'If true, Airbnb tax is passed to client (not remitted by Airbnb), so tax is added to gross payout'
+    },
+    disregardTax: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'disregard_tax',
+        comment: 'If true, tax is never added to gross payout (company remits tax on behalf of owner)'
+    },
     tags: {
         type: DataTypes.TEXT,
         allowNull: true,

@@ -168,15 +168,17 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, pmFeePercentage, tags } = req.body;
-        
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, pmFeePercentage, tags } = req.body;
+
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
         if (isCohostOnAirbnb !== undefined) config.isCohostOnAirbnb = isCohostOnAirbnb;
+        if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
+        if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (tags !== undefined) config.tags = tags;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);

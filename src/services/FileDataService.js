@@ -10,6 +10,26 @@ class FileDataService {
         this.reservationsFile = path.join(this.dataDir, 'reservations.json');
         this.expensesFile = path.join(this.dataDir, 'expenses.json');
         this.ownersFile = path.join(this.dataDir, 'owners.json');
+
+        // In-memory cache for listings (reduces API calls)
+        this._listingsCache = null;
+        this._listingsCacheTime = null;
+        this._listingsCacheTTL = 5 * 60 * 1000; // 5 minutes TTL
+
+        // In-memory cache for owners
+        this._ownersCache = null;
+        this._ownersCacheTime = null;
+        this._ownersCacheTTL = 10 * 60 * 1000; // 10 minutes TTL
+    }
+
+    clearListingsCache() {
+        this._listingsCache = null;
+        this._listingsCacheTime = null;
+    }
+
+    clearOwnersCache() {
+        this._ownersCache = null;
+        this._ownersCacheTime = null;
     }
 
     async ensureDirectories() {
@@ -17,7 +37,7 @@ class FileDataService {
             await fs.mkdir(this.dataDir, { recursive: true });
             await fs.mkdir(this.statementsDir, { recursive: true });
         } catch (error) {
-            console.error('Error creating directories:', error);
+            // Ignore directory creation errors
         }
     }
 
@@ -39,15 +59,19 @@ class FileDataService {
         await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
     }
 
-    // Listings operations - now pulls directly from Hostify
+    // Listings operations - now pulls directly from Hostify with caching
     async getListings() {
+        // Check cache first
+        if (this._listingsCache && this._listingsCacheTime &&
+            (Date.now() - this._listingsCacheTime) < this._listingsCacheTTL) {
+            return this._listingsCache;
+        }
+
         try {
-            console.log('📋 Fetching listings directly from Hostify API...');
             const hostifyService = require('./HostifyService');
             const response = await hostifyService.getAllProperties();
-            
+
             if (!response.result || response.result.length === 0) {
-                console.warn('⚠️  No listings found in Hostify');
                 return [];
             }
 
@@ -74,33 +98,26 @@ class FileDataService {
                 syncedAt: new Date().toISOString()
             }));
 
-            // Merge database fields (tags, displayName, pmFeePercentage, isCohostOnAirbnb) from database
+            // Merge database fields
             try {
                 const ListingService = require('./ListingService');
                 const dbListings = await ListingService.getListingsWithPmFees();
                 const dbListingMap = new Map(dbListings.map(l => [l.id, l]));
-                
-                // Merge database fields into Hostify listings
+
                 listings.forEach(listing => {
                     const dbListing = dbListingMap.get(listing.id);
                     if (dbListing) {
-                        // Merge tags, displayName, pmFeePercentage, isCohostOnAirbnb from database
                         listing.tags = dbListing.tags || [];
                         listing.displayName = dbListing.displayName;
                         listing.pmFeePercentage = dbListing.pmFeePercentage;
                         listing.isCohostOnAirbnb = dbListing.isCohostOnAirbnb || false;
                     } else {
-                        // Set defaults if not in database
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
                         listing.isCohostOnAirbnb = false;
                     }
                 });
-                
-                console.log(`✅ Merged database fields (tags, PM fees, etc.) into ${listings.length} listings`);
             } catch (dbError) {
-                console.warn('⚠️  Could not merge database fields, continuing without them:', dbError.message);
-                // Set defaults if database merge fails
                 listings.forEach(listing => {
                     listing.tags = [];
                     listing.pmFeePercentage = 15.00;
@@ -108,11 +125,12 @@ class FileDataService {
                 });
             }
 
-            console.log(`✅ Fetched ${listings.length} listings from Hostify`);
+            // Cache results
+            this._listingsCache = listings;
+            this._listingsCacheTime = Date.now();
+
             return listings;
         } catch (error) {
-            console.error('❌ Failed to fetch listings from Hostify, falling back to cached file:', error.message);
-            // Fallback to cached file if API fails
             return await this.readJSONFile(this.listingsFile, []);
         }
     }
@@ -132,7 +150,6 @@ class FileDataService {
 
     async saveListings(listings) {
         await this.writeJSONFile(this.listingsFile, listings);
-        console.log(`Saved ${listings.length} listings to file`);
     }
 
     async findListingById(id) {
@@ -160,8 +177,6 @@ class FileDataService {
             const listingIds = propertyId ? [parseInt(propertyId)] : [];
             
             if (calculationType === 'calendar') {
-                console.log(`Fetching overlapping reservations for calendar-based calculation: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
-                
                 const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate);
                 
                 // Apply proration for calendar-based calculations
@@ -189,13 +204,11 @@ class FileDataService {
                         prorationNote: `${proration.daysInPeriod}/${proration.totalDays} days in period`
                     };
                 });
-                
-                console.log(`Applied proration to ${proratedReservations.length} overlapping reservations`);
+
                 return proratedReservations;
-                
+
             } else {
                 // Default checkout-based calculation
-                console.log(`Fetching reservations from Hostify for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
                 
                 // Prepare parameters for Hostify
                 const params = {
@@ -211,27 +224,18 @@ class FileDataService {
                 
                 // Use Hostify to get reservations
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
-                
-                console.log(`Fetched ${apiReservations.length} reservations from Hostify API`);
-                
+
                 // Load and merge imported reservations
                 const importedReservations = await this.getImportedReservations(startDate, endDate, propertyId);
-                
+
                 // Combine API and imported reservations
-                const allReservations = [...apiReservations, ...importedReservations];
-                
-                console.log(`Total reservations: ${allReservations.length} (API: ${apiReservations.length}, Imported: ${importedReservations.length})`);
-                return allReservations;
+                return [...apiReservations, ...importedReservations];
             }
         } catch (error) {
-            console.error('Error fetching reservations:', error);
             // Try to return imported reservations even if API fails
             try {
-                const importedReservations = await this.getImportedReservations(startDate, endDate, propertyId);
-                console.log(`API failed, returning ${importedReservations.length} imported reservations only`);
-                return importedReservations;
+                return await this.getImportedReservations(startDate, endDate, propertyId);
             } catch (importError) {
-                console.error('Error fetching imported reservations:', importError);
                 return [];
             }
         }
@@ -274,18 +278,15 @@ class FileDataService {
                 );
             }
             
-            console.log(`Loaded ${filtered.length} imported reservations (out of ${data.length} total)`);
             return filtered;
-            
+
         } catch (error) {
-            console.warn('Error loading imported reservations:', error.message);
             return [];
         }
     }
 
     async saveReservations(reservations) {
         await this.writeJSONFile(this.reservationsFile, reservations);
-        console.log(`Saved ${reservations.length} reservations to file`);
     }
 
     async findReservationsByPropertyId(propertyId, startDate = null, endDate = null) {
@@ -314,6 +315,179 @@ class FileDataService {
         });
     }
 
+    /**
+     * OPTIMIZED: Batch fetch reservations for multiple properties in a single API call
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @param {Array<number>} propertyIds - Array of property IDs
+     * @param {string} calculationType - 'checkout' or 'calendar'
+     * @returns {Promise<Object>} - Map of propertyId -> reservations
+     */
+    async getReservationsBatch(startDate, endDate, propertyIds, calculationType = 'checkout') {
+        const hostifyService = require('./HostifyService');
+
+        try {
+            if (calculationType === 'calendar') {
+                // For calendar mode, use overlapping reservations
+                const reservations = await hostifyService.getOverlappingReservations(propertyIds, startDate, endDate);
+
+                // Apply proration and group by propertyId
+                const reservationsByProperty = {};
+                propertyIds.forEach(id => { reservationsByProperty[id] = []; });
+
+                reservations.forEach(res => {
+                    const proration = this.calculateProration(res, startDate, endDate);
+                    const proratedRes = {
+                        ...res,
+                        originalBaseRate: res.baseRate,
+                        originalCleaningAndOtherFees: res.cleaningAndOtherFees,
+                        originalPlatformFees: res.platformFees,
+                        originalClientRevenue: res.clientRevenue,
+                        originalLuxuryLodgingFee: res.luxuryLodgingFee,
+                        originalClientTaxResponsibility: res.clientTaxResponsibility,
+                        originalClientPayout: res.clientPayout,
+                        baseRate: res.baseRate * proration.factor,
+                        cleaningAndOtherFees: res.cleaningAndOtherFees * proration.factor,
+                        platformFees: res.platformFees * proration.factor,
+                        clientRevenue: res.clientRevenue * proration.factor,
+                        luxuryLodgingFee: res.luxuryLodgingFee * proration.factor,
+                        clientTaxResponsibility: res.clientTaxResponsibility * proration.factor,
+                        clientPayout: res.clientPayout * proration.factor,
+                        prorationFactor: proration.factor,
+                        prorationDays: proration.daysInPeriod,
+                        totalDays: proration.totalDays,
+                        prorationNote: `${proration.daysInPeriod}/${proration.totalDays} days in period`
+                    };
+
+                    if (reservationsByProperty[proratedRes.propertyId]) {
+                        reservationsByProperty[proratedRes.propertyId].push(proratedRes);
+                    }
+                });
+
+                return reservationsByProperty;
+            } else {
+                // Checkout-based: fetch all reservations at once
+                const params = {
+                    fromDate: startDate,
+                    toDate: endDate,
+                    dateType: 'departureDate',
+                    listingMapIds: propertyIds
+                };
+
+                const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
+
+                // Group by propertyId
+                const reservationsByProperty = {};
+                propertyIds.forEach(id => { reservationsByProperty[id] = []; });
+
+                apiReservations.forEach(res => {
+                    if (reservationsByProperty[res.propertyId]) {
+                        reservationsByProperty[res.propertyId].push(res);
+                    }
+                });
+
+                // Add imported reservations per property
+                for (const propId of propertyIds) {
+                    const imported = await this.getImportedReservations(startDate, endDate, propId);
+                    reservationsByProperty[propId].push(...imported);
+                }
+
+                return reservationsByProperty;
+            }
+        } catch (error) {
+            // Fall back to per-property fetching
+            const reservationsByProperty = {};
+            for (const propId of propertyIds) {
+                reservationsByProperty[propId] = await this.getReservations(startDate, endDate, propId, calculationType);
+            }
+            return reservationsByProperty;
+        }
+    }
+
+    /**
+     * OPTIMIZED: Batch fetch expenses for multiple properties
+     * @param {string} startDate - Start date
+     * @param {string} endDate - End date
+     * @param {Array<number>} propertyIds - Array of property IDs
+     * @returns {Promise<Object>} - Map of propertyId -> { expenses, duplicateWarnings }
+     */
+    async getExpensesBatch(startDate, endDate, propertyIds) {
+
+        // Fetch all expenses for the date range at once
+        const allApiExpenses = await this._fetchAllSecureStayExpenses(startDate, endDate);
+        const allUploadedExpenses = await this._fetchAllUploadedExpenses(startDate, endDate);
+
+        // Group expenses by propertyId
+        const result = {};
+        for (const propId of propertyIds) {
+            const propIdInt = parseInt(propId);
+
+            // Filter SecureStay expenses for this property
+            const secureStayExpenses = allApiExpenses.filter(exp => {
+                if (exp.secureStayListingId) {
+                    return parseInt(exp.secureStayListingId) === propIdInt;
+                }
+                return false;
+            });
+
+            // Filter uploaded expenses for this property
+            const uploadedExpenses = allUploadedExpenses.filter(exp => {
+                return exp.propertyId === propIdInt;
+            });
+
+            const expenses = [...secureStayExpenses, ...uploadedExpenses];
+
+            // Detect duplicates
+            let duplicateWarnings = [];
+            if (secureStayExpenses.length > 0 && uploadedExpenses.length > 0) {
+                try {
+                    const expenseUploadService = require('./ExpenseUploadService');
+                    duplicateWarnings = expenseUploadService.detectDuplicates(secureStayExpenses, uploadedExpenses);
+                } catch (error) {
+                    // Ignore duplicate detection errors
+                }
+            }
+
+            result[propId] = { expenses, duplicateWarnings };
+        }
+
+        return result;
+    }
+
+    /**
+     * Internal: Fetch all SecureStay expenses for a date range (cached per call)
+     */
+    async _fetchAllSecureStayExpenses(startDate, endDate) {
+        try {
+            const secureStayService = require('./SecureStayService');
+            const apiExpenses = await secureStayService.getExpensesForPeriod(startDate, endDate, null);
+            return apiExpenses || [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    /**
+     * Internal: Fetch all uploaded expenses for a date range
+     */
+    async _fetchAllUploadedExpenses(startDate, endDate) {
+        try {
+            const expenseUploadService = require('./ExpenseUploadService');
+            const allUploaded = await expenseUploadService.getAllUploadedExpenses();
+
+            // Filter by date range
+            const periodStart = new Date(startDate);
+            const periodEnd = new Date(endDate);
+
+            return allUploaded.filter(exp => {
+                const expenseDate = new Date(exp.date);
+                return expenseDate >= periodStart && expenseDate <= periodEnd;
+            });
+        } catch (error) {
+            return [];
+        }
+    }
+
     // Expenses operations
     async getExpenses(startDate = null, endDate = null, propertyId = null) {
         const allExpenses = [];
@@ -329,8 +503,6 @@ class FileDataService {
             const apiExpenses = await secureStayService.getExpensesForPeriod(startDate, endDate, null);
             
             if (apiExpenses && apiExpenses.length > 0) {
-                console.log(`Fetched ${apiExpenses.length} expenses from SecureStay API for period ${startDate} to ${endDate}`);
-                
                 // Filter by property if propertyId is provided
                 if (propertyId) {
                     const propertyIdInt = parseInt(propertyId);
@@ -342,28 +514,17 @@ class FileDataService {
                         }
                         return false;
                     });
-                    
-                    if (secureStayExpenses.length > 0) {
-                        console.log(`✅ Found ${secureStayExpenses.length} SecureStay expenses for property ${propertyId} by listingMapId match`);
-                    } else {
+
+                    if (secureStayExpenses.length === 0) {
                         // Fall back to name-based matching if ID matching doesn't work
-                        console.log(`⚠️  No expenses found by listingMapId for property ${propertyId}, trying name-based matching...`);
                         const secureStayListingName = await propertyMappingService.getSecureStayListingName(propertyId);
                         if (secureStayListingName) {
-                            // Debug: Log unique listing IDs and names from SecureStay
-                            const uniqueListingIds = [...new Set(apiExpenses.map(e => e.secureStayListingId).filter(Boolean))];
                             const uniqueListings = [...new Set(apiExpenses.map(e => e.listing).filter(Boolean))];
-                            if (uniqueListingIds.length > 0 && uniqueListingIds.length <= 20) {
-                                console.log(`🔍 Debug: SecureStay returned ${uniqueListingIds.length} unique listing IDs:`, uniqueListingIds);
-                            }
-                            if (uniqueListings.length > 0 && uniqueListings.length <= 20) {
-                                console.log(`🔍 Debug: SecureStay returned ${uniqueListings.length} unique listing names:`, uniqueListings);
-                            }
-                            
-                            secureStayExpenses = apiExpenses.filter(expense => 
+
+                            secureStayExpenses = apiExpenses.filter(expense =>
                                 expense.listing === secureStayListingName
                             );
-                            
+
                             if (secureStayExpenses.length === 0 && apiExpenses.length > 0) {
                                 // Try case-insensitive and trimmed matching
                                 const matchingExpenses = apiExpenses.filter(expense => {
@@ -371,34 +532,22 @@ class FileDataService {
                                     return expense.listing.trim().toLowerCase() === secureStayListingName.trim().toLowerCase();
                                 });
                                 if (matchingExpenses.length > 0) {
-                                    console.log(`⚠️  Found ${matchingExpenses.length} expenses with case-insensitive match. Expected: "${secureStayListingName}", Found: "${matchingExpenses[0].listing}"`);
                                     secureStayExpenses = matchingExpenses;
                                 } else {
-                                    // Find close matches and use the first one
+                                    // Find close matches (same words, just punctuation differences)
                                     const closeMatches = uniqueListings.filter(l => {
                                         if (!l) return false;
-                                        const lLower = l.toLowerCase();
-                                        const expectedLower = secureStayListingName.toLowerCase();
-                                        // Check if they're very similar (same words, just punctuation differences)
-                                        const lNormalized = lLower.replace(/[.,]/g, '').trim();
-                                        const expectedNormalized = expectedLower.replace(/[.,]/g, '').trim();
+                                        const lNormalized = l.toLowerCase().replace(/[.,]/g, '').trim();
+                                        const expectedNormalized = secureStayListingName.toLowerCase().replace(/[.,]/g, '').trim();
                                         return lNormalized === expectedNormalized;
                                     });
                                     if (closeMatches.length > 0) {
-                                        console.log(`⚠️  No exact match found. Expected: "${secureStayListingName}". Using close match: "${closeMatches[0]}"`);
-                                        secureStayExpenses = apiExpenses.filter(expense => 
+                                        secureStayExpenses = apiExpenses.filter(expense =>
                                             expense.listing === closeMatches[0]
                                         );
-                                        console.log(`✅ Found ${secureStayExpenses.length} expenses using close match`);
-                                    } else {
-                                        console.log(`⚠️  No exact or close match found. Expected: "${secureStayListingName}". Available listings:`, uniqueListings.slice(0, 10));
                                     }
                                 }
                             }
-                            
-                            console.log(`Filtered to ${secureStayExpenses.length} SecureStay expenses for property ${propertyId} by name (${secureStayListingName})`);
-                        } else {
-                            console.warn(`No SecureStay mapping found for property ${propertyId}, skipping SecureStay expenses`);
                         }
                     }
                 } else {
@@ -408,7 +557,7 @@ class FileDataService {
                 allExpenses.push(...secureStayExpenses);
             }
         } catch (error) {
-            console.warn('Failed to fetch expenses from SecureStay API:', error.message);
+            // SecureStay API failed, continue with other sources
         }
         
         // 2. Get uploaded expenses
@@ -451,11 +600,10 @@ class FileDataService {
                 return true;
             });
             
-            console.log(`Found ${uploadedExpenses.length} uploaded expenses for the period`);
             allExpenses.push(...uploadedExpenses);
-            
+
         } catch (error) {
-            console.warn('Failed to fetch uploaded expenses:', error.message);
+            // Uploaded expenses failed, continue
         }
         
         // 3. Detect duplicates between SecureStay and uploaded expenses
@@ -463,16 +611,12 @@ class FileDataService {
             try {
                 const expenseUploadService = require('./ExpenseUploadService');
                 const duplicates = expenseUploadService.detectDuplicates(secureStayExpenses, uploadedExpenses);
-                
+
                 if (duplicates.length > 0) {
-                    console.warn(`⚠️  Detected ${duplicates.length} potential duplicate expenses:`);
-                    duplicates.forEach((dup, index) => {
-                        console.warn(`   ${index + 1}. ${dup.expense1.description} ($${dup.expense1.amount}) vs ${dup.expense2.description} ($${dup.expense2.amount})`);
-                        duplicateWarnings.push(dup);
-                    });
+                    duplicates.forEach(dup => duplicateWarnings.push(dup));
                 }
             } catch (error) {
-                console.warn('Failed to detect duplicates:', error.message);
+                // Duplicate detection failed, continue
             }
         }
         
@@ -480,14 +624,11 @@ class FileDataService {
         if (allExpenses.length === 0) {
             try {
                 const fileExpenses = await this.readJSONFile(this.expensesFile, []);
-                console.log(`Using ${fileExpenses.length} expenses from legacy file data`);
                 allExpenses.push(...fileExpenses);
             } catch (error) {
-                console.warn('Failed to load legacy file expenses:', error.message);
+                // Legacy file failed, continue
             }
         }
-        
-        console.log(`📊 Total expenses: ${allExpenses.length} (${secureStayExpenses.length} SecureStay + ${uploadedExpenses.length} uploaded)`);
         
         // Attach duplicate warnings to the expenses array for later use
         allExpenses.duplicateWarnings = duplicateWarnings;
@@ -508,7 +649,6 @@ class FileDataService {
         const checkOut = reservation.checkOutDate || reservation.departureDate;
         
         if (!checkIn || !checkOut) {
-            console.warn(`Missing check-in/check-out dates for reservation ${reservation.id}`);
             return { factor: 1, daysInPeriod: reservation.nights || 0, totalDays: reservation.nights || 1 };
         }
         
@@ -544,14 +684,6 @@ class FileDataService {
         
         const factor = safeNightsInPeriod / safeTotalNights;
         
-        console.log(`Proration for reservation ${reservation.id || reservation.hostifyId} (${reservation.guestName || 'Unknown'}): ${checkIn} to ${checkOut}`);
-        console.log(`  - Period: ${periodStart} to ${periodEnd}`);
-        console.log(`  - Arrival: ${arrivalDate.toISOString().split('T')[0]}, Departure: ${departureDate.toISOString().split('T')[0]}`);
-        console.log(`  - Period Start: ${periodStartDate.toISOString().split('T')[0]}, Period End (inclusive): ${periodEndInclusive.toISOString().split('T')[0]}`);
-        console.log(`  - Overlap Start: ${overlapStart.toISOString().split('T')[0]}, Overlap End: ${overlapEnd.toISOString().split('T')[0]}`);
-        console.log(`  - Total nights: ${totalNights}, Nights in period: ${nightsInPeriod}, Days diff: ${(overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)}`);
-        console.log(`  - Result: ${safeNightsInPeriod}/${safeTotalNights} nights (${(factor * 100).toFixed(1)}%)`);
-        
         return {
             factor: factor,
             daysInPeriod: safeNightsInPeriod,
@@ -561,7 +693,6 @@ class FileDataService {
 
     async saveExpenses(expenses) {
         await this.writeJSONFile(this.expensesFile, expenses);
-        console.log(`Saved ${expenses.length} expenses to file`);
     }
 
     async findExpensesByPropertyId(propertyId, startDate = null, endDate = null) {
@@ -580,10 +711,17 @@ class FileDataService {
         return filtered;
     }
 
-    // Owners operations - now pulls directly from Hostify
+    // Owners operations - now pulls directly from Hostify with caching
     async getOwners() {
+        // Check if we have valid cached owners
+        if (this._ownersCache && this._ownersCacheTime) {
+            const cacheAge = Date.now() - this._ownersCacheTime;
+            if (cacheAge < this._ownersCacheTTL) {
+                return this._ownersCache;
+            }
+        }
+
         try {
-            console.log('👥 Fetching owners directly from Hostify API...');
             const hostifyService = require('./HostifyService');
             const owners = await hostifyService.getAllOwners();
             
@@ -601,14 +739,16 @@ class FileDataService {
             };
             
             if (!owners || owners.length === 0) {
-                console.warn('⚠️  No owners found in Hostify, returning only default option');
-                return [defaultOwner];
+                const result = [defaultOwner];
+                this._ownersCache = result;
+                this._ownersCacheTime = Date.now();
+                return result;
             }
-            
-            console.log(`✅ Fetched ${owners.length} owners from Hostify, adding Default option`);
-            return [defaultOwner, ...owners];
+            const result = [defaultOwner, ...owners];
+            this._ownersCache = result;
+            this._ownersCacheTime = Date.now();
+            return result;
         } catch (error) {
-            console.error('❌ Failed to fetch owners from Hostify, falling back to cached file:', error.message);
             // Fallback to cached file if API fails
             const owners = await this.readJSONFile(this.ownersFile, []);
             
@@ -634,7 +774,6 @@ class FileDataService {
 
     async saveOwners(owners) {
         await this.writeJSONFile(this.ownersFile, owners);
-        console.log(`Saved ${owners.length} owners to file`);
     }
 
     async findOwnerById(id) {
