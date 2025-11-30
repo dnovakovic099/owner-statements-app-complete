@@ -2581,19 +2581,7 @@ router.get('/:id/view', async (req, res) => {
     </div>
 </body>
 </html>`;
-}
 
-// GET /api/statements-file/:id/view - View statement in browser
-router.get('/:id/view', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const statement = await FileDataService.getStatementById(id);
-
-        if (!statement) {
-            return res.status(404).json({ error: 'Statement not found' });
-        }
-
-        const statementHTML = generateViewStatementHTML(statement, id);
         res.setHeader('Content-Type', 'text/html');
         res.send(statementHTML);
     } catch (error) {
