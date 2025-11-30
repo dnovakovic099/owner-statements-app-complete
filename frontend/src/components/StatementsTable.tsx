@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -10,10 +10,11 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Send, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Tooltip } from './ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -86,23 +87,65 @@ const formatDateTime = (dateTimeStr: string) => {
 };
 
 const getStatusBadge = (status: string) => {
-  const statusClasses = {
-    draft: 'bg-yellow-100 text-yellow-800',
-    generated: 'bg-blue-100 text-blue-800',
-    sent: 'bg-green-100 text-green-800',
-    paid: 'bg-purple-100 text-purple-800',
+  const statusConfig = {
+    draft: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
+    final: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+    generated: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
+    sent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', dot: 'bg-green-500' },
+    paid: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
   };
 
+  const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', dot: 'bg-gray-500' };
+
   return (
-    <span
-      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-        statusClasses[status as keyof typeof statusClasses] || 'bg-gray-100 text-gray-800'
-      }`}
-    >
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${config.bg} ${config.text} ${config.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`}></span>
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
 };
+
+// Action Button Component with Tooltip - Memoized to prevent unnecessary re-renders
+interface ActionButtonProps {
+  onClick?: () => void;
+  href?: string;
+  tooltip: string;
+  icon: React.ReactNode;
+  color: string;
+  disabled?: boolean;
+}
+
+const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, icon, color, disabled }) => {
+  const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 hover:bg-gray-100 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
+
+  if (href) {
+    return (
+      <Tooltip content={tooltip}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonClass}
+        >
+          {icon}
+        </a>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip content={tooltip}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className={buttonClass}
+      >
+        {icon}
+      </button>
+    </Tooltip>
+  );
+});
+ActionButton.displayName = 'ActionButton';
 
 const StatementsTable: React.FC<StatementsTableProps> = ({
   statements,
@@ -112,11 +155,31 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   pagination,
   onPaginationChange,
 }) => {
+  const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
+
+  // Load column visibility from localStorage on mount
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_VISIBILITY_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Save column visibility to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
+    } catch {
+      // localStorage may be unavailable in some environments
+    }
+  }, [columnVisibility]);
+
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'createdAt', desc: true }
   ]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [globalFilter, setGlobalFilter] = useState('');
 
   // Create a lookup map for property names to display names/nicknames
@@ -142,60 +205,61 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     {
       accessorKey: 'ownerName',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Owner
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="font-medium text-gray-900">{row.getValue('ownerName')}</div>
+        <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
+      meta: { align: 'left', width: '12%' },
     },
     {
       accessorKey: 'propertyName',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Property
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
         return (
-          <div className="text-gray-900 max-w-[200px] truncate" title={displayName}>
+          <span className="text-gray-700 block truncate" title={displayName}>
             {displayName}
-          </div>
+          </span>
         );
       },
+      meta: { align: 'left', width: '22%' },
     },
     {
       id: 'week',
       accessorFn: (row) => `${row.weekStartDate} - ${row.weekEndDate}`,
-      header: 'Week',
+      header: () => <span className="font-semibold text-gray-600">Period</span>,
       cell: ({ row }) => (
-        <div className="text-gray-900 whitespace-nowrap">
+        <span className="text-gray-700 whitespace-nowrap">
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
-        </div>
+        </span>
       ),
+      meta: { align: 'left', width: '10%' },
     },
     {
       accessorKey: 'calculationType',
-      header: 'Type',
+      header: () => <span className="font-semibold text-gray-600">Type</span>,
       cell: ({ row }) => {
         const type = row.getValue('calculationType') as string;
         return (
-          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
             type === 'calendar'
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-gray-100 text-gray-800'
+              ? 'bg-sky-50 text-sky-700 border border-sky-200'
+              : 'bg-slate-50 text-slate-700 border border-slate-200'
           }`}>
             {type === 'calendar' ? 'Calendar' : 'Checkout'}
           </span>
@@ -204,138 +268,142 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
+      meta: { align: 'center', width: '7%' },
     },
     {
       accessorKey: 'totalRevenue',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2"
+          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
         >
           Revenue
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="font-medium text-gray-900">
+        <span className="font-semibold text-gray-900 tabular-nums">
           {formatCurrency(row.getValue('totalRevenue'))}
-        </div>
+        </span>
       ),
+      meta: { align: 'right', width: '9%' },
     },
     {
       accessorKey: 'ownerPayout',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2"
+          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
         >
           Payout
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
-      cell: ({ row }) => (
-        <div className="font-bold text-gray-900">
-          {formatCurrency(row.getValue('ownerPayout'))}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const payout = row.getValue('ownerPayout') as number;
+        return (
+          <span className={`font-bold tabular-nums ${payout < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {formatCurrency(payout)}
+          </span>
+        );
+      },
+      meta: { align: 'right', width: '9%' },
     },
     {
       accessorKey: 'status',
-      header: 'Status',
+      header: () => <span className="font-semibold text-gray-600">Status</span>,
       cell: ({ row }) => getStatusBadge(row.getValue('status')),
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
+      meta: { align: 'center', width: '7%' },
     },
     {
       accessorKey: 'createdAt',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Created
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="text-xs text-gray-500">
+        <span className="text-sm text-gray-500 whitespace-nowrap">
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
-        </div>
+        </span>
       ),
+      meta: { align: 'left', width: '12%' },
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: () => <span className="font-semibold text-gray-600">Actions</span>,
       cell: ({ row }) => {
         const statement = row.original;
         const isRegenerating = regeneratingId === statement.id;
+
+        if (isRegenerating) {
+          return (
+            <div className="flex items-center gap-2 text-gray-400">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span className="text-sm">Regenerating...</span>
+            </div>
+          );
+        }
+
         return (
-          <div className="flex space-x-2">
-            {isRegenerating ? (
-              <div className="flex items-center text-gray-500">
-                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                <span className="text-sm">Regenerating...</span>
-              </div>
-            ) : (
-              <>
-                <a
-                  href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-900 inline-block"
-                  title="View Statement"
-                >
-                  <Eye className="w-4 h-4" />
-                </a>
-                <button
-                  onClick={() => onAction(statement.id, 'refresh')}
-                  className="text-indigo-600 hover:text-indigo-900"
-                  title="Regenerate Statement"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                {(statement.status === 'draft' || statement.status === 'modified') && (
-                  <button
-                    onClick={() => onAction(statement.id, 'edit')}
-                    className="text-yellow-600 hover:text-yellow-900"
-                    title="Edit Statement"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                )}
-                {statement.status === 'generated' && (
-                  <button
-                    onClick={() => onAction(statement.id, 'send')}
-                    className="text-green-600 hover:text-green-900"
-                    title="Send Statement"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                )}
-                <button
-                  onClick={() => onAction(statement.id, 'download')}
-                  className="text-purple-600 hover:text-purple-900"
-                  title="Download Statement"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => onAction(statement.id, 'delete')}
-                  className="text-red-600 hover:text-red-900"
-                  title="Delete Statement"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </>
-            )}
+          <div className="flex items-center">
+            <ActionButton
+              href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view`}
+              tooltip="View Statement"
+              icon={<Eye className="w-[18px] h-[18px]" />}
+              color="text-blue-600"
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'edit')}
+              tooltip={statement.status === 'final' ? 'Cannot Edit Final Statement' : 'Edit Statement'}
+              icon={<Edit className="w-[18px] h-[18px]" />}
+              color="text-amber-600"
+              disabled={statement.status === 'final'}
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'refresh')}
+              tooltip="Regenerate"
+              icon={<RefreshCw className="w-[18px] h-[18px]" />}
+              color="text-indigo-600"
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'download')}
+              tooltip="Download PDF"
+              icon={<Download className="w-[18px] h-[18px]" />}
+              color="text-purple-600"
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'finalize')}
+              tooltip={statement.status === 'final' ? 'Already Final' : 'Mark as Final'}
+              icon={<CheckCircle className="w-[18px] h-[18px]" />}
+              color="text-emerald-600"
+              disabled={statement.status === 'final'}
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'revert-to-draft')}
+              tooltip={statement.status === 'draft' ? 'Already Draft' : 'Return to Draft'}
+              icon={<RotateCcw className="w-[18px] h-[18px]" />}
+              color="text-orange-600"
+              disabled={statement.status === 'draft'}
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'delete')}
+              tooltip="Delete"
+              icon={<Trash2 className="w-[18px] h-[18px]" />}
+              color="text-red-500"
+            />
           </div>
         );
       },
       enableHiding: false,
+      meta: { align: 'left', width: '12%' },
     },
   ];
 
@@ -371,10 +439,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
   if (statements.length === 0 && pagination.total === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
         <div className="text-center">
+          <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Search className="w-8 h-8 text-gray-400" />
+          </div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements found</h2>
-          <p className="text-gray-600">Generate your first statement using the button above.</p>
+          <p className="text-gray-500">Generate your first statement using the button above.</p>
         </div>
       </div>
     );
@@ -383,7 +454,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const columnLabels: Record<string, string> = {
     ownerName: 'Owner',
     propertyName: 'Property',
-    week: 'Week',
+    week: 'Period',
     calculationType: 'Type',
     totalRevenue: 'Revenue',
     ownerPayout: 'Payout',
@@ -392,33 +463,37 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full">
+      {/* Header */}
+      <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Statements</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{pagination.total} total statements</p>
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             {/* Global Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search all columns..."
+                placeholder="Search..."
                 value={globalFilter ?? ''}
                 onChange={(e) => setGlobalFilter(e.target.value)}
-                className="pl-9 w-full sm:w-64"
+                className="pl-9 w-full sm:w-56 h-9 bg-white border-gray-200 focus:border-blue-300 focus:ring-blue-200"
               />
             </div>
 
             {/* Type Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
                   Type
-                  <ChevronDown className="ml-2 h-4 w-4" />
+                  <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Filter by Type</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Type</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {['checkout', 'calendar'].map((type) => {
                   const filterValue = (table.getColumn('calculationType')?.getFilterValue() as string[]) || [];
@@ -441,16 +516,48 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Status Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                  Status
+                  <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Status</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {['draft', 'final'].map((status) => {
+                  const filterValue = (table.getColumn('status')?.getFilterValue() as string[]) || [];
+                  const isChecked = filterValue.includes(status);
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={status}
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        const newValue = checked
+                          ? [...filterValue, status]
+                          : filterValue.filter((v) => v !== status);
+                        table.getColumn('status')?.setFilterValue(newValue.length ? newValue : undefined);
+                      }}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Column Visibility */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10">
-                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                  <SlidersHorizontal className="mr-2 h-4 w-4 text-gray-400" />
                   Columns
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[180px]">
-                <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel className="text-xs text-gray-500">Toggle Columns</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {table
                   .getAllColumns()
@@ -472,19 +579,19 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         {/* Active Filters Display */}
         {(globalFilter || columnFilters.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-gray-500">Active filters:</span>
+            <span className="text-xs font-medium text-gray-500">Filters:</span>
             {globalFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md border border-blue-100">
                 Search: "{globalFilter}"
-                <button onClick={() => setGlobalFilter('')} className="hover:text-blue-600">×</button>
+                <button onClick={() => setGlobalFilter('')} className="hover:text-blue-900 ml-0.5">×</button>
               </span>
             )}
             {columnFilters.map((filter) => (
-              <span key={filter.id} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
+              <span key={filter.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
                 {columnLabels[filter.id] || filter.id}: {Array.isArray(filter.value) ? (filter.value as string[]).join(', ') : String(filter.value)}
                 <button
                   onClick={() => table.getColumn(filter.id)?.setFilterValue(undefined)}
-                  className="hover:text-gray-600"
+                  className="hover:text-gray-900 ml-0.5"
                 >
                   ×
                 </button>
@@ -495,7 +602,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 setGlobalFilter('');
                 setColumnFilters([]);
               }}
-              className="text-xs text-red-600 hover:text-red-800"
+              className="text-xs font-medium text-red-600 hover:text-red-800"
             >
               Clear all
             </button>
@@ -503,36 +610,63 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <Table>
+      {/* Table */}
+      <div className="w-full">
+        <Table className="w-full min-w-full" style={{ tableLayout: 'fixed' }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="bg-gray-50">
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
+              <TableRow key={headerGroup.id} className="bg-gray-50 border-b border-gray-200">
+                {headerGroup.headers.map((header) => {
+                  const meta = header.column.columnDef.meta as { align?: string; width?: string } | undefined;
+                  const align = meta?.align || 'left';
+                  const width = meta?.width;
+                  return (
+                    <TableHead
+                      key={header.id}
+                      style={width ? { width } : undefined}
+                      className={`text-xs font-semibold text-gray-500 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap ${
+                        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                      }`}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             ))}
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+              table.getRowModel().rows.map((row, index) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && 'selected'}
+                  className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta as { align?: string; width?: string } | undefined;
+                    const align = meta?.align || 'left';
+                    const width = meta?.width;
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        style={width ? { width } : undefined}
+                        className={`py-2.5 px-2 ${
+                          align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                        }`}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results found.
+                <TableCell colSpan={columns.length} className="h-32 text-center">
+                  <div className="text-gray-500">No results found.</div>
                 </TableCell>
               </TableRow>
             )}
@@ -540,80 +674,93 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         </Table>
       </div>
 
-      {/* Pagination Controls */}
-      <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-sm text-gray-700">
-          <span>
-            Showing {pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}-
-            {Math.min(
-              (pagination.pageIndex + 1) * pagination.pageSize,
-              pagination.total
-            )}{' '}
-            of {pagination.total}
+      {/* Pagination */}
+      <div className="px-4 py-3 border-t border-gray-200 bg-white flex items-center justify-center">
+        <div className="flex items-center gap-6">
+          {/* Results info */}
+          <span className="text-sm text-gray-500">
+            Showing <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
+            {' '}-{' '}
+            <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
+            {' '}of{' '}
+            <span className="font-medium text-gray-700">{pagination.total}</span>
           </span>
-          <span className="mx-2 text-gray-300">|</span>
-          <span>Rows per page:</span>
-          <select
-            value={pagination.pageSize}
-            onChange={(e) => {
-              onPaginationChange(0, Number(e.target.value));
-            }}
-            className="h-8 w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {[10, 25, 50, 100].map((pageSize) => (
-              <option key={pageSize} value={pageSize}>
-                {pageSize}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
-            disabled={!canPreviousPage}
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
-          </Button>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: pageCount }, (_, i) => i).map((page) => {
-              const currentPage = pagination.pageIndex;
-              const totalPages = pageCount;
 
-              // Show first, last, current, and adjacent pages
-              if (
-                page === 0 ||
-                page === totalPages - 1 ||
-                (page >= currentPage - 1 && page <= currentPage + 1)
-              ) {
-                return (
-                  <Button
-                    key={page}
-                    variant={page === currentPage ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => onPaginationChange(page, pagination.pageSize)}
-                    className="w-8 h-8 p-0"
-                  >
-                    {page + 1}
-                  </Button>
-                );
-              } else if (page === currentPage - 2 || page === currentPage + 2) {
-                return <span key={page} className="px-1">...</span>;
-              }
-              return null;
-            })}
+          {/* Page size selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Rows:</span>
+            <div className="relative inline-flex">
+              <select
+                value={pagination.pageSize}
+                onChange={(e) => onPaginationChange(0, Number(e.target.value))}
+                className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                style={{
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none',
+                  backgroundImage: 'none'
+                }}
+              >
+                {[10, 25, 50, 100].map((pageSize) => (
+                  <option key={pageSize} value={pageSize}>
+                    {pageSize}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
-            disabled={!canNextPage}
-          >
-            Next
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+
+          {/* Navigation */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
+              disabled={!canPreviousPage}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Prev
+            </button>
+
+            <div className="flex items-center">
+              {Array.from({ length: pageCount }, (_, i) => i).map((page) => {
+                const currentPage = pagination.pageIndex;
+                const totalPages = pageCount;
+
+                if (
+                  page === 0 ||
+                  page === totalPages - 1 ||
+                  (page >= currentPage - 1 && page <= currentPage + 1)
+                ) {
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => onPaginationChange(page, pagination.pageSize)}
+                      className={`w-8 h-8 text-sm font-medium rounded-md transition-colors ${
+                        page === currentPage
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {page + 1}
+                    </button>
+                  );
+                } else if (page === currentPage - 2 || page === currentPage + 2) {
+                  return <span key={page} className="w-8 text-center text-gray-400">...</span>;
+                }
+                return null;
+              })}
+            </div>
+
+            <button
+              onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
+              disabled={!canNextPage}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -21,6 +21,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
+  const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
+  const [disregardTax, setDisregardTax] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -35,6 +37,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
       if (listing) {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
+        setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
+        setDisregardTax(listing.disregardTax || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
         setTags(listing.tags || []);
       }
@@ -51,7 +55,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
       setListings(response.listings);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load listings');
-      console.error('Failed to load listings:', err);
     } finally {
       setLoading(false);
     }
@@ -81,6 +84,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const resetForm = () => {
     setDisplayName('');
     setIsCohostOnAirbnb(false);
+    setAirbnbPassThroughTax(false);
+    setDisregardTax(false);
     setPmFeePercentage(15);
     setTags([]);
     setNewTag('');
@@ -96,6 +101,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
       const config = {
         displayName: displayName.trim() || undefined,
         isCohostOnAirbnb,
+        airbnbPassThroughTax,
+        disregardTax,
         pmFeePercentage,
         tags,
       };
@@ -144,10 +151,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
-      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white flex-shrink-0">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center">
               <button
@@ -157,8 +164,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold">🏠 Manage Listings</h1>
-                <p className="text-white/80 text-sm mt-1">
+                <h1 className="text-xl font-bold">Manage Listings</h1>
+                <p className="text-white/80 text-sm">
                   Configure listing names and co-host settings
                 </p>
               </div>
@@ -175,10 +182,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col overflow-hidden">
         {/* Error Display */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3 flex items-start flex-shrink-0">
             <AlertCircle className="w-5 h-5 text-red-600 mr-3 mt-0.5" />
             <div>
               <h3 className="text-red-800 font-semibold">Error Loading Listings</h3>
@@ -194,7 +201,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
               saveMessage.type === 'success'
                 ? 'bg-green-50 border-green-200 text-green-800'
                 : 'bg-red-50 border-red-200 text-red-800'
-            } border rounded-lg p-4 mb-6 flex items-center`}
+            } border rounded-lg p-3 mb-3 flex items-center flex-shrink-0`}
           >
             {saveMessage.type === 'success' ? (
               <CheckCircle className="w-5 h-5 mr-3" />
@@ -205,15 +212,15 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Listings List */}
-          <div className="lg:col-span-1 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="flex gap-4 flex-1 min-h-0">
+          {/* Listings List - Fixed width sidebar */}
+          <div className="w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex flex-col">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">
               Listings ({filteredListings.length})
             </h2>
 
             {/* Search */}
-            <div className="relative mb-4">
+            <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
@@ -224,8 +231,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
               />
             </div>
 
-            {/* Listings Dropdown/List */}
-            <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto">
+            {/* Listings List - Scrollable */}
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
               {filteredListings.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-4">
                   No listings found
@@ -235,30 +242,30 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                   <button
                     key={listing.id}
                     onClick={() => setSelectedListingId(listing.id)}
-                    className={`w-full text-left px-4 py-3 rounded-md transition-colors ${
+                    className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
                       selectedListingId === listing.id
                         ? 'bg-blue-100 border-2 border-blue-500'
-                        : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                        : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-medium text-gray-900 truncate">
+                    <div className="font-medium text-gray-900 truncate text-sm">
                       {getListingDisplayName(listing)}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-gray-500 mt-0.5">
                       ID: {listing.id}
                       {listing.city && ` • ${listing.city}`}
                       {listing.isCohostOnAirbnb && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
                           Co-host
                         </span>
                       )}
                     </div>
                     {listing.tags && listing.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
+                      <div className="flex flex-wrap gap-1 mt-1.5">
                         {listing.tags.map((tag, idx) => (
                           <span
                             key={idx}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
                           >
                             {tag}
                           </span>
@@ -271,10 +278,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Listing Details/Edit Form */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+          {/* Listing Details/Edit Form - Fills remaining space */}
+          <div className="flex-1 bg-white rounded-lg shadow-md p-6 overflow-y-auto">
             {!selectedListing ? (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
                 <Search className="w-16 h-16 mb-4 text-gray-300" />
                 <p className="text-lg font-medium">Select a listing to edit</p>
                 <p className="text-sm mt-2">Choose a listing from the list on the left</p>
@@ -328,6 +335,56 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         <p className="text-xs text-purple-700 mt-1">
                           When enabled, Airbnb revenue will be <strong>excluded</strong> from statement calculations.
                           The client receives all payments directly, so only PM commission will be calculated.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Airbnb Pass-Through Tax */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="passThroughTax"
+                        checked={airbnbPassThroughTax}
+                        onChange={(e) => setAirbnbPassThroughTax(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="passThroughTax"
+                          className="text-sm font-medium text-amber-900 cursor-pointer"
+                        >
+                          Airbnb Pass-Through Tax
+                        </label>
+                        <p className="text-xs text-amber-700 mt-1">
+                          Enable this if Airbnb collects the tax but does <strong>not remit</strong> it (passes it to you).
+                          When enabled, tax will be <strong>added</strong> to the gross payout for Airbnb bookings.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Disregard Tax (Company Remits) */}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="disregardTax"
+                        checked={disregardTax}
+                        onChange={(e) => setDisregardTax(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="disregardTax"
+                          className="text-sm font-medium text-red-900 cursor-pointer"
+                        >
+                          Disregard Tax (Company Remits)
+                        </label>
+                        <p className="text-xs text-red-700 mt-1">
+                          Enable this for clients where the company has agreed to remit the tax on their behalf.
+                          When enabled, tax will <strong>never be added</strong> to the gross payout.
                         </p>
                       </div>
                     </div>
