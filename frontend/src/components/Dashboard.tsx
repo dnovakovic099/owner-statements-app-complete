@@ -486,7 +486,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 py-8">
 
         {/* Quick Actions */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
@@ -526,11 +526,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8 relative z-20">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Filters</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Owner</label>
+        <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="w-40">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
               <div className="relative" ref={ownerDropdownRef}>
                 <button
                   type="button"
@@ -576,8 +575,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 )}
               </div>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Property Search</label>
+            <div className="flex-1 min-w-[300px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
               <div className="space-y-2">
                 {/* Search Input */}
                 <div className="relative">
@@ -689,63 +688,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <div className="relative" ref={statusDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
-                >
-                  <span className="text-gray-900 truncate">
-                    {filters.status ? filters.status.charAt(0).toUpperCase() + filters.status.slice(1) : 'All Statuses'}
-                  </span>
-                  <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isStatusDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
-                    {[
-                      { value: '', label: 'All Statuses' },
-                      { value: 'draft', label: 'Draft' },
-                      { value: 'generated', label: 'Generated' },
-                      { value: 'sent', label: 'Sent' },
-                      { value: 'paid', label: 'Paid' },
-                    ].map((status) => (
-                      <div
-                        key={status.value}
-                        onClick={() => {
-                          setFilters({ ...filters, status: status.value });
-                          setIsStatusDropdownOpen(false);
-                        }}
-                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.status === status.value ? 'bg-blue-50' : ''}`}
-                      >
-                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.status === status.value ? 'border-blue-600' : 'border-gray-300'}`}>
-                          {filters.status === status.value && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                        </div>
-                        <span className="text-sm text-gray-900">{status.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
               <input
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
               <input
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>

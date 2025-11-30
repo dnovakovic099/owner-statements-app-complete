@@ -116,7 +116,7 @@ interface ActionButtonProps {
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({ onClick, href, tooltip, icon, color, disabled }) => {
-  const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 hover:bg-gray-100 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
+  const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 hover:bg-gray-100 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
 
   if (href) {
     return (
@@ -204,49 +204,50 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     {
       accessorKey: 'ownerName',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Owner
-          <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="font-medium text-gray-900">{row.getValue('ownerName')}</div>
+        <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
+      meta: { align: 'left', width: '10%' },
     },
     {
       accessorKey: 'propertyName',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Property
-          <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
         return (
-          <div className="text-gray-700 max-w-[280px] truncate" title={displayName}>
+          <span className="text-gray-700 block truncate" title={displayName}>
             {displayName}
-          </div>
+          </span>
         );
       },
+      meta: { align: 'left', width: '18%' },
     },
     {
       id: 'week',
       accessorFn: (row) => `${row.weekStartDate} - ${row.weekEndDate}`,
       header: () => <span className="font-semibold text-gray-600">Period</span>,
       cell: ({ row }) => (
-        <div className="text-gray-700 whitespace-nowrap font-medium">
+        <span className="text-gray-700 whitespace-nowrap">
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
-        </div>
+        </span>
       ),
+      meta: { align: 'left', width: '9%' },
     },
     {
       accessorKey: 'calculationType',
@@ -254,7 +255,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const type = row.getValue('calculationType') as string;
         return (
-          <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full ${
+          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
             type === 'calendar'
               ? 'bg-sky-50 text-sky-700 border border-sky-200'
               : 'bg-slate-50 text-slate-700 border border-slate-200'
@@ -266,45 +267,46 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
+      meta: { align: 'center', width: '7%' },
     },
     {
       accessorKey: 'totalRevenue',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
         >
           Revenue
-          <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="font-semibold text-gray-900 tabular-nums text-right">
+        <span className="font-semibold text-gray-900 tabular-nums">
           {formatCurrency(row.getValue('totalRevenue'))}
-        </div>
+        </span>
       ),
+      meta: { align: 'right', width: '8%' },
     },
     {
       accessorKey: 'ownerPayout',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
         >
           Payout
-          <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => {
         const payout = row.getValue('ownerPayout') as number;
         return (
-          <div className={`font-bold tabular-nums text-right ${payout < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+          <span className={`font-bold tabular-nums ${payout < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
             {formatCurrency(payout)}
-          </div>
+          </span>
         );
       },
+      meta: { align: 'right', width: '8%' },
     },
     {
       accessorKey: 'status',
@@ -313,24 +315,25 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
+      meta: { align: 'center', width: '6%' },
     },
     {
       accessorKey: 'createdAt',
       header: ({ column }) => (
-        <Button
-          variant="ghost"
+        <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="h-8 px-2 -ml-2 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
         >
           Created
-          <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
       ),
       cell: ({ row }) => (
-        <div className="text-sm text-gray-500 whitespace-nowrap">
+        <span className="text-sm text-gray-500 whitespace-nowrap">
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
-        </div>
+        </span>
       ),
+      meta: { align: 'left', width: '14%' },
     },
     {
       id: 'actions',
@@ -399,6 +402,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         );
       },
       enableHiding: false,
+      meta: { align: 'left', width: '20%' },
     },
   ];
 
@@ -458,9 +462,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+      <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
@@ -606,21 +610,29 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <Table>
+      <div className="w-full">
+        <Table className="w-full min-w-full" style={{ tableLayout: 'fixed' }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="bg-gray-50/80 border-b border-gray-100">
-                {headerGroup.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    className="text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
+              <TableRow key={headerGroup.id} className="bg-gray-50 border-b border-gray-200">
+                {headerGroup.headers.map((header) => {
+                  const meta = header.column.columnDef.meta as { align?: string; width?: string } | undefined;
+                  const align = meta?.align || 'left';
+                  const width = meta?.width;
+                  return (
+                    <TableHead
+                      key={header.id}
+                      style={width ? { width } : undefined}
+                      className={`text-xs font-semibold text-gray-500 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap ${
+                        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                      }`}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             ))}
           </TableHeader>
@@ -630,13 +642,24 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                  className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-3.5 px-4">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta as { align?: string; width?: string } | undefined;
+                    const align = meta?.align || 'left';
+                    const width = meta?.width;
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        style={width ? { width } : undefined}
+                        className={`py-2.5 px-2 ${
+                          align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                        }`}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))
             ) : (
@@ -651,82 +674,92 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Pagination */}
-      <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 text-sm text-gray-600">
-          <span className="font-medium">
-            {pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}
-            –
-            {Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}
+      <div className="px-4 py-3 border-t border-gray-200 bg-white flex items-center justify-center">
+        <div className="flex items-center gap-6">
+          {/* Results info */}
+          <span className="text-sm text-gray-500">
+            Showing <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
+            {' '}-{' '}
+            <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
             {' '}of{' '}
-            <span className="font-semibold">{pagination.total}</span>
+            <span className="font-medium text-gray-700">{pagination.total}</span>
           </span>
-          <span className="text-gray-300">|</span>
+
+          {/* Page size selector */}
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Show:</span>
-            <select
-              value={pagination.pageSize}
-              onChange={(e) => onPaginationChange(0, Number(e.target.value))}
-              className="h-8 px-2 py-1 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            <span className="text-sm text-gray-500">Rows:</span>
+            <div className="relative inline-flex">
+              <select
+                value={pagination.pageSize}
+                onChange={(e) => onPaginationChange(0, Number(e.target.value))}
+                className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                style={{
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none',
+                  backgroundImage: 'none'
+                }}
+              >
+                {[10, 25, 50, 100].map((pageSize) => (
+                  <option key={pageSize} value={pageSize}>
+                    {pageSize}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
+              disabled={!canPreviousPage}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              {[10, 25, 50, 100].map((pageSize) => (
-                <option key={pageSize} value={pageSize}>
-                  {pageSize}
-                </option>
-              ))}
-            </select>
+              <ChevronLeft className="h-4 w-4" />
+              Prev
+            </button>
+
+            <div className="flex items-center">
+              {Array.from({ length: pageCount }, (_, i) => i).map((page) => {
+                const currentPage = pagination.pageIndex;
+                const totalPages = pageCount;
+
+                if (
+                  page === 0 ||
+                  page === totalPages - 1 ||
+                  (page >= currentPage - 1 && page <= currentPage + 1)
+                ) {
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => onPaginationChange(page, pagination.pageSize)}
+                      className={`w-8 h-8 text-sm font-medium rounded-md transition-colors ${
+                        page === currentPage
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {page + 1}
+                    </button>
+                  );
+                } else if (page === currentPage - 2 || page === currentPage + 2) {
+                  return <span key={page} className="w-8 text-center text-gray-400">...</span>;
+                }
+                return null;
+              })}
+            </div>
+
+            <button
+              onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
+              disabled={!canNextPage}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
-            disabled={!canPreviousPage}
-            className="h-8 px-3 border-gray-200"
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Prev
-          </Button>
-
-          <div className="flex items-center gap-1 mx-2">
-            {Array.from({ length: pageCount }, (_, i) => i).map((page) => {
-              const currentPage = pagination.pageIndex;
-              const totalPages = pageCount;
-
-              if (
-                page === 0 ||
-                page === totalPages - 1 ||
-                (page >= currentPage - 1 && page <= currentPage + 1)
-              ) {
-                return (
-                  <Button
-                    key={page}
-                    variant={page === currentPage ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => onPaginationChange(page, pagination.pageSize)}
-                    className={`w-8 h-8 p-0 ${page === currentPage ? 'bg-blue-600 hover:bg-blue-700' : 'border-gray-200'}`}
-                  >
-                    {page + 1}
-                  </Button>
-                );
-              } else if (page === currentPage - 2 || page === currentPage + 2) {
-                return <span key={page} className="px-1 text-gray-400">...</span>;
-              }
-              return null;
-            })}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
-            disabled={!canNextPage}
-            className="h-8 px-3 border-gray-200"
-          >
-            Next
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
         </div>
       </div>
     </div>
