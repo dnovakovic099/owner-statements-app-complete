@@ -1850,9 +1850,13 @@ router.get('/:id/view', async (req, res) => {
         .expense-amount {
             color: var(--luxury-red);
         }
-        
+
         .revenue-amount {
-            color: var(--luxury-navy);
+            color: var(--luxury-green);
+        }
+
+        .info-amount {
+            color: #2563eb;
         }
         
         .rental-table tr:nth-child(even) {
@@ -1981,6 +1985,10 @@ router.get('/:id/view', async (req, res) => {
 
             .revenue-amount {
                 color: #059669 !important;
+            }
+
+            .info-amount {
+                color: #2563eb !important;
             }
 
             .print-button {
@@ -2116,6 +2124,10 @@ router.get('/:id/view', async (req, res) => {
             color: #059669 !important;
         }
 
+        body.pdf-mode .info-amount {
+            color: #2563eb !important;
+        }
+
         body.pdf-mode .print-button {
             display: none !important;
         }
@@ -2163,7 +2175,7 @@ router.get('/:id/view', async (req, res) => {
         }
     </style>
 </head>
-<body class="${bodyClass}">
+<body>
     <div class="document">
     <div class="header">
             <div class="company-header">
@@ -2275,13 +2287,13 @@ router.get('/:id/view', async (req, res) => {
                                             </div>` : ''
                                         }
                                     </td>
-                                    <td class="amount-cell">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell revenue-amount">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell revenue-amount">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : ''}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'info-amount'}">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
                             }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
