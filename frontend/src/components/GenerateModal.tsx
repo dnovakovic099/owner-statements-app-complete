@@ -49,7 +49,6 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [generateAll, setGenerateAll] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [, setListings] = useState<Listing[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   // Progress tracking for multi-property generation
@@ -120,18 +119,16 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const loadListings = async () => {
     try {
       const response = await listingsAPI.getListings();
-      setListings(response.listings);
-
+      // Extract unique tags from listings
       const allTags = new Set<string>();
       response.listings.forEach((listing: Listing) => {
         if (listing.tags && listing.tags.length > 0) {
           listing.tags.forEach(tag => allTags.add(tag));
         }
       });
-      const tagsArray = Array.from(allTags).sort();
-      setAvailableTags(tagsArray);
-    } catch (error) {
-      console.error('Failed to load listings:', error);
+      setAvailableTags(Array.from(allTags).sort());
+    } catch {
+      // Tags will remain empty if listings fail to load
     }
   };
 
