@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
-import GenerateModal from './GenerateModal';
-import UploadModal from './UploadModal';
-import ExpenseUpload from './ExpenseUpload';
-import EditStatementModal from './EditStatementModal';
 import LoadingSpinner from './LoadingSpinner';
 import ListingsPage from './ListingsPage';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
+
+// Lazy load modals for better initial bundle size
+const GenerateModal = lazy(() => import('./GenerateModal'));
+const UploadModal = lazy(() => import('./UploadModal'));
+const ExpenseUpload = lazy(() => import('./ExpenseUpload'));
+const EditStatementModal = lazy(() => import('./EditStatementModal'));
 
 interface User {
   username: string;
@@ -83,10 +85,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Dropdown states
   const [isPropertyDropdownOpen, setIsPropertyDropdownOpen] = useState(false);
   const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
-  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const propertyDropdownRef = useRef<HTMLDivElement>(null);
   const ownerDropdownRef = useRef<HTMLDivElement>(null);
-  const statusDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -97,25 +97,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
         setIsOwnerDropdownOpen(false);
       }
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
-        setIsStatusDropdownOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter properties based on search
-  const filteredProperties = properties.filter((property) => {
-    if (!propertySearch) return true;
+  // Memoize filtered properties to prevent recalculation on every render
+  const filteredProperties = useMemo(() => {
+    if (!propertySearch) return properties;
     const searchLower = propertySearch.toLowerCase();
-    return (
+    return properties.filter((property) =>
       property.name.toLowerCase().includes(searchLower) ||
       property.nickname?.toLowerCase().includes(searchLower) ||
       property.displayName?.toLowerCase().includes(searchLower) ||
       property.id.toString().includes(searchLower)
     );
-  });
+  }, [properties, propertySearch]);
 
   useEffect(() => {
     loadInitialData();
@@ -145,7 +142,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setListings(listingsResponse.listings || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-      console.error('Failed to load initial data:', err);
     } finally {
       setLoading(false);
     }
@@ -161,7 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setStatements(response.statements);
       setPagination(prev => ({ ...prev, total: response.total }));
     } catch (err) {
-      console.error('Failed to load statements:', err);
+      // Statement loading errors are handled silently - data will be stale
     }
   };
 
@@ -209,7 +205,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         // Don't close modal here - let GenerateModal handle it
       }
     } catch (err) {
-      console.error('Statement generation error:', err);
       throw err; // Re-throw so GenerateModal knows there was an error
     }
   };
@@ -277,12 +272,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'view') {
-        // Navigate to statement view in same window for debugging
-        console.log('Opening view for statement:', id);
         const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-        const viewUrl = `${baseUrl}/api/statements/${id}/view`;
-        console.log('View URL:', viewUrl);
-        window.open(viewUrl, '_blank');
+        window.open(`${baseUrl}/api/statements/${id}/view`, '_blank');
       } else if (action === 'download') {
         // Show loading toast
         const toastId = showToast('Preparing PDF download...', 'loading');
@@ -505,9 +496,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         {/* File Uploads */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Expense Upload */}
-          <div>
+          <Suspense fallback={<div className="bg-gray-50 rounded-lg p-6 animate-pulse h-32" />}>
             <ExpenseUpload onUploadSuccess={loadInitialData} />
-          </div>
+          </Suspense>
 
           {/* Reservation Upload */}
           <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
@@ -720,32 +711,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         />
       </div>
 
-      {/* Modals */}
-      <GenerateModal
-        isOpen={isGenerateModalOpen}
-        onClose={handleGenerateModalClose}
-        onGenerate={handleGenerateStatement}
-        owners={owners}
-        properties={properties}
-      />
+      {/* Modals - Lazy loaded for better initial bundle size */}
+      <Suspense fallback={null}>
+        {isGenerateModalOpen && (
+          <GenerateModal
+            isOpen={isGenerateModalOpen}
+            onClose={handleGenerateModalClose}
+            onGenerate={handleGenerateStatement}
+            owners={owners}
+            properties={properties}
+          />
+        )}
 
-      <UploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUploadCSV}
-        type={uploadModalType}
-        onDownloadTemplate={uploadModalType === 'reservations' ? handleDownloadReservationTemplate : undefined}
-      />
+        {isUploadModalOpen && (
+          <UploadModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setIsUploadModalOpen(false)}
+            onUpload={handleUploadCSV}
+            type={uploadModalType}
+            onDownloadTemplate={uploadModalType === 'reservations' ? handleDownloadReservationTemplate : undefined}
+          />
+        )}
 
-      <EditStatementModal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingStatementId(null);
-        }}
-        statementId={editingStatementId}
-        onStatementUpdated={loadStatements}
-      />
+        {isEditModalOpen && (
+          <EditStatementModal
+            isOpen={isEditModalOpen}
+            onClose={() => {
+              setIsEditModalOpen(false);
+              setEditingStatementId(null);
+            }}
+            statementId={editingStatementId}
+            onStatementUpdated={loadStatements}
+          />
+        )}
+      </Suspense>
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}

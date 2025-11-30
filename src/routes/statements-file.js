@@ -1108,8 +1108,8 @@ router.get('/:id/view/data', async (req, res) => {
 router.get('/:id/view', async (req, res) => {
     try {
         const { id } = req.params;
+        const isPdf = req.query.pdf === 'true'; // Hide download button for PDF generation
         const statement = await FileDataService.getStatementById(id);
-        console.log("statement-",statement);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
@@ -1584,62 +1584,89 @@ router.get('/:id/view', async (req, res) => {
             display: flex;
             justify-content: flex-end;
             margin-top: 30px;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
         }
         
         .summary-box {
             background: white;
             padding: 25px;
-            border: 2px solid var(--luxury-navy);
+            border: none;
             border-radius: 12px;
             width: 450px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 0 2px var(--luxury-navy), 0 4px 12px rgba(0, 0, 0, 0.1);
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            orphans: 5;
+            widows: 5;
         }
-        
+
         .summary-table {
             width: 100%;
             border-collapse: collapse;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
         }
-        
+
         .summary-table td {
             padding: 12px 0;
             border-bottom: 1px solid #eee;
             font-size: 14px;
         }
-        
+
         .summary-table tr:last-child td {
             border-bottom: none;
         }
-        
+
         .summary-label {
             font-weight: 500;
             color: var(--luxury-navy);
         }
-        
+
         .summary-value {
             text-align: right;
             font-weight: 600;
             font-size: 15px;
         }
-        
+
         .summary-value.revenue {
             color: #28a745;
         }
-        
+
         .summary-value.expense {
             color: #dc3545;
         }
-        
-        .total-row td {
-            padding-top: 15px;
-            border-top: 2px solid var(--luxury-navy);
-            font-size: 16px;
+
+        .total-row {
+            page-break-before: avoid !important;
+            break-before: avoid !important;
         }
-        
+
+        .total-row td {
+            padding-top: 20px;
+            margin-top: 10px;
+            border-top: none;
+            border-bottom: none !important;
+            font-size: 16px;
+            position: relative;
+        }
+
+        .total-row td::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: var(--luxury-navy);
+        }
+
         .total-amount {
             color: var(--luxury-navy);
             font-size: 18px;
         }
-        
+
         .expenses-container {
             overflow-x: auto;
             margin-bottom: 30px;
@@ -1650,69 +1677,72 @@ router.get('/:id/view', async (req, res) => {
         
         .expenses-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             background: white;
-            font-size: 12px;
+            font-size: 11px;
         }
-        
+
         .expenses-table th {
             background: var(--luxury-navy);
             color: white;
             padding: 12px 8px;
-            text-align: left;
+            text-align: center;
             font-weight: 600;
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
         }
-        
+
         .expenses-table td {
-            padding: 10px 8px;
+            padding: 12px 8px;
             border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
+            text-align: center;
         }
-        
+
         .expenses-table tr:hover {
             background: #f8f9fa;
         }
-        
+
         .expenses-table .date-cell {
             width: 12%;
             font-weight: 500;
         }
-        
+
         .expenses-table .description-cell {
             width: 30%;
+            text-align: left;
         }
-        
+
         .expenses-table .vendor-cell {
-            width: 15%;
+            width: 16%;
             color: var(--luxury-gray);
         }
-        
+
         .expenses-table .listing-cell {
-            width: 15%;
+            width: 16%;
             color: var(--luxury-gray);
-            font-size: 11px;
+            font-size: 10px;
         }
-        
+
         .expenses-table .category-cell {
-            width: 13%;
+            width: 12%;
             text-transform: capitalize;
             color: var(--luxury-gray);
         }
-        
+
         .expenses-table .amount-cell {
-            width: 15%;
+            width: 14%;
             text-align: right;
             font-weight: 600;
         }
-        
+
         .expenses-table .totals-row {
             background: var(--luxury-navy);
             color: white;
         }
-        
+
         .expenses-table .totals-row td {
             border-bottom: none;
             padding: 12px 8px;
@@ -1729,6 +1759,7 @@ router.get('/:id/view', async (req, res) => {
         
         .rental-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             background: white;
             font-size: 9px;
@@ -1737,64 +1768,69 @@ router.get('/:id/view', async (req, res) => {
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
-            padding: 8px 4px;
+            padding: 10px 4px;
             text-align: center;
             font-weight: 600;
             font-size: 8px;
             text-transform: uppercase;
             letter-spacing: 0.3px;
             border-right: 1px solid rgba(255,255,255,0.2);
-            white-space: nowrap;
-            line-height: 1.3;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.4;
+            vertical-align: middle;
         }
         
-        .rental-table th:nth-child(1) { width: 25%; }   /* Guest Details with dates */
-        .rental-table th:nth-child(2) { width: 11%; }   /* Base Rate */
-        .rental-table th:nth-child(3) { width: 11%; }   /* Cleaning */
-        .rental-table th:nth-child(4) { width: 11%; }   /* Platform Fees */
-        .rental-table th:nth-child(5) { width: 11%; }   /* Revenue */
-        .rental-table th:nth-child(6) { width: 11%; }   /* PM Commission */
+        .rental-table th:nth-child(1) { width: 20%; }   /* Guest Details with dates */
+        .rental-table th:nth-child(2) { width: 10%; }   /* Base Rate */
+        .rental-table th:nth-child(3) { width: 12%; }   /* Cleaning */
+        .rental-table th:nth-child(4) { width: 10%; }   /* Platform Fees */
+        .rental-table th:nth-child(5) { width: 10%; }   /* Revenue */
+        .rental-table th:nth-child(6) { width: 12%; }   /* PM Commission */
         .rental-table th:nth-child(7) { width: 10%; }   /* Tax */
-        .rental-table th:nth-child(8) { width: 10%; }   /* Gross Payout */
+        .rental-table th:nth-child(8) { width: 11%; }   /* Gross Payout */
         
         .rental-table td {
-            padding: 6px 4px;
+            padding: 10px 6px;
             border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #f0f0f0;
             font-size: 9px;
             text-align: center;
             vertical-align: middle;
-            line-height: 1.4;
+            line-height: 1.5;
         }
-        
+
         .booking-cell {
-            text-align: left !important;
-            padding: 14px 10px !important;
+            text-align: center !important;
+            padding: 12px 8px !important;
         }
-        
+
         .guest-details-cell {
             text-align: left !important;
-            padding: 6px 4px !important;
+            padding: 12px 8px !important;
+            vertical-align: middle;
         }
-        
+
         .guest-name {
             font-weight: 700;
             color: var(--luxury-navy);
-            font-size: 9px;
-            margin-bottom: 2px;
+            font-size: 10px;
+            margin-bottom: 4px;
+            text-align: left;
         }
-        
+
         .guest-info {
-            font-size: 8px;
+            font-size: 9px;
             color: var(--luxury-gray);
-            line-height: 1.3;
-            margin-bottom: 2px;
+            line-height: 1.5;
+            margin-bottom: 4px;
+            text-align: left;
         }
-        
+
         .booking-details {
             font-size: 8px;
             color: var(--luxury-gray);
-            line-height: 1.3;
+            line-height: 1.4;
         }
         
         .listing-info {
@@ -1821,18 +1857,18 @@ router.get('/:id/view', async (req, res) => {
             display: inline-block;
             background: var(--luxury-light-gold);
             color: var(--luxury-navy);
-            padding: 1px 4px;
-            border-radius: 3px;
-            font-size: 7px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 8px;
             font-weight: 600;
             text-transform: uppercase;
-            margin-top: 2px;
+            margin-top: 4px;
         }
-        
+
         .proration-info {
-            font-size: 7px !important;
+            font-size: 8px !important;
             color: #007bff !important;
-            margin-top: 2px !important;
+            margin-top: 4px !important;
         }
         
         .amount-cell {
@@ -1868,11 +1904,11 @@ router.get('/:id/view', async (req, res) => {
             color: white;
             font-weight: 700;
         }
-        
+
         .rental-table .totals-row td {
-            padding: 8px 4px;
+            padding: 12px 6px;
             border-bottom: none;
-            font-size: 9px;
+            font-size: 10px;
         }
         
         /* Page setup for PDF - Portrait mode */
@@ -1929,19 +1965,24 @@ router.get('/:id/view', async (req, res) => {
             .rental-table {
                 font-size: 8px;
                 page-break-inside: avoid;
+                table-layout: fixed;
+                width: 100%;
             }
 
             .rental-table th {
                 font-size: 7px;
-                padding: 6px 4px;
+                padding: 4px 2px;
                 background: #1e3a5f !important;
                 color: white !important;
             }
 
             .rental-table td {
                 font-size: 8px;
-                padding: 6px 4px;
+                padding: 8px 4px;
                 border-bottom: 1px solid #e9ecef;
+                word-wrap: break-word;
+                overflow: hidden;
+                vertical-align: middle;
             }
 
             .rental-table .totals-row td {
@@ -1950,17 +1991,23 @@ router.get('/:id/view', async (req, res) => {
             }
 
             .guest-details-cell {
-                padding: 6px 4px !important;
+                padding: 10px 6px !important;
+                text-align: left !important;
+                vertical-align: middle;
             }
 
             .guest-name {
-                font-size: 8px;
+                font-size: 9px;
                 color: #333 !important;
+                margin-bottom: 3px;
+                text-align: left;
             }
 
             .guest-info, .booking-details {
-                font-size: 7px;
+                font-size: 8px;
                 color: #666 !important;
+                margin-bottom: 3px;
+                text-align: left;
             }
 
             .amount-cell {
@@ -2061,6 +2108,8 @@ router.get('/:id/view', async (req, res) => {
         body.pdf-mode .rental-table {
             font-size: 8px;
             page-break-inside: avoid;
+            table-layout: fixed;
+            width: 100%;
         }
 
         body.pdf-mode .rental-table th {
@@ -2074,8 +2123,9 @@ router.get('/:id/view', async (req, res) => {
 
         body.pdf-mode .rental-table td {
             font-size: 8px;
-            padding: 6px 4px;
+            padding: 8px 4px;
             border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
         }
 
         body.pdf-mode .rental-table .totals-row td {
@@ -2086,18 +2136,24 @@ router.get('/:id/view', async (req, res) => {
         }
 
         body.pdf-mode .guest-details-cell {
-            padding: 6px 4px !important;
+            padding: 10px 6px !important;
+            text-align: left !important;
+            vertical-align: middle;
         }
 
         body.pdf-mode .guest-name {
-            font-size: 8px;
+            font-size: 9px;
             color: #333 !important;
+            margin-bottom: 3px;
+            text-align: left;
         }
 
         body.pdf-mode .guest-info,
         body.pdf-mode .booking-details {
-            font-size: 7px;
+            font-size: 8px;
             color: #666 !important;
+            margin-bottom: 3px;
+            text-align: left;
         }
 
         body.pdf-mode .amount-cell {
@@ -2137,13 +2193,13 @@ router.get('/:id/view', async (req, res) => {
         }
 
         body.pdf-mode .expenses-table {
-            font-size: 9px !important;
+            font-size: 10px !important;
             width: 100% !important;
         }
 
         body.pdf-mode .expenses-table th {
-            padding: 6px 3px !important;
-            font-size: 8px !important;
+            padding: 10px 6px !important;
+            font-size: 9px !important;
             background-color: #1e3a5f !important;
             color: white !important;
             -webkit-print-color-adjust: exact !important;
@@ -2151,8 +2207,9 @@ router.get('/:id/view', async (req, res) => {
         }
 
         body.pdf-mode .expenses-table td {
-            padding: 5px 3px !important;
-            font-size: 9px !important;
+            padding: 10px 6px !important;
+            font-size: 10px !important;
+            vertical-align: middle;
         }
 
         body.pdf-mode .totals-row {
@@ -2168,10 +2225,34 @@ router.get('/:id/view', async (req, res) => {
 
         body.pdf-mode .section {
             page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         body.pdf-mode tr {
             page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        body.pdf-mode .summary-box {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
+        }
+
+        body.pdf-mode .summary-table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+
+        body.pdf-mode .statement-summary {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: auto;
+        }
+
+        body.pdf-mode .total-row {
+            page-break-before: avoid !important;
+            break-before: avoid !important;
         }
     </style>
 </head>
@@ -2482,13 +2563,13 @@ router.get('/:id/view', async (req, res) => {
                 </div>
             </div>
 
-        <div class="footer">
+        ${isPdf ? '' : `<div class="footer">
             <div class="footer-content">
                 <div class="generated-info">
-                    Statement generated on ${new Date().toLocaleDateString('en-US', { 
+                    Statement generated on ${new Date().toLocaleDateString('en-US', {
                         weekday: 'long',
-                        year: 'numeric', 
-                        month: 'long', 
+                        year: 'numeric',
+                        month: 'long',
                         day: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit'
@@ -2496,7 +2577,7 @@ router.get('/:id/view', async (req, res) => {
                 </div>
                 <button onclick="window.open('/api/statements/${id}/download', '_blank')" class="print-button">Download PDF</button>
             </div>
-        </div>
+        </div>`}
     </div>
 </body>
 </html>`;
@@ -2520,10 +2601,28 @@ router.get('/:id/download', async (req, res) => {
         }
 
         const htmlPdf = require('html-pdf-node');
+        const http = require('http');
 
-        // Use the same HTML as the view route for consistent design
-        // Add isPdf=true to apply print-specific styles directly
-        const statementHTML = generateViewStatementHTML(statement, id, true);
+        // Fetch HTML from the view route internally (with pdf=true to hide download button)
+        const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true`;
+
+        const fetchHTML = () => {
+            return new Promise((resolve, reject) => {
+                const authHeader = req.headers.authorization;
+                const options = {
+                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                };
+
+                http.get(viewUrl, options, (response) => {
+                    let data = '';
+                    response.on('data', chunk => data += chunk);
+                    response.on('end', () => resolve(data));
+                    response.on('error', reject);
+                }).on('error', reject);
+            });
+        };
+
+        const statementHTML = await fetchHTML();
 
         const options = {
             format: 'A4',
@@ -2574,12 +2673,18 @@ router.get('/:id/download', async (req, res) => {
             .replace(/\s+/g, ' ') // Replace multiple spaces with single space
             .trim();
 
+        // Get owner/client name for filename
+        const clientName = statement.ownerName || 'Owner';
+        const cleanClientName = clientName
+            .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
         const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
-        
-        const filename = `${clientName} - ${statementPeriod}.pdf`;
-        console.log("filename",filename);
+
+        const filename = `${cleanClientName} - ${statementPeriod}.pdf`;
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');

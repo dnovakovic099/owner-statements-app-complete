@@ -10,7 +10,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Send, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -105,7 +105,7 @@ const getStatusBadge = (status: string) => {
   );
 };
 
-// Action Button Component with Tooltip
+// Action Button Component with Tooltip - Memoized to prevent unnecessary re-renders
 interface ActionButtonProps {
   onClick?: () => void;
   href?: string;
@@ -115,7 +115,7 @@ interface ActionButtonProps {
   disabled?: boolean;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ onClick, href, tooltip, icon, color, disabled }) => {
+const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, icon, color, disabled }) => {
   const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 hover:bg-gray-100 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
 
   if (href) {
@@ -144,7 +144,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({ onClick, href, tooltip, ico
       </button>
     </Tooltip>
   );
-};
+});
+ActionButton.displayName = 'ActionButton';
 
 const StatementsTable: React.FC<StatementsTableProps> = ({
   statements,
@@ -170,8 +171,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem(COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
-    } catch (e) {
-      console.error('Failed to save column visibility:', e);
+    } catch {
+      // localStorage may be unavailable in some environments
     }
   }, [columnVisibility]);
 
@@ -215,7 +216,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => (
         <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
-      meta: { align: 'left', width: '10%' },
+      meta: { align: 'left', width: '12%' },
     },
     {
       accessorKey: 'propertyName',
@@ -236,7 +237,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'left', width: '18%' },
+      meta: { align: 'left', width: '22%' },
     },
     {
       id: 'week',
@@ -247,7 +248,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
         </span>
       ),
-      meta: { align: 'left', width: '9%' },
+      meta: { align: 'left', width: '10%' },
     },
     {
       accessorKey: 'calculationType',
@@ -285,7 +286,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatCurrency(row.getValue('totalRevenue'))}
         </span>
       ),
-      meta: { align: 'right', width: '8%' },
+      meta: { align: 'right', width: '9%' },
     },
     {
       accessorKey: 'ownerPayout',
@@ -306,7 +307,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'right', width: '8%' },
+      meta: { align: 'right', width: '9%' },
     },
     {
       accessorKey: 'status',
@@ -315,7 +316,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center', width: '6%' },
+      meta: { align: 'center', width: '7%' },
     },
     {
       accessorKey: 'createdAt',
@@ -333,7 +334,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
         </span>
       ),
-      meta: { align: 'left', width: '14%' },
+      meta: { align: 'left', width: '12%' },
     },
     {
       id: 'actions',
@@ -402,7 +403,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         );
       },
       enableHiding: false,
-      meta: { align: 'left', width: '20%' },
+      meta: { align: 'left', width: '12%' },
     },
   ];
 
