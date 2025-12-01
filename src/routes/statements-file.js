@@ -1162,9 +1162,10 @@ router.get('/:id/view', async (req, res) => {
         if (statement.propertyId) {
             const currentListing = await ListingService.getListingWithPmFee(statement.propertyId);
             if (currentListing) {
-                statement.disregardTax = currentListing.disregardTax || false;
-                statement.isCohostOnAirbnb = currentListing.isCohostOnAirbnb || false;
-                statement.airbnbPassThroughTax = currentListing.airbnbPassThroughTax || false;
+                // Use explicit boolean conversion to handle SQLite's 0/1 values
+                statement.disregardTax = Boolean(currentListing.disregardTax);
+                statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
+                statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
                 statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
             }
         }
