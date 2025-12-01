@@ -1157,6 +1157,18 @@ router.get('/:id/view', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
+        // Fetch CURRENT listing settings to override stored values
+        // This allows changes to listing settings (like disregardTax) to affect existing statements
+        if (statement.propertyId) {
+            const currentListing = await ListingService.getListingWithPmFee(statement.propertyId);
+            if (currentListing) {
+                statement.disregardTax = currentListing.disregardTax || false;
+                statement.isCohostOnAirbnb = currentListing.isCohostOnAirbnb || false;
+                statement.airbnbPassThroughTax = currentListing.airbnbPassThroughTax || false;
+                statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
+            }
+        }
+
         // Generate HTML view of the statement
         const statementHTML = `
 <!DOCTYPE html>
