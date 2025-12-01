@@ -2685,7 +2685,7 @@ router.get('/:id/download', async (req, res) => {
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
 
-        const filename = `${cleanClientName} - ${statementPeriod}.pdf`;
+        const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
         
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
