@@ -1109,6 +1109,7 @@ router.get('/:id/view', async (req, res) => {
     try {
         const { id } = req.params;
         const isPdf = req.query.pdf === 'true'; // Hide download button for PDF generation
+        const bodyClass = isPdf ? 'pdf-mode' : '';
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
