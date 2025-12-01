@@ -242,6 +242,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             return isUpsell ? sum : sum + Math.abs(exp.amount);
         }, 0);
 
+        // Calculate total upsells (additional payouts)
+        const totalUpsells = periodExpenses.reduce((sum, exp) => {
+            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+            return isUpsell ? sum + exp.amount : sum;
+        }, 0);
+
         // Calculate PM commission per-reservation based on each property's PM fee
         let pmCommission = 0;
         for (const res of periodReservations) {
@@ -267,8 +273,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const techFees = propertyCount * 50; // $50 per property
         const insuranceFees = propertyCount * 25; // $25 per property
 
-        // Calculate owner payout
-        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+        // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
+        // Note: techFees and insuranceFees are stored but not included in payout calculation
+        const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
 
         // Generate unique ID
         const existingStatements = await FileDataService.getStatements();
@@ -527,7 +534,13 @@ router.post('/generate', async (req, res) => {
             const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
             return isUpsell ? sum : sum + Math.abs(exp.amount); // Only add actual expenses (costs)
         }, 0);
-        
+
+        // Calculate total upsells (additional payouts)
+        const totalUpsells = periodExpenses.reduce((sum, exp) => {
+            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+            return isUpsell ? sum + exp.amount : sum;
+        }, 0);
+
         // Calculate PM commission: For multi-property statements, calculate per-reservation based on property PM fee
         // For co-hosted properties, only calculate PM commission on non-Airbnb reservations
         let pmCommission = 0;
@@ -574,8 +587,9 @@ router.post('/generate', async (req, res) => {
         const techFees = propertyCount * 50; // $50 per property
         const insuranceFees = propertyCount * 25; // $25 per property
 
-        // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
-        const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+        // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
+        // Note: techFees and insuranceFees are stored but not included in payout calculation
+        const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
 
         // Generate unique ID
         const existingStatements = await FileDataService.getStatements();
@@ -1022,10 +1036,14 @@ router.put('/:id', async (req, res) => {
             // Recalculate other fee types from expense items
             statement.techFees = expenses.filter(e => e.description && e.description.includes('Technology')).reduce((sum, item) => sum + item.amount, 0);
             statement.insuranceFees = expenses.filter(e => e.description && e.description.includes('Insurance')).reduce((sum, item) => sum + item.amount, 0);
-            
-            // Recalculate owner payout
+
+            // Calculate total upsells from items
+            const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+
+            // Recalculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
+            // Note: techFees and insuranceFees are stored but not included in payout calculation
             const adjustments = parseFloat(statement.adjustments || 0);
-            statement.ownerPayout = Math.round((statement.totalRevenue - statement.totalExpenses - statement.pmCommission - statement.techFees - statement.insuranceFees - adjustments) * 100) / 100;
+            statement.ownerPayout = Math.round((statement.totalRevenue - statement.pmCommission + totalUpsells - statement.totalExpenses - adjustments) * 100) / 100;
 
             // Update the statement status (only if not already sent)
             if (statement.status !== 'sent') {
@@ -2801,20 +2819,27 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum : sum + Math.abs(exp.amount);
                     }, 0);
-                    
+
+                    // Calculate total upsells (additional payouts)
+                    const totalUpsells = periodExpenses.reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum + exp.amount : sum;
+                    }, 0);
+
                     // Get PM percentage from listing database (property-specific)
                     let pmPercentage = 15; // Default fallback
                     if (listing && listing.pmFeePercentage !== null) {
                         pmPercentage = listing.pmFeePercentage;
                     }
-                    
+
                     // Calculate PM commission (only on non-Airbnb revenue for co-hosted properties)
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50; // $50 per property
                     const insuranceFees = 25; // $25 per property
 
-                    // Calculate owner payout (normal calculation, revenue already excludes co-hosted Airbnb)
-                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+                    // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
+                    // Note: techFees and insuranceFees are stored but not included in payout calculation
+                    const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
 
                     const existingStatements = await FileDataService.getStatements();
                     const newId = FileDataService.generateId(existingStatements);
@@ -3005,18 +3030,26 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum : sum + Math.abs(exp.amount);
                     }, 0);
-                    
+
+                    // Calculate total upsells (additional payouts)
+                    const totalUpsells = periodExpenses.reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum + exp.amount : sum;
+                    }, 0);
+
                     // Get PM percentage from listing database (property-specific)
                     let pmPercentage = 15; // Default fallback
                     const listing = await ListingService.getListingWithPmFee(property.id);
                     if (listing && listing.pmFeePercentage !== null) {
                         pmPercentage = listing.pmFeePercentage;
                     }
-                    
+
                     const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50; // $50 per property
                     const insuranceFees = 25; // $25 per property
-                    const ownerPayout = totalRevenue - totalExpenses - pmCommission - techFees - insuranceFees;
+                    // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
+                    // Note: techFees and insuranceFees are stored but not included in payout calculation
+                    const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
 
                     // Generate unique ID
                     const existingStatements = await FileDataService.getStatements();

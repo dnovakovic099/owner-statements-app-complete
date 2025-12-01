@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
+  RowSelectionState,
   SortingState,
   VisibilityState,
   flexRender,
@@ -10,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -50,7 +51,9 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate') => void;
   regeneratingId?: number | null;
+  bulkProcessing?: boolean;
   pagination: PaginationState;
   onPaginationChange: (pageIndex: number, pageSize: number) => void;
 }
@@ -151,7 +154,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   statements,
   listings = [],
   onAction,
+  onBulkAction,
   regeneratingId,
+  bulkProcessing = false,
   pagination,
   onPaginationChange,
 }) => {
@@ -181,6 +186,20 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   ]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  // Get selected statement IDs
+  const selectedIds = React.useMemo(() => {
+    return Object.keys(rowSelection)
+      .filter(key => rowSelection[key])
+      .map(key => statements[parseInt(key)]?.id)
+      .filter(Boolean) as number[];
+  }, [rowSelection, statements]);
+
+  // Clear selection when statements change
+  useEffect(() => {
+    setRowSelection({});
+  }, [statements]);
 
   // Create a lookup map for property names to display names/nicknames
   const listingNameMap = React.useMemo(() => {
@@ -203,6 +222,38 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
   const columns: ColumnDef<Statement>[] = [
     {
+      id: 'select',
+      header: ({ table }) => (
+        <button
+          onClick={() => table.toggleAllPageRowsSelected(!table.getIsAllPageRowsSelected())}
+          className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+        >
+          {table.getIsAllPageRowsSelected() ? (
+            <CheckSquare className="w-4 h-4 text-blue-600" />
+          ) : table.getIsSomePageRowsSelected() ? (
+            <div className="w-2.5 h-2.5 bg-blue-600 rounded-sm" />
+          ) : (
+            <Square className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+      ),
+      cell: ({ row }) => (
+        <button
+          onClick={() => row.toggleSelected(!row.getIsSelected())}
+          className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+        >
+          {row.getIsSelected() ? (
+            <CheckSquare className="w-4 h-4 text-blue-600" />
+          ) : (
+            <Square className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+      ),
+      enableSorting: false,
+      enableHiding: false,
+      meta: { align: 'center', width: '40px' },
+    },
+    {
       accessorKey: 'ownerName',
       header: ({ column }) => (
         <button
@@ -216,7 +267,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => (
         <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
-      meta: { align: 'left', width: '12%' },
+      meta: { align: 'left', width: '11%' },
     },
     {
       accessorKey: 'propertyName',
@@ -422,6 +473,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     globalFilterFn: 'includesString',
     manualPagination: true, // Server-side pagination
     pageCount,
@@ -430,6 +483,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       columnFilters,
       columnVisibility,
       globalFilter,
+      rowSelection,
       pagination: {
         pageIndex: pagination.pageIndex,
         pageSize: pagination.pageSize,
@@ -471,6 +525,46 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
             <p className="text-sm text-gray-500 mt-0.5">{pagination.total} total statements</p>
           </div>
+
+          {/* Bulk Actions - shown when items are selected */}
+          {selectedIds.length > 0 && onBulkAction && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-sm font-medium text-blue-700">
+                {selectedIds.length} selected
+              </span>
+              <div className="h-4 w-px bg-blue-300" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'download')}
+                disabled={bulkProcessing}
+                className="h-8 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+              >
+                <Download className="w-4 h-4 mr-1.5" />
+                Download
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'regenerate')}
+                disabled={bulkProcessing}
+                className="h-8 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+              >
+                {bulkProcessing ? (
+                  <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-1.5" />
+                )}
+                Regenerate
+              </Button>
+              <button
+                onClick={() => setRowSelection({})}
+                className="ml-1 text-blue-600 hover:text-blue-800 text-sm"
+              >
+                Clear
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             {/* Global Search */}
