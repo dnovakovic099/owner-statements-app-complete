@@ -2543,18 +2543,6 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="summary-label">Expenses</td>
                                 <td class="summary-value expense">-$${(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
-                            ${(statement.techFees || 0) > 0 ? `
-                            <tr>
-                                <td class="summary-label">Technology Fee</td>
-                                <td class="summary-value expense">-$${(statement.techFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            </tr>
-                            ` : ''}
-                            ${(statement.insuranceFees || 0) > 0 ? `
-                            <tr>
-                                <td class="summary-label">Insurance Fee</td>
-                                <td class="summary-value expense">-$${(statement.insuranceFees || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            </tr>
-                            ` : ''}
                             <tr class="total-row">
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
                                 <td class="summary-value total-amount"><strong>${(statement.ownerPayout || 0) >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
