@@ -535,30 +535,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <div>
-              <h1 className="text-2xl font-bold">Owner Statements</h1>
+              <h1 className="text-xl sm:text-2xl font-bold">Owner Statements</h1>
               {user && (
                 <p className="text-white/80 text-sm mt-1">Welcome, {user.username}</p>
               )}
             </div>
-            <div className="flex space-x-3">
+            <div className="flex space-x-2 sm:space-x-3">
               <button
                 onClick={() => setCurrentPage('listings')}
-                className="flex items-center px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors"
+                className="flex items-center px-3 sm:px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors text-sm"
                 title="Manage Listings"
               >
-                <Home className="w-4 h-4 mr-2" />
-                Listings
+                <Home className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Listings</span>
               </button>
               <button
                 onClick={onLogout}
-                className="flex items-center px-4 py-2 bg-red-500/20 border border-red-300/30 rounded-md hover:bg-red-500/30 transition-colors"
+                className="flex items-center px-3 sm:px-4 py-2 bg-red-500/20 border border-red-300/30 rounded-md hover:bg-red-500/30 transition-colors text-sm"
                 title="Logout"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                <LogOut className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -569,11 +569,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         {/* Quick Actions */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
             <button
               onClick={() => setIsGenerateModalOpen(true)}
-              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
+              className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm w-full sm:w-auto"
             >
               <Plus className="w-4 h-4 mr-2" />
               Generate Statement
@@ -606,8 +606,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="w-40">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[160px_1fr_auto_auto] gap-4 items-end">
+            <div className="w-full">
               <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
               <div className="relative" ref={ownerDropdownRef}>
                 <button
@@ -654,7 +654,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 )}
               </div>
             </div>
-            <div className="flex-1 min-w-[300px]">
+            <div className="w-full sm:col-span-2 lg:col-span-1">
               <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
               <div className="space-y-2">
                 {/* Search Input */}
@@ -767,22 +767,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-            <div className="w-36">
+            <div className="w-full sm:w-auto">
               <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
               <input
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="w-36">
+            <div className="w-full sm:w-auto">
               <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
               <input
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>

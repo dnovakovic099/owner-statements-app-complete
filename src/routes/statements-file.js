@@ -233,7 +233,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 continue;
             }
 
-            totalRevenue += (res.grossAmount || 0);
+            // Use clientRevenue (prorated) for calendar-based statements, grossAmount for checkout-based
+            const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            totalRevenue += revenue;
         }
 
         // Calculate total expenses (only actual costs, not upsells)
@@ -261,7 +263,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             }
 
             const resPmFee = listing?.pmFeePercentage ?? 15;
-            const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
+            // Use clientRevenue (prorated) for calendar-based statements
+            const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            const resCommission = resRevenue * (resPmFee / 100);
             pmCommission += resCommission;
         }
 
@@ -320,10 +324,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 ...periodReservations.map(res => {
                     const listing = targetListings.find(l => l.id === res.propertyId);
                     const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : `Property ${res.propertyId}`;
+                    // Use clientRevenue (prorated) for calendar-based statements
+                    const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                     return {
                         type: 'revenue',
                         description: `[${propertyLabel}] ${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
-                        amount: res.grossAmount,
+                        amount: revenue,
                         date: res.checkOutDate,
                         category: 'booking',
                         propertyId: res.propertyId
@@ -520,13 +526,15 @@ router.post('/generate', async (req, res) => {
         const totalRevenue = periodReservations.reduce((sum, res) => {
             // Check if this is an Airbnb reservation
             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-            
+
             // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
             if (isAirbnb && isCohostOnAirbnb) {
                 return sum;
             }
-            
-            return sum + (res.grossAmount || 0);
+
+            // Use clientRevenue (prorated) for calendar-based statements, grossAmount for checkout-based
+            const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            return sum + revenue;
         }, 0);
         
         // Separate expenses (negative/costs) from upsells (positive/revenue)
@@ -574,7 +582,9 @@ router.post('/generate', async (req, res) => {
                 }
 
                 const resPmFee = propertyPmFees[res.propertyId];
-                const resCommission = (res.grossAmount || 0) * (resPmFee / 100);
+                // Use clientRevenue (prorated) for calendar-based statements
+                const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                const resCommission = resRevenue * (resPmFee / 100);
                 pmCommission += resCommission;
             }
 
@@ -624,13 +634,17 @@ router.post('/generate', async (req, res) => {
             duplicateWarnings: duplicateWarnings,
             items: [
                 // Revenue items from reservations
-                ...periodReservations.map(res => ({
-                    type: 'revenue',
-                    description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
-                    amount: res.grossAmount,
-                    date: res.checkOutDate,
-                    category: 'booking'
-                })),
+                ...periodReservations.map(res => {
+                    // Use clientRevenue (prorated) for calendar-based statements
+                    const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                    return {
+                        type: 'revenue',
+                        description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                        amount: revenue,
+                        date: res.checkOutDate,
+                        category: 'booking'
+                    };
+                }),
                 // Expenses and upsells - categorize based on amount sign and category
                 ...periodExpenses.map(exp => {
                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
@@ -824,23 +838,28 @@ router.put('/:id', async (req, res) => {
         // Remove reservations
         if (reservationIdsToRemove && Array.isArray(reservationIdsToRemove) && reservationIdsToRemove.length > 0) {
             const originalReservationsCount = (statement.reservations || []).length;
-            
+
+            // First, find the reservations that will be removed (BEFORE filtering them out)
+            const removedReservations = (statement.reservations || []).filter(res => {
+                const resId = res.hostifyId || res.id;
+                return reservationIdsToRemove.includes(resId);
+            });
+
             // Remove reservations from the reservations array
             statement.reservations = (statement.reservations || []).filter(res => {
                 const resId = res.hostifyId || res.id;
                 return !reservationIdsToRemove.includes(resId);
             });
-            
-            // Also remove corresponding revenue items
+
+            // Also remove corresponding revenue items using the stored removed reservations
             statement.items = statement.items.filter(item => {
                 if (item.type !== 'revenue') return true;
-                
+
                 // Check if this revenue item corresponds to a removed reservation
-                // Match by guest name and dates in the description
-                for (const removedId of reservationIdsToRemove) {
-                    const removedRes = statement.reservations?.find(r => (r.hostifyId || r.id) === removedId);
-                    if (removedRes && item.description.includes(removedRes.guestName)) {
-                    return false;
+                // Match by guest name in the description
+                for (const removedRes of removedReservations) {
+                    if (removedRes && item.description && item.description.includes(removedRes.guestName)) {
+                        return false;
                     }
                 }
                 return true;
@@ -1023,16 +1042,21 @@ router.put('/:id', async (req, res) => {
         if (modified) {
             // Recalculate totals after modifications
             const expenses = statement.items.filter(item => item.type === 'expense');
-            const revenues = statement.items.filter(item => item.type === 'revenue');
-            
-            statement.totalRevenue = revenues.reduce((sum, item) => sum + item.amount, 0);
+
+            // Calculate totalRevenue from reservations array (which has correct prorated values)
+            // Use clientRevenue for detailed finance, otherwise fall back to grossAmount
+            statement.totalRevenue = (statement.reservations || []).reduce((sum, res) => {
+                const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                return sum + revenue;
+            }, 0);
+
             statement.totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
-            
+
             // Recalculate PM Commission based on total revenue and percentage
             // PM Commission is calculated from revenue, not from expense items
             const pmPercentage = parseFloat(statement.pmPercentage || 10);
             statement.pmCommission = Math.round((statement.totalRevenue * (pmPercentage / 100)) * 100) / 100;
-            
+
             // Recalculate other fee types from expense items
             statement.techFees = expenses.filter(e => e.description && e.description.includes('Technology')).reduce((sum, item) => sum + item.amount, 0);
             statement.insuranceFees = expenses.filter(e => e.description && e.description.includes('Insurance')).reduce((sum, item) => sum + item.amount, 0);
@@ -2267,6 +2291,11 @@ router.get('/:id/view', async (req, res) => {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             page-break-before: auto;
+            background: white !important;
+        }
+
+        body.pdf-mode .section {
+            background: white !important;
         }
 
         body.pdf-mode .total-row {
@@ -2397,16 +2426,58 @@ router.get('/:id/view', async (req, res) => {
                     </tr>
                                 `;
                             }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
+                            ${(() => {
+                                // Calculate totals using the same logic as individual rows
+                                let totalBaseRate = 0;
+                                let totalCleaningFees = 0;
+                                let totalPlatformFees = 0;
+                                let totalClientRevenue = 0;
+                                let totalLuxuryFee = 0;
+                                let totalTaxResponsibility = 0;
+                                let totalGrossPayout = 0;
+
+                                statement.reservations?.forEach(reservation => {
+                                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                                    const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+
+                                    const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
+                                    const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
+                                    const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
+                                    const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                                    const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                                    const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
+
+                                    const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+                                    let grossPayout;
+                                    if (isCohostAirbnb) {
+                                        grossPayout = -luxuryFee;
+                                    } else if (shouldAddTax) {
+                                        grossPayout = clientRevenue - luxuryFee + taxResponsibility;
+                                    } else {
+                                        grossPayout = clientRevenue - luxuryFee;
+                                    }
+
+                                    totalBaseRate += baseRate;
+                                    totalCleaningFees += cleaningFees;
+                                    totalPlatformFees += platformFees;
+                                    totalClientRevenue += clientRevenue;
+                                    totalLuxuryFee += luxuryFee;
+                                    totalTaxResponsibility += taxResponsibility;
+                                    totalGrossPayout += grossPayout;
+                                });
+
+                                return `
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
-                                <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>$${(statement.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>-$${Math.abs(statement.pmCommission || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                                <td class="amount-cell payout-cell"><strong>${((statement.totalRevenue - statement.pmCommission) >= 0 ? '$' : '-$')}${Math.abs(statement.totalRevenue - statement.pmCommission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                            </tr>
+                                <td class="amount-cell"><strong>$${totalBaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>$${totalCleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>-$${Math.abs(totalPlatformFees).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>$${totalClientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>-$${Math.abs(totalLuxuryFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell"><strong>$${totalTaxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="amount-cell payout-cell"><strong>${totalGrossPayout >= 0 ? '$' : '-$'}${Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                            </tr>`;
+                            })()}
             </tbody>
         </table>
             </div>
@@ -2543,32 +2614,63 @@ router.get('/:id/view', async (req, res) => {
     ` : ''}
 
     <!-- Summary Section -->
+    ${(() => {
+        // Calculate summary values from reservations (same as TOTALS row)
+        let summaryGrossPayout = 0;
+
+        statement.reservations?.forEach(reservation => {
+            const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+            const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+
+            const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+            const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+            const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
+
+            const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+            let grossPayout;
+            if (isCohostAirbnb) {
+                grossPayout = -luxuryFee;
+            } else if (shouldAddTax) {
+                grossPayout = clientRevenue - luxuryFee + taxResponsibility;
+            } else {
+                grossPayout = clientRevenue - luxuryFee;
+            }
+
+            summaryGrossPayout += grossPayout;
+        });
+
+        const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalExpenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const netPayout = summaryGrossPayout + totalUpsells - totalExpenses;
+
+        return `
     <div class="section">
                 <div class="statement-summary">
                     <div class="summary-box">
                         <table class="summary-table">
                             <tr>
                                 <td class="summary-label">Gross Payout</td>
-                                <td class="summary-value ${(statement.totalRevenue - statement.pmCommission) >= 0 ? 'revenue' : 'expense'}">${((statement.totalRevenue - statement.pmCommission) >= 0 ? '$' : '-$')}${Math.abs(statement.totalRevenue - statement.pmCommission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-value ${summaryGrossPayout >= 0 ? 'revenue' : 'expense'}">${summaryGrossPayout >= 0 ? '$' : '-$'}${Math.abs(summaryGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
-                            ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+                            ${totalUpsells > 0 ? `
                             <tr>
                                 <td class="summary-label">Additional Payouts</td>
-                                <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-value revenue">+$${totalUpsells.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             ` : ''}
                             <tr>
                                 <td class="summary-label">Expenses</td>
-                                <td class="summary-value expense">-$${(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="summary-value expense">-$${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             </tr>
                             <tr class="total-row">
                                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
-                                <td class="summary-value total-amount"><strong>${(statement.ownerPayout || 0) >= 0 ? '$' : '-$'}${Math.abs(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                <td class="summary-value total-amount"><strong>${netPayout >= 0 ? '$' : '-$'}${Math.abs(netPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                             </tr>
                         </table>
                     </div>
                 </div>
-            </div>
+            </div>`;
+    })()}
 
         ${isPdf ? '' : `<div class="footer">
             <div class="footer-content">
