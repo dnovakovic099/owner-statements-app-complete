@@ -46,6 +46,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings'>('dashboard');
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -324,24 +325,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           type: 'info',
           onConfirm: async () => {
             setRegeneratingStatementId(id);
+            const toastId = showToast('Regenerating statement...', 'loading');
             try {
               await statementsAPI.deleteStatement(id);
-              await handleGenerateStatement({
+              await statementsAPI.generateStatement({
                 ownerId: statement.ownerId.toString(),
                 propertyId: statement.propertyId?.toString() || '',
                 startDate: statement.weekStartDate,
                 endDate: statement.weekEndDate,
                 calculationType: statement.calculationType || 'checkout'
               });
+              updateToast(toastId, 'Statement regenerated successfully', 'success');
               await loadStatements();
             } catch (err) {
-              setConfirmDialog({
-                isOpen: true,
-                title: 'Error',
-                message: `Failed to regenerate statement: ${err instanceof Error ? err.message : 'Unknown error'}`,
-                type: 'danger',
-                onConfirm: () => {},
-              });
+              updateToast(toastId, `Failed to regenerate: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
             } finally {
               setRegeneratingStatementId(null);
             }
@@ -408,6 +405,97 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } catch (err) {
       showToast(`Failed to ${action} statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
+  };
+
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate') => {
+    if (ids.length === 0) return;
+
+    setBulkProcessing(true);
+
+    if (action === 'download') {
+      const toastId = showToast(`Downloading ${ids.length} statement(s)...`, 'loading');
+      let successCount = 0;
+      let failCount = 0;
+
+      // Download each statement sequentially to avoid overwhelming the browser
+      for (const id of ids) {
+        try {
+          const response = await statementsAPI.downloadStatementWithHeaders(id);
+          const blob = response.blob;
+          const filename = response.filename || `statement-${id}.pdf`;
+
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          successCount++;
+
+          // Small delay between downloads to prevent browser issues
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (err) {
+          failCount++;
+          console.error(`Failed to download statement ${id}:`, err);
+        }
+      }
+
+      if (failCount === 0) {
+        updateToast(toastId, `Downloaded ${successCount} statement(s)`, 'success');
+      } else {
+        updateToast(toastId, `Downloaded ${successCount}, failed ${failCount}`, 'error');
+      }
+    } else if (action === 'regenerate') {
+      // Show confirmation dialog for bulk regenerate
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Regenerate Statements',
+        message: `Regenerate ${ids.length} statement(s) with the latest data? This will replace the existing statements.`,
+        type: 'warning',
+        onConfirm: async () => {
+          const toastId = showToast(`Regenerating ${ids.length} statement(s)...`, 'loading');
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const id of ids) {
+            try {
+              const statement = statements.find(s => s.id === id);
+              if (!statement) {
+                failCount++;
+                continue;
+              }
+
+              await statementsAPI.deleteStatement(id);
+              await statementsAPI.generateStatement({
+                ownerId: statement.ownerId.toString(),
+                propertyId: statement.propertyId?.toString() || '',
+                startDate: statement.weekStartDate,
+                endDate: statement.weekEndDate,
+                calculationType: statement.calculationType || 'checkout'
+              });
+              successCount++;
+            } catch (err) {
+              failCount++;
+              console.error(`Failed to regenerate statement ${id}:`, err);
+            }
+          }
+
+          if (failCount === 0) {
+            updateToast(toastId, `Regenerated ${successCount} statement(s)`, 'success');
+          } else {
+            updateToast(toastId, `Regenerated ${successCount}, failed ${failCount}`, 'error');
+          }
+
+          await loadStatements();
+          setBulkProcessing(false);
+        },
+      });
+      return; // Don't setBulkProcessing(false) here - wait for dialog action
+    }
+
+    setBulkProcessing(false);
   };
 
   if (loading) {
@@ -705,7 +793,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           statements={statements}
           listings={listings}
           onAction={handleStatementAction}
+          onBulkAction={handleBulkAction}
           regeneratingId={regeneratingStatementId}
+          bulkProcessing={bulkProcessing}
           pagination={pagination}
           onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
         />
