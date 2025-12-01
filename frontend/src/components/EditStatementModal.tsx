@@ -3,6 +3,73 @@ import { X, DollarSign, AlertTriangle, Plus, Calendar } from 'lucide-react';
 import { statementsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 
+// Custom Confirm Dialog Component
+interface ConfirmDialogProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  variant?: 'default' | 'warning' | 'success';
+}
+
+const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  isOpen,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  onConfirm,
+  onCancel,
+  variant = 'default'
+}) => {
+  if (!isOpen) return null;
+
+  const variantStyles = {
+    default: 'bg-blue-600 hover:bg-blue-700',
+    warning: 'bg-amber-600 hover:bg-amber-700',
+    success: 'bg-green-600 hover:bg-green-700'
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
+        <div className="p-6">
+          <div className="flex items-start">
+            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+              variant === 'warning' ? 'bg-amber-100' : variant === 'success' ? 'bg-green-100' : 'bg-blue-100'
+            }`}>
+              <AlertTriangle className={`w-5 h-5 ${
+                variant === 'warning' ? 'text-amber-600' : variant === 'success' ? 'text-green-600' : 'text-blue-600'
+              }`} />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+              <p className="mt-2 text-sm text-gray-600">{message}</p>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${variantStyles[variant]}`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface EditStatementModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,6 +103,23 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     description: ''
   });
   const [error, setError] = useState<string | null>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    variant: 'default' | 'warning' | 'success';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    variant: 'default',
+    onConfirm: () => {}
+  });
 
   const loadStatement = useCallback(async () => {
     if (!statementId) return;
@@ -114,64 +198,70 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     );
   };
 
-  const handleAddCustomReservation = async () => {
+  const handleAddCustomReservation = () => {
     if (!statement) return;
 
     // Validate required fields
     if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.amount) {
-      alert('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, and Amount');
+      setError('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, and Amount');
       return;
     }
 
     const amount = parseFloat(customReservation.amount);
     if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
+      setError('Please enter a valid amount');
       return;
     }
 
-    if (!window.confirm(`Add custom reservation for ${customReservation.guestName} with amount $${amount}?`)) {
-      return;
-    }
+    // Show custom confirm dialog
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Add Custom Reservation',
+      message: `Add custom reservation for ${customReservation.guestName} with amount $${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
+      confirmText: 'Add Reservation',
+      variant: 'success',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
 
-    try {
-      setSaving(true);
-      setError(null);
-      
-      await statementsAPI.editStatement(statement.id, {
-        customReservationToAdd: {
-          guestName: customReservation.guestName,
-          checkInDate: customReservation.checkInDate,
-          checkOutDate: customReservation.checkOutDate,
-          amount: amount,
-          nights: customReservation.nights ? parseInt(customReservation.nights) : undefined,
-          description: customReservation.description || undefined
+        try {
+          setSaving(true);
+          setError(null);
+
+          await statementsAPI.editStatement(statement.id, {
+            customReservationToAdd: {
+              guestName: customReservation.guestName,
+              checkInDate: customReservation.checkInDate,
+              checkOutDate: customReservation.checkOutDate,
+              amount: amount,
+              nights: customReservation.nights ? parseInt(customReservation.nights) : undefined,
+              description: customReservation.description || undefined
+            }
+          });
+
+          // Reset form
+          setCustomReservation({
+            guestName: '',
+            checkInDate: '',
+            checkOutDate: '',
+            amount: '',
+            nights: '',
+            description: ''
+          });
+          setShowCustomReservationForm(false);
+
+          onStatementUpdated();
+          onClose();
+        } catch (err) {
+          setError('Failed to add custom reservation');
+          console.error('Failed to add custom reservation:', err);
+        } finally {
+          setSaving(false);
         }
-      });
-
-      alert('✅ Custom reservation added successfully');
-      
-      // Reset form
-      setCustomReservation({
-        guestName: '',
-        checkInDate: '',
-        checkOutDate: '',
-        amount: '',
-        nights: '',
-        description: ''
-      });
-      setShowCustomReservationForm(false);
-      
-      onStatementUpdated();
-      onClose();
-    } catch (err) {
-      setError('Failed to add custom reservation');
-      console.error('Failed to add custom reservation:', err);
-    } finally {
-      setSaving(false);
-    }
+      }
+    });
   };
 
-  const handleSaveChanges = async () => {
+  const handleSaveChanges = () => {
     if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0)) {
       return;
     }
@@ -191,53 +281,60 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     }
 
     const confirmMessage = `Are you sure you want to ${actions.join(' and ')}? This will recalculate the statement totals.`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
 
-    try {
-      setSaving(true);
-      setError(null);
-      
-      // Map expense and upsell indices to their global item indices
-      // We need to find the actual position in statement.items array
-      const globalIndicesToRemove: number[] = [];
-      
-      if (statement.items) {
-        let expenseCount = 0;
-        let upsellCount = 0;
-        
-        statement.items.forEach((item, globalIndex) => {
-          if (item.type === 'expense') {
-            if (selectedExpenseIndices.includes(expenseCount)) {
-              globalIndicesToRemove.push(globalIndex);
-            }
-            expenseCount++;
-          } else if (item.type === 'upsell') {
-            if (selectedUpsellIndices.includes(upsellCount)) {
-              globalIndicesToRemove.push(globalIndex);
-            }
-            upsellCount++;
+    // Show custom confirm dialog
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Apply Changes',
+      message: confirmMessage,
+      confirmText: 'Apply Changes',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+
+        try {
+          setSaving(true);
+          setError(null);
+
+          // Map expense and upsell indices to their global item indices
+          // We need to find the actual position in statement.items array
+          const globalIndicesToRemove: number[] = [];
+
+          if (statement.items) {
+            let expenseCount = 0;
+            let upsellCount = 0;
+
+            statement.items.forEach((item, globalIndex) => {
+              if (item.type === 'expense') {
+                if (selectedExpenseIndices.includes(expenseCount)) {
+                  globalIndicesToRemove.push(globalIndex);
+                }
+                expenseCount++;
+              } else if (item.type === 'upsell') {
+                if (selectedUpsellIndices.includes(upsellCount)) {
+                  globalIndicesToRemove.push(globalIndex);
+                }
+                upsellCount++;
+              }
+            });
           }
-        });
-      }
-      
-      await statementsAPI.editStatement(statement.id, {
-        expenseIdsToRemove: globalIndicesToRemove.length > 0 ? globalIndicesToRemove : undefined,
-        reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
-        reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
-      });
 
-      alert('✅ Statement updated successfully');
-      onStatementUpdated();
-      onClose();
-    } catch (err) {
-      setError('Failed to update statement');
-      console.error('Failed to update statement:', err);
-    } finally {
-      setSaving(false);
-    }
+          await statementsAPI.editStatement(statement.id, {
+            expenseIdsToRemove: globalIndicesToRemove.length > 0 ? globalIndicesToRemove : undefined,
+            reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
+            reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
+          });
+
+          onStatementUpdated();
+          onClose();
+        } catch (err) {
+          setError('Failed to update statement');
+          console.error('Failed to update statement:', err);
+        } finally {
+          setSaving(false);
+        }
+      }
+    });
   };
 
   const handleClose = () => {
@@ -804,6 +901,17 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Custom Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

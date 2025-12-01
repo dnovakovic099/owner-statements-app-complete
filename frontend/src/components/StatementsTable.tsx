@@ -251,7 +251,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       ),
       enableSorting: false,
       enableHiding: false,
-      meta: { align: 'center', width: '40px' },
+      meta: { align: 'center', width: '36px' },
     },
     {
       accessorKey: 'ownerName',
@@ -267,7 +267,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => (
         <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
-      meta: { align: 'left', width: '11%' },
+      meta: { align: 'left', width: '9%' },
     },
     {
       accessorKey: 'propertyName',
@@ -288,7 +288,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'left', width: '22%' },
+      meta: { align: 'left', width: '18%' },
     },
     {
       id: 'week',
@@ -299,7 +299,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
         </span>
       ),
-      meta: { align: 'left', width: '10%' },
+      meta: { align: 'left', width: '9%' },
     },
     {
       accessorKey: 'calculationType',
@@ -319,7 +319,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center', width: '7%' },
+      meta: { align: 'center', width: '6%' },
     },
     {
       accessorKey: 'totalRevenue',
@@ -337,7 +337,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatCurrency(row.getValue('totalRevenue'))}
         </span>
       ),
-      meta: { align: 'right', width: '9%' },
+      meta: { align: 'right', width: '8%' },
     },
     {
       accessorKey: 'ownerPayout',
@@ -358,7 +358,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'right', width: '9%' },
+      meta: { align: 'right', width: '8%' },
     },
     {
       accessorKey: 'status',
@@ -367,7 +367,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center', width: '7%' },
+      meta: { align: 'center', width: '6%' },
     },
     {
       accessorKey: 'createdAt',
@@ -385,7 +385,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
         </span>
       ),
-      meta: { align: 'left', width: '12%' },
+      meta: { align: 'left', width: '11%' },
     },
     {
       id: 'actions',
@@ -454,7 +454,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         );
       },
       enableHiding: false,
-      meta: { align: 'left', width: '12%' },
+      meta: { align: 'left', width: '15%' },
     },
   ];
 
@@ -705,8 +705,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Table */}
-      <div className="w-full">
-        <Table className="w-full min-w-full" style={{ tableLayout: 'fixed' }}>
+      <div className="w-full overflow-x-auto">
+        <Table className="w-full min-w-[1100px]" style={{ tableLayout: 'fixed' }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-gray-50 border-b border-gray-200">
@@ -769,39 +769,41 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white flex items-center justify-center">
-        <div className="flex items-center gap-6">
-          {/* Results info */}
-          <span className="text-sm text-gray-500">
-            Showing <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
-            {' '}-{' '}
-            <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
-            {' '}of{' '}
-            <span className="font-medium text-gray-700">{pagination.total}</span>
-          </span>
+      <div className="px-4 py-3 border-t border-gray-200 bg-white">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Results info and page size */}
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6">
+            <span className="text-sm text-gray-500">
+              <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
+              {' '}-{' '}
+              <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
+              {' '}of{' '}
+              <span className="font-medium text-gray-700">{pagination.total}</span>
+            </span>
 
-          {/* Page size selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Rows:</span>
-            <div className="relative inline-flex">
-              <select
-                value={pagination.pageSize}
-                onChange={(e) => onPaginationChange(0, Number(e.target.value))}
-                className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                style={{
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  appearance: 'none',
-                  backgroundImage: 'none'
-                }}
-              >
-                {[10, 25, 50, 100].map((pageSize) => (
-                  <option key={pageSize} value={pageSize}>
-                    {pageSize}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            {/* Page size selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Rows:</span>
+              <div className="relative inline-flex">
+                <select
+                  value={pagination.pageSize}
+                  onChange={(e) => onPaginationChange(0, Number(e.target.value))}
+                  className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                  style={{
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none',
+                    appearance: 'none',
+                    backgroundImage: 'none'
+                  }}
+                >
+                  {[10, 25, 50, 100].map((pageSize) => (
+                    <option key={pageSize} value={pageSize}>
+                      {pageSize}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              </div>
             </div>
           </div>
 
@@ -813,7 +815,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               <ChevronLeft className="h-4 w-4" />
-              Prev
+              <span className="hidden sm:inline">Prev</span>
             </button>
 
             <div className="flex items-center">
@@ -851,7 +853,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               disabled={!canNextPage}
               className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              Next
+              <span className="hidden sm:inline">Next</span>
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
