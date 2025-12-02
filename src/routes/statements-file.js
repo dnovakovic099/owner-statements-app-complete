@@ -87,7 +87,10 @@ router.get('/', async (req, res) => {
             ownerId: s.ownerId,
             ownerName: s.ownerName || 'Default Owner',
             propertyId: s.propertyId,
+            propertyIds: s.propertyIds || null,
             propertyName: s.propertyName || (s.propertyId ? `Property ${s.propertyId}` : 'All Properties'),
+            propertyNames: s.propertyNames || null,
+            isCombinedStatement: s.isCombinedStatement || false,
             weekStartDate: s.weekStartDate,
             weekEndDate: s.weekEndDate,
             calculationType: s.calculationType || 'checkout',
@@ -1186,7 +1189,8 @@ router.get('/:id/view', async (req, res) => {
                     isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
                     disregardTax: Boolean(listing.disregardTax),
                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
-                    pmFeePercentage: listing.pmFeePercentage ?? 15
+                    pmFeePercentage: listing.pmFeePercentage ?? 15,
+                    nickname: listing.nickname || listing.displayName || listing.name || ''
                 };
             });
             console.log('Combined statement - loaded settings for properties:', Object.keys(listingSettingsMap));
@@ -1444,16 +1448,15 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .summary-item {
-            background: var(--luxury-light-gray);
+            background: white;
             padding: 20px;
             border-radius: 10px;
             border: 1px solid #e5e7eb;
             transition: all 0.2s ease;
         }
-        
+
         .summary-item:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(30, 58, 95, 0.1);
         }
         
         .summary-label {
@@ -1502,7 +1505,7 @@ router.get('/:id/view', async (req, res) => {
             background: white;
             border-radius: 10px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
         }
         
         .items-table th {
@@ -1523,7 +1526,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .items-table tr:nth-child(even) {
-            background: #f8fafc;
+            background: white;
         }
         
         .items-table tr:hover {
@@ -1561,7 +1564,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .footer {
-            background: var(--luxury-light-gray);
+            background: white;
             padding: 30px;
             text-align: center;
             border-top: 1px solid #e5e7eb;
@@ -1594,7 +1597,6 @@ router.get('/:id/view', async (req, res) => {
         
         .print-button:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
         }
         
         .status-badge {
@@ -1698,10 +1700,9 @@ router.get('/:id/view', async (req, res) => {
         .summary-box {
             background: white;
             padding: 25px;
-            border: none;
+            border: 2px solid var(--luxury-navy);
             border-radius: 12px;
             width: 450px;
-            box-shadow: 0 0 0 2px var(--luxury-navy), 0 4px 12px rgba(0, 0, 0, 0.1);
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             orphans: 5;
@@ -1808,7 +1809,7 @@ router.get('/:id/view', async (req, res) => {
         }
 
         .expenses-table tr:hover {
-            background: #f8f9fa;
+            background: white;
         }
 
         .expenses-table .date-cell {
@@ -2002,7 +2003,7 @@ router.get('/:id/view', async (req, res) => {
         }
         
         .rental-table tr:nth-child(even) {
-            background: #f8fafc;
+            background: white;
         }
         
         .rental-table .totals-row {
@@ -2064,7 +2065,7 @@ router.get('/:id/view', async (req, res) => {
             }
 
             .statement-meta {
-                background: #f8f9fa !important;
+                background: white !important;
                 border: 1px solid #e9ecef;
             }
 
@@ -2123,8 +2124,8 @@ router.get('/:id/view', async (req, res) => {
             .channel-badge {
                 font-size: 6px;
                 padding: 2px 4px;
-                background: #e5e7eb !important;
-                color: #333 !important;
+                background: #f4e7c1 !important;
+                color: #1e3a5f !important;
             }
 
             .section-title {
@@ -2269,8 +2270,8 @@ router.get('/:id/view', async (req, res) => {
         body.pdf-mode .channel-badge {
             font-size: 6px;
             padding: 2px 4px;
-            background: #e5e7eb !important;
-            color: #333 !important;
+            background: #f4e7c1 !important;
+            color: #1e3a5f !important;
         }
 
         body.pdf-mode .section-title {
@@ -2470,10 +2471,15 @@ router.get('/:id/view', async (req, res) => {
                                     grossPayout = clientRevenue - luxuryFee;
                                 }
 
+                                // Get property nickname for combined statements
+                                const propertyNickname = propSettings.nickname || '';
+                                const isCombined = statement.propertyIds && statement.propertyIds.length > 1;
+
                                 return `
                                 <tr>
                                     <td class="guest-details-cell">
                                         <div class="guest-name">${reservation.guestName}</div>
+                                        ${isCombined && propertyNickname ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyNickname}</div>` : ''}
                                         <div class="guest-info">${(() => {
                                             const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
                                             const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
@@ -2854,7 +2860,10 @@ router.get('/:id/download', async (req, res) => {
 
         // Get property nickname for filename (nickname only, no ID)
         let propertyNickname = 'Statement';
-        if (statement.propertyId) {
+        if (statement.propertyName) {
+            // Use stored property name (works for both single and combined statements)
+            propertyNickname = statement.propertyName;
+        } else if (statement.propertyId) {
             try {
                 const listing = await ListingService.getListingWithPmFee(statement.propertyId);
                 if (listing && listing.nickname) {

@@ -65,7 +65,9 @@ export interface Statement {
   ownerId: number;
   ownerName: string;
   propertyId?: number | null;
+  propertyIds?: number[] | null;
   propertyName: string;
+  isCombinedStatement?: boolean;
   weekStartDate: string;
   weekEndDate: string;
   calculationType?: 'checkout' | 'calendar';

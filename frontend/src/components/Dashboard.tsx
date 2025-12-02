@@ -328,13 +328,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             const toastId = showToast('Regenerating statement...', 'loading');
             try {
               await statementsAPI.deleteStatement(id);
-              await statementsAPI.generateStatement({
-                ownerId: statement.ownerId.toString(),
-                propertyId: statement.propertyId?.toString() || '',
-                startDate: statement.weekStartDate,
-                endDate: statement.weekEndDate,
-                calculationType: statement.calculationType || 'checkout'
-              });
+              // Check if this is a combined statement (has propertyIds array)
+              if (statement.propertyIds && statement.propertyIds.length > 0) {
+                await statementsAPI.generateStatement({
+                  ownerId: statement.ownerId.toString(),
+                  propertyIds: statement.propertyIds.map(id => id.toString()),
+                  startDate: statement.weekStartDate,
+                  endDate: statement.weekEndDate,
+                  calculationType: statement.calculationType || 'checkout'
+                });
+              } else {
+                await statementsAPI.generateStatement({
+                  ownerId: statement.ownerId.toString(),
+                  propertyId: statement.propertyId?.toString() || '',
+                  startDate: statement.weekStartDate,
+                  endDate: statement.weekEndDate,
+                  calculationType: statement.calculationType || 'checkout'
+                });
+              }
               updateToast(toastId, 'Statement regenerated successfully', 'success');
               await loadStatements();
             } catch (err) {
@@ -468,13 +479,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               }
 
               await statementsAPI.deleteStatement(id);
-              await statementsAPI.generateStatement({
-                ownerId: statement.ownerId.toString(),
-                propertyId: statement.propertyId?.toString() || '',
-                startDate: statement.weekStartDate,
-                endDate: statement.weekEndDate,
-                calculationType: statement.calculationType || 'checkout'
-              });
+              // Check if this is a combined statement (has propertyIds array)
+              if (statement.propertyIds && statement.propertyIds.length > 0) {
+                await statementsAPI.generateStatement({
+                  ownerId: statement.ownerId.toString(),
+                  propertyIds: statement.propertyIds.map(id => id.toString()),
+                  startDate: statement.weekStartDate,
+                  endDate: statement.weekEndDate,
+                  calculationType: statement.calculationType || 'checkout'
+                });
+              } else {
+                await statementsAPI.generateStatement({
+                  ownerId: statement.ownerId.toString(),
+                  propertyId: statement.propertyId?.toString() || '',
+                  startDate: statement.weekStartDate,
+                  endDate: statement.weekEndDate,
+                  calculationType: statement.calculationType || 'checkout'
+                });
+              }
               successCount++;
             } catch (err) {
               failCount++;
