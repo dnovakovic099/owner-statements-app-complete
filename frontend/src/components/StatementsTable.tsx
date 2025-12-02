@@ -292,13 +292,22 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     },
     {
       id: 'week',
-      accessorFn: (row) => `${row.weekStartDate} - ${row.weekEndDate}`,
-      header: () => <span className="font-semibold text-gray-600">Period</span>,
+      accessorFn: (row) => row.weekStartDate,
+      header: ({ column }) => (
+        <button
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
+        >
+          Period
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
+      ),
       cell: ({ row }) => (
         <span className="text-gray-700 whitespace-nowrap">
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
         </span>
       ),
+      sortingFn: 'datetime',
       meta: { align: 'left' },
     },
     {
