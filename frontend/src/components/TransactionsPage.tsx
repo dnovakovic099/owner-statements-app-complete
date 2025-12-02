@@ -96,9 +96,9 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
       ));
       
       setCategorizationModal({ isOpen: false, transaction: null });
-      alert('✅ Transaction categorized successfully');
+      alert('Transaction categorized successfully');
     } catch (err) {
-      alert(`❌ Failed to categorize transaction: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(`Failed to categorize transaction: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setCategorizing(null);
     }
@@ -175,7 +175,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold">💰 QuickBooks Transactions</h1>
+              <h1 className="text-2xl font-bold">QuickBooks Transactions</h1>
               <p className="text-white/80 text-sm mt-1">Categorize transactions by property and department</p>
             </div>
             <div className="flex space-x-3">

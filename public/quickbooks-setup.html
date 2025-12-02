@@ -61,7 +61,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔗 QuickBooks Integration Setup</h1>
+            <h1>QuickBooks Integration Setup</h1>
             <p>Connect your QuickBooks account to enable transaction categorization</p>
         </div>
 
@@ -69,7 +69,7 @@
             <h3>Step 1: Current Status</h3>
             <div id="status-container">
                 <div class="status warning">
-                    ⚠️ Checking QuickBooks connection status...
+                    Checking QuickBooks connection status...
                 </div>
             </div>
         </div>
@@ -78,7 +78,7 @@
             <h3>Step 2: Connect to QuickBooks</h3>
             <p>Click the button below to authorize your Owner Statements app to access your QuickBooks data:</p>
             <button id="connect-btn" class="button" onclick="connectQuickBooks()">
-                🔗 Connect to QuickBooks
+                Connect to QuickBooks
             </button>
             <div id="auth-url" class="code-block" style="display: none;"></div>
         </div>
@@ -86,18 +86,18 @@
         <div class="step">
             <h3>Step 3: What This Enables</h3>
             <ul>
-                <li>✅ Import transactions from QuickBooks</li>
-                <li>✅ Categorize transactions by property</li>
-                <li>✅ Assign transactions to departments</li>
-                <li>✅ Generate detailed financial reports</li>
-                <li>✅ Sync data between systems</li>
+                <li>Import transactions from QuickBooks</li>
+                <li>Categorize transactions by property</li>
+                <li>Assign transactions to departments</li>
+                <li>Generate detailed financial reports</li>
+                <li>Sync data between systems</li>
             </ul>
         </div>
 
         <div class="step">
             <h3>Step 4: Test Connection</h3>
             <button id="test-btn" class="button" onclick="testConnection()" disabled>
-                🧪 Test QuickBooks Connection
+                Test QuickBooks Connection
             </button>
             <div id="test-results"></div>
         </div>
@@ -123,18 +123,18 @@
                 const statusContainer = document.getElementById('status-container');
                 
                 if (data.message === 'QuickBooks not connected') {
-                    statusContainer.innerHTML = '<div class="status warning">⚠️ QuickBooks not connected - Ready to set up</div>';
+                    statusContainer.innerHTML = '<div class="status warning">QuickBooks not connected - Ready to set up</div>';
                     await getAuthUrl();
                 } else if (data.success && data.count > 0) {
-                    statusContainer.innerHTML = '<div class="status success">✅ QuickBooks connected successfully! Found ' + data.count + ' transactions</div>';
+                    statusContainer.innerHTML = '<div class="status success">QuickBooks connected successfully! Found ' + data.count + ' transactions</div>';
                     document.getElementById('test-btn').disabled = false;
                 } else {
-                    statusContainer.innerHTML = '<div class="status success">✅ QuickBooks connected but no transactions found</div>';
+                    statusContainer.innerHTML = '<div class="status success">QuickBooks connected but no transactions found</div>';
                     document.getElementById('test-btn').disabled = false;
                 }
             } catch (error) {
                 console.error('Status check error:', error);
-                document.getElementById('status-container').innerHTML = '<div class="status error">❌ Error checking status: ' + error.message + '</div>';
+                document.getElementById('status-container').innerHTML = '<div class="status error">Error checking status: ' + error.message + '</div>';
                 // Still try to get auth URL even if status check fails
                 await getAuthUrl();
             }
@@ -178,9 +178,9 @@
                 window.open(authUrl, '_blank');
                 
                 // Show instructions
-                document.getElementById('connect-btn').innerHTML = '⏳ Waiting for authorization...';
+                document.getElementById('connect-btn').innerHTML = 'Waiting for authorization...';
                 document.getElementById('connect-btn').disabled = true;
-                
+
                 // Check status every 5 seconds
                 const checkInterval = setInterval(() => {
                     checkStatus().then(() => {
@@ -188,15 +188,15 @@
                         const statusDiv = document.querySelector('.status');
                         if (statusDiv && statusDiv.classList.contains('success')) {
                             clearInterval(checkInterval);
-                            document.getElementById('connect-btn').innerHTML = '✅ Connected!';
+                            document.getElementById('connect-btn').innerHTML = 'Connected!';
                         }
                     });
                 }, 5000);
-                
+
                 // Stop checking after 2 minutes
                 setTimeout(() => {
                     clearInterval(checkInterval);
-                    document.getElementById('connect-btn').innerHTML = '🔗 Connect to QuickBooks';
+                    document.getElementById('connect-btn').innerHTML = 'Connect to QuickBooks';
                     document.getElementById('connect-btn').disabled = false;
                 }, 120000);
             } else {
@@ -209,7 +209,7 @@
 
         async function testConnection() {
             const testResults = document.getElementById('test-results');
-            testResults.innerHTML = '<div class="status warning">⏳ Testing connection...</div>';
+            testResults.innerHTML = '<div class="status warning">Testing connection...</div>';
             
             try {
                 // Test multiple endpoints
@@ -231,18 +231,18 @@
                         const data = await response.json();
                         
                         if (data.success) {
-                            results += `<div class="status success">✅ ${test.name}: ${data.data ? data.data.length : 0} items</div>`;
+                            results += `<div class="status success">${test.name}: ${data.data ? data.data.length : 0} items</div>`;
                         } else {
-                            results += `<div class="status error">❌ ${test.name}: ${data.error || 'Failed'}</div>`;
+                            results += `<div class="status error">${test.name}: ${data.error || 'Failed'}</div>`;
                         }
                     } catch (error) {
-                        results += `<div class="status error">❌ ${test.name}: ${error.message}</div>`;
+                        results += `<div class="status error">${test.name}: ${error.message}</div>`;
                     }
                 }
                 
                 testResults.innerHTML = results;
             } catch (error) {
-                testResults.innerHTML = '<div class="status error">❌ Test failed: ' + error.message + '</div>';
+                testResults.innerHTML = '<div class="status error">Test failed: ' + error.message + '</div>';
             }
         }
     </script>

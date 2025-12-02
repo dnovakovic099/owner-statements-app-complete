@@ -21,9 +21,9 @@ async function syncDatabase() {
             : { force: false };
         
         await sequelize.sync(syncOptions);
-        console.log('✅ Database models synchronized');
+        console.log('Database models synchronized');
     } catch (error) {
-        console.error('❌ Error synchronizing database:', error);
+        console.error('Error synchronizing database:', error);
         throw error;
     }
 }

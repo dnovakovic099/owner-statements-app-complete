@@ -142,8 +142,8 @@ class PropertyMappingService {
         console.log('=== Property Mapping Status ===');
         for (const propertyId of propertyIds) {
             const status = await this.getMappingStatus(propertyId);
-            const mappingType = status.isManualOverride ? '🔧 MANUAL' : '🤖 AUTO';
-            const statusIcon = status.isValidMapping ? '✅ MAPPED' : '⚠️  NO MAPPING';
+            const mappingType = status.isManualOverride ? 'MANUAL' : 'AUTO';
+            const statusIcon = status.isValidMapping ? 'MAPPED' : 'NO MAPPING';
             console.log(`Property ${propertyId}: "${status.listingName || 'NO MAPPING'}" ${mappingType} ${statusIcon}`);
             if (status.hostifyNickname || status.hostifyName) {
                 console.log(`  └─ Hostify Nickname: "${status.hostifyNickname || status.hostifyName}"`);

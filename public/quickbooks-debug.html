@@ -67,11 +67,11 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔧 QuickBooks Debug Helper</h1>
+        <h1>QuickBooks Debug Helper</h1>
         <p>This page will help you manually get the QuickBooks tokens step by step.</p>
 
         <div class="step">
-            <h3>📋 Step 1: Get Your Authorization URL</h3>
+            <h3>Step 1: Get Your Authorization URL</h3>
             <p>Your QuickBooks authorization URL is:</p>
             <div class="code-box" id="auth-url">Loading...</div>
             <p><strong>What to do:</strong></p>
@@ -85,7 +85,7 @@
         </div>
 
         <div class="step">
-            <h3>🔍 Step 2: Extract Values from Callback URL</h3>
+            <h3>Step 2: Extract Values from Callback URL</h3>
             <p>After authorization, you'll be redirected to a URL that looks like this:</p>
             <div class="code-box">
 http://localhost:3003/api/quickbooks/auth/callback?<span class="highlight">code=AB11234567890</span>&<span class="highlight">realmId=9130359982560895033</span>&state=xyz123
@@ -98,7 +98,7 @@ http://localhost:3003/api/quickbooks/auth/callback?<span class="highlight">code=
         </div>
 
         <div class="step">
-            <h3>🔄 Step 3: Exchange Code for Tokens</h3>
+            <h3>Step 3: Exchange Code for Tokens</h3>
             <p>Use this curl command to get your access tokens:</p>
             <div class="code-box">
 curl -X POST "http://localhost:3003/api/quickbooks/auth/callback" \
@@ -117,13 +117,13 @@ curl -X POST "http://localhost:3003/api/quickbooks/auth/callback" \
         </div>
 
         <div class="step">
-            <h3>💾 Step 4: Use Manual Setup Page</h3>
+            <h3>Step 4: Use Manual Setup Page</h3>
             <p>Once you have the tokens from step 3, use the manual setup page:</p>
-            <a href="/quickbooks-manual.html" class="button">🔗 Go to Manual Setup Page</a>
+            <a href="/quickbooks-manual.html" class="button">Go to Manual Setup Page</a>
         </div>
 
         <div class="warning">
-            <strong>⚠️ Important Notes:</strong>
+            <strong>Important Notes:</strong>
             <ul>
                 <li>The callback URL will show an error - ignore it, just look at the URL parameters</li>
                 <li>The authorization code can only be used once</li>

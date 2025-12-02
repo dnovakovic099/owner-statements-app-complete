@@ -83,11 +83,11 @@ function test(name, fn) {
     try {
         fn();
         passCount++;
-        console.log(`  ✅ PASS: ${name}`);
+        console.log(`  PASS: ${name}`);
     } catch (error) {
         failCount++;
         failures.push({ name, error: error.message });
-        console.log(`  ❌ FAIL: ${name}`);
+        console.log(`  FAIL: ${name}`);
         console.log(`     Error: ${error.message}`);
     }
 }
@@ -825,9 +825,9 @@ if (failures.length > 0) {
 
 console.log('\n' + '='.repeat(60));
 if (failCount === 0) {
-    console.log('✅ ALL TESTS PASSED - 100% CONFIDENCE IN COLOR LOGIC');
+    console.log('ALL TESTS PASSED - 100% CONFIDENCE IN COLOR LOGIC');
 } else {
-    console.log('❌ SOME TESTS FAILED - REVIEW REQUIRED');
+    console.log('SOME TESTS FAILED - REVIEW REQUIRED');
     process.exitCode = 1;
 }
 console.log('='.repeat(60) + '\n');

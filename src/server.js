@@ -130,7 +130,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
                 </style>
             </head>
             <body>
-                <div class="success">✅ Connected to QuickBooks!</div>
+                <div class="success">Connected to QuickBooks!</div>
                 <p>You can now access QuickBooks data. You can close this window.</p>
                 <a href="http://localhost:3000" class="button">Return to Application</a>
                 <script>
@@ -157,7 +157,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
                 </style>
             </head>
             <body>
-                <div class="error">❌ OAuth Error</div>
+                <div class="error">OAuth Error</div>
                 <p>Error: ${error.message}</p>
                 <a href="http://localhost:3000" class="button">Return to Application</a>
             </body>
@@ -209,28 +209,28 @@ app.use((err, req, res, next) => {
 async function startServer() {
     try {
         // Initialize database (PostgreSQL on Railway, SQLite locally)
-        console.log('🔄 Initializing database...');
+        console.log('Initializing database...');
         await syncDatabase();
-        console.log('✅ Database initialized successfully');
-        
+        console.log('Database initialized successfully');
+
         // Sync listings from Hostify on startup (runs in background)
-        console.log('🔄 Syncing listings from Hostify...');
+        console.log('Syncing listings from Hostify...');
         ListingService.syncListingsFromHostify()
             .then(result => {
-                console.log(`✅ Synced ${result.synced} listings from Hostify`);
+                console.log(`Synced ${result.synced} listings from Hostify`);
             })
             .catch(err => {
-                console.warn('⚠️  Listing sync failed (will retry later):', err.message);
+                console.warn('Listing sync failed (will retry later):', err.message);
             });
-        
+
         // Start server
         app.listen(PORT, () => {
-            console.log(`🚀 Owner Statements Server running on port ${PORT}`);
-            console.log(`📊 Dashboard available at: http://localhost:${PORT}`);
-            console.log(`📝 API documentation: http://localhost:${PORT}/api`);
+            console.log(`Owner Statements Server running on port ${PORT}`);
+            console.log(`Dashboard available at: http://localhost:${PORT}`);
+            console.log(`API documentation: http://localhost:${PORT}/api`);
         });
     } catch (error) {
-        console.error('❌ Failed to start server:', error);
+        console.error('Failed to start server:', error);
         process.exit(1);
     }
 }

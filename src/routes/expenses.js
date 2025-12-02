@@ -56,7 +56,7 @@ router.post('/upload', upload.single('expenseFile'), async (req, res) => {
             });
         }
 
-        console.log(`📤 Processing uploaded expense file: ${req.file.originalname}`);
+        console.log(`Processing uploaded expense file: ${req.file.originalname}`);
         
         // Parse the uploaded file
         const expenses = await ExpenseUploadService.parseExpenseFile(req.file.path, req.file.originalname);
@@ -86,7 +86,7 @@ router.post('/upload', upload.single('expenseFile'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error uploading expenses:', error);
+        console.error('Error uploading expenses:', error);
         
         // Clean up temp file on error
         if (req.file && req.file.path) {
@@ -133,7 +133,7 @@ router.get('/uploaded', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error fetching uploaded expenses:', error);
+        console.error('Error fetching uploaded expenses:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to fetch uploaded expenses'
@@ -160,7 +160,7 @@ router.get('/duplicates', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error checking duplicates:', error);
+        console.error('Error checking duplicates:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to check for duplicates'
@@ -186,7 +186,7 @@ router.delete('/uploaded/:filename', async (req, res) => {
         
         // Delete the file
         await fs.unlink(filePath);
-        console.log(`🗑️  Deleted uploaded expense file: ${filename}`);
+        console.log(`Deleted uploaded expense file: ${filename}`);
 
         res.json({
             success: true,
@@ -194,7 +194,7 @@ router.delete('/uploaded/:filename', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error deleting expense file:', error);
+        console.error('Error deleting expense file:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete expense file'

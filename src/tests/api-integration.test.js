@@ -60,10 +60,10 @@ async function runTests() {
     async function test(name, fn) {
         try {
             await fn();
-            console.log(`✅ PASS: ${name}`);
+            console.log(`PASS: ${name}`);
             passed++;
         } catch (error) {
-            console.log(`❌ FAIL: ${name}`);
+            console.log(`FAIL: ${name}`);
             console.log(`   Error: ${error.message}`);
             failed++;
         }
@@ -75,12 +75,12 @@ async function runTests() {
     try {
         const healthCheck = await makeRequest('GET', '/api/statements');
         if (healthCheck.status === 0) {
-            console.log('❌ Server is not running. Please start the server first.');
+            console.log('Server is not running. Please start the server first.');
             process.exit(1);
         }
-        console.log('✅ Server is running\n');
+        console.log('Server is running\n');
     } catch (error) {
-        console.log('❌ Server is not running. Please start the server first.');
+        console.log('Server is not running. Please start the server first.');
         console.log(`   Error: ${error.message}`);
         process.exit(1);
     }
@@ -210,7 +210,7 @@ async function runTests() {
 
         const existingStatement = listResponse.data.statements.find(s => s.propertyId);
         if (!existingStatement) {
-            console.log('   ⚠ No single-property statement found to test regenerate');
+            console.log('   No single-property statement found to test regenerate');
             return;
         }
 
@@ -240,7 +240,7 @@ async function runTests() {
     if (failed > 0) {
         process.exit(1);
     } else {
-        console.log('\n✅ All integration tests passed!\n');
+        console.log('\nAll integration tests passed!\n');
         process.exit(0);
     }
 }

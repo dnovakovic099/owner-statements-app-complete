@@ -12,7 +12,7 @@ const path = require('path');
 const { Statement, UploadedExpense, syncDatabase } = require('../src/models');
 
 async function migrateStatements() {
-    console.log('\n📄 Migrating Statements from JSON files...');
+    console.log('\nMigrating Statements from JSON files...');
     console.log('='.repeat(60));
     
     const statementsDir = path.join(__dirname, '../statements');
@@ -36,34 +36,34 @@ async function migrateStatements() {
                 // Check if statement already exists in database
                 const existing = await Statement.findByPk(statementData.id);
                 if (existing) {
-                    console.log(`  ⏭️  Statement ${statementData.id} already exists, skipping`);
+                    console.log(`  Statement ${statementData.id} already exists, skipping`);
                     skipped++;
                     continue;
                 }
-                
+
                 // Create statement in database
                 await Statement.create(statementData);
-                console.log(`  ✅ Migrated statement ${statementData.id} - ${statementData.propertyName}`);
+                console.log(`  Migrated statement ${statementData.id} - ${statementData.propertyName}`);
                 migrated++;
-                
+
             } catch (error) {
-                console.error(`  ❌ Error migrating ${file}:`, error.message);
+                console.error(`  Error migrating ${file}:`, error.message);
                 errors++;
             }
         }
         
-        console.log('\n📊 Statement Migration Summary:');
+        console.log('\nStatement Migration Summary:');
         console.log(`  Migrated: ${migrated}`);
         console.log(`  Skipped: ${skipped}`);
         console.log(`  Errors: ${errors}`);
-        
+
     } catch (error) {
-        console.error('❌ Error reading statements directory:', error.message);
+        console.error('Error reading statements directory:', error.message);
     }
 }
 
 async function migrateUploadedExpenses() {
-    console.log('\n💰 Migrating Uploaded Expenses from JSON files...');
+    console.log('\nMigrating Uploaded Expenses from JSON files...');
     console.log('='.repeat(60));
     
     const uploadsDir = path.join(__dirname, '../uploads/expenses');
@@ -85,19 +85,19 @@ async function migrateUploadedExpenses() {
                 const expenseData = JSON.parse(content);
                 
                 if (!expenseData.expenses || !Array.isArray(expenseData.expenses)) {
-                    console.log(`  ⚠️  Invalid format in ${file}, skipping`);
+                    console.log(`  Invalid format in ${file}, skipping`);
                     skipped++;
                     continue;
                 }
-                
+
                 // Check if expenses from this file already exist
                 const uploadFilename = path.parse(file).name;
                 const existingCount = await UploadedExpense.count({
                     where: { uploadFilename }
                 });
-                
+
                 if (existingCount > 0) {
-                    console.log(`  ⏭️  Expenses from ${file} already migrated, skipping`);
+                    console.log(`  Expenses from ${file} already migrated, skipping`);
                     skipped++;
                     continue;
                 }
@@ -111,38 +111,38 @@ async function migrateUploadedExpenses() {
                 
                 // Bulk create expenses
                 await UploadedExpense.bulkCreate(expensesWithMetadata);
-                console.log(`  ✅ Migrated ${expensesWithMetadata.length} expenses from ${file}`);
+                console.log(`  Migrated ${expensesWithMetadata.length} expenses from ${file}`);
                 migrated += expensesWithMetadata.length;
-                
+
             } catch (error) {
-                console.error(`  ❌ Error migrating ${file}:`, error.message);
+                console.error(`  Error migrating ${file}:`, error.message);
                 errors++;
             }
         }
         
-        console.log('\n📊 Expense Migration Summary:');
+        console.log('\nExpense Migration Summary:');
         console.log(`  Migrated: ${migrated} expenses`);
         console.log(`  Skipped: ${skipped} files`);
         console.log(`  Errors: ${errors}`);
-        
+
     } catch (error) {
-        console.error('❌ Error reading uploads directory:', error.message);
+        console.error('Error reading uploads directory:', error.message);
         console.log('   (This is OK if you have no uploaded expenses yet)');
     }
 }
 
 async function main() {
     console.log('='.repeat(60));
-    console.log('🔄 DATABASE MIGRATION SCRIPT');
+    console.log('DATABASE MIGRATION SCRIPT');
     console.log('='.repeat(60));
     console.log('This will migrate your existing JSON files to the database.');
     console.log('');
-    
+
     try {
         // Initialize database first
-        console.log('🔧 Initializing database...');
+        console.log('Initializing database...');
         await syncDatabase();
-        console.log('✅ Database initialized\n');
+        console.log('Database initialized\n');
         
         // Migrate statements
         await migrateStatements();
@@ -151,18 +151,18 @@ async function main() {
         await migrateUploadedExpenses();
         
         console.log('\n' + '='.repeat(60));
-        console.log('✅ MIGRATION COMPLETED SUCCESSFULLY!');
+        console.log('MIGRATION COMPLETED SUCCESSFULLY!');
         console.log('='.repeat(60));
-        console.log('\n💡 Next steps:');
+        console.log('\nNext steps:');
         console.log('   1. Test your app locally to verify everything works');
         console.log('   2. Deploy to Railway');
         console.log('   3. Run this script on Railway if needed');
         console.log('');
-        
+
         process.exit(0);
-        
+
     } catch (error) {
-        console.error('\n❌ MIGRATION FAILED:', error);
+        console.error('\nMIGRATION FAILED:', error);
         process.exit(1);
     }
 }

@@ -64,10 +64,10 @@ let failed = 0;
 function test(name, fn) {
     try {
         fn();
-        console.log(`✅ PASS: ${name}`);
+        console.log(`PASS: ${name}`);
         passed++;
     } catch (error) {
-        console.log(`❌ FAIL: ${name}`);
+        console.log(`FAIL: ${name}`);
         console.log(`   Error: ${error.message}`);
         failed++;
     }
@@ -170,6 +170,6 @@ console.log('='.repeat(60));
 if (failed > 0) {
     process.exit(1);
 } else {
-    console.log('\n✅ All tests passed!\n');
+    console.log('\nAll tests passed!\n');
     process.exit(0);
 }

@@ -37,10 +37,10 @@ class HostawayService {
             this.authToken = response.data.access_token;
             this.tokenExpires = Date.now() + (response.data.expires_in * 1000) - 300000; // 5 min buffer
 
-            console.log('✅ Hostaway access token obtained successfully');
+            console.log('Hostaway access token obtained successfully');
             return this.authToken;
         } catch (error) {
-            console.error('❌ Hostaway auth error:', error.response?.data || error.message);
+            console.error('Hostaway auth error:', error.response?.data || error.message);
             throw new Error('Failed to authenticate with Hostaway');
         }
     }
@@ -479,12 +479,12 @@ class HostawayService {
             });
             
             const uniqueReservations = Array.from(allReservations.values());
-            console.log(`✅ Found ${uniqueReservations.length} unique overlapping reservations`);
+            console.log(`Found ${uniqueReservations.length} unique overlapping reservations`);
             
             return uniqueReservations;
             
         } catch (error) {
-            console.error('❌ Error fetching overlapping reservations:', error);
+            console.error('Error fetching overlapping reservations:', error);
             throw error;
         }
     }
@@ -527,14 +527,14 @@ class HostawayService {
             );
 
             if (response.data && response.data.result) {
-                console.log(`✅ Got ${response.data.result.rows.length} reservations from consolidated finance report`);
+                console.log(`Got ${response.data.result.rows.length} reservations from consolidated finance report`);
                 return this.transformConsolidatedFinanceData(response.data.result);
             }
 
             console.log('No data returned from consolidated finance report');
             return [];
         } catch (error) {
-            console.error('❌ Consolidated finance report error:', error.response?.data || error.message);
+            console.error('Consolidated finance report error:', error.response?.data || error.message);
             throw new Error('Failed to fetch consolidated finance report');
         }
     }

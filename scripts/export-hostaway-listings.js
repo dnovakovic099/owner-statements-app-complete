@@ -123,29 +123,29 @@ function flattenListing(listing) {
 }
 
 async function exportListingsToCSV() {
-    console.log('🏠 Starting Hostaway Listings Export...\n');
-    
+    console.log('Starting Hostaway Listings Export...\n');
+
     try {
         // Initialize Hostaway service (it's exported as a singleton)
         const hostawayService = HostawayService;
-        
+
         // Fetch all listings
-        console.log('📡 Fetching all listings from Hostaway...');
+        console.log('Fetching all listings from Hostaway...');
         const response = await hostawayService.getAllProperties();
-        
+
         if (!response.result || response.result.length === 0) {
-            console.log('❌ No listings found');
+            console.log('No listings found');
             return;
         }
-        
-        console.log(`✅ Found ${response.result.length} listings\n`);
-        
+
+        console.log(`Found ${response.result.length} listings\n`);
+
         // Flatten listings for CSV
-        console.log('🔄 Processing listings data...');
+        console.log('Processing listings data...');
         const flattenedListings = response.result.map(flattenListing);
         
         // Generate CSV content
-        console.log('📝 Generating CSV content...');
+        console.log('Generating CSV content...');
         const csvContent = arrayToCSV(flattenedListings);
         
         // Create output directory if it doesn't exist
@@ -162,12 +162,12 @@ async function exportListingsToCSV() {
         // Write CSV file
         fs.writeFileSync(filepath, csvContent, 'utf8');
         
-        console.log(`✅ CSV file created successfully!`);
-        console.log(`📁 File location: ${filepath}`);
-        console.log(`📊 Total listings exported: ${flattenedListings.length}`);
-        
+        console.log(`CSV file created successfully!`);
+        console.log(`File location: ${filepath}`);
+        console.log(`Total listings exported: ${flattenedListings.length}`);
+
         // Display summary
-        console.log('\n📋 Listings Summary:');
+        console.log('\nListings Summary:');
         const statusCounts = {};
         const typeCounts = {};
         
@@ -191,10 +191,10 @@ async function exportListingsToCSV() {
             console.log(`  ${type}: ${count}`);
         });
         
-        console.log(`\n🎉 Export completed successfully!`);
-        
+        console.log(`\nExport completed successfully!`);
+
     } catch (error) {
-        console.error('❌ Error exporting listings:', error.message);
+        console.error('Error exporting listings:', error.message);
         console.error('Full error:', error);
         process.exit(1);
     }

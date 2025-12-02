@@ -8,7 +8,7 @@ class ListingService {
      * Preserves PM fees, updates other listing info
      */
     async syncListingsFromHostify() {
-        console.log('🔄 Syncing listings from Hostify to database...');
+        console.log('Syncing listings from Hostify to database...');
         
         try {
             const response = await HostifyService.getAllProperties();
@@ -55,7 +55,7 @@ class ListingService {
                 }
             }
 
-            console.log(`✅ Synced ${synced} listings from Hostify (${errors} errors)`);
+            console.log(`Synced ${synced} listings from Hostify (${errors} errors)`);
             return { synced, errors };
 
         } catch (error) {
@@ -121,7 +121,7 @@ class ListingService {
             }
 
             await listing.update({ pmFeePercentage });
-            console.log(`✅ Updated PM fee for listing ${listingId}: ${pmFeePercentage}%`);
+            console.log(`Updated PM fee for listing ${listingId}: ${pmFeePercentage}%`);
             
             return listing.toJSON();
         } catch (error) {
@@ -187,7 +187,7 @@ class ListingService {
             }
 
             await listing.update({ displayName });
-            console.log(`✅ Updated display name for listing ${listingId}: ${displayName}`);
+            console.log(`Updated display name for listing ${listingId}: ${displayName}`);
             
             return listing.toJSON();
         } catch (error) {
@@ -208,7 +208,7 @@ class ListingService {
             }
 
             await listing.update({ isCohostOnAirbnb });
-            console.log(`✅ Updated co-host status for listing ${listingId}: ${isCohostOnAirbnb}`);
+            console.log(`Updated co-host status for listing ${listingId}: ${isCohostOnAirbnb}`);
             
             return listing.toJSON();
         } catch (error) {
@@ -237,7 +237,7 @@ class ListingService {
             if (config.tags !== undefined) updates.tags = config.tags;
 
             await listing.update(updates);
-            console.log(`✅ Updated listing ${listingId} configuration`);
+            console.log(`Updated listing ${listingId} configuration`);
             
             return listing.toJSON();
         } catch (error) {

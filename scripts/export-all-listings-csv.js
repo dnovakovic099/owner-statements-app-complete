@@ -19,16 +19,16 @@ async function exportAllListingsToCSV() {
 
     try {
         // Fetch all listings from Hostify
-        console.log('📋 Fetching all listings from Hostify...');
+        console.log('Fetching all listings from Hostify...');
         const response = await HostifyService.getAllProperties();
-        
+
         if (!response.result || response.result.length === 0) {
-            console.log('⚠️  No listings found in Hostify');
+            console.log('No listings found in Hostify');
             return;
         }
 
         const listings = response.result;
-        console.log(`✅ Found ${listings.length} listings`);
+        console.log(`Found ${listings.length} listings`);
         console.log('');
 
         // Create CSV header
@@ -55,14 +55,14 @@ async function exportAllListingsToCSV() {
         // Write CSV file
         await fs.writeFile(filepath, csvContent, 'utf8');
 
-        console.log('📄 CSV File Details:');
+        console.log('CSV File Details:');
         console.log(`   Filename: ${filename}`);
         console.log(`   Location: ${filepath}`);
         console.log(`   Total Listings: ${listings.length}`);
         console.log('');
 
         // Show first 10 listings as preview
-        console.log('📋 Preview (first 10 listings):');
+        console.log('Preview (first 10 listings):');
         console.log('-'.repeat(60));
         listings.slice(0, 10).forEach((listing, index) => {
             console.log(`${index + 1}. ID: ${listing.id} - ${listing.name || listing.nickname || 'N/A'}`);
@@ -72,12 +72,12 @@ async function exportAllListingsToCSV() {
         }
         console.log('-'.repeat(60));
         console.log('');
-        console.log('✅ Export completed successfully!');
+        console.log('Export completed successfully!');
         console.log('='.repeat(60));
 
     } catch (error) {
         console.error('');
-        console.error('❌ ERROR during export:');
+        console.error('ERROR during export:');
         console.error('='.repeat(60));
         console.error('Error message:', error.message);
         if (error.response) {

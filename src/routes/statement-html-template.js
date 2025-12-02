@@ -609,9 +609,9 @@ function generateStatementHTML(statement, id) {
                                 return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
                             })()}</div>
                             <div class="channel-badge">${reservation.source}</div>
-                            ${reservation.prorationNote ? 
+                            ${reservation.prorationNote ?
                                 `<div class="proration-info">
-                                    📅 ${reservation.prorationNote}
+                                    ${reservation.prorationNote}
                                 </div>` : ''
                             }
                         </td>
@@ -689,7 +689,7 @@ function generateStatementHTML(statement, id) {
                                     const [year, month, day] = expense.date.split('-').map(Number);
                                     return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                 })()}
-                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
+                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">Duplicate</span>' : ''}
                             </td>
                             <td style="line-height: 1.5; color: #1f2937; font-weight: 500;">${expense.description}</td>
                             <td style="color: #6b7280; font-size: 11px;">${expense.listing || '-'}</td>
