@@ -207,12 +207,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       return;
     }
 
-    // Validate check-in date is before check-out date
-    if (new Date(customReservation.checkInDate) >= new Date(customReservation.checkOutDate)) {
-      setError('Check-in date must be before check-out date');
-      return;
-    }
-
     const amount = parseFloat(customReservation.amount);
     if (isNaN(amount) || amount <= 0) {
       setError('Please enter a valid amount');
@@ -837,7 +831,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="date"
                           value={customReservation.checkInDate}
                           onChange={(e) => setCustomReservation({...customReservation, checkInDate: e.target.value})}
-                          max={customReservation.checkOutDate && customReservation.checkOutDate < new Date().toISOString().split('T')[0] ? customReservation.checkOutDate : new Date().toISOString().split('T')[0]}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                         />
                       </div>
@@ -850,8 +843,6 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="date"
                           value={customReservation.checkOutDate}
                           onChange={(e) => setCustomReservation({...customReservation, checkOutDate: e.target.value})}
-                          min={customReservation.checkInDate || undefined}
-                          max={new Date().toISOString().split('T')[0]}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                         />
                       </div>

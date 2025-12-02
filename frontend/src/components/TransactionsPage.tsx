@@ -26,7 +26,6 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
     showUncategorized: true,
     showCategorized: true,
   });
-  const [dateError, setDateError] = useState<string | null>(null);
 
   // Categorization modal state
   const [categorizationModal, setCategorizationModal] = useState<{
@@ -42,12 +41,6 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
   }, []);
 
   useEffect(() => {
-    // Validate dates before loading
-    if (filters.startDate && filters.endDate && new Date(filters.startDate) > new Date(filters.endDate)) {
-      setDateError('Start date must be before end date');
-      return;
-    }
-    setDateError(null);
     loadTransactions();
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,8 +213,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                max={filters.endDate && filters.endDate < new Date().toISOString().split('T')[0] ? filters.endDate : new Date().toISOString().split('T')[0]}
-                className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${dateError ? 'border-red-500' : 'border-gray-300'}`}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -230,13 +222,8 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onBack }) => {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                min={filters.startDate || undefined}
-                max={new Date().toISOString().split('T')[0]}
-                className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${dateError ? 'border-red-500' : 'border-gray-300'}`}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              {dateError && (
-                <p className="text-red-500 text-xs mt-1">{dateError}</p>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
