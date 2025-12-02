@@ -251,7 +251,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       ),
       enableSorting: false,
       enableHiding: false,
-      meta: { align: 'center', width: '36px' },
+      meta: { align: 'center', width: '40px' },
     },
     {
       accessorKey: 'ownerName',
@@ -267,7 +267,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => (
         <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
       ),
-      meta: { align: 'left', width: '9%' },
+      meta: { align: 'left' },
     },
     {
       accessorKey: 'propertyName',
@@ -288,7 +288,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'left', width: '18%' },
+      meta: { align: 'left' },
     },
     {
       id: 'week',
@@ -299,7 +299,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
         </span>
       ),
-      meta: { align: 'left', width: '9%' },
+      meta: { align: 'left' },
     },
     {
       accessorKey: 'calculationType',
@@ -319,7 +319,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center', width: '6%' },
+      meta: { align: 'center' },
     },
     {
       accessorKey: 'totalRevenue',
@@ -337,7 +337,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatCurrency(row.getValue('totalRevenue'))}
         </span>
       ),
-      meta: { align: 'right', width: '8%' },
+      meta: { align: 'right' },
     },
     {
       accessorKey: 'ownerPayout',
@@ -358,7 +358,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'right', width: '8%' },
+      meta: { align: 'right' },
     },
     {
       accessorKey: 'status',
@@ -367,7 +367,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center', width: '6%' },
+      meta: { align: 'center' },
     },
     {
       accessorKey: 'createdAt',
@@ -385,7 +385,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
         </span>
       ),
-      meta: { align: 'left', width: '11%' },
+      meta: { align: 'left' },
     },
     {
       id: 'actions',
@@ -454,7 +454,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         );
       },
       enableHiding: false,
-      meta: { align: 'left', width: '15%' },
+      meta: { align: 'left', width: '220px' },
     },
   ];
 
@@ -706,7 +706,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
       {/* Table */}
       <div className="w-full overflow-x-auto">
-        <Table className="w-full min-w-[1100px]" style={{ tableLayout: 'fixed' }}>
+        <Table className="w-full min-w-[900px]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-gray-50 border-b border-gray-200">
