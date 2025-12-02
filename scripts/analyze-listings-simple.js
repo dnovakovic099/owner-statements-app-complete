@@ -30,9 +30,9 @@ function parseSimpleCSV(csvContent) {
 }
 
 function analyzeListings(listings) {
-    console.log('📊 Hostaway Listings Analysis Report\n');
+    console.log('Hostaway Listings Analysis Report\n');
     console.log(`Total Listings: ${listings.length}\n`);
-    
+
     // Basic coverage stats
     const stats = {
         withNames: listings.filter(l => l.name && l.name.trim()).length,
@@ -44,8 +44,8 @@ function analyzeListings(listings) {
         withCleaning: listings.filter(l => l.cleaningFee && l.cleaningFee !== '').length,
         withOwner: listings.filter(l => l.ownerId && l.ownerId !== '').length,
     };
-    
-    console.log('📋 Data Coverage:');
+
+    console.log('Data Coverage:');
     Object.entries(stats).forEach(([key, count]) => {
         const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
         console.log(`  ${label}: ${count} (${(count/listings.length*100).toFixed(1)}%)`);
@@ -59,7 +59,7 @@ function analyzeListings(listings) {
         propertyTypes[type] = (propertyTypes[type] || 0) + 1;
     });
     
-    console.log('🏠 Property Types:');
+    console.log('Property Types:');
     Object.entries(propertyTypes)
         .sort(([,a], [,b]) => b - a)
         .slice(0, 10)
@@ -75,7 +75,7 @@ function analyzeListings(listings) {
         accommodates[acc] = (accommodates[acc] || 0) + 1;
     });
     
-    console.log('👥 Guest Capacity Distribution:');
+    console.log('Guest Capacity Distribution:');
     Object.entries(accommodates)
         .sort(([a], [b]) => {
             const numA = parseInt(a) || 0;
@@ -96,7 +96,7 @@ function analyzeListings(listings) {
         const avgPrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
         const medianPrice = prices[Math.floor(prices.length / 2)];
         
-        console.log('💰 Pricing Analysis (Base Price):');
+        console.log('Pricing Analysis (Base Price):');
         console.log(`  Listings with pricing: ${withPricing.length}`);
         console.log(`  Min price: $${minPrice.toFixed(2)}`);
         console.log(`  Max price: $${maxPrice.toFixed(2)}`);
@@ -111,7 +111,7 @@ function analyzeListings(listings) {
         const fees = withCleaningFee.map(l => parseFloat(l.cleaningFee)).sort((a, b) => a - b);
         const avgFee = fees.reduce((sum, fee) => sum + fee, 0) / fees.length;
         
-        console.log('🧹 Cleaning Fee Analysis:');
+        console.log('Cleaning Fee Analysis:');
         console.log(`  Listings with cleaning fees: ${withCleaningFee.length}`);
         console.log(`  Average cleaning fee: $${avgFee.toFixed(2)}`);
         console.log(`  Min cleaning fee: $${fees[0].toFixed(2)}`);
@@ -126,7 +126,7 @@ function analyzeListings(listings) {
         owners[owner] = (owners[owner] || 0) + 1;
     });
     
-    console.log('👤 Owner Distribution (Top 10):');
+    console.log('Owner Distribution (Top 10):');
     Object.entries(owners)
         .sort(([,a], [,b]) => b - a)
         .slice(0, 10)
@@ -143,7 +143,7 @@ function analyzeListings(listings) {
         l.basePrice && l.basePrice !== ''
     );
     
-    console.log(`📝 Sample Complete Listings (${Math.min(10, completeListings.length)} of ${completeListings.length}):`);
+    console.log(`Sample Complete Listings (${Math.min(10, completeListings.length)} of ${completeListings.length}):`);
     completeListings.slice(0, 10).forEach((listing, index) => {
         console.log(`\n${index + 1}. ${listing.name}`);
         console.log(`   ID: ${listing.id}`);
@@ -157,7 +157,7 @@ function analyzeListings(listings) {
         }
     });
     
-    console.log('\n🎉 Analysis Complete!');
+    console.log('\nAnalysis Complete!');
 }
 
 async function main() {
@@ -170,28 +170,28 @@ async function main() {
             .reverse();
         
         if (files.length === 0) {
-            console.error('❌ No simplified CSV files found in exports directory');
+            console.error('No simplified CSV files found in exports directory');
             process.exit(1);
         }
         
         const csvPath = path.join(exportsDir, files[0]);
-        console.log(`📁 Using CSV: ${files[0]}\n`);
-        
+        console.log(`Using CSV: ${files[0]}\n`);
+
         // Read and parse CSV
-        console.log('📖 Reading CSV file...');
+        console.log('Reading CSV file...');
         const csvContent = fs.readFileSync(csvPath, 'utf8');
         const listings = parseSimpleCSV(csvContent);
         
         if (listings.length === 0) {
-            console.error('❌ No data found in CSV file');
+            console.error('No data found in CSV file');
             process.exit(1);
         }
-        
+
         // Analyze the data
         analyzeListings(listings);
-        
+
     } catch (error) {
-        console.error('❌ Error analyzing listings:', error.message);
+        console.error('Error analyzing listings:', error.message);
         process.exit(1);
     }
 }

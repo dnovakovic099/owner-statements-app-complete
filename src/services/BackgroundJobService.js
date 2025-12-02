@@ -31,7 +31,7 @@ class BackgroundJobService {
             params
         });
 
-        console.log(`📋 Created background job: ${jobId} (${type})`);
+        console.log(`Created background job: ${jobId} (${type})`);
         return jobId;
     }
 
@@ -55,7 +55,7 @@ class BackgroundJobService {
             total,
             progress: 0
         });
-        console.log(`▶️  Started job: ${jobId}`);
+        console.log(`Started job: ${jobId}`);
     }
 
     /**
@@ -74,12 +74,12 @@ class BackgroundJobService {
             completedAt: new Date().toISOString(),
             result
         });
-        console.log(`✅ Completed job: ${jobId}`);
+        console.log(`Completed job: ${jobId}`);
         
         // Auto-cleanup after 1 hour
         setTimeout(() => {
             this.jobs.delete(jobId);
-            console.log(`🗑️  Cleaned up job: ${jobId}`);
+            console.log(`Cleaned up job: ${jobId}`);
         }, 60 * 60 * 1000);
     }
 
@@ -92,7 +92,7 @@ class BackgroundJobService {
             completedAt: new Date().toISOString(),
             error: error.message || String(error)
         });
-        console.error(`❌ Failed job: ${jobId}`, error);
+        console.error(`Failed job: ${jobId}`, error);
         
         // Auto-cleanup after 1 hour
         setTimeout(() => {

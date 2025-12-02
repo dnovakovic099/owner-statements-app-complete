@@ -7,20 +7,20 @@ const { sequelize } = require('../src/models');
 
 async function dropPropertyMappingsTable() {
     try {
-        console.log('🗑️  Dropping property_mappings table...\n');
-        
+        console.log('Dropping property_mappings table...\n');
+
         // Drop the table if it exists
         await sequelize.query('DROP TABLE IF EXISTS "property_mappings" CASCADE;');
-        console.log('✅ Dropped property_mappings table');
-        
+        console.log('Dropped property_mappings table');
+
         // Drop the enum type if it exists
         await sequelize.query('DROP TYPE IF EXISTS "public"."enum_property_mappings_mapping_type" CASCADE;');
-        console.log('✅ Dropped enum_property_mappings_mapping_type enum type');
-        
-        console.log('\n✅ Cleanup complete!');
-        
+        console.log('Dropped enum_property_mappings_mapping_type enum type');
+
+        console.log('\nCleanup complete!');
+
     } catch (error) {
-        console.error('❌ Error:', error.message);
+        console.error('Error:', error.message);
         throw error;
     } finally {
         await sequelize.close();
@@ -29,11 +29,11 @@ async function dropPropertyMappingsTable() {
 
 dropPropertyMappingsTable()
     .then(() => {
-        console.log('✅ Done!');
+        console.log('Done!');
         process.exit(0);
     })
     .catch(error => {
-        console.error('❌ Fatal error:', error);
+        console.error('Fatal error:', error);
         process.exit(1);
     });
 

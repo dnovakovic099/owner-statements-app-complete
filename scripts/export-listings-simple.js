@@ -67,32 +67,32 @@ function extractListingData(listing) {
 }
 
 async function exportListingsToCSV() {
-    console.log('🏠 Exporting Hostaway Listings (Simplified)...\n');
-    
+    console.log('Exporting Hostaway Listings (Simplified)...\n');
+
     try {
         // Initialize Hostaway service
         const hostawayService = HostawayService;
-        
+
         // Fetch all listings
-        console.log('📡 Fetching all listings from Hostaway...');
+        console.log('Fetching all listings from Hostaway...');
         const response = await hostawayService.getAllProperties();
-        
+
         if (!response.result || response.result.length === 0) {
-            console.log('❌ No listings found');
+            console.log('No listings found');
             return;
         }
-        
-        console.log(`✅ Found ${response.result.length} listings\n`);
-        
+
+        console.log(`Found ${response.result.length} listings\n`);
+
         // Extract core data
-        console.log('🔄 Processing listings data...');
+        console.log('Processing listings data...');
         const processedListings = response.result.map(extractListingData);
         
         // Create CSV headers
         const headers = Object.keys(processedListings[0]);
         
         // Generate CSV content
-        console.log('📝 Generating CSV content...');
+        console.log('Generating CSV content...');
         const csvLines = [
             // Header row
             headers.map(escapeCSV).join(','),
@@ -118,12 +118,12 @@ async function exportListingsToCSV() {
         // Write CSV file
         fs.writeFileSync(filepath, csvContent, 'utf8');
         
-        console.log(`✅ CSV file created successfully!`);
-        console.log(`📁 File location: ${filepath}`);
-        console.log(`📊 Total listings exported: ${processedListings.length}`);
-        
+        console.log(`CSV file created successfully!`);
+        console.log(`File location: ${filepath}`);
+        console.log(`Total listings exported: ${processedListings.length}`);
+
         // Display summary statistics
-        console.log('\n📋 Quick Summary:');
+        console.log('\nQuick Summary:');
         
         const withNames = processedListings.filter(l => l.name).length;
         const withAddresses = processedListings.filter(l => l.city).length;
@@ -140,7 +140,7 @@ async function exportListingsToCSV() {
             l.name && l.city && l.bedrooms && l.accommodates
         );
         
-        console.log(`\n📝 Sample Complete Listings (${Math.min(5, completeListings.length)} of ${completeListings.length}):`);
+        console.log(`\nSample Complete Listings (${Math.min(5, completeListings.length)} of ${completeListings.length}):`);
         completeListings.slice(0, 5).forEach((listing, index) => {
             console.log(`\n${index + 1}. ${listing.name}`);
             console.log(`   ID: ${listing.id}`);
@@ -152,10 +152,10 @@ async function exportListingsToCSV() {
             }
         });
         
-        console.log(`\n🎉 Export completed successfully!`);
-        
+        console.log(`\nExport completed successfully!`);
+
     } catch (error) {
-        console.error('❌ Error exporting listings:', error.message);
+        console.error('Error exporting listings:', error.message);
         console.error('Full error:', error);
         process.exit(1);
     }

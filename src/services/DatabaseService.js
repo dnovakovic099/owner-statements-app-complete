@@ -20,7 +20,7 @@ class DatabaseService {
                     // Reload to get the updated timestamp
                     await existing.reload();
                     
-                    console.log(`✅ Updated statement ${statementData.id} in database (updated_at: ${existing.updatedAt})`);
+                    console.log(`Updated statement ${statementData.id} in database (updated_at: ${existing.updatedAt})`);
                     return existing.toJSON();
                 }
             }
@@ -28,7 +28,7 @@ class DatabaseService {
             // Create new statement if it doesn't exist
             const { createdAt, updatedAt, created_at, updated_at, ...dataToCreate } = statementData;
             const statement = await Statement.create(dataToCreate);
-            console.log(`✅ Created statement ${statement.id} in database`);
+            console.log(`Created statement ${statement.id} in database`);
             return statement.toJSON();
         } catch (error) {
             console.error('Error saving statement to database:', error);
@@ -115,7 +115,7 @@ class DatabaseService {
             }
 
             await statement.update(updates);
-            console.log(`✅ Updated statement ${id} in database`);
+            console.log(`Updated statement ${id} in database`);
             return statement.toJSON();
         } catch (error) {
             console.error(`Error updating statement ${id}:`, error);
@@ -131,7 +131,7 @@ class DatabaseService {
             }
 
             await statement.destroy();
-            console.log(`✅ Deleted statement ${id} from database`);
+            console.log(`Deleted statement ${id} from database`);
             return true;
         } catch (error) {
             console.error(`Error deleting statement ${id}:`, error);
@@ -151,7 +151,7 @@ class DatabaseService {
     async saveUploadedExpense(expenseData) {
         try {
             const expense = await UploadedExpense.create(expenseData);
-            console.log(`✅ Saved uploaded expense ${expense.id} to database`);
+            console.log(`Saved uploaded expense ${expense.id} to database`);
             return expense.toJSON();
         } catch (error) {
             console.error('Error saving uploaded expense to database:', error);
@@ -162,7 +162,7 @@ class DatabaseService {
     async saveUploadedExpenses(expensesArray) {
         try {
             const expenses = await UploadedExpense.bulkCreate(expensesArray);
-            console.log(`✅ Saved ${expenses.length} uploaded expenses to database`);
+            console.log(`Saved ${expenses.length} uploaded expenses to database`);
             return expenses.map(e => e.toJSON());
         } catch (error) {
             console.error('Error bulk saving uploaded expenses:', error);
@@ -213,7 +213,7 @@ class DatabaseService {
             const count = await UploadedExpense.destroy({
                 where: { uploadFilename: filename }
             });
-            console.log(`✅ Deleted ${count} uploaded expenses with filename ${filename}`);
+            console.log(`Deleted ${count} uploaded expenses with filename ${filename}`);
             return count;
         } catch (error) {
             console.error(`Error deleting uploaded expenses for ${filename}:`, error);

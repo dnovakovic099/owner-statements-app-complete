@@ -16,13 +16,13 @@ async function testHostifyAPI() {
     
     try {
         // Test 1: Fetch listings
-        console.log('📋 TEST 1: Fetching listings...');
+        console.log('TEST 1: Fetching listings...');
         console.log('-'.repeat(60));
-        
+
         const listingsResponse = await HostifyService.getAllProperties();
-        
+
         if (listingsResponse.result && listingsResponse.result.length > 0) {
-            console.log(`✅ SUCCESS: Found ${listingsResponse.result.length} listings`);
+            console.log(`SUCCESS: Found ${listingsResponse.result.length} listings`);
             console.log('');
             console.log('First 3 listings:');
             listingsResponse.result.slice(0, 3).forEach((listing, index) => {
@@ -35,14 +35,14 @@ async function testHostifyAPI() {
                 console.log(`     Listed: ${listing.is_listed === 1 ? 'Yes' : 'No'}`);
             });
         } else {
-            console.log('⚠️  WARNING: No listings found');
+            console.log('WARNING: No listings found');
         }
         
         console.log('');
         console.log('='.repeat(60));
         
         // Test 2: Fetch reservations (last 30 days)
-        console.log('📅 TEST 2: Fetching reservations (last 30 days)...');
+        console.log('TEST 2: Fetching reservations (last 30 days)...');
         console.log('-'.repeat(60));
         
         const endDate = new Date();
@@ -58,7 +58,7 @@ async function testHostifyAPI() {
         const reservationsResponse = await HostifyService.getAllReservations(startDateStr, endDateStr);
         
         if (reservationsResponse.result && reservationsResponse.result.length > 0) {
-            console.log(`✅ SUCCESS: Found ${reservationsResponse.result.length} reservations`);
+            console.log(`SUCCESS: Found ${reservationsResponse.result.length} reservations`);
             console.log('');
             console.log('First 3 reservations:');
             reservationsResponse.result.slice(0, 3).forEach((res, index) => {
@@ -75,7 +75,7 @@ async function testHostifyAPI() {
                 console.log(`     Payout: $${res.clientPayout?.toFixed(2) || '0.00'}`);
             });
         } else {
-            console.log('⚠️  WARNING: No reservations found in the last 30 days');
+            console.log('WARNING: No reservations found in the last 30 days');
         }
         
         console.log('');
@@ -83,17 +83,17 @@ async function testHostifyAPI() {
         
         // Test 3: Get a specific listing (if we have any)
         if (listingsResponse.result && listingsResponse.result.length > 0) {
-            console.log('🏠 TEST 3: Fetching detailed listing info...');
+            console.log('TEST 3: Fetching detailed listing info...');
             console.log('-'.repeat(60));
-            
+
             const firstListingId = listingsResponse.result[0].id;
             console.log(`Getting details for listing ID: ${firstListingId}`);
             console.log('');
-            
+
             const detailedListing = await HostifyService.getProperty(firstListingId);
-            
+
             if (detailedListing.success && detailedListing.listing) {
-                console.log('✅ SUCCESS: Retrieved detailed listing');
+                console.log('SUCCESS: Retrieved detailed listing');
                 const listing = detailedListing.listing;
                 console.log(`\n  ID: ${listing.id}`);
                 console.log(`  Name: ${listing.name}`);
@@ -108,18 +108,18 @@ async function testHostifyAPI() {
                 console.log(`  Cleaning Fee: $${listing.cleaning_fee || 0}`);
                 console.log(`  Security Deposit: $${listing.security_deposit || 0}`);
             } else {
-                console.log('⚠️  WARNING: Could not retrieve detailed listing');
+                console.log('WARNING: Could not retrieve detailed listing');
             }
         }
-        
+
         console.log('');
         console.log('='.repeat(60));
-        console.log('✅ All tests completed successfully!');
+        console.log('All tests completed successfully!');
         console.log('='.repeat(60));
-        
+
     } catch (error) {
         console.error('');
-        console.error('❌ ERROR during testing:');
+        console.error('ERROR during testing:');
         console.error('='.repeat(60));
         console.error('Error message:', error.message);
         if (error.response) {

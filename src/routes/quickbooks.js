@@ -417,7 +417,7 @@ router.get('/auth/callback', async (req, res) => {
                 </style>
             </head>
             <body>
-                <div class="success">✅ Connected to QuickBooks!</div>
+                <div class="success">Connected to QuickBooks!</div>
                 <p>You can now access QuickBooks data. You can close this window.</p>
                 <a href="http://localhost:3000" class="button">Return to Application</a>
                 <script>
@@ -444,7 +444,7 @@ router.get('/auth/callback', async (req, res) => {
                 </style>
             </head>
             <body>
-                <div class="error">❌ OAuth Error</div>
+                <div class="error">OAuth Error</div>
                 <p>Error: ${error.message}</p>
                 <a href="http://localhost:3000" class="button">Return to Application</a>
             </body>

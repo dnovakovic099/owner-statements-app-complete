@@ -25,36 +25,36 @@ async function parseCSV(filePath) {
 
 async function importListings() {
     console.log('='.repeat(60));
-    console.log('📊 IMPORTING LISTINGS TO DATABASE');
+    console.log('IMPORTING LISTINGS TO DATABASE');
     console.log('='.repeat(60));
     console.log('');
 
     try {
         // Initialize database
-        console.log('🔧 Initializing database...');
+        console.log('Initializing database...');
         await syncDatabase();
-        console.log('✅ Database ready\n');
+        console.log('Database ready\n');
 
         // Find CSV file
         const csvFile = path.join(__dirname, '../data/all-listings-2025-10-31T13-03-55 - all-listings-2025-10-31T13-03-55.csv');
         
-        console.log(`📖 Reading CSV file: ${path.basename(csvFile)}`);
+        console.log(`Reading CSV file: ${path.basename(csvFile)}`);
         const listings = await parseCSV(csvFile);
-        console.log(`✅ Loaded ${listings.length} listings from CSV\n`);
+        console.log(`Loaded ${listings.length} listings from CSV\n`);
 
         let created = 0;
         let updated = 0;
         let skipped = 0;
         let errors = 0;
 
-        console.log('🔄 Processing listings...\n');
+        console.log('Processing listings...\n');
 
         for (const row of listings) {
             try {
                 const listingId = parseInt(row.ID || row.id);
-                
+
                 if (!listingId) {
-                    console.log(`⚠️  Skipping row - no ID found`);
+                    console.log(`Skipping row - no ID found`);
                     skipped++;
                     continue;
                 }
@@ -92,40 +92,40 @@ async function importListings() {
                     }
                     
                     await existingListing.update(listingData);
-                    console.log(`✅ Updated: ${listingData.name} (ID: ${listingId}) - PM Fee: ${existingListing.pmFeePercentage || 'default'}%`);
+                    console.log(`Updated: ${listingData.name} (ID: ${listingId}) - PM Fee: ${existingListing.pmFeePercentage || 'default'}%`);
                     updated++;
                 } else {
                     // Create new listing
                     if (!listingData.pmFeePercentage) {
                         listingData.pmFeePercentage = 15.00; // Default
                     }
-                    
+
                     await Listing.create(listingData);
-                    console.log(`🆕 Created: ${listingData.name} (ID: ${listingId}) - PM Fee: ${listingData.pmFeePercentage}%`);
+                    console.log(`Created: ${listingData.name} (ID: ${listingId}) - PM Fee: ${listingData.pmFeePercentage}%`);
                     created++;
                 }
 
             } catch (error) {
-                console.error(`❌ Error processing listing: ${error.message}`);
+                console.error(`Error processing listing: ${error.message}`);
                 errors++;
             }
         }
 
         console.log('\n' + '='.repeat(60));
-        console.log('✅ IMPORT COMPLETE!');
+        console.log('IMPORT COMPLETE!');
         console.log('='.repeat(60));
-        console.log(`\n📊 Summary:`);
-        console.log(`   🆕 Created: ${created}`);
-        console.log(`   ♻️  Updated: ${updated}`);
-        console.log(`   ⏭️  Skipped: ${skipped}`);
-        console.log(`   ❌ Errors: ${errors}`);
-        console.log(`   📋 Total processed: ${created + updated + skipped + errors}`);
+        console.log(`\nSummary:`);
+        console.log(`   Created: ${created}`);
+        console.log(`   Updated: ${updated}`);
+        console.log(`   Skipped: ${skipped}`);
+        console.log(`   Errors: ${errors}`);
+        console.log(`   Total processed: ${created + updated + skipped + errors}`);
         console.log('');
 
         process.exit(0);
 
     } catch (error) {
-        console.error('\n❌ IMPORT FAILED:', error);
+        console.error('\nIMPORT FAILED:', error);
         console.error(error.stack);
         process.exit(1);
     }

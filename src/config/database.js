@@ -8,18 +8,24 @@ const isProduction = process.env.NODE_ENV === 'production';
 let sequelize;
 
 if (databaseUrl && databaseUrl.startsWith('postgres')) {
-    // Production: Use PostgreSQL from Railway
+    // PostgreSQL connection
     // Mask the password in the URL for logging
     const maskedUrl = databaseUrl.replace(/:([^:@]+)@/, ':****@');
     console.log(`[DB] Connecting to PostgreSQL database: ${maskedUrl}`);
+
+    // Check if connecting to localhost (no SSL needed)
+    const isLocalhost = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
+
+    const dialectOptions = isLocalhost ? {} : {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false
+        }
+    };
+
     sequelize = new Sequelize(databaseUrl, {
         dialect: 'postgres',
-        dialectOptions: {
-            ssl: {
-                require: true,
-                rejectUnauthorized: false // Railway uses self-signed certificates
-            }
-        },
+        dialectOptions,
         logging: false, // Set to console.log to see SQL queries
         pool: {
             max: 5,

@@ -36,9 +36,9 @@ class QuickBooksService {
             this.realmId = this.companyId;
         }
         
-        console.log(`🔧 QuickBooks service initialized for PRODUCTION environment`);
-        console.log(`🔧 Client ID: ${this.clientId}`);
-        console.log(`🔧 Redirect URI: ${this.redirectUri}`);
+        console.log(`QuickBooks service initialized for PRODUCTION environment`);
+        console.log(`Client ID: ${this.clientId}`);
+        console.log(`Redirect URI: ${this.redirectUri}`);
         
         // Default departments for categorization
         this.defaultDepartments = [

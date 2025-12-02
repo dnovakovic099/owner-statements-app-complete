@@ -131,7 +131,7 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
             });
         }
 
-        console.log(`📤 Processing uploaded reservation file: ${req.file.originalname}`);
+        console.log(`Processing uploaded reservation file: ${req.file.originalname}`);
         
         // Parse CSV file
         const reservations = [];
@@ -266,7 +266,7 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Error uploading reservations:', error);
+        console.error('Error uploading reservations:', error);
         
         // Clean up temp file on error
         if (req.file && req.file.path) {

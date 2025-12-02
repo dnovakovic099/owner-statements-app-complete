@@ -54,21 +54,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔧 QuickBooks App Diagnostic Tool</h1>
+        <h1>QuickBooks App Diagnostic Tool</h1>
         <p>This tool will help diagnose issues with your QuickBooks app configuration.</p>
 
         <div id="results">
             <div class="test-result warning">Click "Run Diagnostics" to start testing...</div>
         </div>
 
-        <button onclick="runDiagnostics()" class="button">🔍 Run Diagnostics</button>
-        <button onclick="testDifferentUrl()" class="button">🧪 Test Different URL</button>
+        <button onclick="runDiagnostics()" class="button">Run Diagnostics</button>
+        <button onclick="testDifferentUrl()" class="button">Test Different URL</button>
 
         <div id="manual-test" style="display: none;">
             <h3>Manual URL Test</h3>
             <p>Try this direct QuickBooks URL (bypassing our server):</p>
             <div class="url-box" id="direct-url"></div>
-            <button onclick="openDirectUrl()" class="button">🔗 Open Direct URL</button>
+            <button onclick="openDirectUrl()" class="button">Open Direct URL</button>
         </div>
     </div>
 
@@ -158,7 +158,7 @@
         function addResult(testName, success, message, data) {
             const resultsDiv = document.getElementById('results');
             const className = success ? 'success' : 'error';
-            const icon = success ? '✅' : '❌';
+            const icon = success ? 'OK' : 'FAIL';
             
             let resultHtml = `<div class="test-result ${className}">
                 <strong>${icon} ${testName}:</strong> ${message}`;

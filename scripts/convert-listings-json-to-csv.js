@@ -53,35 +53,35 @@ function escapeCsvValue(value) {
 
 async function convertJsonToCsv(inputFile) {
     console.log('='.repeat(60));
-    console.log('📊 CONVERTING JSON TO CSV');
+    console.log('CONVERTING JSON TO CSV');
     console.log('='.repeat(60));
     console.log('');
 
     try {
         // Read JSON file
-        console.log(`📖 Reading JSON file: ${path.basename(inputFile)}`);
+        console.log(`Reading JSON file: ${path.basename(inputFile)}`);
         const jsonContent = await fs.readFile(inputFile, 'utf8');
         const listings = JSON.parse(jsonContent);
-        
+
         if (!Array.isArray(listings)) {
-            console.error('❌ JSON file must contain an array of listings');
+            console.error('JSON file must contain an array of listings');
             return;
         }
-        
-        console.log(`✅ Loaded ${listings.length} listings\n`);
+
+        console.log(`Loaded ${listings.length} listings\n`);
 
         // Flatten all listings and collect all unique fields
-        console.log('🔄 Flattening nested data structures...');
+        console.log('Flattening nested data structures...');
         const flattenedListings = listings.map(listing => flattenObject(listing));
-        
+
         // Get all unique column names
         const allColumns = new Set();
         flattenedListings.forEach(listing => {
             Object.keys(listing).forEach(key => allColumns.add(key));
         });
-        
+
         const columns = Array.from(allColumns).sort();
-        console.log(`📋 Found ${columns.length} columns\n`);
+        console.log(`Found ${columns.length} columns\n`);
 
         // Create CSV header
         const csvHeader = columns.map(col => escapeCsvValue(col)).join(',');
@@ -99,16 +99,16 @@ async function convertJsonToCsv(inputFile) {
         await fs.writeFile(outputFile, csvContent, 'utf8');
         
         console.log('='.repeat(60));
-        console.log('✅ CSV EXPORT COMPLETE!');
+        console.log('CSV EXPORT COMPLETE!');
         console.log('='.repeat(60));
-        console.log(`\n📁 Saved to: ${path.basename(outputFile)}`);
-        console.log(`📊 Total rows: ${listings.length} listings`);
-        console.log(`📋 Total columns: ${columns.length} fields`);
-        console.log(`💾 File size: ${(csvContent.length / 1024).toFixed(2)} KB`);
+        console.log(`\nSaved to: ${path.basename(outputFile)}`);
+        console.log(`Total rows: ${listings.length} listings`);
+        console.log(`Total columns: ${columns.length} fields`);
+        console.log(`File size: ${(csvContent.length / 1024).toFixed(2)} KB`);
         console.log('');
 
         // Show column names
-        console.log('📋 Columns included:');
+        console.log('Columns included:');
         columns.slice(0, 20).forEach((col, i) => {
             console.log(`   ${(i + 1).toString().padStart(2)}. ${col}`);
         });
@@ -118,7 +118,7 @@ async function convertJsonToCsv(inputFile) {
         console.log('');
 
     } catch (error) {
-        console.error('\n❌ ERROR:', error.message);
+        console.error('\nERROR:', error.message);
         console.error(error.stack);
         process.exit(1);
     }

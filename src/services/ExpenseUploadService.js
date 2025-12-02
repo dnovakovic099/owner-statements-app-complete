@@ -48,11 +48,11 @@ class ExpenseUploadService {
             // Validate and standardize the parsed data
             const standardizedExpenses = expenses.map((expense, index) => this.standardizeExpense(expense, index, originalName));
             
-            console.log(`✅ Parsed ${standardizedExpenses.length} expenses from ${originalName}`);
+            console.log(`Parsed ${standardizedExpenses.length} expenses from ${originalName}`);
             return standardizedExpenses;
             
         } catch (error) {
-            console.error(`❌ Error parsing ${originalName}:`, error.message);
+            console.error(`Error parsing ${originalName}:`, error.message);
             throw error;
         }
     }
@@ -221,7 +221,7 @@ class ExpenseUploadService {
 
         // Save to database
         const savedExpenses = await DatabaseService.saveUploadedExpenses(expensesWithMetadata);
-        console.log(`💾 Saved ${savedExpenses.length} expenses to database with filename: ${uploadFilename}`);
+        console.log(`Saved ${savedExpenses.length} expenses to database with filename: ${uploadFilename}`);
         
         return savedExpenses;
     }
@@ -238,10 +238,10 @@ class ExpenseUploadService {
     async getAllUploadedExpenses() {
         try {
             const expenses = await DatabaseService.getUploadedExpenses();
-            console.log(`📁 Loaded ${expenses.length} uploaded expenses from database`);
+            console.log(`Loaded ${expenses.length} uploaded expenses from database`);
             return expenses;
         } catch (error) {
-            console.warn('⚠️  Error fetching uploaded expenses from database:', error.message);
+            console.warn('Error fetching uploaded expenses from database:', error.message);
             return [];
         }
     }
@@ -254,7 +254,7 @@ class ExpenseUploadService {
         try {
             return await DatabaseService.getUploadFilenames();
         } catch (error) {
-            console.warn('⚠️  Error fetching upload filenames:', error.message);
+            console.warn('Error fetching upload filenames:', error.message);
             return [];
         }
     }
@@ -267,7 +267,7 @@ class ExpenseUploadService {
     async deleteExpensesByFilename(filename) {
         try {
             const count = await DatabaseService.deleteUploadedExpensesByFilename(filename);
-            console.log(`🗑️  Deleted ${count} expenses with filename: ${filename}`);
+            console.log(`Deleted ${count} expenses with filename: ${filename}`);
             return count;
         } catch (error) {
             console.error('Error deleting expenses:', error.message);
@@ -332,9 +332,9 @@ class ExpenseUploadService {
     async cleanupUploadedFile(filePath) {
         try {
             await fs.unlink(filePath);
-            console.log(`🗑️  Cleaned up original uploaded file: ${path.basename(filePath)}`);
+            console.log(`Cleaned up original uploaded file: ${path.basename(filePath)}`);
         } catch (error) {
-            console.warn(`⚠️  Failed to cleanup file ${filePath}:`, error.message);
+            console.warn(`Failed to cleanup file ${filePath}:`, error.message);
         }
     }
 }

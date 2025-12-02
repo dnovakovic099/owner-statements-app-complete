@@ -52,20 +52,20 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔧 QuickBooks Simple Test</h1>
+        <h1>QuickBooks Simple Test</h1>
         <p>Test QuickBooks API endpoints without complex JavaScript</p>
 
         <div>
-            <button onclick="testAuthUrl()" class="button">🔗 Test Auth URL</button>
-            <button onclick="testTransactions()" class="button">📊 Test Transactions</button>
-            <button onclick="testAccounts()" class="button">💰 Test Accounts</button>
-            <button onclick="clearResults()" class="button">🧹 Clear</button>
+            <button onclick="testAuthUrl()" class="button">Test Auth URL</button>
+            <button onclick="testTransactions()" class="button">Test Transactions</button>
+            <button onclick="testAccounts()" class="button">Test Accounts</button>
+            <button onclick="clearResults()" class="button">Clear</button>
         </div>
 
         <div id="results" class="result">Click a button above to test...</div>
 
         <div style="margin-top: 30px;">
-            <h3>🔗 Direct Links (No JavaScript)</h3>
+            <h3>Direct Links (No JavaScript)</h3>
             <p>If JavaScript fails, try these direct links:</p>
             <ul>
                 <li><a href="/api/quickbooks/auth-url" target="_blank">Get Auth URL (JSON)</a></li>
@@ -111,14 +111,14 @@
                 log('Response data: ' + JSON.stringify(data, null, 2));
                 
                 if (data && data.success && data.authUrl) {
-                    log('✅ Auth URL generated successfully!');
+                    log('Auth URL generated successfully!');
                     log('URL: ' + data.authUrl);
                 } else {
-                    log('❌ Auth URL generation failed');
+                    log('Auth URL generation failed');
                     log('Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                log('❌ Error: ' + error.message);
+                log('Error: ' + error.message);
                 console.error('Auth URL test error:', error);
             }
         }
@@ -143,17 +143,17 @@
                 
                 if (data && data.success) {
                     if (data.count > 0) {
-                        log('✅ Found ' + data.count + ' transactions');
+                        log('Found ' + data.count + ' transactions');
                     } else {
-                        log('⚠️ Connected but no transactions found');
+                        log('Connected but no transactions found');
                         log('Message: ' + (data.message || 'No message'));
                     }
                 } else {
-                    log('❌ Transactions test failed');
+                    log('Transactions test failed');
                     log('Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                log('❌ Error: ' + error.message);
+                log('Error: ' + error.message);
                 console.error('Transactions test error:', error);
             }
         }
@@ -178,16 +178,16 @@
                 
                 if (data && data.success) {
                     if (data.data && data.data.length > 0) {
-                        log('✅ Found ' + data.data.length + ' accounts');
+                        log('Found ' + data.data.length + ' accounts');
                     } else {
-                        log('⚠️ Connected but no accounts found');
+                        log('Connected but no accounts found');
                     }
                 } else {
-                    log('❌ Accounts test failed');
+                    log('Accounts test failed');
                     log('Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                log('❌ Error: ' + error.message);
+                log('Error: ' + error.message);
                 console.error('Accounts test error:', error);
             }
         }

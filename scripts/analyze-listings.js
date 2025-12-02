@@ -51,9 +51,9 @@ function parseCSV(csvContent) {
 }
 
 function analyzeListings(listings) {
-    console.log('📊 Hostaway Listings Analysis Report\n');
+    console.log('Hostaway Listings Analysis Report\n');
     console.log(`Total Listings: ${listings.length}\n`);
-    
+
     // Basic stats
     const stats = {
         withNames: listings.filter(l => l.name && l.name.trim()).length,
@@ -62,8 +62,8 @@ function analyzeListings(listings) {
         withAddresses: listings.filter(l => l.address_city && l.address_city.trim()).length,
         withPricing: listings.filter(l => l.basePrice && l.basePrice !== '').length,
     };
-    
-    console.log('📋 Basic Information Coverage:');
+
+    console.log('Basic Information Coverage:');
     console.log(`  With Names: ${stats.withNames} (${(stats.withNames/listings.length*100).toFixed(1)}%)`);
     console.log(`  With Nicknames: ${stats.withNicknames} (${(stats.withNicknames/listings.length*100).toFixed(1)}%)`);
     console.log(`  With Descriptions: ${stats.withDescriptions} (${(stats.withDescriptions/listings.length*100).toFixed(1)}%)`);
@@ -77,7 +77,7 @@ function analyzeListings(listings) {
         propertyTypes[type] = (propertyTypes[type] || 0) + 1;
     });
     
-    console.log('🏠 Property Types:');
+    console.log('Property Types:');
     Object.entries(propertyTypes)
         .sort(([,a], [,b]) => b - a)
         .forEach(([type, count]) => {
@@ -92,7 +92,7 @@ function analyzeListings(listings) {
         roomTypes[type] = (roomTypes[type] || 0) + 1;
     });
     
-    console.log('🛏️ Room Types:');
+    console.log('Room Types:');
     Object.entries(roomTypes)
         .sort(([,a], [,b]) => b - a)
         .forEach(([type, count]) => {
@@ -107,7 +107,7 @@ function analyzeListings(listings) {
         cities[city] = (cities[city] || 0) + 1;
     });
     
-    console.log('🌆 Top Cities:');
+    console.log('Top Cities:');
     Object.entries(cities)
         .sort(([,a], [,b]) => b - a)
         .slice(0, 10)
@@ -123,7 +123,7 @@ function analyzeListings(listings) {
         bedrooms[beds] = (bedrooms[beds] || 0) + 1;
     });
     
-    console.log('🛏️ Bedrooms Distribution:');
+    console.log('Bedrooms Distribution:');
     Object.entries(bedrooms)
         .sort(([a], [b]) => {
             const numA = parseInt(a) || 0;
@@ -143,7 +143,7 @@ function analyzeListings(listings) {
         l.accommodates && l.accommodates !== ''
     );
     
-    console.log(`📝 Sample Complete Listings (${Math.min(5, completeListings.length)} of ${completeListings.length}):`);
+    console.log(`Sample Complete Listings (${Math.min(5, completeListings.length)} of ${completeListings.length}):`);
     completeListings.slice(0, 5).forEach((listing, index) => {
         console.log(`\n${index + 1}. ${listing.name}`);
         console.log(`   ID: ${listing.id}`);
@@ -155,7 +155,7 @@ function analyzeListings(listings) {
         }
     });
     
-    console.log('\n🎉 Analysis Complete!');
+    console.log('\nAnalysis Complete!');
 }
 
 async function main() {
@@ -171,29 +171,29 @@ async function main() {
                 .reverse();
             
             if (files.length === 0) {
-                console.error('❌ No CSV files found in exports directory');
+                console.error('No CSV files found in exports directory');
                 process.exit(1);
             }
             
             csvPath = path.join(exportsDir, files[0]);
-            console.log(`📁 Using most recent CSV: ${files[0]}\n`);
+            console.log(`Using most recent CSV: ${files[0]}\n`);
         }
-        
+
         // Read and parse CSV
-        console.log('📖 Reading CSV file...');
+        console.log('Reading CSV file...');
         const csvContent = fs.readFileSync(csvPath, 'utf8');
         const listings = parseCSV(csvContent);
         
         if (listings.length === 0) {
-            console.error('❌ No data found in CSV file');
+            console.error('No data found in CSV file');
             process.exit(1);
         }
-        
+
         // Analyze the data
         analyzeListings(listings);
-        
+
     } catch (error) {
-        console.error('❌ Error analyzing listings:', error.message);
+        console.error('Error analyzing listings:', error.message);
         process.exit(1);
     }
 }

@@ -2388,7 +2388,7 @@ router.get('/:id/view', async (req, res) => {
                     <div class="detail-group">
                         <span class="detail-label">Calculation:</span>
                         <span class="detail-value" style="color: ${statement.calculationType === 'calendar' ? '#007bff' : '#666'};">
-                            ${statement.calculationType === 'calendar' ? '📅 Calendar-based (prorated)' : '📋 Check-out based'}
+                            ${statement.calculationType === 'calendar' ? 'Calendar-based (prorated)' : 'Check-out based'}
                         </span>
             </div>
                     <div class="detail-group">
@@ -2482,9 +2482,9 @@ router.get('/:id/view', async (req, res) => {
                                             return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
                                         })()}</div>
                                         <div class="channel-badge">${reservation.source}</div>
-                                        ${reservation.prorationNote ? 
+                                        ${reservation.prorationNote ?
                                             `<div class="proration-info" style="font-size: 10px; color: #007bff; margin-top: 2px;">
-                                                📅 ${reservation.prorationNote}
+                                                ${reservation.prorationNote}
                                             </div>` : ''
                                         }
                                     </td>
@@ -2569,7 +2569,6 @@ router.get('/:id/view', async (req, res) => {
     <div class="section" style="margin-bottom: 20px;">
         <div class="warning-box" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
             <h3 style="color: #856404; margin: 0 0 10px 0; font-size: 16px; display: flex; align-items: center;">
-                <span style="margin-right: 8px;">⚠️</span>
                 Potential Duplicate Expenses Detected
             </h3>
             <p style="color: #856404; margin: 0 0 15px 0; font-size: 14px;">
@@ -2636,7 +2635,7 @@ router.get('/:id/view', async (req, res) => {
                                     const [year, month, day] = expense.date.split('-').map(Number);
                                     return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                 })()}
-                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">⚠️ Duplicate</span>' : ''}
+                                ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">Duplicate</span>' : ''}
                             </td>
                             <td class="description-cell">${expense.description}</td>
                             <td class="listing-cell">${expense.listing || '-'}</td>
