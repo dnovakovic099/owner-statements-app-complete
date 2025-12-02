@@ -534,6 +534,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                         type="date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
+                        max={endDate && endDate < new Date().toISOString().split('T')[0] ? endDate : new Date().toISOString().split('T')[0]}
                         required
                         className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
@@ -546,6 +547,8 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                         type="date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
+                        min={startDate || undefined}
+                        max={new Date().toISOString().split('T')[0]}
                         required
                         className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />

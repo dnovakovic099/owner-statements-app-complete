@@ -79,6 +79,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     startDate: '',
     endDate: '',
   });
+  const [dateError, setDateError] = useState<string | null>(null);
 
   // Property search state
   const [propertySearch, setPropertySearch] = useState('');
@@ -125,6 +126,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [filters.ownerId, filters.propertyId, filters.propertyIds, filters.status, filters.startDate, filters.endDate]);
 
   useEffect(() => {
+    // Validate dates before loading
+    if (filters.startDate && filters.endDate && new Date(filters.startDate) > new Date(filters.endDate)) {
+      setDateError('Start date must be before end date');
+      return;
+    }
+    setDateError(null);
     loadStatements();
   }, [filters, pagination.pageIndex, pagination.pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -795,7 +802,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                max={filters.endDate && filters.endDate < new Date().toISOString().split('T')[0] ? filters.endDate : new Date().toISOString().split('T')[0]}
+                className={`w-full sm:w-36 border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${dateError ? 'border-red-500' : 'border-gray-300'}`}
               />
             </div>
             <div className="w-full sm:w-auto">
@@ -804,8 +812,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min={filters.startDate || undefined}
+                max={new Date().toISOString().split('T')[0]}
+                className={`w-full sm:w-36 border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${dateError ? 'border-red-500' : 'border-gray-300'}`}
               />
+              {dateError && (
+                <p className="text-red-500 text-xs mt-1">{dateError}</p>
+              )}
             </div>
           </div>
         </div>
