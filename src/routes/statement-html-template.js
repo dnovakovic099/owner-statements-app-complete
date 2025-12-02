@@ -569,7 +569,7 @@ function generateStatementHTML(statement, id) {
                 </tr>
             </thead>
             <tbody>
-                ${statement.reservations?.map(reservation => {
+                ${statement.reservations?.slice().sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate)).map(reservation => {
                     // Check if this is an Airbnb reservation on a co-hosted property
                     const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
                     const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
