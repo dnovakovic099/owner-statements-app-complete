@@ -22,10 +22,28 @@ const Statement = sequelize.define('Statement', {
         allowNull: true,
         field: 'property_id'
     },
+    propertyIds: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        field: 'property_ids',
+        comment: 'Array of property IDs for combined statements'
+    },
     propertyName: {
         type: DataTypes.STRING,
         allowNull: true,
         field: 'property_name'
+    },
+    propertyNames: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'property_names',
+        comment: 'Full list of property names for combined statements'
+    },
+    isCombinedStatement: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'is_combined_statement'
     },
     weekStartDate: {
         type: DataTypes.DATEONLY,
