@@ -452,9 +452,9 @@ class HostawayService {
             departures.forEach(res => allReservations.set(res.id, res));
             
             // 3. Get long-staying reservations that might straddle the period
-            // Look back 90 days to catch long stays that started before the period
+            // Look back 12 months to catch long-term stays that started months ago
             const lookbackDate = new Date(fromDate);
-            lookbackDate.setDate(lookbackDate.getDate() - 90);
+            lookbackDate.setDate(lookbackDate.getDate() - 365);
             const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
             
             console.log(`Fetching long stays (arrivals from ${lookbackDateStr} to ${toDate})...`);
