@@ -429,6 +429,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                                   className={`flex items-center px-3 py-2 cursor-pointer hover:bg-gray-50 rounded-md transition-colors ${
                                     selectedPropertyIds.includes(property.id.toString()) ? 'bg-blue-50' : ''
                                   }`}
+                                  title={`PM Commission: ${property.pmPercentage ?? 15}%`}
                                 >
                                   <Checkbox
                                     checked={selectedPropertyIds.includes(property.id.toString())}

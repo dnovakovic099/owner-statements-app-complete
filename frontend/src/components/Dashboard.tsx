@@ -418,46 +418,67 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate') => {
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete') => {
     if (ids.length === 0) return;
 
     setBulkProcessing(true);
 
     if (action === 'download') {
-      const toastId = showToast(`Downloading ${ids.length} statement(s)...`, 'loading');
-      let successCount = 0;
-      let failCount = 0;
+      const toastId = showToast(`Creating ZIP with ${ids.length} statement(s)...`, 'loading');
 
-      // Download each statement sequentially to avoid overwhelming the browser
-      for (const id of ids) {
-        try {
-          const response = await statementsAPI.downloadStatementWithHeaders(id);
-          const blob = response.blob;
-          const filename = response.filename || `statement-${id}.pdf`;
+      try {
+        const response = await statementsAPI.bulkDownloadStatements(ids);
+        const blob = response.blob;
+        const filename = response.filename;
 
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-          successCount++;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
 
-          // Small delay between downloads to prevent browser issues
-          await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (err) {
-          failCount++;
-          console.error(`Failed to download statement ${id}:`, err);
-        }
+        updateToast(toastId, `Downloaded ${ids.length} statement(s) as ZIP`, 'success');
+      } catch (err) {
+        console.error('Failed to download statements:', err);
+        updateToast(toastId, 'Failed to download statements', 'error');
       }
+      setBulkProcessing(false);
+    } else if (action === 'delete') {
+      // Show confirmation dialog for bulk delete
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Delete Statements',
+        message: `Are you sure you want to delete ${ids.length} statement(s)? This action cannot be undone.`,
+        type: 'danger',
+        onConfirm: async () => {
+          const toastId = showToast(`Deleting ${ids.length} statement(s)...`, 'loading');
+          let successCount = 0;
+          let failCount = 0;
 
-      if (failCount === 0) {
-        updateToast(toastId, `Downloaded ${successCount} statement(s)`, 'success');
-      } else {
-        updateToast(toastId, `Downloaded ${successCount}, failed ${failCount}`, 'error');
-      }
+          for (const id of ids) {
+            try {
+              await statementsAPI.deleteStatement(id);
+              successCount++;
+            } catch (err) {
+              failCount++;
+              console.error(`Failed to delete statement ${id}:`, err);
+            }
+          }
+
+          if (failCount === 0) {
+            updateToast(toastId, `Deleted ${successCount} statement(s)`, 'success');
+          } else {
+            updateToast(toastId, `Deleted ${successCount}, failed ${failCount}`, 'error');
+          }
+
+          await loadStatements();
+          setBulkProcessing(false);
+        },
+      });
+      return; // Don't setBulkProcessing(false) here - wait for dialog action
     } else if (action === 'regenerate') {
       // Show confirmation dialog for bulk regenerate
       setConfirmDialog({
