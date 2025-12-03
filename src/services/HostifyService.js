@@ -321,9 +321,9 @@ class HostifyService {
         try {
             const allReservations = new Map();
 
-            // Look back/forward to catch long stays
+            // Look back 12 months to catch long-term stays that started months ago
             const lookbackDate = new Date(fromDate);
-            lookbackDate.setDate(lookbackDate.getDate() - 90);
+            lookbackDate.setDate(lookbackDate.getDate() - 365);
             const lookforwardDate = new Date(toDate);
             lookforwardDate.setDate(lookforwardDate.getDate() + 90);
 
