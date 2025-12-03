@@ -193,8 +193,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
         // Filter reservations by date and status
         const periodReservations = allReservations.filter(res => {
-            // Check property ID is in our list
-            if (!parsedPropertyIds.includes(res.propertyId)) {
+            // Check property ID is in our list (use parseInt to ensure proper type comparison)
+            if (!parsedPropertyIds.includes(parseInt(res.propertyId))) {
                 return false;
             }
 
@@ -218,7 +218,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         // Filter expenses by date
         const periodExpenses = allExpenses.filter(exp => {
             // Check property ID is in our list (or is null for SecureStay)
-            if (exp.propertyId !== null && !parsedPropertyIds.includes(exp.propertyId)) {
+            // Use parseInt to ensure proper type comparison
+            if (exp.propertyId !== null && !parsedPropertyIds.includes(parseInt(exp.propertyId))) {
                 return false;
             }
             const expenseDate = new Date(exp.date);
@@ -325,7 +326,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             items: [
                 // Revenue items from reservations (grouped by property)
                 ...periodReservations.map(res => {
-                    const listing = targetListings.find(l => l.id === res.propertyId);
+                    // Use parseInt for proper type comparison
+                    const listing = targetListings.find(l => parseInt(l.id) === parseInt(res.propertyId));
                     const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : `Property ${res.propertyId}`;
                     // Use clientRevenue (prorated) for calendar-based statements
                     const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
@@ -341,7 +343,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 // Expenses and upsells
                 ...periodExpenses.map(exp => {
                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
-                    const listing = exp.propertyId ? targetListings.find(l => l.id === exp.propertyId) : null;
+                    // Use parseInt for proper type comparison
+                    const listing = exp.propertyId ? targetListings.find(l => parseInt(l.id) === parseInt(exp.propertyId)) : null;
                     const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : (exp.listing || 'General');
 
                     return {
@@ -500,7 +503,8 @@ router.post('/generate', async (req, res) => {
         // Filter reservations - optimized with reduced logging
         const allowedStatuses = ['confirmed', 'modified', 'new'];
         const periodReservations = reservations.filter(res => {
-            if (propertyId && res.propertyId !== parseInt(propertyId)) {
+            // Use parseInt on both sides to ensure proper type comparison
+            if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
                 return false;
             }
 
@@ -519,8 +523,8 @@ router.post('/generate', async (req, res) => {
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
         // so we don't need to filter by propertyId here for SecureStay expenses (they have propertyId: null)
         const periodExpenses = expenses.filter(exp => {
-            // For file-based expenses, filter by propertyId
-            if (propertyId && exp.propertyId !== null && exp.propertyId !== parseInt(propertyId)) {
+            // For file-based expenses, filter by propertyId (use parseInt to ensure proper type comparison)
+            if (propertyId && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(propertyId)) {
                 return false;
             }
             const expenseDate = new Date(exp.date);
@@ -2420,7 +2424,7 @@ router.get('/:id/view', async (req, res) => {
                 <tr>
                                 <th>Guest Details</th>
                                 <th>Base Rate</th>
-                                <th>Guest Paid Cleaning, Pet Extra & Others</th>
+                                <th>Guest Paid Cleaning, Pet, Extra & Others</th>
                                 <th>Platform Fees</th>
                                 <th>Revenue</th>
                                 <th>PM Commission</th>
@@ -2607,7 +2611,8 @@ router.get('/:id/view', async (req, res) => {
     </div>
     ` : ''}
 
-    <!-- Expenses Section -->
+    <!-- Expenses Section - only show if there are expenses -->
+    ${statement.items?.filter(item => item.type === 'expense').length > 0 ? `
     <div class="section">
         <h2 class="section-title">EXPENSES</h2>
         <div class="expenses-container">
@@ -2625,15 +2630,15 @@ router.get('/:id/view', async (req, res) => {
                     ${statement.items?.filter(item => item.type === 'expense').map(expense => {
                         // Check if this expense is part of a duplicate warning
                         const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
-                            const matchesExpense1 = dup.expense1.description === expense.description && 
-                                                   Math.abs(dup.expense1.amount - expense.amount) < 0.01 && 
+                            const matchesExpense1 = dup.expense1.description === expense.description &&
+                                                   Math.abs(dup.expense1.amount - expense.amount) < 0.01 &&
                                                    dup.expense1.date === expense.date;
-                            const matchesExpense2 = dup.expense2.description === expense.description && 
-                                                   Math.abs(dup.expense2.amount - expense.amount) < 0.01 && 
+                            const matchesExpense2 = dup.expense2.description === expense.description &&
+                                                   Math.abs(dup.expense2.amount - expense.amount) < 0.01 &&
                                                    dup.expense2.date === expense.date;
                             return matchesExpense1 || matchesExpense2;
                         });
-                        
+
                         return `
                         <tr${isDuplicate ? ' style="background-color: #fff3cd; border-left: 4px solid #ffc107;"' : ''}>
                             <td class="date-cell">
@@ -2649,7 +2654,7 @@ router.get('/:id/view', async (req, res) => {
                             <td class="amount-cell expense-amount">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
-                    }).join('') || '<tr><td colspan="5" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No expenses for this period</td></tr>'}
+                    }).join('')}
                     <tr class="totals-row">
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
                         <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -2658,6 +2663,7 @@ router.get('/:id/view', async (req, res) => {
         </table>
         </div>
     </div>
+    ` : ''}
 
     <!-- Additional Payouts Section (Upsells) -->
     ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
@@ -2791,6 +2797,133 @@ router.get('/:id/view', async (req, res) => {
     } catch (error) {
         console.error('Statement view error:', error);
         res.status(500).json({ error: 'Failed to view statement' });
+    }
+});
+
+// POST /api/statements-file/bulk-download - Download multiple statements as ZIP
+router.post('/bulk-download', async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'No statement IDs provided' });
+        }
+
+        const archiver = require('archiver');
+        const htmlPdf = require('html-pdf-node');
+        const http = require('http');
+
+        // Create ZIP archive
+        const archive = archiver('zip', {
+            zlib: { level: 5 } // Compression level
+        });
+
+        // Set response headers for ZIP download
+        const timestamp = new Date().toISOString().split('T')[0];
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="statements-${timestamp}.zip"`);
+
+        // Pipe archive to response
+        archive.pipe(res);
+
+        // Helper function to fetch HTML
+        const fetchHTML = (id) => {
+            return new Promise((resolve, reject) => {
+                const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true`;
+                const authHeader = req.headers.authorization;
+                const options = {
+                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                };
+
+                http.get(viewUrl, options, (response) => {
+                    let data = '';
+                    response.on('data', chunk => data += chunk);
+                    response.on('end', () => resolve(data));
+                    response.on('error', reject);
+                }).on('error', reject);
+            });
+        };
+
+        // PDF options
+        const pdfOptions = {
+            format: 'A4',
+            landscape: false,
+            margin: {
+                top: '10mm',
+                right: '10mm',
+                bottom: '10mm',
+                left: '10mm'
+            },
+            printBackground: true,
+            preferCSSPageSize: false,
+            displayHeaderFooter: false,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions'
+            ],
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        };
+
+        // Process each statement
+        for (const id of ids) {
+            try {
+                const statement = await FileDataService.getStatementById(id);
+                if (!statement) {
+                    console.warn(`Statement ${id} not found, skipping`);
+                    continue;
+                }
+
+                // Fetch HTML and generate PDF
+                const statementHTML = await fetchHTML(id);
+                const file = { content: statementHTML };
+                const pdfBuffer = await htmlPdf.generatePdf(file, pdfOptions);
+
+                // Generate filename
+                let propertyNickname = 'Statement';
+                if (statement.propertyName) {
+                    propertyNickname = statement.propertyName;
+                } else if (statement.propertyId) {
+                    try {
+                        const listing = await ListingService.getListingWithPmFee(statement.propertyId);
+                        if (listing && listing.nickname) {
+                            propertyNickname = listing.nickname;
+                        }
+                    } catch (err) {
+                        console.error('Error fetching listing for filename:', err);
+                    }
+                }
+
+                const cleanPropertyName = propertyNickname
+                    .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                const startDate = statement.weekStartDate?.replace(/\//g, '-') || 'unknown';
+                const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
+                const statementPeriod = `${startDate} to ${endDate}`;
+                const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
+
+                // Add PDF to archive
+                archive.append(pdfBuffer, { name: filename });
+
+            } catch (err) {
+                console.error(`Error processing statement ${id}:`, err);
+                // Continue with other statements
+            }
+        }
+
+        // Finalize archive
+        await archive.finalize();
+
+    } catch (error) {
+        console.error('Bulk download error:', error);
+        res.status(500).json({ error: 'Failed to create ZIP file' });
     }
 });
 
@@ -2957,7 +3090,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const periodEnd = new Date(endDate);
 
                     const periodReservations = allReservations.filter(res => {
-                        if (res.propertyId !== property.id) return false;
+                        // Use parseInt to ensure proper type comparison (res.propertyId may be string or number)
+                        if (parseInt(res.propertyId) !== parseInt(property.id)) return false;
 
                         let dateMatch = true;
                         if (calculationType === 'calendar') {
@@ -2976,8 +3110,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const periodExpenses = allExpenses.filter(exp => {
                         // Only include expenses that match this property
                         // Check both propertyId (for uploaded expenses) and secureStayListingId (for SecureStay expenses)
-                        const matchesPropertyId = exp.propertyId === property.id;
-                        const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === property.id;
+                        // Use parseInt to ensure proper type comparison
+                        const matchesPropertyId = parseInt(exp.propertyId) === parseInt(property.id);
+                        const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === parseInt(property.id);
                         if (!matchesPropertyId && !matchesSecureStayId) {
                             return false;
                         }
@@ -3001,20 +3136,38 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
                     const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
                     const disregardTax = listing?.disregardTax || false;
-                    
-                    // Calculate totals - exclude Airbnb revenue if co-host is enabled
-                    const totalRevenue = periodReservations.reduce((sum, res) => {
-                        // Check if this is an Airbnb reservation
-                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                        
-                        // Exclude Airbnb revenue for co-hosted properties (client gets paid directly)
-                        if (isAirbnb && isCohostOnAirbnb) {
-                            return sum;
-                        }
 
-                        return sum + (res.grossAmount || 0);
-                    }, 0);
-                    
+                    // Get PM percentage from listing database (property-specific)
+                    let pmPercentage = 15; // Default fallback
+                    if (listing && listing.pmFeePercentage !== null) {
+                        pmPercentage = listing.pmFeePercentage;
+                    }
+
+                    // Calculate totals - matching PDF template logic
+                    // For co-host Airbnb: revenue is clientRevenue, but gross payout is just -pmCommission
+                    let totalRevenue = 0;
+                    let totalGrossPayout = 0;
+                    let totalPmCommission = 0;
+
+                    for (const res of periodReservations) {
+                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                        const pmFee = clientRevenue * (pmPercentage / 100);
+
+                        // Always add to revenue (for display purposes)
+                        totalRevenue += clientRevenue;
+                        totalPmCommission += pmFee;
+
+                        // Calculate gross payout per reservation (matching PDF logic)
+                        if (isAirbnb && isCohostOnAirbnb) {
+                            // Co-host Airbnb: gross payout is just negative PM commission
+                            totalGrossPayout += -pmFee;
+                        } else {
+                            // Normal: revenue minus PM commission
+                            totalGrossPayout += clientRevenue - pmFee;
+                        }
+                    }
+
                     // Separate expenses (negative/costs) from upsells (positive/revenue)
                     const totalExpenses = periodExpenses.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
@@ -3027,20 +3180,13 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return isUpsell ? sum + exp.amount : sum;
                     }, 0);
 
-                    // Get PM percentage from listing database (property-specific)
-                    let pmPercentage = 15; // Default fallback
-                    if (listing && listing.pmFeePercentage !== null) {
-                        pmPercentage = listing.pmFeePercentage;
-                    }
-
-                    // Calculate PM commission (only on non-Airbnb revenue for co-hosted properties)
-                    const pmCommission = totalRevenue * (pmPercentage / 100);
                     const techFees = 50; // $50 per property
                     const insuranceFees = 25; // $25 per property
 
                     // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
                     // Note: techFees and insuranceFees are stored but not included in payout calculation
-                    const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
+                    const ownerPayout = totalGrossPayout + totalUpsells - totalExpenses;
+                    const pmCommission = totalPmCommission;
 
                     const existingStatements = await FileDataService.getStatements();
                     const newId = FileDataService.generateId(existingStatements);
@@ -3187,7 +3333,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     const periodEnd = new Date(endDate);
 
                     const periodReservations = reservations.filter(res => {
-                        if (res.propertyId !== property.id) return false;
+                        // Use parseInt to ensure proper type comparison
+                        if (parseInt(res.propertyId) !== parseInt(property.id)) return false;
 
                         let dateMatch = true;
                         if (calculationType === 'calendar') {
@@ -3205,7 +3352,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
 
                     // Filter expenses for this property
                     const periodExpenses = expenses.filter(exp => {
-                        if (property.id && exp.propertyId !== null && exp.propertyId !== property.id) {
+                        // Use parseInt to ensure proper type comparison
+                        if (property.id && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(property.id)) {
                             return false;
                         }
                         const expenseDate = new Date(exp.date);

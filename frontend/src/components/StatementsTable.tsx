@@ -51,7 +51,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -282,9 +282,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       ),
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
+        const pmPercentage = row.original.pmPercentage ?? 15;
         return (
-          <span className="text-gray-700 block truncate" title={displayName}>
-            {displayName}
+          <span className="relative group cursor-default">
+            <span className="text-gray-700 truncate">
+              {displayName}
+            </span>
+            <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+              <span className="text-blue-300 mr-1">PM:</span>
+              <span className="font-semibold">{pmPercentage}%</span>
+            </span>
           </span>
         );
       },
@@ -556,6 +563,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   <RefreshCw className="w-4 h-4 mr-1.5" />
                 )}
                 Regenerate
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'delete')}
+                disabled={bulkProcessing}
+                className="h-8 border-red-300 bg-white text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Delete
               </Button>
               <button
                 onClick={() => setRowSelection({})}
