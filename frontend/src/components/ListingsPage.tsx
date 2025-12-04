@@ -25,7 +25,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
-  const [defaultPetFee, setDefaultPetFee] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
@@ -43,7 +42,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
-        setDefaultPetFee(listing.defaultPetFee != null ? listing.defaultPetFee.toString() : '');
         setTags(listing.tags || []);
       }
     } else {
@@ -92,7 +90,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setDisregardTax(false);
     setCleaningFeePassThrough(false);
     setPmFeePercentage(15);
-    setDefaultPetFee('');
     setTags([]);
     setNewTag('');
   };
@@ -111,7 +108,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         disregardTax,
         cleaningFeePassThrough,
         pmFeePercentage,
-        defaultPetFee: defaultPetFee.trim() ? parseFloat(defaultPetFee) : null,
         tags,
       };
 
@@ -442,30 +438,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
                       The percentage charged for property management services (e.g., 15% = 15.00)
-                    </p>
-                  </div>
-
-                  {/* Default Pet Fee */}
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                    <label className="block text-sm font-medium text-orange-900 mb-2">
-                      Default Pet Fee ($)
-                    </label>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-orange-700">$</span>
-                      <input
-                        type="number"
-                        value={defaultPetFee}
-                        onChange={(e) => setDefaultPetFee(e.target.value)}
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        className="w-32 border border-orange-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
-                    <p className="text-xs text-orange-700 mt-2">
-                      The default pet fee for this listing. Since Hostify's RMS API doesn't provide pet fee data,
-                      this value will be used as a fallback for statement calculations.
-                      Leave empty if this property doesn't charge pet fees.
                     </p>
                   </div>
 
