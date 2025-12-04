@@ -114,6 +114,18 @@ const Statement = sequelize.define('Statement', {
         defaultValue: false,
         field: 'is_cohost_on_airbnb'
     },
+    cleaningFeePassThrough: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'cleaning_fee_pass_through'
+    },
+    totalCleaningFee: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        field: 'total_cleaning_fee'
+    },
     status: {
         type: DataTypes.STRING,
         allowNull: false,

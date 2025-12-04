@@ -233,7 +233,9 @@ class ListingService {
             if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
             if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
             if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;
+            if (config.cleaningFeePassThrough !== undefined) updates.cleaningFeePassThrough = config.cleaningFeePassThrough;
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
+            if (config.defaultPetFee !== undefined) updates.defaultPetFee = config.defaultPetFee;
             if (config.tags !== undefined) updates.tags = config.tags;
 
             await listing.update(updates);

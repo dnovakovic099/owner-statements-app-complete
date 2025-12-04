@@ -67,6 +67,20 @@ const Listing = sequelize.define('Listing', {
         field: 'disregard_tax',
         comment: 'If true, tax is never added to gross payout (company remits tax on behalf of owner)'
     },
+    cleaningFeePassThrough: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'cleaning_fee_pass_through',
+        comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
+    },
+    defaultPetFee: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: null,
+        field: 'default_pet_fee',
+        comment: 'Default pet fee amount for this listing (used when not available from API)'
+    },
     tags: {
         type: DataTypes.TEXT,
         allowNull: true,
