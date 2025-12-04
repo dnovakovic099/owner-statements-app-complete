@@ -168,11 +168,11 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, pmFeePercentage, defaultPetFee, tags } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -180,6 +180,8 @@ router.put('/:id/config', async (req, res) => {
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
+        if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
+        if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
         if (tags !== undefined) config.tags = tags;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);

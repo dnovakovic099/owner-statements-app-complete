@@ -74,6 +74,19 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    waiveCommission: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'waive_commission',
+        comment: 'If true, PM commission is waived (shown but not deducted from payout)'
+    },
+    waiveCommissionUntil: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        field: 'waive_commission_until',
+        comment: 'Date until which commission waiver is active (inclusive)'
+    },
     defaultPetFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
