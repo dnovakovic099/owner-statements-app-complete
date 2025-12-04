@@ -253,7 +253,7 @@ class HostifyService {
     }
 
     // Calculate cleaningAndOtherFees from fees array
-    // Sum all fees where fee.type === "fee" (excluding "Claims Fee" and "Resort Fee")
+    // Sum all fees where fee.type === "fee" (excluding Claims Fee, Resort Fee, Management Fee)
     calculateFeesFromArray(fees) {
         if (!fees || !Array.isArray(fees)) {
             return { cleaningFee: 0, otherFees: 0, totalFees: 0 };
@@ -261,6 +261,9 @@ class HostifyService {
 
         let cleaningFee = 0;
         let otherFees = 0;
+
+        // Fees to exclude from guest-paid totals
+        const excludedFees = ['claims fee', 'resort fee', 'management fee'];
 
         fees.forEach(feeItem => {
             const feeType = feeItem.fee?.type;
@@ -270,8 +273,8 @@ class HostifyService {
 
             // Only process fees of type "fee" (not "accommodation" or "tax")
             if (feeType === 'fee') {
-                // Exclude "Claims Fee" and "Resort Fee"
-                if (feeNameLower.includes('claims fee') || feeNameLower.includes('resort fee')) {
+                // Exclude certain fees
+                if (excludedFees.some(excluded => feeNameLower.includes(excluded))) {
                     return;
                 }
 
