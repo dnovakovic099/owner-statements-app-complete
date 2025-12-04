@@ -16,6 +16,32 @@ class HostifyService {
         this._usersCacheTTL = 10 * 60 * 1000; // 10 minutes
     }
 
+    // Get listing's pets_fee from Hostify RMS API /listings endpoint
+    async getListingPetFee(listingId) {
+        try {
+            // Use cache if available (from getAllProperties)
+            if (this._propertiesCache && this._propertiesCacheTime &&
+                (Date.now() - this._propertiesCacheTime) < this._propertiesCacheTTL) {
+                const listings = this._propertiesCache.result || [];
+                const listing = listings.find(l => l.id === parseInt(listingId));
+                const petFee = listing?.pets_fee ? parseFloat(listing.pets_fee) : 0;
+                return petFee;
+            }
+
+            // Load all listings to cache (more efficient than individual calls)
+            await this.getAllProperties();
+
+            // Now get from cache
+            const listings = this._propertiesCache?.result || [];
+            const listing = listings.find(l => l.id === parseInt(listingId));
+            const petFee = listing?.pets_fee ? parseFloat(listing.pets_fee) : 0;
+            return petFee;
+        } catch (error) {
+            console.log(`[WARN] Failed to get pets_fee for listing ${listingId}: ${error.message}`);
+            return 0;
+        }
+    }
+
     _getCacheKey(startDate, endDate, listingId, dateType) {
         return `${startDate}|${endDate}|${listingId || 'all'}|${dateType}`;
     }
@@ -123,7 +149,35 @@ class HostifyService {
     }
 
     async getAllReservationsWithFinanceData(startDate, endDate, listingId = null) {
-        return await this.getAllReservations(startDate, endDate, listingId);
+        // Get basic reservation list
+        const response = await this.getAllReservations(startDate, endDate, listingId);
+        const reservations = response.result || [];
+
+        // Fetch detailed financial data for each reservation (in parallel batches)
+        const batchSize = 10; // Process 10 at a time to avoid rate limits
+        const enrichedReservations = [];
+
+        for (let i = 0; i < reservations.length; i += batchSize) {
+            const batch = reservations.slice(i, i + batchSize);
+            const detailedBatch = await Promise.all(
+                batch.map(async (res) => {
+                    try {
+                        const details = await this.getReservationDetails(res.hostifyId);
+                        if (details.success && details.reservation) {
+                            // Re-transform with full financial details
+                            return this.transformReservation(details.reservation);
+                        }
+                        return res; // Fallback to basic data
+                    } catch (error) {
+                        console.log(`[WARN] Failed to fetch details for reservation ${res.hostifyId}: ${error.message}`);
+                        return res; // Fallback to basic data
+                    }
+                })
+            );
+            enrichedReservations.push(...detailedBatch);
+        }
+
+        return { result: enrichedReservations };
     }
 
     async getReservationsForWeek(weekStartDate) {
@@ -175,6 +229,11 @@ class HostifyService {
 
     async getProperty(listingId) {
         return await this.makeRequest(`/listings/${listingId}`);
+    }
+
+    // Get individual reservation details (includes pets_fee and other detailed fields)
+    async getReservationDetails(reservationId) {
+        return await this.makeRequest(`/reservations/${reservationId}`);
     }
 
     async getUsers() {
@@ -266,9 +325,19 @@ class HostifyService {
         // Extract detailed financial data from Hostify response
         const baseRate = parseFloat(hostifyReservation.base_price || 0);
         const cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
+        // Pet fee is in its own field
         const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
+        // extras_price may contain additional fees, addons_price for other add-ons
+        const extrasPrice = parseFloat(hostifyReservation.extras_price || 0);
+        const addonsPrice = parseFloat(hostifyReservation.addons_price || 0);
+        // extra_person fee for additional guests
         const extraPersonFee = parseFloat(hostifyReservation.extra_person || 0);
-        const cleaningAndOtherFees = cleaningFee + petsFee + extraPersonFee;
+        const cleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+
+        // Debug logging for pet/extra fees (only when non-zero)
+        if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
+            console.log(`[FEE] ${guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${cleaningAndOtherFees}`);
+        }
         const channelCommission = parseFloat(hostifyReservation.channel_commission || 0);
         const transactionFee = parseFloat(hostifyReservation.transaction_fee || 0);
         const platformFees = channelCommission + transactionFee;
@@ -282,6 +351,7 @@ class HostifyService {
             ...baseReservation,
             // Detailed financial breakdown
             baseRate: baseRate,
+            cleaningFee: cleaningFee, // Guest-paid cleaning fee (for pass-through feature)
             cleaningAndOtherFees: cleaningAndOtherFees,
             platformFees: platformFees,
             clientRevenue: clientRevenue,
@@ -356,7 +426,58 @@ class HostifyService {
                 });
             }
 
-            return Array.from(allReservations.values());
+            // Enrich with detailed financial data (pets_fee, extras, etc.)
+            const filteredReservations = Array.from(allReservations.values());
+            console.log(`[OVERLAP] Enriching ${filteredReservations.length} reservations with detailed financial data...`);
+
+            const batchSize = 10;
+            const enrichedReservations = [];
+
+            for (let i = 0; i < filteredReservations.length; i += batchSize) {
+                const batch = filteredReservations.slice(i, i + batchSize);
+                const detailedBatch = await Promise.all(
+                    batch.map(async (res) => {
+                        try {
+                            const details = await this.getReservationDetails(res.hostifyId);
+
+                            if (details.success && details.reservation) {
+                                const detailData = details.reservation;
+                                // Get pet fee: try from reservation first, then from listing endpoint
+                                const resPetFee = parseFloat(detailData.pets_fee || 0);
+                                const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
+                                const petsFee = resPetFee || listingPetFee;
+                                const extrasPrice = parseFloat(detailData.extras_price || 0);
+                                const addonsPrice = parseFloat(detailData.addons_price || 0);
+                                const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                                const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
+                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+
+                                // Log if we found extra fees
+                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
+                                    console.log(`[FEE] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                                }
+
+                                // Preserve original reservation data, only update financial fields
+                                return {
+                                    ...res,
+                                    cleaningFee: cleaningFee,
+                                    cleaningAndOtherFees: newCleaningAndOtherFees,
+                                    // Recalculate revenue with new fees
+                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                                };
+                            }
+                            return res;
+                        } catch (error) {
+                            console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
+                            return res;
+                        }
+                    })
+                );
+                enrichedReservations.push(...detailedBatch);
+            }
+
+            console.log(`[OVERLAP] Enriched ${enrichedReservations.length} reservations`);
+            return enrichedReservations;
         } catch (error) {
             throw error;
         }
@@ -375,7 +496,57 @@ class HostifyService {
             allReservations = allReservations.filter(res => listingIdSet.has(res.propertyId));
         }
 
-        return allReservations;
+        // Fetch detailed financial data for filtered reservations only (pets_fee, extras, etc.)
+        const batchSize = 10;
+        const enrichedReservations = [];
+
+        console.log(`[FINANCE] Enriching ${allReservations.length} reservations with detailed financial data...`);
+
+        for (let i = 0; i < allReservations.length; i += batchSize) {
+            const batch = allReservations.slice(i, i + batchSize);
+            const detailedBatch = await Promise.all(
+                batch.map(async (res) => {
+                    try {
+                        const details = await this.getReservationDetails(res.hostifyId);
+
+                        if (details.success && details.reservation) {
+                            const detailData = details.reservation;
+                            // Get pet fee: try from reservation first, then from listing endpoint
+                            const resPetFee = parseFloat(detailData.pets_fee || 0);
+                            const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
+                            const petsFee = resPetFee || listingPetFee;
+                            const extrasPrice = parseFloat(detailData.extras_price || 0);
+                            const addonsPrice = parseFloat(detailData.addons_price || 0);
+                            const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                            const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
+                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+
+                            // Log if we found extra fees
+                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
+                                console.log(`[FEE] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                            }
+
+                            // Preserve original reservation data, only update financial fields
+                            return {
+                                ...res,
+                                cleaningFee: cleaningFee,
+                                cleaningAndOtherFees: newCleaningAndOtherFees,
+                                // Recalculate revenue with new fees
+                                clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                            };
+                        }
+                        return res;
+                    } catch (error) {
+                        console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
+                        return res;
+                    }
+                })
+            );
+            enrichedReservations.push(...detailedBatch);
+        }
+
+        console.log(`[FINANCE] Enriched ${enrichedReservations.length} reservations`);
+        return enrichedReservations;
     }
 }
 

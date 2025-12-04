@@ -51,7 +51,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -187,6 +187,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [isRowsDropdownOpen, setIsRowsDropdownOpen] = useState(false);
 
   // Get selected statement IDs
   const selectedIds = React.useMemo(() => {
@@ -282,9 +283,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       ),
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
+        const pmPercentage = row.original.pmPercentage ?? 15;
         return (
-          <span className="text-gray-700 block truncate" title={displayName}>
-            {displayName}
+          <span className="relative group cursor-default">
+            <span className="text-gray-700 truncate">
+              {displayName}
+            </span>
+            <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+              <span className="text-blue-300 mr-1">PM:</span>
+              <span className="font-semibold">{pmPercentage}%</span>
+            </span>
           </span>
         );
       },
@@ -566,6 +574,36 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 )}
                 Regenerate
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'finalize')}
+                disabled={bulkProcessing}
+                className="h-8 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+              >
+                <CheckCircle className="w-4 h-4 mr-1.5" />
+                Finalize
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'revert-to-draft')}
+                disabled={bulkProcessing}
+                className="h-8 border-orange-300 bg-white text-orange-600 hover:bg-orange-50"
+              >
+                <RotateCcw className="w-4 h-4 mr-1.5" />
+                Draft
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'delete')}
+                disabled={bulkProcessing}
+                className="h-8 border-red-300 bg-white text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Delete
+              </Button>
               <button
                 onClick={() => setRowSelection({})}
                 className="ml-1 text-blue-600 hover:text-blue-800 text-sm"
@@ -793,25 +831,33 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Page size selector */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">Rows:</span>
-              <div className="relative inline-flex">
-                <select
-                  value={pagination.pageSize}
-                  onChange={(e) => onPaginationChange(0, Number(e.target.value))}
-                  className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                  style={{
-                    WebkitAppearance: 'none',
-                    MozAppearance: 'none',
-                    appearance: 'none',
-                    backgroundImage: 'none'
-                  }}
+              <div className="relative">
+                <button
+                  onClick={() => setIsRowsDropdownOpen(!isRowsDropdownOpen)}
+                  onBlur={() => setTimeout(() => setIsRowsDropdownOpen(false), 150)}
+                  className="h-8 px-3 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer flex items-center gap-2"
                 >
-                  {[10, 25, 50, 100].map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>
-                      {pageSize}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  {pagination.pageSize}
+                  <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isRowsDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isRowsDropdownOpen && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
+                    {[10, 25, 50, 100].map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          onPaginationChange(0, size);
+                          setIsRowsDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${
+                          pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

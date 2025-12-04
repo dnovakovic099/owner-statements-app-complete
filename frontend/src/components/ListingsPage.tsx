@@ -23,6 +23,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
+  const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -39,6 +40,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
+        setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
         setTags(listing.tags || []);
       }
@@ -86,6 +88,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setIsCohostOnAirbnb(false);
     setAirbnbPassThroughTax(false);
     setDisregardTax(false);
+    setCleaningFeePassThrough(false);
     setPmFeePercentage(15);
     setTags([]);
     setNewTag('');
@@ -103,6 +106,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         isCohostOnAirbnb,
         airbnbPassThroughTax,
         disregardTax,
+        cleaningFeePassThrough,
         pmFeePercentage,
         tags,
       };
@@ -385,6 +389,31 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         <p className="text-xs text-red-700 mt-1">
                           Enable this for clients where the company has agreed to remit the tax on their behalf.
                           When enabled, tax will <strong>never be added</strong> to the gross payout.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cleaning Fee Pass-Through */}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="cleaningFeePassThrough"
+                        checked={cleaningFeePassThrough}
+                        onChange={(e) => setCleaningFeePassThrough(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="cleaningFeePassThrough"
+                          className="text-sm font-medium text-green-900 cursor-pointer"
+                        >
+                          Cleaning Fee Pass-Through
+                        </label>
+                        <p className="text-xs text-green-700 mt-1">
+                          When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
+                          instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
                         </p>
                       </div>
                     </div>

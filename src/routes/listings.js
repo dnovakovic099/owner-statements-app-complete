@@ -168,17 +168,18 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, pmFeePercentage, tags } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, pmFeePercentage, defaultPetFee, tags } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
         if (isCohostOnAirbnb !== undefined) config.isCohostOnAirbnb = isCohostOnAirbnb;
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
+        if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
         if (tags !== undefined) config.tags = tags;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);
@@ -186,6 +187,17 @@ router.put('/:id/config', async (req, res) => {
                 return res.status(400).json({ error: 'pmFeePercentage must be between 0 and 100' });
             }
             config.pmFeePercentage = pmFee;
+        }
+        if (defaultPetFee !== undefined) {
+            if (defaultPetFee === null || defaultPetFee === '') {
+                config.defaultPetFee = null;
+            } else {
+                const petFee = parseFloat(defaultPetFee);
+                if (isNaN(petFee) || petFee < 0) {
+                    return res.status(400).json({ error: 'defaultPetFee must be a positive number or null' });
+                }
+                config.defaultPetFee = petFee;
+            }
         }
         
         if (Object.keys(config).length === 0) {

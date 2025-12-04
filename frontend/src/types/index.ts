@@ -43,6 +43,7 @@ export interface Reservation {
   clientRevenue?: number;
   hostPayoutAmount: number;
   platformFees: number;
+  cleaningFee?: number;
   nights: number;
   status: 'confirmed' | 'completed' | 'cancelled' | 'modified' | 'new';
   source: string;
@@ -79,6 +80,8 @@ export interface Statement {
   insuranceFees: number;
   adjustments: number;
   ownerPayout: number;
+  cleaningFeePassThrough?: boolean;
+  totalCleaningFee?: number;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;
@@ -147,6 +150,8 @@ export interface Listing {
   isCohostOnAirbnb: boolean;
   airbnbPassThroughTax?: boolean;
   disregardTax?: boolean;
+  cleaningFeePassThrough?: boolean;
+  defaultPetFee?: number | null;
   tags?: string[];
   isActive: boolean;
   lastSyncedAt?: string;
