@@ -172,6 +172,11 @@ export const statementsAPI = {
     await api.delete(`/statements/${id}`);
   },
 
+  getJobStatus: async (jobId: string): Promise<{ status: string; progress?: { current: number; total: number }; result?: { summary: { generated: number; skipped: number; errors: number } } }> => {
+    const response = await api.get(`/statements/jobs/${jobId}`);
+    return response.data;
+  },
+
   editStatement: async (id: number, data: {
     expenseIdsToRemove?: number[];
     cancelledReservationIdsToAdd?: number[];
@@ -185,6 +190,7 @@ export const statementsAPI = {
       nights?: number;
       description?: string;
     };
+    reservationCleaningFeeUpdates?: { [reservationId: string]: number };
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;
@@ -375,6 +381,7 @@ export const listingsAPI = {
     displayName?: string;
     isCohostOnAirbnb?: boolean;
     pmFeePercentage?: number;
+    defaultPetFee?: number | null;
     tags?: string[];
   }): Promise<{ success: boolean; message: string; listing: Listing }> => {
     const response = await api.put(`/listings/${id}/config`, config);

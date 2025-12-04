@@ -187,6 +187,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [isRowsDropdownOpen, setIsRowsDropdownOpen] = useState(false);
 
   // Get selected statement IDs
   const selectedIds = React.useMemo(() => {
@@ -810,25 +811,33 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Page size selector */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">Rows:</span>
-              <div className="relative inline-flex">
-                <select
-                  value={pagination.pageSize}
-                  onChange={(e) => onPaginationChange(0, Number(e.target.value))}
-                  className="h-9 pl-3 pr-8 text-sm rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                  style={{
-                    WebkitAppearance: 'none',
-                    MozAppearance: 'none',
-                    appearance: 'none',
-                    backgroundImage: 'none'
-                  }}
+              <div className="relative">
+                <button
+                  onClick={() => setIsRowsDropdownOpen(!isRowsDropdownOpen)}
+                  onBlur={() => setTimeout(() => setIsRowsDropdownOpen(false), 150)}
+                  className="h-8 px-3 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer flex items-center gap-2"
                 >
-                  {[10, 25, 50, 100].map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>
-                      {pageSize}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  {pagination.pageSize}
+                  <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isRowsDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isRowsDropdownOpen && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
+                    {[10, 25, 50, 100].map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          onPaginationChange(0, size);
+                          setIsRowsDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${
+                          pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -23,7 +23,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
+  const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
+  const [defaultPetFee, setDefaultPetFee] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
@@ -39,7 +41,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
+        setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
         setPmFeePercentage(listing.pmFeePercentage || 15);
+        setDefaultPetFee(listing.defaultPetFee != null ? listing.defaultPetFee.toString() : '');
         setTags(listing.tags || []);
       }
     } else {
@@ -86,7 +90,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setIsCohostOnAirbnb(false);
     setAirbnbPassThroughTax(false);
     setDisregardTax(false);
+    setCleaningFeePassThrough(false);
     setPmFeePercentage(15);
+    setDefaultPetFee('');
     setTags([]);
     setNewTag('');
   };
@@ -103,7 +109,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         isCohostOnAirbnb,
         airbnbPassThroughTax,
         disregardTax,
+        cleaningFeePassThrough,
         pmFeePercentage,
+        defaultPetFee: defaultPetFee.trim() ? parseFloat(defaultPetFee) : null,
         tags,
       };
 
@@ -390,6 +398,31 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                     </div>
                   </div>
 
+                  {/* Cleaning Fee Pass-Through */}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="cleaningFeePassThrough"
+                        checked={cleaningFeePassThrough}
+                        onChange={(e) => setCleaningFeePassThrough(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="cleaningFeePassThrough"
+                          className="text-sm font-medium text-green-900 cursor-pointer"
+                        >
+                          Cleaning Fee Pass-Through
+                        </label>
+                        <p className="text-xs text-green-700 mt-1">
+                          When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
+                          instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* PM Fee Percentage */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -409,6 +442,30 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
                       The percentage charged for property management services (e.g., 15% = 15.00)
+                    </p>
+                  </div>
+
+                  {/* Default Pet Fee */}
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-orange-900 mb-2">
+                      Default Pet Fee ($)
+                    </label>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-orange-700">$</span>
+                      <input
+                        type="number"
+                        value={defaultPetFee}
+                        onChange={(e) => setDefaultPetFee(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-32 border border-orange-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <p className="text-xs text-orange-700 mt-2">
+                      The default pet fee for this listing. Since Hostify's RMS API doesn't provide pet fee data,
+                      this value will be used as a fallback for statement calculations.
+                      Leave empty if this property doesn't charge pet fees.
                     </p>
                   </div>
 

@@ -184,11 +184,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           ? `Generating statements for properties with tag "${data.tag}". This runs in the background.`
           : 'Bulk statement generation started. This runs in the background.';
 
-        showToast(message, 'info');
+        const toastId = showToast(message, 'loading');
 
         setIsGenerateModalOpen(false);
-        // Refresh statements after a short delay to show any initial progress
-        setTimeout(() => loadStatements(), 3000);
+
+        // Poll for job completion
+        const jobId = response.jobId as string;
+        const pollInterval = setInterval(async () => {
+          try {
+            const jobStatus = await statementsAPI.getJobStatus(jobId);
+
+            if (jobStatus.status === 'completed') {
+              clearInterval(pollInterval);
+              const { generated, skipped, errors } = jobStatus.result?.summary || { generated: 0, skipped: 0, errors: 0 };
+              let completionMessage = `Generated ${generated} statement(s)`;
+              if (skipped > 0) completionMessage += `, skipped ${skipped}`;
+              if (errors > 0) completionMessage += `, ${errors} errors`;
+
+              updateToast(toastId, completionMessage, errors > 0 ? 'error' : 'success');
+              await loadStatements();
+            } else if (jobStatus.status === 'failed') {
+              clearInterval(pollInterval);
+              updateToast(toastId, 'Bulk generation failed', 'error');
+              await loadStatements();
+            } else if (jobStatus.progress) {
+              // Update progress in toast
+              updateToast(toastId, `Generating... ${jobStatus.progress.current}/${jobStatus.progress.total}`, 'loading');
+            }
+          } catch (err) {
+            // If polling fails, stop and refresh anyway
+            clearInterval(pollInterval);
+            updateToast(toastId, 'Generation completed', 'success');
+            await loadStatements();
+          }
+        }, 2000); // Poll every 2 seconds
       }
       // Check if this was a completed bulk generation (old format, shouldn't happen anymore)
       else if (data.ownerId === 'all' && response.summary) {

@@ -102,19 +102,22 @@ class FileDataService {
             try {
                 const ListingService = require('./ListingService');
                 const dbListings = await ListingService.getListingsWithPmFees();
-                const dbListingMap = new Map(dbListings.map(l => [l.id, l]));
+                // Use parseInt to ensure proper type comparison for IDs
+                const dbListingMap = new Map(dbListings.map(l => [parseInt(l.id), l]));
 
                 listings.forEach(listing => {
-                    const dbListing = dbListingMap.get(listing.id);
+                    const dbListing = dbListingMap.get(parseInt(listing.id));
                     if (dbListing) {
                         listing.tags = dbListing.tags || [];
                         listing.displayName = dbListing.displayName;
                         listing.pmFeePercentage = dbListing.pmFeePercentage;
                         listing.isCohostOnAirbnb = dbListing.isCohostOnAirbnb || false;
+                        listing.cleaningFeePassThrough = dbListing.cleaningFeePassThrough || false;
                     } else {
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
                         listing.isCohostOnAirbnb = false;
+                        listing.cleaningFeePassThrough = false;
                     }
                 });
             } catch (dbError) {
@@ -122,6 +125,7 @@ class FileDataService {
                     listing.tags = [];
                     listing.pmFeePercentage = 15.00;
                     listing.isCohostOnAirbnb = false;
+                    listing.cleaningFeePassThrough = false;
                 });
             }
 

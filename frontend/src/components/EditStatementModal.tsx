@@ -91,6 +91,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
   const [selectedReservationIdsToAdd, setSelectedReservationIdsToAdd] = useState<number[]>([]);
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
+  const [cleaningFeeEdits, setCleaningFeeEdits] = useState<{ [reservationId: string]: string }>({});
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
   const [showCustomReservationForm, setShowCustomReservationForm] = useState(false);
@@ -135,6 +136,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
       setShowAvailableSection(false);
+      setCleaningFeeEdits({});
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -191,11 +193,61 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleReservationAddToggle = (reservationId: number) => {
-    setSelectedReservationIdsToAdd(prev => 
-      prev.includes(reservationId) 
+    setSelectedReservationIdsToAdd(prev =>
+      prev.includes(reservationId)
         ? prev.filter(id => id !== reservationId)
         : [...prev, reservationId]
     );
+  };
+
+  const handleCleaningFeeChange = (reservationId: string, value: string) => {
+    setCleaningFeeEdits(prev => ({
+      ...prev,
+      [reservationId]: value
+    }));
+  };
+
+  const handleSaveCleaningFees = () => {
+    if (!statement || Object.keys(cleaningFeeEdits).length === 0) return;
+
+    // Convert string values to numbers for the API
+    const updates: { [key: string]: number } = {};
+    for (const [resId, value] of Object.entries(cleaningFeeEdits)) {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        updates[resId] = numValue;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Update Cleaning Fees',
+      message: `Update cleaning fees for ${Object.keys(updates).length} reservation(s)? This will recalculate the total cleaning fee.`,
+      confirmText: 'Update Fees',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+
+        try {
+          setSaving(true);
+          setError(null);
+
+          await statementsAPI.editStatement(statement.id, {
+            reservationCleaningFeeUpdates: updates
+          });
+
+          onStatementUpdated();
+          onClose();
+        } catch (err) {
+          setError('Failed to update cleaning fees');
+          console.error('Failed to update cleaning fees:', err);
+        } finally {
+          setSaving(false);
+        }
+      }
+    });
   };
 
   const handleAddCustomReservation = () => {
@@ -345,6 +397,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
     setShowAvailableSection(false);
+    setCleaningFeeEdits({});
     setError(null);
     onClose();
   };
@@ -599,10 +652,25 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
               {/* Current Reservations Section */}
               <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-4">
-                  Current Reservations ({reservations.length})
-                </h3>
-                
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">
+                    Current Reservations ({reservations.length})
+                    {statement?.cleaningFeePassThrough && (
+                      <span className="ml-2 text-sm font-normal text-blue-600">(Cleaning Fee Pass-Through Enabled)</span>
+                    )}
+                  </h3>
+                  {statement?.cleaningFeePassThrough && Object.keys(cleaningFeeEdits).length > 0 && (
+                    <button
+                      onClick={handleSaveCleaningFees}
+                      disabled={saving}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      {saving ? 'Saving...' : 'Save Cleaning Fees'}
+                    </button>
+                  )}
+                </div>
+
                 {reservations.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     No reservations in this statement
@@ -612,18 +680,21 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     {reservations.map((reservation) => {
                       const resId = reservation.hostifyId || reservation.id;
                       const isSelected = selectedReservationIdsToRemove.includes(resId);
+                      const resIdStr = String(resId);
+                      const currentCleaningFee = cleaningFeeEdits[resIdStr] !== undefined
+                        ? cleaningFeeEdits[resIdStr]
+                        : String(reservation.cleaningFee || 0);
                       return (
                         <div
                           key={resId}
-                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                            isSelected 
-                              ? 'bg-red-50 border-red-200' 
+                          className={`border rounded-lg p-4 transition-colors ${
+                            isSelected
+                              ? 'bg-red-50 border-red-200'
                               : 'bg-white border-gray-200 hover:bg-gray-50'
                           }`}
-                          onClick={() => handleReservationRemoveToggle(resId)}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="flex-1">
+                            <div className="flex-1 cursor-pointer" onClick={() => handleReservationRemoveToggle(resId)}>
                               <div className="flex items-center space-x-3">
                                 <input
                                   type="checkbox"
@@ -641,8 +712,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                       </span>
                                       {reservation.status && (
                                         <span className={`px-2 py-1 rounded-full text-xs ${
-                                          reservation.status === 'cancelled' 
-                                            ? 'bg-red-100 text-red-800' 
+                                          reservation.status === 'cancelled'
+                                            ? 'bg-red-100 text-red-800'
                                             : 'bg-green-100 text-green-800'
                                         }`}>
                                           {reservation.status.toUpperCase()}
@@ -656,9 +727,31 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center text-green-600 font-semibold">
-                              <DollarSign className="w-4 h-4 mr-1" />
-                              {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            <div className="flex items-center space-x-4">
+                              {/* Editable Cleaning Fee (only when pass-through is enabled) */}
+                              {statement?.cleaningFeePassThrough && (
+                                <div className="flex items-center">
+                                  <label className="text-xs text-gray-500 mr-2">Cleaning:</label>
+                                  <div className="relative">
+                                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={currentCleaningFee}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleCleaningFeeChange(resIdStr, e.target.value);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-24 pl-6 pr-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex items-center text-green-600 font-semibold">
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
                             </div>
                           </div>
                         </div>
