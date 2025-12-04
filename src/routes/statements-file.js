@@ -4,25 +4,6 @@ const FileDataService = require('../services/FileDataService');
 const BackgroundJobService = require('../services/BackgroundJobService');
 const ListingService = require('../services/ListingService');
 
-/**
- * Check if PM commission waiver is active for a property
- * The waiver is active if:
- * 1. waiveCommission is true
- * 2. AND (waiveCommissionUntil is null OR statementEndDate <= waiveCommissionUntil)
- * @param {Object} settings - Property settings with waiveCommission and waiveCommissionUntil
- * @param {string} statementEndDate - Statement end date in YYYY-MM-DD format
- * @returns {boolean} true if waiver is active
- */
-function isCommissionWaiverActive(settings, statementEndDate) {
-    if (!settings?.waiveCommission) return false;
-    if (!settings.waiveCommissionUntil) return true; // Indefinite waiver
-
-    // Compare dates: waiver is active if statement end date is on or before the waiver end date
-    const waiverEnd = new Date(settings.waiveCommissionUntil + 'T23:59:59');
-    const stmtEnd = new Date(statementEndDate + 'T00:00:00');
-    return stmtEnd <= waiverEnd;
-}
-
 // GET /api/statements/jobs/:jobId - Get background job status
 router.get('/jobs/:jobId', async (req, res) => {
     try {
@@ -334,21 +315,17 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningAndOtherFees || res.cleaningFee || 0) : 0;
-
-            // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-            const waiverActive = isCommissionWaiverActive(resListingInfo, endDate);
-            const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
             }
             grossPayoutSum += grossPayout;
         }
@@ -725,21 +702,17 @@ router.post('/generate', async (req, res) => {
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningAndOtherFees || res.cleaningFee || 0) : 0;
-
-            // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-            const waiverActive = isCommissionWaiverActive(resListingInfo, endDate);
-            const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
             }
             grossPayoutSum += grossPayout;
         }
@@ -1351,8 +1324,6 @@ router.get('/:id/view', async (req, res) => {
                     disregardTax: Boolean(listing.disregardTax),
                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
-                    waiveCommission: Boolean(listing.waiveCommission),
-                    waiveCommissionUntil: listing.waiveCommissionUntil || null,
                     pmFeePercentage: listing.pmFeePercentage ?? 15,
                     nickname: listing.nickname || listing.displayName || listing.name || ''
                 };
@@ -1375,8 +1346,6 @@ router.get('/:id/view', async (req, res) => {
                     disregardTax: Boolean(currentListing.disregardTax),
                     airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
-                    waiveCommission: Boolean(currentListing.waiveCommission),
-                    waiveCommissionUntil: currentListing.waiveCommissionUntil || null,
                     pmFeePercentage: currentListing.pmFeePercentage ?? 15
                 };
             }
@@ -1414,11 +1383,7 @@ router.get('/:id/view', async (req, res) => {
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
             // Use per-property cleaningFeePassThrough setting
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningAndOtherFees || reservation.cleaningFee || 0) : 0;
-
-            // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-            const waiverActive = isCommissionWaiverActive(propSettings, statement.endDate);
-            const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
@@ -1426,15 +1391,15 @@ router.get('/:id/view', async (req, res) => {
             if (!isCohostAirbnb) {
                 recalculatedTotalRevenue += clientRevenue;
             }
-            recalculatedPmCommission += luxuryFee; // Still track the full PM commission for display
+            recalculatedPmCommission += luxuryFee;
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
             }
             recalculatedGrossPayout += grossPayout;
         });
@@ -2730,20 +2695,16 @@ router.get('/:id/view', async (req, res) => {
                                 const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
                                 // Get cleaning fee for pass-through (use per-property setting)
-                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningAndOtherFees || reservation.cleaningFee || 0) : 0;
-
-                                // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-                                const waiverActive = isCommissionWaiverActive(propSettings, statement.endDate);
-                                const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
 
                                 if (isCohostAirbnb) {
-                                    grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                                    grossPayout = -luxuryFee - cleaningFeeForPassThrough;
                                 } else if (shouldAddTax) {
                                     // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
-                                    grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                                    grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
                                 } else {
                                     // No tax: Airbnb without pass-through OR disregardTax is enabled
-                                    grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                                    grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
                                 }
 
                                 // Get property nickname for combined statements
@@ -2814,26 +2775,22 @@ router.get('/:id/view', async (req, res) => {
                                     const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
                                     // Get cleaning fee for pass-through (use per-property setting)
-                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningAndOtherFees || reservation.cleaningFee || 0) : 0;
-
-                                    // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-                                    const waiverActive = isCommissionWaiverActive(propSettings, statement.endDate);
-                                    const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
 
                                     let grossPayout;
                                     if (isCohostAirbnb) {
-                                        grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                                        grossPayout = -luxuryFee - cleaningFeeForPassThrough;
                                     } else if (shouldAddTax) {
-                                        grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                                        grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
                                     } else {
-                                        grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                                        grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
                                     }
 
                                     totalBaseRate += baseRate;
                                     totalCleaningFees += cleaningFees;
                                     totalPlatformFees += platformFees;
                                     totalClientRevenue += clientRevenue;
-                                    totalLuxuryFee += luxuryFee; // Still track full PM commission for display
+                                    totalLuxuryFee += luxuryFee;
                                     totalCleaningExpense += cleaningFeeForPassThrough;
                                     totalTaxResponsibility += taxResponsibility;
                                     totalGrossPayout += grossPayout;
@@ -3013,20 +2970,16 @@ router.get('/:id/view', async (req, res) => {
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
             // Get cleaning fee for pass-through (use per-property setting)
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningAndOtherFees || reservation.cleaningFee || 0) : 0;
-
-            // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-            const waiverActive = isCommissionWaiverActive(propSettings, statement.endDate);
-            const effectiveLuxuryFee = waiverActive ? 0 : luxuryFee;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - effectiveLuxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - effectiveLuxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
             }
 
             summaryGrossPayout += grossPayout;
@@ -3471,11 +3424,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningAndOtherFees || res.cleaningFee || 0) : 0;
-
-                        // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-                        const waiverActive = isCommissionWaiverActive(listing, endDate);
-                        const effectivePmFee = waiverActive ? 0 : pmFee;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -3483,16 +3432,16 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         if (!isCohostAirbnb) {
                             totalRevenue += clientRevenue;
                         }
-                        totalPmCommission += pmFee; // Still track full PM commission for display
+                        totalPmCommission += pmFee;
 
                         // Calculate gross payout per reservation (matching PDF logic exactly)
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -effectivePmFee - cleaningFeeForPassThrough;
+                            grossPayout = -pmFee - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
-                            grossPayout = clientRevenue - effectivePmFee + taxResponsibility - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - pmFee + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
-                            grossPayout = clientRevenue - effectivePmFee - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - pmFee - cleaningFeeForPassThrough;
                         }
                         totalGrossPayout += grossPayout;
                     }
@@ -3741,11 +3690,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningAndOtherFees || res.cleaningFee || 0) : 0;
-
-                        // Check if commission waiver is active - if so, PM fee is displayed but not deducted
-                        const waiverActive = isCommissionWaiverActive(listing, endDate);
-                        const effectivePmFee = waiverActive ? 0 : pmFee;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -3753,16 +3698,16 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         if (!isCohostAirbnb) {
                             totalRevenue += clientRevenue;
                         }
-                        totalPmCommission += pmFee; // Still track full PM commission for display
+                        totalPmCommission += pmFee;
 
                         // Calculate gross payout per reservation (matching PDF logic exactly)
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -effectivePmFee - cleaningFeeForPassThrough;
+                            grossPayout = -pmFee - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
-                            grossPayout = clientRevenue - effectivePmFee + taxResponsibility - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - pmFee + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
-                            grossPayout = clientRevenue - effectivePmFee - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - pmFee - cleaningFeeForPassThrough;
                         }
                         totalGrossPayout += grossPayout;
                     }

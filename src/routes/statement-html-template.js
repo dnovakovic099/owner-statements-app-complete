@@ -762,4 +762,3 @@ function generateStatementHTML(statement, id) {
 }
 
 module.exports = { generateStatementHTML };
-
