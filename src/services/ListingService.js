@@ -234,6 +234,8 @@ class ListingService {
             if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
             if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;
             if (config.cleaningFeePassThrough !== undefined) updates.cleaningFeePassThrough = config.cleaningFeePassThrough;
+            if (config.waiveCommission !== undefined) updates.waiveCommission = config.waiveCommission;
+            if (config.waiveCommissionUntil !== undefined) updates.waiveCommissionUntil = config.waiveCommissionUntil;
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
             if (config.defaultPetFee !== undefined) updates.defaultPetFee = config.defaultPetFee;
             if (config.tags !== undefined) updates.tags = config.tags;
