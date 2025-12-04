@@ -224,12 +224,11 @@ function generateStatementHTML(statement, id) {
             border-collapse: collapse;
             background: white;
             font-size: 13px;
-            border: 1px solid var(--luxury-border);
             margin-bottom: 25px;
             table-layout: fixed;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        
+
         .rental-table th {
             background: var(--luxury-dark);
             color: white;
@@ -243,26 +242,41 @@ function generateStatementHTML(statement, id) {
             word-wrap: break-word;
             hyphens: auto;
         }
-        
+
+        .rental-table th:first-child {
+            border-left: 1px solid var(--luxury-dark);
+        }
+
+        .rental-table th:last-child {
+            border-right: 1px solid var(--luxury-dark);
+        }
+
         .rental-table thead {
             page-break-after: avoid;
             page-break-inside: avoid;
         }
-        
+
         .rental-table td {
             padding: 14px 10px;
             border-bottom: 1px solid #e5e7eb;
-            border-right: 1px solid #f0f0f0;
             font-size: 13px;
             text-align: center;
             vertical-align: middle;
             line-height: 1.5;
         }
-        
+
+        .rental-table td:first-child {
+            border-left: 1px solid #e5e7eb;
+        }
+
+        .rental-table td:last-child {
+            border-right: 1px solid #e5e7eb;
+        }
+
         .rental-table tbody tr {
             page-break-inside: avoid;
         }
-        
+
         /* Column widths for better layout */
         .rental-table th:nth-child(1) { width: 18%; }  /* Guest Details */
         .rental-table th:nth-child(2) { width: 10%; }  /* Base Rate */
