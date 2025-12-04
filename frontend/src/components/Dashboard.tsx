@@ -447,7 +447,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete') => {
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft') => {
     if (ids.length === 0) return;
 
     setBulkProcessing(true);
@@ -558,6 +558,72 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             updateToast(toastId, `Regenerated ${successCount} statement(s)`, 'success');
           } else {
             updateToast(toastId, `Regenerated ${successCount}, failed ${failCount}`, 'error');
+          }
+
+          await loadStatements();
+          setBulkProcessing(false);
+        },
+      });
+      return; // Don't setBulkProcessing(false) here - wait for dialog action
+    } else if (action === 'finalize') {
+      // Show confirmation dialog for bulk finalize
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Finalize Statements',
+        message: `Mark ${ids.length} statement(s) as final?`,
+        type: 'info',
+        onConfirm: async () => {
+          const toastId = showToast(`Finalizing ${ids.length} statement(s)...`, 'loading');
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const id of ids) {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'final');
+              successCount++;
+            } catch (err) {
+              failCount++;
+              console.error(`Failed to finalize statement ${id}:`, err);
+            }
+          }
+
+          if (failCount === 0) {
+            updateToast(toastId, `Finalized ${successCount} statement(s)`, 'success');
+          } else {
+            updateToast(toastId, `Finalized ${successCount}, failed ${failCount}`, 'error');
+          }
+
+          await loadStatements();
+          setBulkProcessing(false);
+        },
+      });
+      return; // Don't setBulkProcessing(false) here - wait for dialog action
+    } else if (action === 'revert-to-draft') {
+      // Show confirmation dialog for bulk revert to draft
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Return to Draft',
+        message: `Return ${ids.length} statement(s) to draft status?`,
+        type: 'info',
+        onConfirm: async () => {
+          const toastId = showToast(`Returning ${ids.length} statement(s) to draft...`, 'loading');
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const id of ids) {
+            try {
+              await statementsAPI.updateStatementStatus(id, 'draft');
+              successCount++;
+            } catch (err) {
+              failCount++;
+              console.error(`Failed to revert statement ${id} to draft:`, err);
+            }
+          }
+
+          if (failCount === 0) {
+            updateToast(toastId, `Returned ${successCount} statement(s) to draft`, 'success');
+          } else {
+            updateToast(toastId, `Reverted ${successCount}, failed ${failCount}`, 'error');
           }
 
           await loadStatements();
