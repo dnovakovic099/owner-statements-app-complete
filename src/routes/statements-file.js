@@ -1993,11 +1993,9 @@ router.get('/:id/view', async (req, res) => {
         .expenses-container {
             overflow-x: auto;
             margin-bottom: 30px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
             background: white;
         }
-        
+
         .expenses-table {
             width: 100%;
             table-layout: fixed;
@@ -2017,11 +2015,27 @@ router.get('/:id/view', async (req, res) => {
             letter-spacing: 0.3px;
         }
 
+        .expenses-table th:first-child {
+            border-left: 1px solid var(--luxury-navy);
+        }
+
+        .expenses-table th:last-child {
+            border-right: 1px solid var(--luxury-navy);
+        }
+
         .expenses-table td {
             padding: 12px 8px;
             border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
             text-align: center;
+        }
+
+        .expenses-table td:first-child {
+            border-left: 1px solid #e5e7eb;
+        }
+
+        .expenses-table td:last-child {
+            border-right: 1px solid #e5e7eb;
         }
 
         .expenses-table tr:hover {
@@ -2075,11 +2089,9 @@ router.get('/:id/view', async (req, res) => {
         .rental-table-container {
             overflow-x: auto;
             margin-bottom: 30px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
             background: white;
         }
-        
+
         .rental-table {
             width: 100%;
             table-layout: fixed;
@@ -2087,7 +2099,7 @@ router.get('/:id/view', async (req, res) => {
             background: white;
             font-size: 9px;
         }
-        
+
         .rental-table th {
             background: var(--luxury-navy);
             color: white;
@@ -2103,7 +2115,15 @@ router.get('/:id/view', async (req, res) => {
             line-height: 1.4;
             vertical-align: middle;
         }
-        
+
+        .rental-table th:first-child {
+            border-left: 1px solid var(--luxury-navy);
+        }
+
+        .rental-table th:last-child {
+            border-right: 1px solid var(--luxury-navy);
+        }
+
         /* Column widths - supports 8 or 9 columns (with Cleaning Expense) */
         .rental-table th:nth-child(1) { width: 17%; }   /* Guest Details with dates */
         .rental-table th:nth-child(2) { width: 9%; }    /* Base Rate */
@@ -2118,11 +2138,18 @@ router.get('/:id/view', async (req, res) => {
         .rental-table td {
             padding: 10px 6px;
             border-bottom: 1px solid #e5e7eb;
-            border-right: 1px solid #f0f0f0;
             font-size: 9px;
             text-align: center;
             vertical-align: middle;
             line-height: 1.5;
+        }
+
+        .rental-table td:first-child {
+            border-left: 1px solid #e5e7eb;
+        }
+
+        .rental-table td:last-child {
+            border-right: 1px solid #e5e7eb;
         }
 
         .booking-cell {
