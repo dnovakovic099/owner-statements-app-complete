@@ -51,7 +51,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -573,6 +573,26 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   <RefreshCw className="w-4 h-4 mr-1.5" />
                 )}
                 Regenerate
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'finalize')}
+                disabled={bulkProcessing}
+                className="h-8 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+              >
+                <CheckCircle className="w-4 h-4 mr-1.5" />
+                Finalize
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'revert-to-draft')}
+                disabled={bulkProcessing}
+                className="h-8 border-orange-300 bg-white text-orange-600 hover:bg-orange-50"
+              >
+                <RotateCcw className="w-4 h-4 mr-1.5" />
+                Draft
               </Button>
               <Button
                 variant="outline"
