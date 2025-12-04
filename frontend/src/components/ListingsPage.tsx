@@ -24,6 +24,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
+  const [waiveCommission, setWaiveCommission] = useState(false);
+  const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -41,6 +43,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
+        setWaiveCommission(listing.waiveCommission || false);
+        setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage || 15);
         setTags(listing.tags || []);
       }
@@ -89,6 +93,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setAirbnbPassThroughTax(false);
     setDisregardTax(false);
     setCleaningFeePassThrough(false);
+    setWaiveCommission(false);
+    setWaiveCommissionUntil('');
     setPmFeePercentage(15);
     setTags([]);
     setNewTag('');
@@ -107,6 +113,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         airbnbPassThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        waiveCommission,
+        waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
         tags,
       };
@@ -415,6 +423,50 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                           When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
                           instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
                         </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Waive PM Commission */}
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="waiveCommission"
+                        checked={waiveCommission}
+                        onChange={(e) => setWaiveCommission(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3 flex-1">
+                        <label
+                          htmlFor="waiveCommission"
+                          className="text-sm font-medium text-indigo-900 cursor-pointer"
+                        >
+                          Waive PM Commission
+                        </label>
+                        <p className="text-xs text-indigo-700 mt-1">
+                          When enabled, the PM commission will still be <strong>displayed</strong> on statements but will <strong>not be deducted</strong> from the payout.
+                          Use this for promotional periods where you want owners to see what they would normally pay.
+                        </p>
+
+                        {waiveCommission && (
+                          <div className="mt-3 p-3 bg-indigo-100 rounded-md">
+                            <label className="block text-xs font-medium text-indigo-800 mb-1">
+                              Waive Until (inclusive)
+                            </label>
+                            <input
+                              type="date"
+                              value={waiveCommissionUntil}
+                              onChange={(e) => setWaiveCommissionUntil(e.target.value)}
+                              className="w-48 border border-indigo-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                            <p className="text-xs text-indigo-600 mt-1">
+                              {waiveCommissionUntil
+                                ? `Commission waived for reservations until ${new Date(waiveCommissionUntil + 'T00:00:00').toLocaleDateString()}`
+                                : 'Leave empty for indefinite waiver'}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
