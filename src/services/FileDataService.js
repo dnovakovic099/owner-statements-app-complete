@@ -162,7 +162,7 @@ class FileDataService {
     }
 
     // Reservations operations - optimized for specific date ranges and properties
-    async getReservations(startDate = null, endDate = null, propertyId = null, calculationType = 'checkout') {
+    async getReservations(startDate = null, endDate = null, propertyId = null, calculationType = 'checkout', includeChildListings = false) {
         // If no date range specified, use a reasonable default (last 6 months to next 6 months)
         if (!startDate || !endDate) {
             const now = new Date();
@@ -170,18 +170,18 @@ class FileDataService {
             sixMonthsAgo.setMonth(now.getMonth() - 6);
             const sixMonthsFromNow = new Date(now);
             sixMonthsFromNow.setMonth(now.getMonth() + 6);
-            
+
             startDate = sixMonthsAgo.toISOString().split('T')[0];
             endDate = sixMonthsFromNow.toISOString().split('T')[0];
         }
-        
+
         const hostifyService = require('./HostifyService');
-        
+
         try {
             const listingIds = propertyId ? [parseInt(propertyId)] : [];
-            
+
             if (calculationType === 'calendar') {
-                const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate);
+                const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate, includeChildListings);
                 
                 // Apply proration for calendar-based calculations
                 const proratedReservations = reservations.map(reservation => {
@@ -213,19 +213,20 @@ class FileDataService {
 
             } else {
                 // Default checkout-based calculation
-                
+
                 // Prepare parameters for Hostify
                 const params = {
                     fromDate: startDate,
                     toDate: endDate,
-                    dateType: 'departureDate'
+                    dateType: 'departureDate',
+                    includeChildListings
                 };
-                
+
                 // Add property filter if specified
                 if (propertyId) {
                     params.listingMapIds = [parseInt(propertyId)];
                 }
-                
+
                 // Use Hostify to get reservations
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
 
@@ -325,15 +326,19 @@ class FileDataService {
      * @param {string} endDate - End date (YYYY-MM-DD)
      * @param {Array<number>} propertyIds - Array of property IDs
      * @param {string} calculationType - 'checkout' or 'calendar'
+     * @param {Object} listingInfoMap - Map of propertyId -> listing settings (optional)
      * @returns {Promise<Object>} - Map of propertyId -> reservations
      */
-    async getReservationsBatch(startDate, endDate, propertyIds, calculationType = 'checkout') {
+    async getReservationsBatch(startDate, endDate, propertyIds, calculationType = 'checkout', listingInfoMap = {}) {
         const hostifyService = require('./HostifyService');
+
+        // Check if any property has includeChildListings enabled
+        const hasChildListingsEnabled = propertyIds.some(id => listingInfoMap[id]?.includeChildListings);
 
         try {
             if (calculationType === 'calendar') {
                 // For calendar mode, use overlapping reservations
-                const reservations = await hostifyService.getOverlappingReservations(propertyIds, startDate, endDate);
+                const reservations = await hostifyService.getOverlappingReservations(propertyIds, startDate, endDate, hasChildListingsEnabled);
 
                 // Apply proration and group by propertyId
                 const reservationsByProperty = {};
@@ -375,7 +380,8 @@ class FileDataService {
                     fromDate: startDate,
                     toDate: endDate,
                     dateType: 'departureDate',
-                    listingMapIds: propertyIds
+                    listingMapIds: propertyIds,
+                    includeChildListings: hasChildListingsEnabled
                 };
 
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);

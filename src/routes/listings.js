@@ -172,7 +172,7 @@ router.put('/:id/cohost-status', async (req, res) => {
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -180,6 +180,7 @@ router.put('/:id/config', async (req, res) => {
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
+        if (includeChildListings !== undefined) config.includeChildListings = includeChildListings;
         if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
         if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
         if (tags !== undefined) config.tags = tags;
