@@ -173,7 +173,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
         // Fetch reservations and expenses in parallel using batch methods
         const [reservationsByProperty, expensesByProperty] = await Promise.all([
-            FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType),
+            FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap),
             FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds)
         ]);
 
@@ -210,8 +210,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 if (!dateMatch) return false;
             }
 
-            // Only include confirmed, modified, and new status reservations
-            const allowedStatuses = ['confirmed', 'modified', 'new'];
+            // Only include confirmed, modified, new and accepted status reservations
+            const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
@@ -475,10 +475,20 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Start date must be before end date' });
         }
 
+        // Check if this property has includeChildListings enabled
+        let includeChildListings = false;
+        if (propertyId) {
+            const listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
+            includeChildListings = listingInfo?.includeChildListings || false;
+            if (includeChildListings) {
+                console.log(`[GENERATE] Property ${propertyId} has includeChildListings=true, will fetch child listing reservations`);
+            }
+        }
+
         // OPTIMIZED: Fetch all data in parallel
         const [listings, reservations, expenses, owners] = await Promise.all([
             FileDataService.getListings(),
-            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType, includeChildListings),
             FileDataService.getExpenses(startDate, endDate, propertyId),
             FileDataService.getOwners()
         ]);
@@ -548,7 +558,7 @@ router.post('/generate', async (req, res) => {
         }
 
         // Filter reservations - optimized with reduced logging
-        const allowedStatuses = ['confirmed', 'modified', 'new'];
+        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
         const periodReservations = reservations.filter(res => {
             // Use parseInt on both sides to ensure proper type comparison
             if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
@@ -3383,7 +3393,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                         }
 
-                        const allowedStatuses = ['confirmed', 'modified', 'new'];
+                        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
                         const statusMatch = allowedStatuses.includes(res.status);
 
                         return dateMatch && statusMatch;
@@ -3651,7 +3661,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                             dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                         }
 
-                        const allowedStatuses = ['confirmed', 'modified', 'new'];
+                        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
                         const statusMatch = allowedStatuses.includes(res.status);
 
                         return dateMatch && statusMatch;

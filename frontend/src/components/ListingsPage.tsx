@@ -27,6 +27,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [waiveCommission, setWaiveCommission] = useState(false);
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
+  const [includeChildListings, setIncludeChildListings] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
@@ -46,6 +47,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage || 15);
+        setIncludeChildListings(listing.includeChildListings || false);
         setTags(listing.tags || []);
       }
     } else {
@@ -96,6 +98,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setWaiveCommission(false);
     setWaiveCommissionUntil('');
     setPmFeePercentage(15);
+    setIncludeChildListings(false);
     setTags([]);
     setNewTag('');
   };
@@ -116,6 +119,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
+        includeChildListings,
         tags,
       };
 
@@ -422,6 +426,31 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         <p className="text-xs text-green-700 mt-1">
                           When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
                           instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Include Child Listings */}
+                  <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="includeChildListings"
+                        checked={includeChildListings}
+                        onChange={(e) => setIncludeChildListings(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="includeChildListings"
+                          className="text-sm font-medium text-cyan-900 cursor-pointer"
+                        >
+                          Include Child Listings
+                        </label>
+                        <p className="text-xs text-cyan-700 mt-1">
+                          When enabled, reservations from <strong>child listings</strong> (e.g., Airbnb, VRBO channels) will be
+                          included in this property's statements. Use this for parent listings that have multiple channel-specific child listings.
                         </p>
                       </div>
                     </div>
