@@ -74,6 +74,13 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    includeChildListings: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'include_child_listings',
+        comment: 'If true, reservations from child listings will be included in statements'
+    },
     waiveCommission: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
