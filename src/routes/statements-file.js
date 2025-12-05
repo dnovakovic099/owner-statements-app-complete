@@ -475,20 +475,12 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Start date must be before end date' });
         }
 
-        // Check if this property has includeChildListings enabled
-        let includeChildListings = false;
-        if (propertyId) {
-            const listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
-            includeChildListings = listingInfo?.includeChildListings || false;
-            if (includeChildListings) {
-                console.log(`[GENERATE] Property ${propertyId} has includeChildListings=true, will fetch child listing reservations`);
-            }
-        }
+        // Child listings are always fetched automatically for all properties
 
         // OPTIMIZED: Fetch all data in parallel
         const [listings, reservations, expenses, owners] = await Promise.all([
             FileDataService.getListings(),
-            FileDataService.getReservations(startDate, endDate, propertyId, calculationType, includeChildListings),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
             FileDataService.getExpenses(startDate, endDate, propertyId),
             FileDataService.getOwners()
         ]);

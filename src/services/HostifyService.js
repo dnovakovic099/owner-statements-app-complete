@@ -562,34 +562,32 @@ class HostifyService {
         return statusMap[hostifyStatus] || 'unknown';
     }
 
-    async getOverlappingReservations(listingIds, fromDate, toDate, includeChildListings = false) {
+    async getOverlappingReservations(listingIds, fromDate, toDate) {
         try {
             const allReservations = new Map();
 
-            // Only expand listing IDs to include children if the setting is enabled
+            // Always expand listing IDs to include children (parallel fetch for performance)
             let expandedListingIds = listingIds.map(id => parseInt(id));
             const childToParentMap = new Map();
 
-            if (includeChildListings) {
-                // Fetch all children in parallel and build maps at once
-                const childResults = await Promise.all(
-                    listingIds.map(async parentId => ({
-                        parentId: parseInt(parentId),
-                        childIds: await this.getChildListings(parentId)
-                    }))
-                );
+            // Fetch all children in parallel and build maps at once
+            const childResults = await Promise.all(
+                listingIds.map(async parentId => ({
+                    parentId: parseInt(parentId),
+                    childIds: await this.getChildListings(parentId)
+                }))
+            );
 
-                // Build expanded list and child->parent map in one pass
-                childResults.forEach(({ parentId, childIds }) => {
-                    childIds.forEach(childId => {
-                        expandedListingIds.push(childId);
-                        childToParentMap.set(childId, parentId);
-                    });
+            // Build expanded list and child->parent map in one pass
+            childResults.forEach(({ parentId, childIds }) => {
+                childIds.forEach(childId => {
+                    expandedListingIds.push(childId);
+                    childToParentMap.set(childId, parentId);
                 });
+            });
 
-                if (childToParentMap.size > 0) {
-                    console.log(`[EXPAND] Expanded ${listingIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
-                }
+            if (childToParentMap.size > 0) {
+                console.log(`[EXPAND] Expanded ${listingIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
             }
 
             // Look back 12 months to catch long-term stays that started months ago
@@ -707,13 +705,13 @@ class HostifyService {
     }
 
     async getConsolidatedFinanceReport(params = {}) {
-        const { listingMapIds = [], fromDate, toDate, dateType = 'checkOut', includeChildListings = false } = params;
+        const { listingMapIds = [], fromDate, toDate, dateType = 'checkOut' } = params;
 
-        // Only expand listing IDs to include children if the setting is enabled
+        // Always expand listing IDs to include children (parallel fetch for performance)
         let expandedListingIds = listingMapIds.map(id => parseInt(id));
         const childToParentMap = new Map();
 
-        if (includeChildListings && listingMapIds.length > 0) {
+        if (listingMapIds.length > 0) {
             // Fetch all children in parallel and build maps at once
             const childResults = await Promise.all(
                 listingMapIds.map(async parentId => ({
