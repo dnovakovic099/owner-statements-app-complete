@@ -151,6 +151,7 @@ export interface Listing {
   airbnbPassThroughTax?: boolean;
   disregardTax?: boolean;
   cleaningFeePassThrough?: boolean;
+  includeChildListings?: boolean;
   waiveCommission?: boolean;
   waiveCommissionUntil?: string | null;
   defaultPetFee?: number | null;

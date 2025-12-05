@@ -18,6 +18,10 @@ class HostifyService {
         // Fee details cache - stores fee details for individual reservations
         this._feeDetailsCache = new Map(); // key: reservationId, value: { fees, time }
         this._feeDetailsCacheTTL = 5 * 60 * 1000; // 5 minutes
+
+        // Child listings cache - stores child listing IDs for parent listings
+        this._childListingsCache = new Map(); // key: parentId, value: { childIds, time }
+        this._childListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
     }
 
     // Get listing's pets_fee from Hostify RMS API /listings endpoint
@@ -63,6 +67,7 @@ class HostifyService {
         this._usersCache = null;
         this._usersCacheTime = null;
         this._feeDetailsCache.clear();
+        this._childListingsCache.clear();
     }
 
     async makeRequest(endpoint, params = {}, method = 'GET') {
@@ -99,6 +104,11 @@ class HostifyService {
     async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn') {
         const params = { page, per_page: perPage };
 
+        // Add listing filter if specified
+        if (listingId) {
+            params.listing_id = listingId;
+        }
+
         if (dateType === 'checkOut' || dateType === 'departureDate') {
             params.filters = JSON.stringify([
                 { field: 'checkOut', operator: '>=', value: startDate },
@@ -110,6 +120,61 @@ class HostifyService {
         }
 
         return await this.makeRequest('/reservations', params);
+    }
+
+    // Fetch reservations for a specific listing ID
+    async getReservationsForListing(listingId, startDate, endDate, dateType = 'checkIn') {
+        let allReservations = [];
+        let page = 1;
+        const perPage = 100;
+        let hasMore = true;
+
+        try {
+            while (hasMore) {
+                const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType);
+
+                if (response.success && response.reservations?.length > 0) {
+                    allReservations = allReservations.concat(response.reservations);
+                    hasMore = response.reservations.length === perPage && response.total > allReservations.length;
+                    page++;
+                    if (page > 50) break; // Safety limit
+                } else {
+                    if (!response.success) {
+                        console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: API returned success=false`);
+                    }
+                    hasMore = false;
+                }
+            }
+        } catch (error) {
+            console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: ${error.message}`);
+            return [];
+        }
+
+        return allReservations.map(r => this.transformReservation(r));
+    }
+
+    // Fetch reservations for multiple listings in parallel
+    async getReservationsForListings(listingIds, startDate, endDate, dateType = 'checkIn') {
+        console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings in parallel...`);
+
+        const results = await Promise.all(
+            listingIds.map(async listingId => {
+                const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
+                return { listingId, reservations };
+            })
+        );
+
+        // Merge all reservations
+        let allReservations = [];
+        results.forEach(({ listingId, reservations }) => {
+            if (reservations.length > 0) {
+                console.log(`[PARALLEL] Listing ${listingId}: ${reservations.length} reservations`);
+            }
+            allReservations = allReservations.concat(reservations);
+        });
+
+        console.log(`[PARALLEL] Total: ${allReservations.length} reservations from ${listingIds.length} listings`);
+        return allReservations;
     }
 
     async getAllReservations(startDate, endDate, listingId = null, dateType = 'checkIn') {
@@ -234,6 +299,58 @@ class HostifyService {
 
     async getProperty(listingId) {
         return await this.makeRequest(`/listings/${listingId}`);
+    }
+
+    // Get child listings for a parent listing (with caching)
+    async getChildListings(parentId) {
+        const cacheKey = parseInt(parentId);
+
+        // Check cache first
+        const cached = this._childListingsCache.get(cacheKey);
+        if (cached && (Date.now() - cached.time) < this._childListingsCacheTTL) {
+            return cached.childIds;
+        }
+
+        try {
+            const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
+            if (response.success && response.listings && response.listings.length > 0) {
+                const childIds = response.listings.map(l => parseInt(l.id));
+                console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
+
+                // Cache the result
+                this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
+                return childIds;
+            }
+
+            // Cache empty result too
+            this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
+            return [];
+        } catch (error) {
+            console.log(`[PARENT-CHILD] Error fetching children for listing ${parentId}: ${error.message}`);
+            // Don't cache errors - network issues should be retried
+            return [];
+        }
+    }
+
+    // Expand listing IDs to include child listings
+    async expandListingIdsWithChildren(listingIds) {
+        if (!listingIds || listingIds.length === 0) {
+            return [];
+        }
+
+        const expandedIds = new Set(listingIds.map(id => parseInt(id)));
+
+        // For each listing, check if it has children and add them
+        for (const listingId of listingIds) {
+            const childIds = await this.getChildListings(listingId);
+            childIds.forEach(childId => expandedIds.add(childId));
+        }
+
+        const result = Array.from(expandedIds);
+        if (result.length > listingIds.length) {
+            console.log(`[EXPAND] Expanded ${listingIds.length} listing(s) to ${result.length} (including children)`);
+        }
+        return result;
     }
 
     // Get individual reservation details with fees breakdown (with caching)
@@ -445,50 +562,81 @@ class HostifyService {
         return statusMap[hostifyStatus] || 'unknown';
     }
 
-    async getOverlappingReservations(listingIds, fromDate, toDate) {
+    async getOverlappingReservations(listingIds, fromDate, toDate, includeChildListings = false) {
         try {
             const allReservations = new Map();
 
+            // Only expand listing IDs to include children if the setting is enabled
+            let expandedListingIds = listingIds.map(id => parseInt(id));
+            const childToParentMap = new Map();
+
+            if (includeChildListings) {
+                // Fetch all children in parallel and build maps at once
+                const childResults = await Promise.all(
+                    listingIds.map(async parentId => ({
+                        parentId: parseInt(parentId),
+                        childIds: await this.getChildListings(parentId)
+                    }))
+                );
+
+                // Build expanded list and child->parent map in one pass
+                childResults.forEach(({ parentId, childIds }) => {
+                    childIds.forEach(childId => {
+                        expandedListingIds.push(childId);
+                        childToParentMap.set(childId, parentId);
+                    });
+                });
+
+                if (childToParentMap.size > 0) {
+                    console.log(`[EXPAND] Expanded ${listingIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
+                }
+            }
+
             // Look back 12 months to catch long-term stays that started months ago
+            // Look forward 12 months because Hostify API filters by CHECKOUT date (not check-in)
+            // This catches long-term stays that check out up to a year after the statement period
             const lookbackDate = new Date(fromDate);
             lookbackDate.setDate(lookbackDate.getDate() - 365);
             const lookforwardDate = new Date(toDate);
-            lookforwardDate.setDate(lookforwardDate.getDate() + 90);
+            lookforwardDate.setDate(lookforwardDate.getDate() + 365);
 
-            // Fetch all reservations at once (uses cache)
-            const response = await this.getAllReservations(
+            // Fetch reservations for each listing in PARALLEL (much faster than fetching all and filtering)
+            const reservationsList = await this.getReservationsForListings(
+                expandedListingIds,
                 lookbackDate.toISOString().split('T')[0],
                 lookforwardDate.toISOString().split('T')[0],
-                null
+                'checkIn'
             );
 
-            if (response.result) {
-                const listingIdSet = new Set(listingIds.map(id => parseInt(id)));
-                const periodStart = new Date(fromDate);
-                const periodEnd = new Date(toDate);
+            const periodStart = new Date(fromDate);
+            const periodEnd = new Date(toDate);
 
-                response.result.forEach(res => {
-                    // Filter by listing
-                    if (!listingIdSet.has(res.propertyId)) return;
+            reservationsList.forEach(res => {
+                // If this is a child listing, attribute to parent
+                if (childToParentMap.has(res.propertyId)) {
+                    const originalChildId = res.propertyId;
+                    res.childListingId = originalChildId; // Keep original for reference
+                    res.propertyId = childToParentMap.get(originalChildId);
+                    console.log(`[CHILD-ATTRIB] Reservation ${res.hostifyId}: child ${originalChildId} -> parent ${res.propertyId}`);
+                }
 
-                    const arrivalDate = new Date(res.checkInDate);
-                    const departureDate = new Date(res.checkOutDate);
+                const arrivalDate = new Date(res.checkInDate);
+                const departureDate = new Date(res.checkOutDate);
 
-                    // Check overlap
-                    if (arrivalDate <= periodEnd && departureDate > periodStart) {
-                        res.arrivalDate = res.checkInDate;
-                        res.departureDate = res.checkOutDate;
-                        res.id = res.hostifyId;
-                        allReservations.set(res.hostifyId, res);
-                    }
-                });
-            }
+                // Check overlap
+                if (arrivalDate <= periodEnd && departureDate > periodStart) {
+                    res.arrivalDate = res.checkInDate;
+                    res.departureDate = res.checkOutDate;
+                    res.id = res.hostifyId;
+                    allReservations.set(res.hostifyId, res);
+                }
+            });
 
             // Enrich with detailed financial data (pets_fee, extras, etc.)
             const filteredReservations = Array.from(allReservations.values());
             console.log(`[OVERLAP] Enriching ${filteredReservations.length} reservations with detailed financial data...`);
 
-            const batchSize = 20; // Increased from 10 for better performance
+            const batchSize = 50; // Increased for better performance with caching
             const enrichedReservations = [];
 
             for (let i = 0; i < filteredReservations.length; i += batchSize) {
@@ -559,20 +707,54 @@ class HostifyService {
     }
 
     async getConsolidatedFinanceReport(params = {}) {
-        const { listingMapIds = [], fromDate, toDate, dateType = 'checkOut' } = params;
+        const { listingMapIds = [], fromDate, toDate, dateType = 'checkOut', includeChildListings = false } = params;
 
-        // Fetch all reservations at once (uses cache)
-        const response = await this.getAllReservations(fromDate, toDate, null, dateType);
-        let allReservations = response.result || [];
+        // Only expand listing IDs to include children if the setting is enabled
+        let expandedListingIds = listingMapIds.map(id => parseInt(id));
+        const childToParentMap = new Map();
 
-        // Filter by property IDs if specified
-        if (listingMapIds.length > 0) {
-            const listingIdSet = new Set(listingMapIds.map(id => parseInt(id)));
-            allReservations = allReservations.filter(res => listingIdSet.has(res.propertyId));
+        if (includeChildListings && listingMapIds.length > 0) {
+            // Fetch all children in parallel and build maps at once
+            const childResults = await Promise.all(
+                listingMapIds.map(async parentId => ({
+                    parentId: parseInt(parentId),
+                    childIds: await this.getChildListings(parentId)
+                }))
+            );
+
+            // Build expanded list and child->parent map in one pass
+            childResults.forEach(({ parentId, childIds }) => {
+                childIds.forEach(childId => {
+                    expandedListingIds.push(childId);
+                    childToParentMap.set(childId, parentId);
+                });
+            });
+
+            if (childToParentMap.size > 0) {
+                console.log(`[FINANCE-EXPAND] Expanded ${listingMapIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
+            }
+        }
+
+        // Fetch reservations for each listing in PARALLEL (much faster than fetching all and filtering)
+        let allReservations = [];
+        if (expandedListingIds.length > 0) {
+            allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
+
+            // Attribute child reservations to parent
+            allReservations = allReservations.map(res => {
+                if (childToParentMap.has(res.propertyId)) {
+                    return {
+                        ...res,
+                        childListingId: res.propertyId, // Keep original for reference
+                        propertyId: childToParentMap.get(res.propertyId)
+                    };
+                }
+                return res;
+            });
         }
 
         // Fetch detailed financial data for filtered reservations only (pets_fee, extras, etc.)
-        const batchSize = 20; // Increased from 10 for better performance
+        const batchSize = 50; // Increased for better performance with caching
         const enrichedReservations = [];
 
         console.log(`[FINANCE] Enriching ${allReservations.length} reservations with detailed financial data...`);
