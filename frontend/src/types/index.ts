@@ -82,6 +82,13 @@ export interface Statement {
   ownerPayout: number;
   cleaningFeePassThrough?: boolean;
   totalCleaningFee?: number;
+  cleaningMismatchWarning?: {
+    type: string;
+    message: string;
+    reservationCount: number;
+    cleaningExpenseCount: number;
+    difference: number;
+  } | null;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;
