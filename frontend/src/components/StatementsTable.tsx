@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -284,15 +284,29 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const displayName = getPropertyDisplayName(row.original);
         const pmPercentage = row.original.pmPercentage ?? 15;
+        const cleaningWarning = row.original.cleaningMismatchWarning;
         return (
-          <span className="relative group cursor-default">
+          <span className="cursor-default inline-flex items-center gap-1.5 group/cell relative">
             <span className="text-gray-700 truncate">
               {displayName}
             </span>
-            <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
-              <span className="text-blue-300 mr-1">PM:</span>
-              <span className="font-semibold">{pmPercentage}%</span>
-            </span>
+            {cleaningWarning ? (
+              <span className="relative group/warn flex-shrink-0">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/warn:inline-flex items-center bg-amber-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                  {cleaningWarning.message}
+                </span>
+                <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+                  <span className="text-blue-300 mr-1">PM:</span>
+                  <span className="font-semibold">{pmPercentage}%</span>
+                </span>
+              </span>
+            ) : (
+              <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+                <span className="text-blue-300 mr-1">PM:</span>
+                <span className="font-semibold">{pmPercentage}%</span>
+              </span>
+            )}
           </span>
         );
       },
