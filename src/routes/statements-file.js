@@ -2288,7 +2288,7 @@ router.get('/:id/view', async (req, res) => {
         /* Column widths - supports 8 or 9 columns (with Cleaning Expense) */
         .rental-table th:nth-child(1) { width: 17%; }   /* Guest Details with dates */
         .rental-table th:nth-child(2) { width: 9%; }    /* Base Rate */
-        .rental-table th:nth-child(3) { width: 11%; }   /* Guest Paid Cleaning, Pet, Extra */
+        .rental-table th:nth-child(3) { width: 11%; }   /* Guest Fees */
         .rental-table th:nth-child(4) { width: 9%; }    /* Platform Fees */
         .rental-table th:nth-child(5) { width: 9%; }    /* Revenue */
         .rental-table th:nth-child(6) { width: 10%; }   /* PM Commission */
@@ -2843,7 +2843,7 @@ router.get('/:id/view', async (req, res) => {
                                 <th>Guest Details</th>
                                 ${anyGuestPaidDamageCoverage ? '<th>Guest Paid Damage Coverage</th>' : ''}
                                 <th>Base Rate</th>
-                                <th>Guest Paid Cleaning, Pet, Extra, & Others</th>
+                                <th>Guest Fees</th>
                                 <th>Platform Fees</th>
                                 <th>Revenue</th>
                                 <th>PM Commission</th>
