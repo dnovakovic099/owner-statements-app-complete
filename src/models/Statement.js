@@ -157,6 +157,18 @@ const Statement = sequelize.define('Statement', {
         allowNull: false,
         defaultValue: [],
         field: 'duplicate_warnings'
+    },
+    cleaningMismatchWarning: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+        field: 'cleaning_mismatch_warning'
+    },
+    shouldConvertToCalendar: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'should_convert_to_calendar'
     }
 }, {
     tableName: 'statements',
