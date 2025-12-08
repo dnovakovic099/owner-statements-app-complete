@@ -574,7 +574,7 @@ function generateStatementHTML(statement, id) {
                 <tr>
                     <th>Guest Details</th>
                     <th>Base Rate</th>
-                    <th>Guest Paid Cleaning, Pet Extra & Others</th>
+                    <th>Guest Fees</th>
                     <th>Platform Fees</th>
                     <th>Revenue</th>
                     <th>PM Commission</th>
