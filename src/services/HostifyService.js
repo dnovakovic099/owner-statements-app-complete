@@ -471,8 +471,8 @@ class HostifyService {
         return await this.makeRequest(`/listings/${listingId}`);
     }
 
-    // Get child listings for a parent listing (with caching)
-    async getChildListings(parentId) {
+    // Get child listings for a parent listing (with caching and retry)
+    async getChildListings(parentId, retries = 2) {
         const cacheKey = parseInt(parentId);
 
         // Check cache first
@@ -481,25 +481,33 @@ class HostifyService {
             return cached.childIds;
         }
 
-        try {
-            const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
-            if (response.success && response.listings && response.listings.length > 0) {
-                const childIds = response.listings.map(l => parseInt(l.id));
-                console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
+        for (let attempt = 1; attempt <= retries + 1; attempt++) {
+            try {
+                const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
+                if (response.success && response.listings && response.listings.length > 0) {
+                    const childIds = response.listings.map(l => parseInt(l.id));
+                    console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
 
-                // Cache the result
-                this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
-                return childIds;
+                    // Cache the result
+                    this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
+                    return childIds;
+                }
+
+                // Cache empty result too (listing has no children)
+                this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
+                return [];
+            } catch (error) {
+                if (attempt <= retries) {
+                    console.log(`[PARENT-CHILD] Retry ${attempt}/${retries} for listing ${parentId}: ${error.message}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                } else {
+                    console.log(`[PARENT-CHILD] Failed after ${retries + 1} attempts for listing ${parentId}: ${error.message}`);
+                    // Don't cache errors - network issues should be retried next time
+                    return [];
+                }
             }
-
-            // Cache empty result too
-            this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
-            return [];
-        } catch (error) {
-            console.log(`[PARENT-CHILD] Error fetching children for listing ${parentId}: ${error.message}`);
-            // Don't cache errors - network issues should be retried
-            return [];
         }
+        return [];
     }
 
     // Expand listing IDs to include child listings
