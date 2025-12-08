@@ -94,68 +94,99 @@ class EmailService {
     getWeeklyTemplate(data) {
         const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
 
+        // Format period as "Nov 24-Dec 1, 2025" style for weekly
+        const formatWeeklyPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+                const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+                const startDay = startDate.getDate();
+                const endDay = endDate.getDate();
+                const year = endDate.getFullYear();
+
+                if (startMonth === endMonth) {
+                    return `${startMonth} ${startDay}-${endDay}, ${year}`;
+                }
+                return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${year}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        // Format for subject line: "11.24-12.1.2025"
+        const formatSubjectPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startStr = `${startDate.getMonth() + 1}.${startDate.getDate()}`;
+                const endStr = `${endDate.getMonth() + 1}.${endDate.getDate()}.${endDate.getFullYear()}`;
+                return `${startStr}-${endStr}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        const periodDisplay = formatWeeklyPeriod(periodStart, periodEnd);
+        const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
+
         return {
-            subject: `Weekly Owner Statement - ${propertyName} (${periodStart} to ${periodEnd})`,
-            html: `
-<!DOCTYPE html>
+            subject: `Owner Statement - ${subjectPeriod}`,
+            html: `<!DOCTYPE html>
 <html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-        .footer { background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280; border-radius: 0 0 8px 8px; }
-        .highlight { background: #dbeafe; padding: 15px; border-radius: 8px; margin: 15px 0; }
-        .amount { font-size: 24px; font-weight: bold; color: ${ownerPayout >= 0 ? '#059669' : '#dc2626'}; }
-        .label { font-size: 12px; color: #6b7280; text-transform: uppercase; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1 style="margin: 0;">Weekly Owner Statement</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">${periodStart} - ${periodEnd}</p>
-        </div>
-        <div class="content">
-            <p>Dear ${ownerName},</p>
-            <p>Please find attached your weekly owner statement for <strong>${propertyName}</strong>.</p>
-
-            <div class="highlight">
-                <div class="label">Net Payout</div>
-                <div class="amount">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</div>
-            </div>
-
-            <p>This statement includes all reservations with check-outs during the statement period, along with any applicable expenses and fees.</p>
-
-            <p>If you have any questions about this statement, please don't hesitate to reach out.</p>
-
-            <p>Best regards,<br><strong>${companyName || 'Luxury Lodging PM'}</strong></p>
-        </div>
-        <div class="footer">
-            <p>This is an automated message. Please do not reply directly to this email.</p>
-            <p>&copy; ${new Date().getFullYear()} ${companyName || 'Luxury Lodging PM'}. All rights reserved.</p>
-        </div>
-    </div>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: WEEKLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
-</html>
-            `,
-            text: `
-Weekly Owner Statement
-${periodStart} - ${periodEnd}
+</html>`,
+            text: `Hi,
 
-Dear ${ownerName},
+Attached is your statement for the period ${periodDisplay}.
 
-Please find attached your weekly owner statement for ${propertyName}.
+STATEMENT TOTAL
+$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
-Net Payout: $${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+Payment will be sent shortly to your provided account.
 
-This statement includes all reservations with check-outs during the statement period, along with any applicable expenses and fees.
+---
 
-If you have any questions about this statement, please don't hesitate to reach out.
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
 
-Best regards,
-${companyName || 'Luxury Lodging PM'}
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: WEEKLY PAYOUTS
+If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
             `
         };
     }
@@ -166,154 +197,482 @@ ${companyName || 'Luxury Lodging PM'}
     getBiWeeklyTemplate(data) {
         const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
 
+        // Format period as "Nov 17-Dec 1, 2025" style for bi-weekly
+        const formatBiWeeklyPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+                const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+                const startDay = startDate.getDate();
+                const endDay = endDate.getDate();
+                const year = endDate.getFullYear();
+
+                if (startMonth === endMonth) {
+                    return `${startMonth} ${startDay}-${endDay}, ${year}`;
+                }
+                return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${year}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        // Format for subject line: "11.17-12.1.2025"
+        const formatSubjectPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startStr = `${startDate.getMonth() + 1}.${startDate.getDate()}`;
+                const endStr = `${endDate.getMonth() + 1}.${endDate.getDate()}.${endDate.getFullYear()}`;
+                return `${startStr}-${endStr}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        const periodDisplay = formatBiWeeklyPeriod(periodStart, periodEnd);
+        const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
+
         return {
-            subject: `Bi-Weekly Owner Statement - ${propertyName} (${periodStart} to ${periodEnd})`,
-            html: `
-<!DOCTYPE html>
+            subject: `Owner Statement - ${subjectPeriod}`,
+            html: `<!DOCTYPE html>
 <html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #7c3aed; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-        .footer { background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280; border-radius: 0 0 8px 8px; }
-        .highlight { background: #ede9fe; padding: 15px; border-radius: 8px; margin: 15px 0; }
-        .amount { font-size: 24px; font-weight: bold; color: ${ownerPayout >= 0 ? '#059669' : '#dc2626'}; }
-        .label { font-size: 12px; color: #6b7280; text-transform: uppercase; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1 style="margin: 0;">Bi-Weekly Owner Statement</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">${periodStart} - ${periodEnd}</p>
-        </div>
-        <div class="content">
-            <p>Dear ${ownerName},</p>
-            <p>Please find attached your bi-weekly owner statement for <strong>${propertyName}</strong>.</p>
-
-            <div class="highlight">
-                <div class="label">Net Payout</div>
-                <div class="amount">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</div>
-            </div>
-
-            <p>This statement covers the two-week period and includes all completed reservations and associated charges.</p>
-
-            <p>Thank you for your continued partnership.</p>
-
-            <p>Best regards,<br><strong>${companyName || 'Luxury Lodging PM'}</strong></p>
-        </div>
-        <div class="footer">
-            <p>This is an automated message. Please do not reply directly to this email.</p>
-            <p>&copy; ${new Date().getFullYear()} ${companyName || 'Luxury Lodging PM'}. All rights reserved.</p>
-        </div>
-    </div>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: BI-WEEKLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
-</html>
-            `,
-            text: `
-Bi-Weekly Owner Statement
-${periodStart} - ${periodEnd}
+</html>`,
+            text: `Hi,
 
-Dear ${ownerName},
+Attached is your statement for the period ${periodDisplay}.
 
-Please find attached your bi-weekly owner statement for ${propertyName}.
+STATEMENT TOTAL
+$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
-Net Payout: $${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+Payment will be sent shortly to your provided account.
 
-This statement covers the two-week period and includes all completed reservations and associated charges.
+---
 
-Thank you for your continued partnership.
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
 
-Best regards,
-${companyName || 'Luxury Lodging PM'}
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: BI-WEEKLY PAYOUTS
+If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
             `
         };
     }
 
     /**
-     * Monthly Statement Email Template
+     * Monthly Statement Email Template - Calendar (Prorated) basis
+     * Standard calendar-based template without transition notice
      */
-    getMonthlyTemplate(data) {
+    getMonthlyCalendarTemplate(data) {
         const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
 
+        // Format period as "November 2025" style
+        const formatPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                return startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+        const periodDisplay = formatPeriod(periodStart, periodEnd);
+
         return {
-            subject: `Monthly Owner Statement - ${propertyName} (${periodStart} to ${periodEnd})`,
-            html: `
-<!DOCTYPE html>
+            subject: `Owner Statement - ${periodDisplay}`,
+            html: `<!DOCTYPE html>
 <html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #059669; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-        .footer { background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280; border-radius: 0 0 8px 8px; }
-        .highlight { background: #d1fae5; padding: 15px; border-radius: 8px; margin: 15px 0; }
-        .amount { font-size: 24px; font-weight: bold; color: ${ownerPayout >= 0 ? '#059669' : '#dc2626'}; }
-        .label { font-size: 12px; color: #6b7280; text-transform: uppercase; }
-        .summary-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        .summary-table td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1 style="margin: 0;">Monthly Owner Statement</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">${periodStart} - ${periodEnd}</p>
-        </div>
-        <div class="content">
-            <p>Dear ${ownerName},</p>
-            <p>Please find attached your monthly owner statement for <strong>${propertyName}</strong>.</p>
-
-            <div class="highlight">
-                <div class="label">Net Payout for the Month</div>
-                <div class="amount">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</div>
-            </div>
-
-            <p>This comprehensive monthly statement includes:</p>
-            <ul>
-                <li>All completed reservations</li>
-                <li>Operating expenses</li>
-                <li>Management fees</li>
-                <li>Any applicable adjustments</li>
-            </ul>
-
-            <p>We appreciate your trust in our property management services. Please review the attached statement and let us know if you have any questions.</p>
-
-            <p>Warm regards,<br><strong>${companyName || 'Luxury Lodging PM'}</strong></p>
-        </div>
-        <div class="footer">
-            <p>This is an automated message. Please do not reply directly to this email.</p>
-            <p>&copy; ${new Date().getFullYear()} ${companyName || 'Luxury Lodging PM'}. All rights reserved.</p>
-        </div>
-    </div>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
-</html>
-            `,
-            text: `
-Monthly Owner Statement
-${periodStart} - ${periodEnd}
+</html>`,
+            text: `Hi,
 
-Dear ${ownerName},
+Attached is your statement for the period of ${periodDisplay}.
 
-Please find attached your monthly owner statement for ${propertyName}.
+STATEMENT TOTAL
+$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
-Net Payout for the Month: $${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+Payment will be sent shortly to your provided account.
 
-This comprehensive monthly statement includes:
-- All completed reservations
-- Operating expenses
-- Management fees
-- Any applicable adjustments
+---
 
-We appreciate your trust in our property management services. Please review the attached statement and let us know if you have any questions.
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
 
-Warm regards,
-${companyName || 'Luxury Lodging PM'}
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: MONTHLY PAYOUTS
+This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
             `
         };
+    }
+
+    /**
+     * Monthly Statement Email Template - Calendar to Checkout Transition
+     * Used for November 2025 to notify owners of upcoming change
+     */
+    getMonthlyCalendarToCheckoutTemplate(data) {
+        const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
+
+        // Format period as "November 2025" style
+        const formatPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                return startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+        const periodDisplay = formatPeriod(periodStart, periodEnd);
+
+        return {
+            subject: `Owner Statement - ${periodDisplay}`,
+            html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<p style="margin: 0 0 12px 0;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
+<p style="margin: 0 0 12px 0;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+</body>
+</html>`,
+            text: `Hi,
+
+Attached is your statement for the period of ${periodDisplay}.
+
+STATEMENT TOTAL
+$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+
+Payment will be sent shortly to your provided account.
+
+---
+
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
+
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: MONTHLY PAYOUTS
+This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.
+
+Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.
+
+This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
+            `
+        };
+    }
+
+    /**
+     * Co-Host Negative Balance Email Template
+     * Used when isCohostOnAirbnb is true and statement has negative balance
+     * Includes Stripe invoice link placeholder
+     */
+    getCohostNegativeBalanceTemplate(data) {
+        const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName, stripeInvoiceUrl } = data;
+
+        // Format period as "Nov 17-Dec 1, 2025" style
+        const formatPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+                const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+                const startDay = startDate.getDate();
+                const endDay = endDate.getDate();
+                const year = endDate.getFullYear();
+
+                if (startMonth === endMonth) {
+                    return `${startMonth} ${startDay}-${endDay}, ${year}`;
+                }
+                return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${year}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        // Format for subject line: "11.17-12.1.2025"
+        const formatSubjectPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                const startStr = `${startDate.getMonth() + 1}.${startDate.getDate()}`;
+                const endStr = `${endDate.getMonth() + 1}.${endDate.getDate()}.${endDate.getFullYear()}`;
+                return `${startStr}-${endStr}`;
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+
+        const periodDisplay = formatPeriod(periodStart, periodEnd);
+        const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
+        const balanceAmount = Math.abs(ownerPayout).toFixed(2);
+
+        // Stripe invoice link - use provided URL or placeholder
+        const invoiceLink = stripeInvoiceUrl || '[Stripe Invoice Link]';
+        const invoiceLinkHtml = stripeInvoiceUrl
+            ? `<a href="${stripeInvoiceUrl}" style="color: #2563eb;">this secure Stripe invoice link</a>`
+            : '<strong>[Stripe Invoice Link]</strong>';
+
+        return {
+            subject: `Owner Statement - ${subjectPeriod}`,
+            html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">- $${balanceAmount}</p>
+<p style="margin: 0 0 12px 0;">Since we're on a co-host setup on Airbnb, payouts for Airbnb reservations go directly to your account. This means this statement reflects a negative balance as we need to collect our management commission and any expenses we've covered on your behalf during the period.</p>
+<p style="margin: 0 0 12px 0;">You can pay the balance using ${invoiceLinkHtml}.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: CO-HOST ON AIRBNB</strong></p>
+<p style="margin: 0 0 12px 0;">Airbnb sends the reservation payouts directly to you. Our management commission and any other covered expenses are then invoiced and reflected as a balance due.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: RESERVATION CALCULATION</strong></p>
+<p style="margin: 0 0 12px 0;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<p style="margin: 0 0 12px 0;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
+<p style="margin: 0 0 12px 0;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+</body>
+</html>`,
+            text: `Hi,
+
+Attached is your statement for the period ${periodDisplay}.
+
+STATEMENT TOTAL
+- $${balanceAmount}
+
+Since we're on a co-host setup on Airbnb, payouts for Airbnb reservations go directly to your account. This means this statement reflects a negative balance as we need to collect our management commission and any expenses we've covered on your behalf during the period.
+
+You can pay the balance using ${invoiceLink}.
+
+---
+
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
+
+NOTE: CO-HOST ON AIRBNB
+Airbnb sends the reservation payouts directly to you. Our management commission and any other covered expenses are then invoiced and reflected as a balance due.
+
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: RESERVATION CALCULATION
+This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.
+
+Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.
+
+This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
+            `
+        };
+    }
+
+    /**
+     * Monthly Statement Email Template - Checkout basis
+     * Used for December 2025 onwards
+     */
+    getMonthlyCheckoutTemplate(data) {
+        const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
+
+        // Format period as "November 2025" style
+        const formatPeriod = (start, end) => {
+            try {
+                const startDate = new Date(start);
+                return startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            } catch {
+                return `${start} to ${end}`;
+            }
+        };
+        const periodDisplay = formatPeriod(periodStart, periodEnd);
+
+        return {
+            subject: `Owner Statement - ${periodDisplay}`,
+            html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
+<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
+<p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+Revenue - PM Commission = Gross Payout<br>
+Gross Payout - Expenses + Additional Payouts = Net Payout</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 8px 0;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
+<p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
+<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+</body>
+</html>`,
+            text: `Hi,
+
+Attached is your statement for the period of ${periodDisplay}.
+
+STATEMENT TOTAL
+$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+
+Payment will be sent shortly to your provided account.
+
+---
+
+CALCULATING YOUR STATEMENT
+Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Revenue - PM Commission = Gross Payout
+Gross Payout - Expenses + Additional Payouts = Net Payout
+
+NOTE: EXPENSES AND ADDITIONAL PAYOUTS
+Some items may appear on a later statement if they were recorded at the time the payment was actually made.
+
+NOTE: TAXES
+Any tax responsibilities that need to be remitted will be added to your Gross Payout.
+
+NOTE: MONTHLY PAYOUTS
+If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.
+
+---
+
+If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
+
+Thank you again for your trust and partnership.
+            `
+        };
+    }
+
+    /**
+     * Get Monthly template based on calculation type
+     * @param {Object} data - Template data
+     * @param {string} calculationType - 'calendar' or 'checkout'
+     */
+    getMonthlyTemplate(data, calculationType = 'calendar') {
+        if (calculationType === 'checkout') {
+            return this.getMonthlyCheckoutTemplate(data);
+        }
+        return this.getMonthlyCalendarTemplate(data);
     }
 
     /**

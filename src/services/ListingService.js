@@ -34,6 +34,7 @@ class ListingService {
                         city: hostifyListing.city || null,
                         state: hostifyListing.state || null,
                         country: hostifyListing.country || null,
+                        cleaningFee: hostifyListing.cleaning_fee || null, // Default cleaning fee from Hostify
                         isActive: hostifyListing.is_listed === 1,
                         lastSyncedAt: new Date()
                     };
