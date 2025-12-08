@@ -74,6 +74,13 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    cleaningFee: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: null,
+        field: 'cleaning_fee',
+        comment: 'Default cleaning fee amount from Hostify (used when reservation cleaningFee is 0)'
+    },
     guestPaidDamageCoverage: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
