@@ -24,6 +24,7 @@ class BackgroundJobService {
             status: 'queued',
             progress: 0,
             total: 0,
+            progressMessage: 'Initializing...',
             startedAt: new Date().toISOString(),
             completedAt: null,
             result: null,
@@ -60,9 +61,16 @@ class BackgroundJobService {
 
     /**
      * Update job progress
+     * @param {string} jobId - Job ID
+     * @param {number} progress - Progress count
+     * @param {string} message - Optional progress message for UI display
      */
-    updateProgress(jobId, progress) {
-        this.updateJob(jobId, { progress });
+    updateProgress(jobId, progress, message = null) {
+        const updates = { progress };
+        if (message) {
+            updates.progressMessage = message;
+        }
+        this.updateJob(jobId, updates);
     }
 
     /**

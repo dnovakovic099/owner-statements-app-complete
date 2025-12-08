@@ -82,6 +82,13 @@ export interface Statement {
   ownerPayout: number;
   cleaningFeePassThrough?: boolean;
   totalCleaningFee?: number;
+  cleaningMismatchWarning?: {
+    type: string;
+    message: string;
+    reservationCount: number;
+    cleaningExpenseCount: number;
+    difference: number;
+  } | null;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;
@@ -151,6 +158,7 @@ export interface Listing {
   airbnbPassThroughTax?: boolean;
   disregardTax?: boolean;
   cleaningFeePassThrough?: boolean;
+  guestPaidDamageCoverage?: boolean;
   includeChildListings?: boolean;
   waiveCommission?: boolean;
   waiveCommissionUntil?: string | null;
