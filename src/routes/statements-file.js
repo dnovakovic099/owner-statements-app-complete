@@ -37,6 +37,10 @@ router.get('/', async (req, res) => {
 
         let statements = await FileDataService.getStatements();
 
+        // Get all listings to check cleaningFeePassThrough setting
+        const allListings = await FileDataService.getListings();
+        const listingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
+
         // Apply filters
         if (ownerId) {
             statements = statements.filter(s => s.ownerId === parseInt(ownerId));
@@ -82,31 +86,132 @@ router.get('/', async (req, res) => {
         const paginatedStatements = statements.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
         // Format for frontend
-        const formattedStatements = paginatedStatements.map(s => ({
-            id: s.id,
-            ownerId: s.ownerId,
-            ownerName: s.ownerName || 'Default Owner',
-            propertyId: s.propertyId,
-            propertyIds: s.propertyIds || null,
-            propertyName: s.propertyName || (s.propertyId ? `Property ${s.propertyId}` : 'All Properties'),
-            propertyNames: s.propertyNames || null,
-            isCombinedStatement: s.isCombinedStatement || false,
-            weekStartDate: s.weekStartDate,
-            weekEndDate: s.weekEndDate,
-            calculationType: s.calculationType || 'checkout',
-            totalRevenue: s.totalRevenue,
-            totalExpenses: s.totalExpenses,
-            pmCommission: s.pmCommission,
-            pmPercentage: s.pmPercentage,
-            techFees: s.techFees,
-            insuranceFees: s.insuranceFees,
-            adjustments: s.adjustments,
-            ownerPayout: s.ownerPayout,
-            status: s.status,
-            sentAt: s.sentAt,
-            createdAt: s.createdAt || s.created_at,
-            updatedAt: s.updatedAt || s.updated_at
-        }));
+        const formattedStatements = paginatedStatements.map(s => {
+            // Compute cleaningMismatchWarning dynamically if not already stored
+            let cleaningMismatchWarning = s.cleaningMismatchWarning || null;
+
+            // If not stored, compute it from reservations - check if each reservation has cleaningFee
+            // Note: If listing has a default cleaning fee, reservations without cleaningFee will use that
+            if (!cleaningMismatchWarning && s.reservations && s.reservations.length > 0) {
+                // Get property IDs for this statement
+                const statementPropertyIds = s.propertyIds || (s.propertyId ? [s.propertyId] : []);
+
+                // Check which properties have cleaningFeePassThrough enabled
+                const propertiesWithPassThrough = statementPropertyIds.filter(propId => {
+                    const listing = listingMap.get(parseInt(propId));
+                    return listing && listing.cleaningFeePassThrough;
+                });
+
+                if (propertiesWithPassThrough.length > 0) {
+                    // Get reservations for properties with passthrough
+                    const passThroughReservations = s.reservations.filter(res =>
+                        propertiesWithPassThrough.includes(parseInt(res.propertyId))
+                    );
+
+                    // Count reservations that have their OWN cleaning fee (not using listing default)
+                    // This warns user when system is using listing's default instead of actual guest-paid fee
+                    const reservationsWithOwnCleaningFee = passThroughReservations.filter(res =>
+                        res.cleaningFee && res.cleaningFee > 0
+                    );
+
+                    // Show warning if some reservations are using listing default (missing their own cleaning fee)
+                    if (passThroughReservations.length > 0 && reservationsWithOwnCleaningFee.length !== passThroughReservations.length) {
+                        cleaningMismatchWarning = {
+                            type: 'cleaning_mismatch',
+                            message: `${reservationsWithOwnCleaningFee.length} of ${passThroughReservations.length} reservations have cleaning fees (using listing default for others)`,
+                            reservationCount: passThroughReservations.length,
+                            cleaningExpenseCount: reservationsWithOwnCleaningFee.length,
+                            difference: passThroughReservations.length - reservationsWithOwnCleaningFee.length
+                        };
+                    }
+                }
+            }
+
+            // Recalculate ownerPayout to account for listing default cleaning fees
+            let recalculatedPayout = s.ownerPayout;
+            if (s.reservations && s.reservations.length > 0) {
+                const statementPropertyIds = s.propertyIds || (s.propertyId ? [s.propertyId] : []);
+
+                // Check if any property has cleaningFeePassThrough enabled
+                const hasPassThrough = statementPropertyIds.some(propId => {
+                    const listing = listingMap.get(parseInt(propId));
+                    return listing && listing.cleaningFeePassThrough;
+                });
+
+                if (hasPassThrough) {
+                    // Recalculate gross payout with listing default cleaning fees
+                    let grossPayoutSum = 0;
+                    for (const res of s.reservations) {
+                        const listing = listingMap.get(parseInt(res.propertyId));
+                        const pmPercentage = listing?.pmFeePercentage ?? s.pmPercentage ?? 15;
+                        const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
+                        const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                        const disregardTax = listing?.disregardTax || false;
+                        const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
+
+                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                        const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
+
+                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                        const luxuryFee = clientRevenue * (pmPercentage / 100);
+                        const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                        // Use listing's default cleaning fee if reservation cleaning fee is 0
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
+
+                        const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
+
+                        let grossPayout;
+                        if (isCohostAirbnb) {
+                            grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                        } else if (shouldAddTax) {
+                            grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                        } else {
+                            grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                        }
+                        grossPayoutSum += grossPayout;
+                    }
+
+                    // Calculate expenses and upsells
+                    const totalExpenses = (s.expenses || []).reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum : sum + Math.abs(exp.amount);
+                    }, 0);
+                    const totalUpsells = (s.expenses || []).reduce((sum, exp) => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return isUpsell ? sum + exp.amount : sum;
+                    }, 0);
+
+                    recalculatedPayout = grossPayoutSum + totalUpsells - totalExpenses;
+                }
+            }
+
+            return {
+                id: s.id,
+                ownerId: s.ownerId,
+                ownerName: s.ownerName || 'Default Owner',
+                propertyId: s.propertyId,
+                propertyIds: s.propertyIds || null,
+                propertyName: s.propertyName || (s.propertyId ? `Property ${s.propertyId}` : 'All Properties'),
+                propertyNames: s.propertyNames || null,
+                isCombinedStatement: s.isCombinedStatement || false,
+                weekStartDate: s.weekStartDate,
+                weekEndDate: s.weekEndDate,
+                calculationType: s.calculationType || 'checkout',
+                totalRevenue: s.totalRevenue,
+                totalExpenses: s.totalExpenses,
+                pmCommission: s.pmCommission,
+                pmPercentage: s.pmPercentage,
+                techFees: s.techFees,
+                insuranceFees: s.insuranceFees,
+                adjustments: s.adjustments,
+                ownerPayout: recalculatedPayout,
+                status: s.status,
+                sentAt: s.sentAt,
+                createdAt: s.createdAt || s.created_at,
+                updatedAt: s.updatedAt || s.updated_at,
+                cleaningMismatchWarning
+            };
+        });
 
         res.json({
             statements: formattedStatements,
@@ -171,6 +276,13 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const listingInfoMap = {};
         dbListings.forEach(l => { listingInfoMap[l.id] = l; });
 
+        // Merge Hostify cleaningFee from targetListings into listingInfoMap
+        targetListings.forEach(l => {
+            if (listingInfoMap[l.id]) {
+                listingInfoMap[l.id].cleaningFee = l.cleaningFee || 0;
+            }
+        });
+
         // Fetch reservations and expenses in parallel using batch methods
         const [reservationsByProperty, expensesByProperty] = await Promise.all([
             FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap),
@@ -226,6 +338,38 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
 
+        // Identify cleaning expenses
+        const cleaningExpenses = periodExpenses.filter(exp => {
+            const category = (exp.category || '').toLowerCase();
+            const type = (exp.type || '').toLowerCase();
+            const description = (exp.description || '').toLowerCase();
+            return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+        });
+
+        // Validate cleaning expenses vs reservations for properties with cleaningFeePassThrough
+        let cleaningMismatchWarning = null;
+        const propertiesWithPassThrough = parsedPropertyIds.filter(propId => listingInfoMap[propId]?.cleaningFeePassThrough);
+        if (propertiesWithPassThrough.length > 0) {
+            // Count reservations for properties with passthrough
+            const passThroughReservations = periodReservations.filter(res =>
+                propertiesWithPassThrough.includes(parseInt(res.propertyId))
+            );
+            // Count cleaning expenses for properties with passthrough
+            const passThroughCleaningExpenses = cleaningExpenses.filter(exp =>
+                exp.propertyId && propertiesWithPassThrough.includes(parseInt(exp.propertyId))
+            );
+
+            if (passThroughReservations.length > 0 && passThroughCleaningExpenses.length !== passThroughReservations.length) {
+                cleaningMismatchWarning = {
+                    type: 'cleaning_mismatch',
+                    message: `Cleaning expense count (${passThroughCleaningExpenses.length}) does not match reservation count (${passThroughReservations.length})`,
+                    reservationCount: passThroughReservations.length,
+                    cleaningExpenseCount: passThroughCleaningExpenses.length,
+                    difference: passThroughReservations.length - passThroughCleaningExpenses.length
+                };
+            }
+        }
+
         // Filter out cleaning expenses for properties with cleaningFeePassThrough enabled
         // This prevents double-charging (once via Cleaning Expense column, once via expense list)
         const filteredExpenses = periodExpenses.filter(exp => {
@@ -234,11 +378,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
             if (hasCleaningPassThrough) {
                 // Exclude cleaning expenses for this property
-                const category = (exp.category || '').toLowerCase();
-                const type = (exp.type || '').toLowerCase();
-                const description = (exp.description || '').toLowerCase();
-                const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
-                return !isCleaning;
+                return !cleaningExpenses.includes(exp);
             }
             return true;
         });
@@ -315,7 +455,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
+            // Use listing's default cleaning fee if reservation cleaning fee is 0
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || resListingInfo.cleaningFee || 0) : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -370,6 +511,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             reservations: periodReservations,
             expenses: filteredExpenses, // Use filtered expenses (cleaning expenses removed if pass-through enabled)
             duplicateWarnings: allDuplicateWarnings,
+            cleaningMismatchWarning,
             items: [
                 // Revenue items from reservations (grouped by property)
                 ...periodReservations.map(res => {
@@ -475,20 +617,12 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Start date must be before end date' });
         }
 
-        // Check if this property has includeChildListings enabled
-        let includeChildListings = false;
-        if (propertyId) {
-            const listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
-            includeChildListings = listingInfo?.includeChildListings || false;
-            if (includeChildListings) {
-                console.log(`[GENERATE] Property ${propertyId} has includeChildListings=true, will fetch child listing reservations`);
-            }
-        }
+        // Child listings are always fetched automatically for all properties
 
         // OPTIMIZED: Fetch all data in parallel
         const [listings, reservations, expenses, owners] = await Promise.all([
             FileDataService.getListings(),
-            FileDataService.getReservations(startDate, endDate, propertyId, calculationType, includeChildListings),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
             FileDataService.getExpenses(startDate, endDate, propertyId),
             FileDataService.getOwners()
         ]);
@@ -596,6 +730,11 @@ router.post('/generate', async (req, res) => {
         let listingInfo = null;
         if (propertyId) {
             listingInfo = await ListingService.getListingWithPmFee(parseInt(propertyId));
+            // Merge Hostify cleaningFee from listings
+            const hostifyListing = listings.find(l => l.id === parseInt(propertyId));
+            if (listingInfo && hostifyListing) {
+                listingInfo.cleaningFee = hostifyListing.cleaningFee || 0;
+            }
             isCohostOnAirbnb = listingInfo?.isCohostOnAirbnb || false;
             airbnbPassThroughTax = listingInfo?.airbnbPassThroughTax || false;
             disregardTax = listingInfo?.disregardTax || false;
@@ -712,7 +851,8 @@ router.post('/generate', async (req, res) => {
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
+            // Use listing's default cleaning fee if reservation cleaning fee is 0
+            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0) : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -1325,15 +1465,22 @@ router.get('/:id/view', async (req, res) => {
         // Create a map: propertyId -> { isCohostOnAirbnb, disregardTax, airbnbPassThroughTax, pmFeePercentage }
         let listingSettingsMap = {};
 
+        // Get listings from Hostify API (includes cleaningFee) merged with DB settings
+        const allListings = await FileDataService.getListings();
+        const hostifyListingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
+
         if (statement.propertyIds && Array.isArray(statement.propertyIds) && statement.propertyIds.length > 0) {
             // COMBINED STATEMENT: Fetch settings for ALL properties
             const dbListings = await ListingService.getListingsWithPmFees(statement.propertyIds);
             dbListings.forEach(listing => {
+                const hostifyListing = hostifyListingMap.get(parseInt(listing.id));
                 listingSettingsMap[listing.id] = {
                     isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
                     disregardTax: Boolean(listing.disregardTax),
                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
+                    guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
+                    cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: listing.pmFeePercentage ?? 15,
                     nickname: listing.nickname || listing.displayName || listing.name || ''
                 };
@@ -1342,12 +1489,14 @@ router.get('/:id/view', async (req, res) => {
         } else if (statement.propertyId) {
             // SINGLE PROPERTY STATEMENT: Fetch settings for just that property
             const currentListing = await ListingService.getListingWithPmFee(parseInt(statement.propertyId));
+            const hostifyListing = hostifyListingMap.get(parseInt(statement.propertyId));
             if (currentListing) {
                 // Use explicit boolean conversion to handle SQLite's 0/1 values
                 statement.disregardTax = Boolean(currentListing.disregardTax);
                 statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
                 statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
                 statement.cleaningFeePassThrough = Boolean(currentListing.cleaningFeePassThrough);
+                statement.guestPaidDamageCoverage = Boolean(currentListing.guestPaidDamageCoverage);
                 statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
 
                 // Also add to map for consistency
@@ -1356,6 +1505,8 @@ router.get('/:id/view', async (req, res) => {
                     disregardTax: Boolean(currentListing.disregardTax),
                     airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
+                    guestPaidDamageCoverage: Boolean(currentListing.guestPaidDamageCoverage),
+                    cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: currentListing.pmFeePercentage ?? 15
                 };
             }
@@ -1392,8 +1543,8 @@ router.get('/:id/view', async (req, res) => {
             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
-            // Use per-property cleaningFeePassThrough setting
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
+            // Use listing's default cleaning fee if reservation cleaning fee is 0
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
@@ -2681,12 +2832,16 @@ router.get('/:id/view', async (req, res) => {
                     // Check if ANY property has cleaningFeePassThrough enabled (for column display)
                     const anyCleaningFeePassThrough = statement.cleaningFeePassThrough ||
                         (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.cleaningFeePassThrough));
+                    // Check if ANY property has guestPaidDamageCoverage enabled (for column display)
+                    const anyGuestPaidDamageCoverage = statement.guestPaidDamageCoverage ||
+                        (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.guestPaidDamageCoverage));
                     return `
                 <div class="rental-table-container">
                     <table class="rental-table">
             <thead>
                 <tr>
                                 <th>Guest Details</th>
+                                ${anyGuestPaidDamageCoverage ? '<th>Guest Paid Damage Coverage</th>' : ''}
                                 <th>Base Rate</th>
                                 <th>Guest Paid Cleaning, Pet, Extra, & Others</th>
                                 <th>Platform Fees</th>
@@ -2731,8 +2886,8 @@ router.get('/:id/view', async (req, res) => {
                                 let grossPayout;
                                 const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                // Get cleaning fee for pass-through (use per-property setting)
-                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
+                                // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
+                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
                                 if (isCohostAirbnb) {
                                     grossPayout = -luxuryFee - cleaningFeeForPassThrough;
@@ -2767,6 +2922,7 @@ router.get('/:id/view', async (req, res) => {
                                             </div>` : ''
                                         }
                                     </td>
+                                    ${anyGuestPaidDamageCoverage ? `<td class="amount-cell info-amount">$${(reservation.resortFee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : ''}
                                     <td class="amount-cell revenue-amount">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2777,7 +2933,7 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
-                            }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
+                            }).join('') || `<tr><td colspan="${8 + (anyGuestPaidDamageCoverage ? 1 : 0) + (anyCleaningFeePassThrough ? 1 : 0)}" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>`}
                             ${(() => {
                                 // Calculate totals using the same logic as individual rows
                                 let totalBaseRate = 0;
@@ -2788,6 +2944,7 @@ router.get('/:id/view', async (req, res) => {
                                 let totalCleaningExpense = 0; // For cleaning fee pass-through
                                 let totalTaxResponsibility = 0;
                                 let totalGrossPayout = 0;
+                                let totalResortFee = 0; // For Guest Paid Damage Coverage
 
                                 statement.reservations?.forEach(reservation => {
                                     // Get per-property settings from the map, fall back to statement-level settings
@@ -2811,8 +2968,8 @@ router.get('/:id/view', async (req, res) => {
 
                                     const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                    // Get cleaning fee for pass-through (use per-property setting)
-                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
+                                    // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
+                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
                                     let grossPayout;
                                     if (isCohostAirbnb) {
@@ -2831,11 +2988,13 @@ router.get('/:id/view', async (req, res) => {
                                     totalCleaningExpense += cleaningFeeForPassThrough;
                                     totalTaxResponsibility += taxResponsibility;
                                     totalGrossPayout += grossPayout;
+                                    totalResortFee += (reservation.resortFee || 0);
                                 });
 
                                 return `
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
+                                ${anyGuestPaidDamageCoverage ? `<td class="amount-cell"><strong>$${totalResortFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>` : ''}
                                 <td class="amount-cell"><strong>$${totalBaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${totalCleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(totalPlatformFees).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -3006,8 +3165,8 @@ router.get('/:id/view', async (req, res) => {
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-            // Get cleaning fee for pass-through (use per-property setting)
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || 0) : 0;
+            // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
             let grossPayout;
@@ -3326,21 +3485,44 @@ router.get('/:id/download', async (req, res) => {
 // Helper function to generate statements for all owners and their properties
 /**
  * Background version of bulk statement generation with progress tracking
+ *
+ * STRATEGY:
+ * 1. Single bulk fetch: Get ALL reservations for past 365 days (handles pagination)
+ * 2. Build child-to-parent listing map to attribute reservations correctly
+ * 3. Pool all data in memory first
+ * 4. Process properties in parallel batches for speed
+ * 5. Save statements sequentially to avoid ID conflicts
  */
 async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag = null) {
     try {
-        // Get all listings
+        console.log(`[Bulk Gen] Starting bulk generation for period ${startDate} to ${endDate}`);
+        console.log(`[Bulk Gen] Calculation type: ${calculationType}, Tag filter: ${tag || 'none'}`);
+
+        // Mark job as processing immediately
+        BackgroundJobService.updateJob(jobId, { status: 'processing' });
+
+        // STEP 1: Bulk fetch ALL reservations (past 365 days, handles pagination & child listings)
+        console.log('[Bulk Gen] Step 1: Bulk fetching all reservations...');
+        BackgroundJobService.updateProgress(jobId, 0, 'Fetching all reservations (this may take several minutes)...');
+
+        const hostifyService = require('../services/HostifyService');
+        const bulkData = await hostifyService.bulkFetchAllReservations((progress) => {
+            BackgroundJobService.updateProgress(jobId, 0, progress);
+        });
+
+        const allReservations = bulkData.reservations;
+        console.log(`[Bulk Gen] Bulk fetch complete: ${allReservations.length} reservations, ${bulkData.listings.length} listings`);
+        console.log(`[Bulk Gen] Child-to-parent mappings: ${bulkData.childToParentMap.size}`);
+
+        // STEP 2: Get listings with local database info (tags, PM fees, etc.)
+        console.log('[Bulk Gen] Step 2: Loading listing configurations...');
         const listings = await FileDataService.getListings();
+        console.log(`[Bulk Gen] Total listings from database: ${listings.length}`);
 
-        // Fetch ALL reservations and expenses ONCE for the entire period (optimization)
-        const allReservations = await FileDataService.getReservations(
-            startDate,
-            endDate,
-            null,  // No property filter - get ALL reservations
-            calculationType
-        );
-
+        // STEP 3: Fetch expenses
+        console.log('[Bulk Gen] Step 3: Fetching expenses...');
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
+        console.log(`[Bulk Gen] Loaded ${allExpenses.length} expenses`);
 
         // Filter listings:
         // - If property has tags, include it (don't skip based on isActive)
@@ -3352,7 +3534,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             }
             return l.isActive; // Properties without tags must be active
         });
-        console.log(`[Bulk Gen] Properties after isActive filter (tagged properties bypass): ${activeListings.length}`);
+        console.log(`[Bulk Gen] Properties after isActive/tags filter: ${activeListings.length} (active: ${listings.filter(l => l.isActive).length}, tagged: ${listings.filter(l => l.tags && l.tags.length > 0).length})`);
 
         // Apply tag filter if specified (case-insensitive)
         if (tag) {
@@ -3373,83 +3555,121 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         };
 
         let processedCount = 0;
+        const periodStart = new Date(startDate);
+        const periodEnd = new Date(endDate);
 
-        // Generate a statement for each active listing using "Default Owner"
-        for (const property of activeListings) {
+        console.log(`[Bulk Gen] Step 4: Generating statements for ${activeListings.length} properties (PARALLEL MODE)...`);
+
+        // Log all unique propertyIds in the reservation pool for debugging
+        const uniquePropertyIds = [...new Set(allReservations.map(r => r.propertyId))];
+        console.log(`[Bulk Gen] Unique propertyIds in reservation pool: ${uniquePropertyIds.length}`);
+
+        // Pre-fetch all listing configs in parallel for speed
+        console.log(`[Bulk Gen] Pre-fetching listing configurations...`);
+        const listingConfigs = new Map();
+        // Create a map of Hostify listings for cleaningFee lookup
+        const hostifyListingMap = new Map(activeListings.map(l => [l.id, l]));
+        const configBatchSize = 20;
+        for (let i = 0; i < activeListings.length; i += configBatchSize) {
+            const batch = activeListings.slice(i, i + configBatchSize);
+            const configs = await Promise.all(batch.map(async (property) => {
+                const listing = await ListingService.getListingWithPmFee(property.id);
+                // Merge Hostify cleaningFee into DB listing config
+                const hostifyListing = hostifyListingMap.get(property.id);
+                if (listing && hostifyListing) {
+                    listing.cleaningFee = hostifyListing.cleaningFee || 0;
+                }
+                return { id: property.id, config: listing };
+            }));
+            configs.forEach(({ id, config }) => listingConfigs.set(id, config));
+        }
+        console.log(`[Bulk Gen] Pre-fetched ${listingConfigs.size} listing configurations`);
+
+        // STEP 4: Generate statements in PARALLEL batches
+        const BATCH_SIZE = 10; // Process 10 properties at a time
+        const allStatements = []; // Collect all statements to save
+
+        for (let i = 0; i < activeListings.length; i += BATCH_SIZE) {
+            const batch = activeListings.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(activeListings.length / BATCH_SIZE);
+
+            BackgroundJobService.updateProgress(jobId, i, `Processing batch ${batchNum}/${totalBatches} (${i}/${activeListings.length} properties)...`);
+
+            // Process batch in parallel
+            const batchResults = await Promise.all(batch.map(async (property) => {
                 try {
-                    // Use pre-fetched data instead of fetching again (optimization)
-                    const periodStart = new Date(startDate);
-                    const periodEnd = new Date(endDate);
+                    const propertyName = property.nickname || property.displayName || property.name || 'Unknown';
 
+                    // Filter reservations for this property from the pre-fetched pool
                     const periodReservations = allReservations.filter(res => {
-                        // Use parseInt to ensure proper type comparison (res.propertyId may be string or number)
                         if (parseInt(res.propertyId) !== parseInt(property.id)) return false;
 
-                        let dateMatch = true;
                         if (calculationType === 'calendar') {
-                            dateMatch = true;
+                            const checkIn = new Date(res.checkInDate);
+                            const checkOut = new Date(res.checkOutDate);
+                            if (checkIn > periodEnd || checkOut <= periodStart) return false;
                         } else {
                             const checkoutDate = new Date(res.checkOutDate);
-                            dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
+                            if (checkoutDate < periodStart || checkoutDate > periodEnd) return false;
                         }
 
                         const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
-                        const statusMatch = allowedStatuses.includes(res.status);
-
-                        return dateMatch && statusMatch;
+                        return allowedStatuses.includes(res.status);
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
+                    // Filter expenses for this property
                     const periodExpenses = allExpenses.filter(exp => {
-                        // Only include expenses that match this property
-                        // Check both propertyId (for uploaded expenses) and secureStayListingId (for SecureStay expenses)
-                        // Use parseInt to ensure proper type comparison
                         const matchesPropertyId = parseInt(exp.propertyId) === parseInt(property.id);
                         const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === parseInt(property.id);
-                        if (!matchesPropertyId && !matchesSecureStayId) {
-                            return false;
-                        }
+                        if (!matchesPropertyId && !matchesSecureStayId) return false;
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    if (periodReservations.length === 0 && periodExpenses.length === 0) {
-                        results.skipped.push({
-                            propertyId: property.id,
-                            propertyName: property.nickname || property.displayName || property.name,
-                            reason: 'No activity in period'
-                        });
-                        processedCount++;
-                        BackgroundJobService.updateProgress(jobId, processedCount);
-                        continue;
-                    }
-
-                    // Get listing info (needed early for co-host check)
-                    const listing = await ListingService.getListingWithPmFee(property.id);
+                    // Get pre-fetched listing config
+                    const listing = listingConfigs.get(property.id);
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
                     const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
                     const disregardTax = listing?.disregardTax || false;
                     const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
 
+                    // Count cleaning expenses for validation
+                    const cleaningExpenses = periodExpenses.filter(exp => {
+                        const category = (exp.category || '').toLowerCase();
+                        const type = (exp.type || '').toLowerCase();
+                        const description = (exp.description || '').toLowerCase();
+                        return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+                    });
+
+                    // Validate cleaning expenses vs reservations count (only if cleaningFeePassThrough is enabled)
+                    let cleaningMismatchWarning = null;
+                    if (cleaningFeePassThrough && periodReservations.length > 0) {
+                        const reservationCount = periodReservations.length;
+                        const cleaningExpenseCount = cleaningExpenses.length;
+                        if (cleaningExpenseCount !== reservationCount) {
+                            cleaningMismatchWarning = {
+                                type: 'cleaning_mismatch',
+                                message: `Cleaning expense count (${cleaningExpenseCount}) does not match reservation count (${reservationCount})`,
+                                reservationCount,
+                                cleaningExpenseCount,
+                                difference: reservationCount - cleaningExpenseCount
+                            };
+                        }
+                    }
+
                     // Filter out cleaning expenses if cleaningFeePassThrough is enabled
-                    // This prevents double-charging (once via Cleaning Expense column, once via expense list)
                     const filteredExpenses = cleaningFeePassThrough
-                        ? periodExpenses.filter(exp => {
-                            const category = (exp.category || '').toLowerCase();
-                            const type = (exp.type || '').toLowerCase();
-                            const description = (exp.description || '').toLowerCase();
-                            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
-                            return !isCleaning;
-                        })
+                        ? periodExpenses.filter(exp => !cleaningExpenses.includes(exp))
                         : periodExpenses;
 
-                    // Get PM percentage from listing database (property-specific)
-                    let pmPercentage = 15; // Default fallback
+                    // Get PM percentage
+                    let pmPercentage = 15;
                     if (listing && listing.pmFeePercentage !== null) {
                         pmPercentage = listing.pmFeePercentage;
                     }
 
-                    // Calculate totals - matching PDF template logic exactly
-                    // This ensures statement list shows same values as PDF
+                    // Calculate totals
                     let totalRevenue = 0;
                     let totalGrossPayout = 0;
                     let totalPmCommission = 0;
@@ -3461,17 +3681,16 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
+                        // Use listing's default cleaning fee if reservation cleaning fee is 0
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
-                        // Always add to revenue (for display purposes)
                         if (!isCohostAirbnb) {
                             totalRevenue += clientRevenue;
                         }
                         totalPmCommission += pmFee;
 
-                        // Calculate gross payout per reservation (matching PDF logic exactly)
                         let grossPayout;
                         if (isCohostAirbnb) {
                             grossPayout = -pmFee - cleaningFeeForPassThrough;
@@ -3483,106 +3702,135 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         totalGrossPayout += grossPayout;
                     }
 
-                    // Separate expenses (negative/costs) from upsells (positive/revenue) - use filtered expenses
                     const totalExpenses = filteredExpenses.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum : sum + Math.abs(exp.amount);
                     }, 0);
 
-                    // Calculate total upsells (additional payouts) - use filtered expenses
                     const totalUpsells = filteredExpenses.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum + exp.amount : sum;
                     }, 0);
 
-                    const techFees = 50; // $50 per property
-                    const insuranceFees = 25; // $25 per property
-
-                    // Calculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
-                    // Note: techFees and insuranceFees are stored but not included in payout calculation
+                    const techFees = 50;
+                    const insuranceFees = 25;
                     const ownerPayout = totalGrossPayout + totalUpsells - totalExpenses;
-                    const pmCommission = totalPmCommission;
 
-                    const existingStatements = await FileDataService.getStatements();
-                    const newId = FileDataService.generateId(existingStatements);
-
-                    const statement = {
-                        id: newId,
-                        ownerId: 1,
-                        ownerName: 'Default Owner',
-                        propertyId: property.id,
-                        propertyName: property.nickname || property.displayName || property.name,
-                        weekStartDate: startDate,
-                        weekEndDate: endDate,
-                        calculationType,
-                        totalRevenue: Math.round(totalRevenue * 100) / 100,
-                        totalExpenses: Math.round(totalExpenses * 100) / 100,
-                        pmCommission: Math.round(pmCommission * 100) / 100,
-                        pmPercentage: pmPercentage,
-                        techFees: Math.round(techFees * 100) / 100,
-                        insuranceFees: Math.round(insuranceFees * 100) / 100,
-                        adjustments: 0,
-                        ownerPayout: Math.round(ownerPayout * 100) / 100,
-                        isCohostOnAirbnb: isCohostOnAirbnb,
-                        airbnbPassThroughTax: airbnbPassThroughTax,
-                        disregardTax: disregardTax,
-                        cleaningFeePassThrough: cleaningFeePassThrough,
-                        status: 'draft',
-                        sentAt: null,
-                        createdAt: new Date().toISOString(),
-                        reservations: periodReservations,
-                        expenses: filteredExpenses, // Use filtered expenses (cleaning expenses removed if pass-through enabled)
-                        duplicateWarnings: [],
-                        items: [
-                            ...periodReservations.map(res => ({
-                                type: 'revenue',
-                                description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
-                                amount: res.grossAmount,
-                                date: res.checkOutDate,
-                                category: 'booking'
-                            })),
-                            // Use filtered expenses to exclude cleaning when pass-through enabled
-                            ...filteredExpenses.map(exp => {
-                                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
-                                return {
-                                    type: isUpsell ? 'upsell' : 'expense',
-                                description: exp.description,
-                                    amount: Math.abs(exp.amount),
-                                date: exp.date,
-                                category: exp.type || exp.category || 'expense',
-                                vendor: exp.vendor,
-                                listing: exp.listing
-                                };
-                            })
-                        ]
+                    // Return statement data (ID will be assigned later to avoid race conditions)
+                    return {
+                        success: true,
+                        property,
+                        propertyName,
+                        statementData: {
+                            ownerId: 1,
+                            ownerName: 'Default Owner',
+                            propertyId: property.id,
+                            propertyName: property.nickname || property.displayName || property.name,
+                            weekStartDate: startDate,
+                            weekEndDate: endDate,
+                            calculationType,
+                            totalRevenue: Math.round(totalRevenue * 100) / 100,
+                            totalExpenses: Math.round(totalExpenses * 100) / 100,
+                            pmCommission: Math.round(totalPmCommission * 100) / 100,
+                            pmPercentage,
+                            techFees: Math.round(techFees * 100) / 100,
+                            insuranceFees: Math.round(insuranceFees * 100) / 100,
+                            adjustments: 0,
+                            ownerPayout: Math.round(ownerPayout * 100) / 100,
+                            isCohostOnAirbnb,
+                            airbnbPassThroughTax,
+                            disregardTax,
+                            cleaningFeePassThrough,
+                            status: 'draft',
+                            sentAt: null,
+                            createdAt: new Date().toISOString(),
+                            reservations: periodReservations,
+                            expenses: filteredExpenses,
+                            duplicateWarnings: [],
+                            cleaningMismatchWarning,
+                            items: [
+                                ...periodReservations.map(res => ({
+                                    type: 'revenue',
+                                    description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                                    amount: res.grossAmount,
+                                    date: res.checkOutDate,
+                                    category: 'booking'
+                                })),
+                                ...filteredExpenses.map(exp => {
+                                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                    return {
+                                        type: isUpsell ? 'upsell' : 'expense',
+                                        description: exp.description,
+                                        amount: Math.abs(exp.amount),
+                                        date: exp.date,
+                                        category: exp.type || exp.category || 'expense',
+                                        vendor: exp.vendor,
+                                        listing: exp.listing
+                                    };
+                                })
+                            ]
+                        },
+                        periodReservations,
+                        periodExpenses
                     };
-
-                    await FileDataService.saveStatement(statement);
-
-                    results.generated.push({
-                        id: newId,
-                        propertyId: property.id,
-                        propertyName: property.nickname || property.displayName || property.name,
-                        ownerPayout: statement.ownerPayout,
-                        totalRevenue: statement.totalRevenue,
-                        reservationCount: periodReservations.length,
-                        expenseCount: periodExpenses.length
-                    });
-
-                    processedCount++;
-                    BackgroundJobService.updateProgress(jobId, processedCount);
-
                 } catch (error) {
-                    console.error(`   [Error] Error generating statement for ${property.name}:`, error.message);
-                    results.errors.push({
-                        propertyId: property.id,
-                        propertyName: property.nickname || property.displayName || property.name,
+                    return {
+                        success: false,
+                        property,
                         error: error.message
+                    };
+                }
+            }));
+
+            // Collect results from this batch
+            for (const result of batchResults) {
+                if (result.success) {
+                    allStatements.push(result);
+                } else {
+                    results.errors.push({
+                        propertyId: result.property.id,
+                        propertyName: result.property.nickname || result.property.displayName || result.property.name,
+                        error: result.error
                     });
-                    processedCount++;
-                    BackgroundJobService.updateProgress(jobId, processedCount);
+                }
+                processedCount++;
             }
         }
+
+        // STEP 5: Save all statements sequentially (to avoid ID conflicts)
+        console.log(`[Bulk Gen] Step 5: Saving ${allStatements.length} statements...`);
+        BackgroundJobService.updateProgress(jobId, processedCount, `Saving ${allStatements.length} statements to database...`);
+
+        const existingStatements = await FileDataService.getStatements();
+        let nextId = FileDataService.generateId(existingStatements);
+
+        for (const result of allStatements) {
+            const statement = { ...result.statementData, id: nextId };
+            await FileDataService.saveStatement(statement);
+
+            results.generated.push({
+                id: nextId,
+                propertyId: result.property.id,
+                propertyName: result.propertyName,
+                ownerPayout: statement.ownerPayout,
+                totalRevenue: statement.totalRevenue,
+                reservationCount: result.periodReservations.length,
+                expenseCount: result.periodExpenses.length
+            });
+
+            console.log(`[Bulk Gen] SAVED Property ${result.property.id} "${result.propertyName}": ${result.periodReservations.length} reservations, $${statement.totalRevenue} revenue`);
+            nextId++;
+        }
+
+        console.log(`[Bulk Gen] ========== FINAL SUMMARY ==========`);
+        console.log(`[Bulk Gen] Total properties processed: ${processedCount}`);
+        console.log(`[Bulk Gen] Statements generated: ${results.generated.length}`);
+        console.log(`[Bulk Gen] Statements with $0 (no activity): ${results.generated.filter(r => r.totalRevenue === 0 && r.expenseCount === 0).length}`);
+        console.log(`[Bulk Gen] Errors: ${results.errors.length}`);
+        if (results.errors.length > 0) {
+            console.log(`[Bulk Gen] Error properties: ${results.errors.map(e => `${e.propertyId} (${e.propertyName}): ${e.error}`).join(', ')}`);
+        }
+        console.log(`[Bulk Gen] ====================================`);
 
         BackgroundJobService.completeJob(jobId, {
             summary: {
@@ -3727,7 +3975,9 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || 0) : 0;
+                        // Use listing's default cleaning fee if reservation cleaning fee is 0
+                        // property.cleaningFee comes from Hostify API via FileDataService.getListings()
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || property.cleaningFee || 0) : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 

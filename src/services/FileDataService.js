@@ -162,7 +162,8 @@ class FileDataService {
     }
 
     // Reservations operations - optimized for specific date ranges and properties
-    async getReservations(startDate = null, endDate = null, propertyId = null, calculationType = 'checkout', includeChildListings = false) {
+    // Child listings are always fetched automatically for better coverage
+    async getReservations(startDate = null, endDate = null, propertyId = null, calculationType = 'checkout') {
         // If no date range specified, use a reasonable default (last 6 months to next 6 months)
         if (!startDate || !endDate) {
             const now = new Date();
@@ -181,7 +182,7 @@ class FileDataService {
             const listingIds = propertyId ? [parseInt(propertyId)] : [];
 
             if (calculationType === 'calendar') {
-                const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate, includeChildListings);
+                const reservations = await hostifyService.getOverlappingReservations(listingIds, startDate, endDate);
                 
                 // Apply proration for calendar-based calculations
                 const proratedReservations = reservations.map(reservation => {
@@ -195,6 +196,7 @@ class FileDataService {
                         originalLuxuryLodgingFee: reservation.luxuryLodgingFee,
                         originalClientTaxResponsibility: reservation.clientTaxResponsibility,
                         originalClientPayout: reservation.clientPayout,
+                        originalResortFee: reservation.resortFee || 0,
                         baseRate: reservation.baseRate * proration.factor,
                         cleaningAndOtherFees: reservation.cleaningAndOtherFees * proration.factor,
                         platformFees: reservation.platformFees * proration.factor,
@@ -202,6 +204,7 @@ class FileDataService {
                         luxuryLodgingFee: reservation.luxuryLodgingFee * proration.factor,
                         clientTaxResponsibility: reservation.clientTaxResponsibility * proration.factor,
                         clientPayout: reservation.clientPayout * proration.factor,
+                        resortFee: (reservation.resortFee || 0) * proration.factor,
                         prorationFactor: proration.factor,
                         prorationDays: proration.daysInPeriod,
                         totalDays: proration.totalDays,
@@ -218,8 +221,7 @@ class FileDataService {
                 const params = {
                     fromDate: startDate,
                     toDate: endDate,
-                    dateType: 'departureDate',
-                    includeChildListings
+                    dateType: 'departureDate'
                 };
 
                 // Add property filter if specified
@@ -332,13 +334,12 @@ class FileDataService {
     async getReservationsBatch(startDate, endDate, propertyIds, calculationType = 'checkout', listingInfoMap = {}) {
         const hostifyService = require('./HostifyService');
 
-        // Check if any property has includeChildListings enabled
-        const hasChildListingsEnabled = propertyIds.some(id => listingInfoMap[id]?.includeChildListings);
+        // Child listings are always fetched automatically for better coverage
 
         try {
             if (calculationType === 'calendar') {
                 // For calendar mode, use overlapping reservations
-                const reservations = await hostifyService.getOverlappingReservations(propertyIds, startDate, endDate, hasChildListingsEnabled);
+                const reservations = await hostifyService.getOverlappingReservations(propertyIds, startDate, endDate);
 
                 // Apply proration and group by propertyId
                 const reservationsByProperty = {};
@@ -355,6 +356,7 @@ class FileDataService {
                         originalLuxuryLodgingFee: res.luxuryLodgingFee,
                         originalClientTaxResponsibility: res.clientTaxResponsibility,
                         originalClientPayout: res.clientPayout,
+                        originalResortFee: res.resortFee || 0,
                         baseRate: res.baseRate * proration.factor,
                         cleaningAndOtherFees: res.cleaningAndOtherFees * proration.factor,
                         platformFees: res.platformFees * proration.factor,
@@ -362,6 +364,7 @@ class FileDataService {
                         luxuryLodgingFee: res.luxuryLodgingFee * proration.factor,
                         clientTaxResponsibility: res.clientTaxResponsibility * proration.factor,
                         clientPayout: res.clientPayout * proration.factor,
+                        resortFee: (res.resortFee || 0) * proration.factor,
                         prorationFactor: proration.factor,
                         prorationDays: proration.daysInPeriod,
                         totalDays: proration.totalDays,
@@ -380,8 +383,7 @@ class FileDataService {
                     fromDate: startDate,
                     toDate: endDate,
                     dateType: 'departureDate',
-                    listingMapIds: propertyIds,
-                    includeChildListings: hasChildListingsEnabled
+                    listingMapIds: propertyIds
                 };
 
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);

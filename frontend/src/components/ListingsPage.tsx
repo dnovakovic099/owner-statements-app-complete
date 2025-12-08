@@ -24,10 +24,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
+  const [guestPaidDamageCoverage, setGuestPaidDamageCoverage] = useState(false);
   const [waiveCommission, setWaiveCommission] = useState(false);
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
-  const [includeChildListings, setIncludeChildListings] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
@@ -44,10 +44,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
+        setGuestPaidDamageCoverage(listing.guestPaidDamageCoverage || false);
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage || 15);
-        setIncludeChildListings(listing.includeChildListings || false);
         setTags(listing.tags || []);
       }
     } else {
@@ -98,7 +98,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
     setWaiveCommission(false);
     setWaiveCommissionUntil('');
     setPmFeePercentage(15);
-    setIncludeChildListings(false);
     setTags([]);
     setNewTag('');
   };
@@ -116,10 +115,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         airbnbPassThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        guestPaidDamageCoverage,
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
-        includeChildListings,
         tags,
       };
 
@@ -431,26 +430,26 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                     </div>
                   </div>
 
-                  {/* Include Child Listings */}
-                  <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                  {/* Guest Paid Damage Coverage */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-start">
                       <input
                         type="checkbox"
-                        id="includeChildListings"
-                        checked={includeChildListings}
-                        onChange={(e) => setIncludeChildListings(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300 rounded"
+                        id="guestPaidDamageCoverage"
+                        checked={guestPaidDamageCoverage}
+                        onChange={(e) => setGuestPaidDamageCoverage(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <div className="ml-3">
                         <label
-                          htmlFor="includeChildListings"
-                          className="text-sm font-medium text-cyan-900 cursor-pointer"
+                          htmlFor="guestPaidDamageCoverage"
+                          className="text-sm font-medium text-blue-900 cursor-pointer"
                         >
-                          Include Child Listings
+                          Guest Paid Damage Coverage
                         </label>
-                        <p className="text-xs text-cyan-700 mt-1">
-                          When enabled, reservations from <strong>child listings</strong> (e.g., Airbnb, VRBO channels) will be
-                          included in this property's statements. Use this for parent listings that have multiple channel-specific child listings.
+                        <p className="text-xs text-blue-700 mt-1">
+                          When enabled, a <strong>Guest Paid Damage Coverage</strong> column will appear on statements showing
+                          the resort fee amount collected from each guest. This is an informational column displayed in blue.
                         </p>
                       </div>
                     </div>
