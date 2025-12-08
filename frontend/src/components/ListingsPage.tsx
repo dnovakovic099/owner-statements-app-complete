@@ -24,6 +24,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
+  const [guestPaidDamageCoverage, setGuestPaidDamageCoverage] = useState(false);
   const [waiveCommission, setWaiveCommission] = useState(false);
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
@@ -43,6 +44,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
+        setGuestPaidDamageCoverage(listing.guestPaidDamageCoverage || false);
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage || 15);
@@ -113,6 +115,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
         airbnbPassThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        guestPaidDamageCoverage,
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
@@ -422,6 +425,31 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
                         <p className="text-xs text-green-700 mt-1">
                           When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
                           instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Guest Paid Damage Coverage */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <input
+                        type="checkbox"
+                        id="guestPaidDamageCoverage"
+                        checked={guestPaidDamageCoverage}
+                        onChange={(e) => setGuestPaidDamageCoverage(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <div className="ml-3">
+                        <label
+                          htmlFor="guestPaidDamageCoverage"
+                          className="text-sm font-medium text-blue-900 cursor-pointer"
+                        >
+                          Guest Paid Damage Coverage
+                        </label>
+                        <p className="text-xs text-blue-700 mt-1">
+                          When enabled, a <strong>Guest Paid Damage Coverage</strong> column will appear on statements showing
+                          the resort fee amount collected from each guest. This is an informational column displayed in blue.
                         </p>
                       </div>
                     </div>

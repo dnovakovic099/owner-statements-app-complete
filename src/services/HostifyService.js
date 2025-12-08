@@ -541,15 +541,17 @@ class HostifyService {
 
     // Calculate cleaningAndOtherFees from fees array
     // Sum all fees where fee.type === "fee" (excluding Claims Fee, Resort Fee, Management Fee)
+    // Also extract Resort Fee separately for "Guest Paid Damage Coverage" column
     calculateFeesFromArray(fees) {
         if (!fees || !Array.isArray(fees)) {
-            return { cleaningFee: 0, otherFees: 0, totalFees: 0 };
+            return { cleaningFee: 0, otherFees: 0, totalFees: 0, resortFee: 0 };
         }
 
         let cleaningFee = 0;
         let otherFees = 0;
+        let resortFee = 0;
 
-        // Fees to exclude from guest-paid totals
+        // Fees to exclude from guest-paid totals (but extract resort fee separately)
         const excludedFees = ['claims fee', 'resort fee', 'management fee'];
 
         fees.forEach(feeItem => {
@@ -560,7 +562,13 @@ class HostifyService {
 
             // Only process fees of type "fee" (not "accommodation" or "tax")
             if (feeType === 'fee') {
-                // Exclude certain fees
+                // Extract resort fee for "Guest Paid Damage Coverage" column
+                if (feeNameLower.includes('resort fee') && amount > 0) {
+                    resortFee += amount;
+                    return;
+                }
+
+                // Exclude certain fees from guest-paid totals
                 if (excludedFees.some(excluded => feeNameLower.includes(excluded))) {
                     return;
                 }
@@ -577,7 +585,8 @@ class HostifyService {
         return {
             cleaningFee,
             otherFees,
-            totalFees: cleaningFee + otherFees
+            totalFees: cleaningFee + otherFees,
+            resortFee
         };
     }
 
@@ -842,7 +851,8 @@ class HostifyService {
                                         ...res,
                                         cleaningFee: cleaningFee,
                                         cleaningAndOtherFees: newCleaningAndOtherFees,
-                                        clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                                        clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                        resortFee: feeCalc.resortFee || 0
                                     };
                                 }
 
@@ -864,7 +874,8 @@ class HostifyService {
                                     ...res,
                                     cleaningFee: cleaningFee,
                                     cleaningAndOtherFees: newCleaningAndOtherFees,
-                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                    resortFee: 0
                                 };
                             }
                             return res;
@@ -968,7 +979,8 @@ class HostifyService {
                                     ...res,
                                     cleaningFee: cleaningFee,
                                     cleaningAndOtherFees: newCleaningAndOtherFees,
-                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                    resortFee: feeCalc.resortFee || 0
                                 };
                             }
 
@@ -990,7 +1002,8 @@ class HostifyService {
                                 ...res,
                                 cleaningFee: cleaningFee,
                                 cleaningAndOtherFees: newCleaningAndOtherFees,
-                                clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees
+                                clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                resortFee: 0
                             };
                         }
                         return res;
