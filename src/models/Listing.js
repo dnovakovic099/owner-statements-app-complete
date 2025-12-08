@@ -74,6 +74,13 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    guestPaidDamageCoverage: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'guest_paid_damage_coverage',
+        comment: 'If true, show Guest Paid Damage Coverage column (resort fee) on statements'
+    },
     includeChildListings: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

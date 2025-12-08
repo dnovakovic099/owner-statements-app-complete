@@ -1479,6 +1479,7 @@ router.get('/:id/view', async (req, res) => {
                     disregardTax: Boolean(listing.disregardTax),
                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
+                    guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: listing.pmFeePercentage ?? 15,
                     nickname: listing.nickname || listing.displayName || listing.name || ''
@@ -1495,6 +1496,7 @@ router.get('/:id/view', async (req, res) => {
                 statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
                 statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
                 statement.cleaningFeePassThrough = Boolean(currentListing.cleaningFeePassThrough);
+                statement.guestPaidDamageCoverage = Boolean(currentListing.guestPaidDamageCoverage);
                 statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
 
                 // Also add to map for consistency
@@ -1503,6 +1505,7 @@ router.get('/:id/view', async (req, res) => {
                     disregardTax: Boolean(currentListing.disregardTax),
                     airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
+                    guestPaidDamageCoverage: Boolean(currentListing.guestPaidDamageCoverage),
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: currentListing.pmFeePercentage ?? 15
                 };
@@ -2829,12 +2832,16 @@ router.get('/:id/view', async (req, res) => {
                     // Check if ANY property has cleaningFeePassThrough enabled (for column display)
                     const anyCleaningFeePassThrough = statement.cleaningFeePassThrough ||
                         (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.cleaningFeePassThrough));
+                    // Check if ANY property has guestPaidDamageCoverage enabled (for column display)
+                    const anyGuestPaidDamageCoverage = statement.guestPaidDamageCoverage ||
+                        (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.guestPaidDamageCoverage));
                     return `
                 <div class="rental-table-container">
                     <table class="rental-table">
             <thead>
                 <tr>
                                 <th>Guest Details</th>
+                                ${anyGuestPaidDamageCoverage ? '<th>Guest Paid Damage Coverage</th>' : ''}
                                 <th>Base Rate</th>
                                 <th>Guest Paid Cleaning, Pet, Extra, & Others</th>
                                 <th>Platform Fees</th>
@@ -2915,6 +2922,7 @@ router.get('/:id/view', async (req, res) => {
                                             </div>` : ''
                                         }
                                     </td>
+                                    ${anyGuestPaidDamageCoverage ? `<td class="amount-cell info-amount">$${(reservation.resortFee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : ''}
                                     <td class="amount-cell revenue-amount">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2925,7 +2933,7 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
-                            }).join('') || '<tr><td colspan="8" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>'}
+                            }).join('') || `<tr><td colspan="${8 + (anyGuestPaidDamageCoverage ? 1 : 0) + (anyCleaningFeePassThrough ? 1 : 0)}" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>`}
                             ${(() => {
                                 // Calculate totals using the same logic as individual rows
                                 let totalBaseRate = 0;
@@ -2936,6 +2944,7 @@ router.get('/:id/view', async (req, res) => {
                                 let totalCleaningExpense = 0; // For cleaning fee pass-through
                                 let totalTaxResponsibility = 0;
                                 let totalGrossPayout = 0;
+                                let totalResortFee = 0; // For Guest Paid Damage Coverage
 
                                 statement.reservations?.forEach(reservation => {
                                     // Get per-property settings from the map, fall back to statement-level settings
@@ -2979,11 +2988,13 @@ router.get('/:id/view', async (req, res) => {
                                     totalCleaningExpense += cleaningFeeForPassThrough;
                                     totalTaxResponsibility += taxResponsibility;
                                     totalGrossPayout += grossPayout;
+                                    totalResortFee += (reservation.resortFee || 0);
                                 });
 
                                 return `
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
+                                ${anyGuestPaidDamageCoverage ? `<td class="amount-cell"><strong>$${totalResortFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>` : ''}
                                 <td class="amount-cell"><strong>$${totalBaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>$${totalCleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell"><strong>-$${Math.abs(totalPlatformFees).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>

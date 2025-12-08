@@ -168,11 +168,11 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver, damage coverage)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -180,6 +180,7 @@ router.put('/:id/config', async (req, res) => {
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
+        if (guestPaidDamageCoverage !== undefined) config.guestPaidDamageCoverage = guestPaidDamageCoverage;
         if (includeChildListings !== undefined) config.includeChildListings = includeChildListings;
         if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
         if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
