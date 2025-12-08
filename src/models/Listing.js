@@ -126,6 +126,18 @@ const Listing = sequelize.define('Listing', {
             }
         }
     },
+    ownerEmail: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'owner_email',
+        comment: 'Owner email address for automated statement emails'
+    },
+    ownerGreeting: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'owner_greeting',
+        comment: 'Name to use in email greeting (e.g., "John" for "Dear John,")'
+    },
     isActive: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

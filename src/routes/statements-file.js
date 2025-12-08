@@ -1509,6 +1509,11 @@ router.get('/:id/view', async (req, res) => {
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: currentListing.pmFeePercentage ?? 15
                 };
+
+                // Use listing nickname as property name in PDF
+                if (currentListing.nickname) {
+                    statement.propertyName = currentListing.nickname;
+                }
             }
         }
 
