@@ -425,6 +425,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
         </span>
       ),
+      sortingFn: 'datetime',
       meta: { align: 'left' },
     },
     {

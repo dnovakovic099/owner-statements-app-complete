@@ -595,6 +595,7 @@ class HostifyService {
 
     // Calculate cleaningAndOtherFees from fees array
     // Sum all fees where fee.type === "fee" (excluding Claims Fee, Resort Fee, Management Fee)
+    // Also include "Extra guest fee" (type: "accommodation") in guest fees
     // Also extract Resort Fee separately for "Guest Paid Damage Coverage" column
     calculateFeesFromArray(fees) {
         if (!fees || !Array.isArray(fees)) {
@@ -612,9 +613,16 @@ class HostifyService {
             const feeType = feeItem.fee?.type;
             const feeName = feeItem.fee?.name || '';
             const feeNameLower = feeName.toLowerCase();
-            const amount = parseFloat(feeItem.amount_gross || 0);
+            // Use amount_gross_total for total fee amount (handles per-night fees like extra guest fee)
+            const amount = parseFloat(feeItem.amount_gross_total || feeItem.amount_gross || 0);
 
-            // Only process fees of type "fee" (not "accommodation" or "tax")
+            // Process "Extra guest fee" (type: accommodation) as guest fees
+            if (feeType === 'accommodation' && feeNameLower.includes('extra guest')) {
+                otherFees += amount;
+                return;
+            }
+
+            // Process fees of type "fee" (not "accommodation" or "tax")
             if (feeType === 'fee') {
                 // Extract resort fee for "Guest Paid Damage Coverage" column
                 if (feeNameLower.includes('resort fee') && amount > 0) {
@@ -761,11 +769,11 @@ class HostifyService {
             const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
             const extrasPrice = parseFloat(hostifyReservation.extras_price || 0);
             const addonsPrice = parseFloat(hostifyReservation.addons_price || 0);
-            const extraPersonFee = parseFloat(hostifyReservation.extra_person || 0);
-            cleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+            const extraGuestFee = parseFloat(hostifyReservation.extra_guest_price || hostifyReservation.extra_person || 0);
+            cleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
 
-            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-                console.log(`[FEE-FLAT] ${guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${cleaningAndOtherFees}`);
+            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                console.log(`[FEE-FLAT] ${guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${cleaningAndOtherFees}`);
             }
         }
 
@@ -934,12 +942,12 @@ class HostifyService {
                                 const petsFee = resPetFee || listingPetFee;
                                 const extrasPrice = parseFloat(detailData.extras_price || 0);
                                 const addonsPrice = parseFloat(detailData.addons_price || 0);
-                                const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                                const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
                                 const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
 
-                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                                 }
 
                                 return {
@@ -1062,12 +1070,12 @@ class HostifyService {
                             const petsFee = resPetFee || listingPetFee;
                             const extrasPrice = parseFloat(detailData.extras_price || 0);
                             const addonsPrice = parseFloat(detailData.addons_price || 0);
-                            const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                            const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
                             const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
 
-                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-                                console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                             }
 
                             return {

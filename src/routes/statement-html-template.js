@@ -517,22 +517,43 @@ function generateStatementHTML(statement, id) {
             <tr>
                 <td class="summary-label">Gross Payout</td>
                 <td class="summary-value" style="color: ${(() => {
+                    // Check if PM commission is waived
+                    const isWaiverActive = (() => {
+                        if (!statement.waiveCommission) return false;
+                        if (!statement.waiveCommissionUntil) return true;
+                        const waiverEnd = new Date(statement.waiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                        const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                        const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
+                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                        const grossPayout = clientRevenue - pmFeeToDeduct;
                         return sum + grossPayout;
                     }, 0) || 0;
                     return totalGrossPayout >= 0 ? '#059669' : '#dc2626';
                 })()};">${(() => {
+                    // Check if PM commission is waived
+                    const isWaiverActive = (() => {
+                        if (!statement.waiveCommission) return false;
+                        if (!statement.waiveCommissionUntil) return true;
+                        const waiverEnd = new Date(statement.waiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                        const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                        const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
+                        // PM fee calculated on raw revenue (charged even for co-host)
+                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                        const grossPayout = clientRevenue - pmFeeToDeduct;
                         return sum + grossPayout;
                     }, 0) || 0;
                     return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -551,12 +572,23 @@ function generateStatementHTML(statement, id) {
             <tr class="total-row">
                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
                 <td class="summary-value"><strong>$${(() => {
+                    // Check if PM commission is waived
+                    const isWaiverActive = (() => {
+                        if (!statement.waiveCommission) return false;
+                        if (!statement.waiveCommissionUntil) return true;
+                        const waiverEnd = new Date(statement.waiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
                     const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
-                        const clientRevenue = isCohostAirbnb ? 0 : (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount);
-                        const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
-                        const grossPayout = isCohostAirbnb ? -luxuryFee : (clientRevenue - luxuryFee);
+                        const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                        const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
+                        // PM fee calculated on raw revenue (charged even for co-host)
+                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                        const grossPayout = clientRevenue - pmFeeToDeduct;
                         return sum + grossPayout;
                     }, 0) || 0;
                     const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
@@ -592,11 +624,22 @@ function generateStatementHTML(statement, id) {
                     const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
                     const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
                     const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
-                    const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                    // PM Commission is calculated based on clientRevenue (which accounts for proration)
-                    const luxuryFee = clientRevenue * (statement.pmPercentage / 100);
+                    const rawClientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                    // For co-host Airbnb, revenue is $0 (Airbnb pays owner directly)
+                    const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
+                    // PM Commission is calculated based on raw revenue (for display), but may be waived
+                    const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
-                    
+
+                    // Check if PM commission is waived
+                    const isWaiverActive = (() => {
+                        if (!statement.waiveCommission) return false;
+                        if (!statement.waiveCommissionUntil) return true; // Indefinite waiver
+                        const waiverEnd = new Date(statement.waiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
+
                     // Tax calculation priority:
                     // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
                     // 2. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
@@ -604,11 +647,11 @@ function generateStatementHTML(statement, id) {
                     const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
                     const taxToAdd = shouldAddTax ? taxResponsibility : 0;
 
-                    // For co-hosted Airbnb: Gross Payout is negative PM commission only
-                    // For others: Normal calculation
-                    const grossPayout = isCohostAirbnb
-                        ? -luxuryFee
-                        : (clientRevenue - luxuryFee);
+                    // Gross Payout = Revenue - PM Commission (unless waived)
+                    // For co-hosted Airbnb: Revenue is $0, so Gross Payout = -PM Commission (unless waived)
+                    // When waiver is active: PM fee is displayed but NOT deducted
+                    const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                    const grossPayout = clientRevenue - pmFeeToDeduct;
                     const clientPayout = grossPayout + taxToAdd;
                     
                     return `
@@ -644,18 +687,40 @@ function generateStatementHTML(statement, id) {
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.baseRate : res.grossAmount * 0.85), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.cleaningAndOtherFees : res.grossAmount * 0.15), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.platformFees : res.grossAmount * 0.03), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                    <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => {
+                        const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                        const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+                        const rawRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                        return sum + (isCohostAirbnb ? 0 : rawRevenue);
+                    }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => {
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                         return sum + (clientRevenue * (statement.pmPercentage / 100));
                     }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell payout-cell"><strong>$${(() => {
-                        const totalRevenue = statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientRevenue : res.grossAmount), 0) || 0;
+                        // Check if PM commission is waived
+                        const isWaiverActive = (() => {
+                            if (!statement.waiveCommission) return false;
+                            if (!statement.waiveCommissionUntil) return true;
+                            const waiverEnd = new Date(statement.waiveCommissionUntil + 'T23:59:59');
+                            const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                            return stmtEnd <= waiverEnd;
+                        })();
+                        // Calculate revenue (0 for co-host Airbnb)
+                        const totalRevenue = statement.reservations?.reduce((sum, res) => {
+                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                            const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+                            const rawRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                            return sum + (isCohostAirbnb ? 0 : rawRevenue);
+                        }, 0) || 0;
+                        // PM Commission calculated on raw revenue (for display purposes)
                         const totalPmCommission = statement.reservations?.reduce((sum, res) => {
                             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                             return sum + (clientRevenue * (statement.pmPercentage / 100));
                         }, 0) || 0;
+                        // PM fee to actually deduct (0 if waiver is active)
+                        const pmFeeToDeduct = isWaiverActive ? 0 : totalPmCommission;
                         // Add tax for non-Airbnb bookings, or Airbnb with pass-through tax enabled
                         // But never add if disregardTax is enabled
                         const totalTaxToAdd = statement.reservations?.reduce((sum, res) => {
@@ -664,7 +729,7 @@ function generateStatementHTML(statement, id) {
                             const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
                             return sum + (shouldAddTax ? taxAmount : 0);
                         }, 0) || 0;
-                        return (totalRevenue - totalPmCommission + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return (totalRevenue - pmFeeToDeduct + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
                 </tr>
             </tbody>
