@@ -9,10 +9,10 @@ class ListingService {
      */
     async syncListingsFromHostify() {
         console.log('Syncing listings from Hostify to database...');
-        
+
         try {
             const response = await HostifyService.getAllProperties();
-            
+
             if (!response || !response.result || !Array.isArray(response.result)) {
                 console.error('No listings received from Hostify');
                 return { synced: 0, errors: 0 };
@@ -25,6 +25,9 @@ class ListingService {
             for (const hostifyListing of hostifyListings) {
                 try {
                     const existingListing = await Listing.findByPk(hostifyListing.id);
+
+                    // Extract owner info from users array
+                    const ownerInfo = this.extractOwnerFromUsers(hostifyListing.users);
 
                     const listingData = {
                         id: hostifyListing.id,
@@ -39,8 +42,25 @@ class ListingService {
                         lastSyncedAt: new Date()
                     };
 
+                    // Add owner info if found (only update if not already set by user)
+                    if (ownerInfo) {
+                        if (existingListing) {
+                            // Only update owner info if not manually set
+                            if (!existingListing.ownerEmail) {
+                                listingData.ownerEmail = ownerInfo.email;
+                            }
+                            if (!existingListing.ownerGreeting) {
+                                listingData.ownerGreeting = ownerInfo.greeting;
+                            }
+                        } else {
+                            // New listing - set owner info
+                            listingData.ownerEmail = ownerInfo.email;
+                            listingData.ownerGreeting = ownerInfo.greeting;
+                        }
+                    }
+
                     if (existingListing) {
-                        // Update but preserve PM fee
+                        // Update but preserve PM fee and manually set owner info
                         delete listingData.pmFeePercentage; // Don't overwrite
                         await existingListing.update(listingData);
                     } else {
@@ -48,7 +68,7 @@ class ListingService {
                         listingData.pmFeePercentage = 15.00;
                         await Listing.create(listingData);
                     }
-                    
+
                     synced++;
                 } catch (error) {
                     console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
@@ -63,6 +83,38 @@ class ListingService {
             console.error('Error syncing listings from Hostify:', error);
             throw error;
         }
+    }
+
+    /**
+     * Extract owner email and name from Hostify users array
+     * Looks for user with role "Standard Listing Owner"
+     */
+    extractOwnerFromUsers(users) {
+        if (!users || !Array.isArray(users)) {
+            return null;
+        }
+
+        // Find user with "Standard Listing Owner" role
+        const owner = users.find(user =>
+            user.roles && user.roles.toLowerCase().includes('listing owner')
+        );
+
+        if (!owner) {
+            return null;
+        }
+
+        // Username is the email in Hostify
+        const email = owner.username || null;
+
+        // Build greeting from first name
+        let greeting = null;
+        if (owner.first_name) {
+            greeting = owner.first_name;
+        } else if (owner.last_name) {
+            greeting = owner.last_name;
+        }
+
+        return email || greeting ? { email, greeting } : null;
     }
 
     /**

@@ -136,7 +136,7 @@ class EmailService {
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
@@ -239,7 +239,7 @@ Thank you again for your trust and partnership.
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
@@ -515,7 +515,7 @@ Thank you again for your trust and partnership.
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">- $${balanceAmount}</p>
@@ -895,7 +895,8 @@ Thank you again for your trust and partnership.
     }
 
     /**
-     * Generate PDF buffer for a statement
+     * Generate PDF buffer for a statement by calling the existing download endpoint
+     * This uses the same HTML template as the "Download PDF" button in the UI
      * @param {string} statementId - Statement ID
      * @param {Object} statement - Statement object (for filename)
      * @param {string} authHeader - Authorization header for internal API call
@@ -903,54 +904,29 @@ Thank you again for your trust and partnership.
      */
     async generateStatementPdf(statementId, statement, authHeader = null) {
         try {
-            const htmlPdf = require('html-pdf-node');
             const port = process.env.PORT || 3003;
-            const viewUrl = `http://localhost:${port}/api/statements/${statementId}/view?pdf=true`;
+            const downloadUrl = `http://localhost:${port}/api/statements/${statementId}/download`;
 
-            // Fetch HTML from the view route internally
-            const fetchHTML = () => {
-                return new Promise((resolve, reject) => {
-                    const options = {
-                        headers: authHeader ? { 'Authorization': authHeader } : {}
-                    };
+            // Call the existing download endpoint to get the PDF
+            const pdfBuffer = await new Promise((resolve, reject) => {
+                const options = {
+                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                };
 
-                    http.get(viewUrl, options, (response) => {
-                        let data = '';
-                        response.on('data', chunk => data += chunk);
-                        response.on('end', () => resolve(data));
-                        response.on('error', reject);
-                    }).on('error', reject);
-                });
-            };
+                http.get(downloadUrl, options, (response) => {
+                    // Check if response is successful
+                    if (response.statusCode !== 200) {
+                        reject(new Error(`Download failed with status ${response.statusCode}`));
+                        return;
+                    }
 
-            const statementHTML = await fetchHTML();
-
-            const pdfOptions = {
-                format: 'A4',
-                landscape: false,
-                margin: {
-                    top: '10mm',
-                    right: '10mm',
-                    bottom: '10mm',
-                    left: '10mm'
-                },
-                printBackground: true,
-                preferCSSPageSize: false,
-                displayHeaderFooter: false,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-extensions'
-                ]
-            };
-
-            const file = { content: statementHTML };
-            const pdfBuffer = await htmlPdf.generatePdf(file, pdfOptions);
+                    // Collect binary data
+                    const chunks = [];
+                    response.on('data', chunk => chunks.push(chunk));
+                    response.on('end', () => resolve(Buffer.concat(chunks)));
+                    response.on('error', reject);
+                }).on('error', reject);
+            });
 
             // Generate filename using property nickname
             let propertyNickname = statement.propertyName || 'Statement';
@@ -962,7 +938,6 @@ Thank you again for your trust and partnership.
             const startDate = (statement.weekStartDate || '').replace(/\//g, '-');
             const endDate = (statement.weekEndDate || '').replace(/\//g, '-');
             const statementPeriod = `${startDate} to ${endDate}`;
-
             const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
 
             console.log(`[EmailService] Generated PDF for statement ${statementId}: ${filename}`);
