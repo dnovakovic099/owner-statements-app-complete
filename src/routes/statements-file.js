@@ -74,11 +74,14 @@ router.get('/', async (req, res) => {
             statements = statements.filter(s => new Date(s.weekStartDate) <= new Date(endDate));
         }
 
-        // Sort by creation date (newest first)
+        // Sort by creation date (newest first), then by ID (newest first) for same-time statements
         statements.sort((a, b) => {
             const dateA = new Date(a.createdAt || a.created_at || 0);
             const dateB = new Date(b.createdAt || b.created_at || 0);
-            return dateB - dateA; // Descending order (newest first)
+            const dateDiff = dateB - dateA; // Descending order (newest first)
+            if (dateDiff !== 0) return dateDiff;
+            // For statements created at the same time, sort by ID descending
+            return (b.id || 0) - (a.id || 0);
         });
 
         // Apply pagination
@@ -495,12 +498,25 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
             const resCleaningFeePassThrough = resListingInfo.cleaningFeePassThrough || false;
+            const resWaiveCommission = resListingInfo.waiveCommission || false;
+            const resWaiveCommissionUntil = resListingInfo.waiveCommissionUntil || null;
 
             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
             const isCohostAirbnb = isAirbnb && resIsCohostOnAirbnb;
 
+            // Check if PM commission waiver is active
+            const isWaiverActive = (() => {
+                if (!resWaiveCommission) return false;
+                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                const stmtEnd = new Date(endDate + 'T00:00:00');
+                return stmtEnd <= waiverEnd;
+            })();
+
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
+            // If waiver is active, don't deduct PM fee
+            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Use listing's default cleaning fee if reservation cleaning fee is 0
             const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || resListingInfo.cleaningFee || 0) : 0;
@@ -509,11 +525,11 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
             }
             grossPayoutSum += grossPayout;
         }
@@ -915,12 +931,25 @@ router.post('/generate', async (req, res) => {
             const resDisregardTax = resListingInfo?.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo?.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo?.isCohostOnAirbnb || false;
+            const resWaiveCommission = resListingInfo?.waiveCommission || false;
+            const resWaiveCommissionUntil = resListingInfo?.waiveCommissionUntil || null;
 
             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
             const isCohostAirbnb = isAirbnb && resIsCohostOnAirbnb;
 
+            // Check if PM commission waiver is active
+            const isWaiverActive = (() => {
+                if (!resWaiveCommission) return false;
+                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                const stmtEnd = new Date(endDate + 'T00:00:00');
+                return stmtEnd <= waiverEnd;
+            })();
+
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const luxuryFee = clientRevenue * (resPmPercentage / 100);
+            // If waiver is active, don't deduct PM fee
+            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Use listing's default cleaning fee if reservation cleaning fee is 0
             const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0) : 0;
@@ -929,11 +958,11 @@ router.post('/generate', async (req, res) => {
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
             }
             grossPayoutSum += grossPayout;
         }
@@ -1510,6 +1539,15 @@ router.get('/:id/view/data', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
+        // Fetch current listing settings for waiver info
+        if (statement.propertyId) {
+            const currentListing = await ListingService.getListingWithPmFee(parseInt(statement.propertyId));
+            if (currentListing) {
+                statement.waiveCommission = Boolean(currentListing.waiveCommission);
+                statement.waiveCommissionUntil = currentListing.waiveCommissionUntil || null;
+            }
+        }
+
         // Inject cleaning fee expenses for statements with pass-through enabled
         if (statement.cleaningFeePassThrough && statement.reservations && statement.reservations.length > 0) {
             const existingExpenses = statement.expenses || [];
@@ -1595,6 +1633,8 @@ router.get('/:id/view', async (req, res) => {
                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
                     guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
+                    waiveCommission: Boolean(listing.waiveCommission),
+                    waiveCommissionUntil: listing.waiveCommissionUntil || null,
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: listing.pmFeePercentage ?? 15,
                     nickname: listing.nickname || listing.displayName || listing.name || ''
@@ -1621,9 +1661,14 @@ router.get('/:id/view', async (req, res) => {
                     airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
                     guestPaidDamageCoverage: Boolean(currentListing.guestPaidDamageCoverage),
+                    waiveCommission: Boolean(currentListing.waiveCommission),
+                    waiveCommissionUntil: currentListing.waiveCommissionUntil || null,
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: currentListing.pmFeePercentage ?? 15
                 };
+                // Also set on statement object for template access
+                statement.waiveCommission = Boolean(currentListing.waiveCommission);
+                statement.waiveCommissionUntil = currentListing.waiveCommissionUntil || null;
             }
         }
 
@@ -1692,7 +1737,10 @@ router.get('/:id/view', async (req, res) => {
                 disregardTax: statement.disregardTax,
                 airbnbPassThroughTax: statement.airbnbPassThroughTax,
                 cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                pmFeePercentage: statement.pmPercentage
+                pmFeePercentage: statement.pmPercentage,
+                waiveCommission: statement.waiveCommission || false,
+                waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                cleaningFee: 0
             };
 
             const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
@@ -1706,19 +1754,31 @@ router.get('/:id/view', async (req, res) => {
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
+            // Check if PM commission waiver is active for this property
+            const resWaiveCommission = propSettings.waiveCommission || false;
+            const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+            const isWaiverActive = (() => {
+                if (!resWaiveCommission) return false;
+                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                return stmtEnd <= waiverEnd;
+            })();
+            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+
             // Add to totals (skip revenue for co-host Airbnb)
             if (!isCohostAirbnb) {
                 recalculatedTotalRevenue += clientRevenue;
             }
-            recalculatedPmCommission += luxuryFee;
+            recalculatedPmCommission += luxuryFee; // Always show full PM commission for display
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
             }
             recalculatedGrossPayout += grossPayout;
         });
@@ -3018,7 +3078,10 @@ router.get('/:id/view', async (req, res) => {
                                     disregardTax: statement.disregardTax,
                                     airbnbPassThroughTax: statement.airbnbPassThroughTax,
                                     cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                                    pmFeePercentage: statement.pmPercentage
+                                    pmFeePercentage: statement.pmPercentage,
+                                    waiveCommission: statement.waiveCommission || false,
+                                    waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                                    cleaningFee: 0
                                 };
 
                                 // Check if this is an Airbnb reservation on a co-hosted property
@@ -3047,14 +3110,26 @@ router.get('/:id/view', async (req, res) => {
                                 // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
                                 const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
+                                // Check if PM commission waiver is active for this property
+                                const resWaiveCommission = propSettings.waiveCommission || false;
+                                const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+                                const isWaiverActive = (() => {
+                                    if (!resWaiveCommission) return false;
+                                    if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                                    const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                                    const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                                    return stmtEnd <= waiverEnd;
+                                })();
+                                const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+
                                 if (isCohostAirbnb) {
-                                    grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                                    grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
                                 } else if (shouldAddTax) {
                                     // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
-                                    grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                                    grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                                 } else {
                                     // No tax: Airbnb without pass-through OR disregardTax is enabled
-                                    grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                                    grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
                                 }
 
                                 // Get property nickname for combined statements
@@ -3110,7 +3185,11 @@ router.get('/:id/view', async (req, res) => {
                                         isCohostOnAirbnb: statement.isCohostOnAirbnb,
                                         disregardTax: statement.disregardTax,
                                         airbnbPassThroughTax: statement.airbnbPassThroughTax,
-                                        pmFeePercentage: statement.pmPercentage
+                                        cleaningFeePassThrough: statement.cleaningFeePassThrough,
+                                        pmFeePercentage: statement.pmPercentage,
+                                        waiveCommission: statement.waiveCommission || false,
+                                        waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                                        cleaningFee: 0
                                     };
 
                                     const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
@@ -3129,13 +3208,25 @@ router.get('/:id/view', async (req, res) => {
                                     // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
                                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
+                                    // Check if PM commission waiver is active for this property
+                                    const resWaiveCommission = propSettings.waiveCommission || false;
+                                    const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+                                    const isWaiverActive = (() => {
+                                        if (!resWaiveCommission) return false;
+                                        if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                                        const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                                        return stmtEnd <= waiverEnd;
+                                    })();
+                                    const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+
                                     let grossPayout;
                                     if (isCohostAirbnb) {
-                                        grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
                                     } else if (shouldAddTax) {
-                                        grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                                        grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                                     } else {
-                                        grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                                        grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
                                     }
 
                                     totalBaseRate += baseRate;
@@ -3312,7 +3403,10 @@ router.get('/:id/view', async (req, res) => {
                 disregardTax: statement.disregardTax,
                 airbnbPassThroughTax: statement.airbnbPassThroughTax,
                 cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                pmFeePercentage: statement.pmPercentage
+                pmFeePercentage: statement.pmPercentage,
+                waiveCommission: statement.waiveCommission || false,
+                waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                cleaningFee: 0
             };
 
             const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
@@ -3326,14 +3420,26 @@ router.get('/:id/view', async (req, res) => {
             // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
 
+            // Check if PM commission waiver is active for this property
+            const resWaiveCommission = propSettings.waiveCommission || false;
+            const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+            const isWaiverActive = (() => {
+                if (!resWaiveCommission) return false;
+                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                return stmtEnd <= waiverEnd;
+            })();
+            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
-                grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
-                grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
             }
 
             summaryGrossPayout += grossPayout;
@@ -3829,6 +3935,17 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
+                    // Skip if no activity (no reservations AND no expenses in period)
+                    if (periodReservations.length === 0 && periodExpenses.length === 0) {
+                        return {
+                            success: false,
+                            skipped: true,
+                            property,
+                            propertyName,
+                            reason: 'No activity in period'
+                        };
+                    }
+
                     // Get pre-fetched listing config
                     const listing = listingConfigs.get(property.id);
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
@@ -3887,7 +4004,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     }
 
                     // Combine filtered expenses with cleaning fee expenses
-                    const allExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
+                    const combinedExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
 
                     // Get PM percentage
                     let pmPercentage = 15;
@@ -3974,7 +4091,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             sentAt: null,
                             createdAt: new Date().toISOString(),
                             reservations: periodReservations,
-                            expenses: allExpenses,
+                            expenses: combinedExpenses,
                             duplicateWarnings: [],
                             cleaningMismatchWarning,
                             items: [
@@ -3985,7 +4102,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                     date: res.checkOutDate,
                                     category: 'booking'
                                 })),
-                                ...allExpenses.map(exp => {
+                                ...combinedExpenses.map(exp => {
                                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                     return {
                                         type: isUpsell ? 'upsell' : 'expense',
@@ -4013,6 +4130,18 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
             // Collect results from this batch
             for (const result of batchResults) {
+                // Handle early skip (no activity in period)
+                if (result.skipped) {
+                    if (!results.skipped) results.skipped = [];
+                    results.skipped.push({
+                        propertyId: result.property.id,
+                        propertyName: result.propertyName,
+                        reason: result.reason || 'No activity in period'
+                    });
+                    console.log(`[Bulk Gen] SKIPPED Property ${result.property.id} "${result.propertyName}": ${result.reason}`);
+                    processedCount++;
+                    continue;
+                }
                 if (result.success) {
                     // Skip statements with zero revenue AND zero expenses (no activity)
                     // BUT don't skip if there are overlapping reservations that suggest calendar mode
@@ -4248,7 +4377,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     }
 
                     // Combine filtered expenses with cleaning fee expenses
-                    const allExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
+                    const combinedExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
 
                     // Get listing settings for proper calculation
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
@@ -4337,7 +4466,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         sentAt: null,
                         createdAt: new Date().toISOString(),
                         reservations: periodReservations,
-                        expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
+                        expenses: combinedExpenses, // Use all expenses including auto-generated cleaning fees
                         duplicateWarnings: [],
                         items: [
                             ...periodReservations.map(res => ({
