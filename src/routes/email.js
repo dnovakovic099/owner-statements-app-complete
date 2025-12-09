@@ -57,25 +57,30 @@ router.post('/send/:statementId', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        // Get listing for tags and nickname
+        // Get listing for tags, owner greeting and nickname
         let frequency = frequencyTag;
         let listingNickname = null;
+        let ownerGreeting = null;
         if (statement.propertyId) {
             const listing = await Listing.findByPk(statement.propertyId);
             if (listing) {
                 if (!frequency) {
                     frequency = EmailService.getFrequencyFromTags(listing.tags);
                 }
-                // Get listing nickname for email greeting
+                // Get listing nickname for property name
                 listingNickname = listing.nickname;
+                // Get owner greeting for email personalization (e.g., "Ellen", "Scott")
+                ownerGreeting = listing.ownerGreeting;
             }
         }
         frequency = frequency || 'Monthly';
 
-        // Use listing nickname for email greeting and property name
+        // Use owner greeting for email greeting, nickname for property name
         const statementData = statement.toJSON();
+        if (ownerGreeting) {
+            statementData.ownerName = ownerGreeting;
+        }
         if (listingNickname) {
-            statementData.ownerName = listingNickname;
             statementData.propertyName = listingNickname;
         }
 
@@ -92,9 +97,11 @@ router.post('/send/:statementId', async (req, res) => {
                 const refreshed = await Statement.findByPk(id);
                 if (refreshed) {
                     const data = refreshed.toJSON();
-                    // Use listing nickname for email greeting and property name
+                    // Use owner greeting for email, nickname for property name
+                    if (ownerGreeting) {
+                        data.ownerName = ownerGreeting;
+                    }
                     if (listingNickname) {
-                        data.ownerName = listingNickname;
                         data.propertyName = listingNickname;
                     }
                     return data;

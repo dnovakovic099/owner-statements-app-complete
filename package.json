@@ -52,6 +52,7 @@
     "node-cron": "^4.2.1",
     "node-quickbooks": "^2.0.46",
     "nodemailer": "^7.0.11",
+    "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "pg-hstore": "^2.3.4",
     "puppeteer": "^24.22.3",
