@@ -143,7 +143,7 @@ class EmailService {
 <p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
@@ -169,7 +169,7 @@ Payment will be sent shortly to your provided account.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 
@@ -246,7 +246,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
@@ -272,7 +272,7 @@ Payment will be sent shortly to your provided account.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 
@@ -325,7 +325,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
@@ -351,7 +351,7 @@ Payment will be sent shortly to your provided account.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 
@@ -404,7 +404,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
@@ -432,7 +432,7 @@ Payment will be sent shortly to your provided account.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 
@@ -523,7 +523,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">You can pay the balance using ${invoiceLinkHtml}.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: CO-HOST ON AIRBNB</strong></p>
@@ -555,7 +555,7 @@ You can pay the balance using ${invoiceLink}.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 
@@ -615,7 +615,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">Payment will be sent shortly to your provided account.</p>
 <hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">
 <p style="margin: 0 0 8px 0;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0;">Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue<br>
+<p style="margin: 0 0 12px 0;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 8px 0;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
@@ -641,7 +641,7 @@ Payment will be sent shortly to your provided account.
 ---
 
 CALCULATING YOUR STATEMENT
-Base Rate + Guest Paid Cleaning, Pet, Extra and Others - Platform Fee = Revenue
+Base Rate + Guest Fees - Platform Fee = Revenue
 Revenue - PM Commission = Gross Payout
 Gross Payout - Expenses + Additional Payouts = Net Payout
 

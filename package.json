@@ -58,5 +58,8 @@
     "sequelize": "^6.37.7",
     "sqlite3": "^5.1.7",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "chai": "^6.2.1"
   }
 }

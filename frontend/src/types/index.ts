@@ -89,6 +89,7 @@ export interface Statement {
     cleaningExpenseCount: number;
     difference: number;
   } | null;
+  shouldConvertToCalendar?: boolean;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;

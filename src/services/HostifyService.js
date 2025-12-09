@@ -70,35 +70,64 @@ class HostifyService {
         this._childListingsCache.clear();
     }
 
-    async makeRequest(endpoint, params = {}, method = 'GET') {
+    async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 6) {
         if (!this.apiKey) {
             throw new Error('Hostify API Key is required.');
         }
 
-        try {
-            const config = {
-                headers: {
-                    'x-api-key': this.apiKey,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 15000 // Reduced from 30s to 15s for faster failures
-            };
+        const config = {
+            headers: {
+                'x-api-key': this.apiKey,
+                'Content-Type': 'application/json'
+            },
+            timeout: 30000 // 30 second timeout
+        };
 
-            let response;
-            if (method === 'GET') {
-                config.params = params;
-                response = await axios.get(`${this.baseURL}${endpoint}`, config);
-            } else if (method === 'POST') {
-                response = await axios.post(`${this.baseURL}${endpoint}`, params, config);
-            }
+        let lastError = null;
 
-            return response.data;
-        } catch (error) {
-            if (error.response?.status === 401 || error.response?.status === 403) {
-                throw new Error('Hostify API Authentication Error. Check API key.');
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                let response;
+                if (method === 'GET') {
+                    config.params = params;
+                    response = await axios.get(`${this.baseURL}${endpoint}`, config);
+                } else if (method === 'POST') {
+                    response = await axios.post(`${this.baseURL}${endpoint}`, params, config);
+                }
+
+                return response.data;
+            } catch (error) {
+                lastError = error;
+
+                // Auth errors - don't retry
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    throw new Error('Hostify API Authentication Error. Check API key.');
+                }
+
+                // Check if it's a retryable error (timeout, network, server error)
+                const isRetryable = error.code === 'ECONNABORTED' ||
+                                    error.code === 'ETIMEDOUT' ||
+                                    error.code === 'ENOTFOUND' ||
+                                    error.code === 'ECONNRESET' ||
+                                    error.message?.includes('timeout') ||
+                                    error.response?.status >= 500;
+
+                // If not retryable, throw immediately
+                if (!isRetryable) {
+                    throw new Error(`Hostify API Error: ${error.message}`);
+                }
+
+                // If we have more retries left, wait and retry
+                if (attempt < maxRetries) {
+                    const delay = 1000 * attempt; // 1s, 2s, 3s, 4s, 5s, 6s
+                    console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${error.message} (waiting ${delay}ms)`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
             }
-            throw new Error(`Hostify API Error: ${error.message}`);
         }
+
+        // All retries exhausted
+        throw new Error(`Hostify API Error after ${maxRetries} retries: ${lastError?.message || 'Unknown error'}`);
     }
 
     async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn') {
@@ -228,7 +257,7 @@ class HostifyService {
         const reservations = response.result || [];
 
         // Fetch detailed financial data for each reservation (in parallel batches)
-        const batchSize = 20; // Increased from 10 for better performance
+        const batchSize = 20; // Reduced to avoid API rate limits
         const enrichedReservations = [];
 
         for (let i = 0; i < reservations.length; i += batchSize) {
@@ -256,7 +285,7 @@ class HostifyService {
 
     /**
      * BULK FETCH: Get ALL reservations for bulk statement generation
-     * - Fetches past 365 days of reservations (single API call, no listing filter)
+     * - Fetches reservations for the specified date range (or past 365 days if not specified)
      * - Handles pagination to get every reservation
      * - Builds child-to-parent listing map
      * - Attributes child reservations to parent listings
@@ -264,25 +293,32 @@ class HostifyService {
      *
      * This is designed for "Generate All" bulk operations where reliability > speed
      */
-    async bulkFetchAllReservations(progressCallback = null) {
-        console.log('[BULK-FETCH] Starting bulk reservation fetch for past 365 days...');
+    async bulkFetchAllReservations(progressCallback = null, requestedStartDate = null, requestedEndDate = null) {
         const startTime = Date.now();
 
-        // Calculate date range: past 365 days to today + 30 days (to catch future reservations)
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 30);
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 365);
-
-        const fromDate = startDate.toISOString().split('T')[0];
-        const toDate = endDate.toISOString().split('T')[0];
+        // Use requested date range or default to past 365 days
+        let fromDate, toDate;
+        if (requestedStartDate && requestedEndDate) {
+            fromDate = requestedStartDate;
+            toDate = requestedEndDate;
+            console.log(`[BULK-FETCH] Starting bulk reservation fetch for requested period: ${fromDate} to ${toDate}`);
+        } else {
+            // Default: past 365 days to today + 30 days
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + 30);
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 365);
+            fromDate = startDate.toISOString().split('T')[0];
+            toDate = endDate.toISOString().split('T')[0];
+            console.log(`[BULK-FETCH] Starting bulk reservation fetch for past 365 days...`);
+        }
 
         console.log(`[BULK-FETCH] Date range: ${fromDate} to ${toDate}`);
 
         // Step 1: Fetch ALL reservations with PARALLEL pagination (much faster!)
         let allRawReservations = [];
         const perPage = 100;
-        const parallelBatchSize = 10; // Fetch 10 pages at a time
+        const parallelBatchSize = 10; // Fetch 10 pages at a time to avoid API rate limits
 
         console.log('[BULK-FETCH] Step 1: Fetching all reservations with PARALLEL pagination...');
 
@@ -335,6 +371,11 @@ class HostifyService {
                 progressCallback(`Fetching reservations: ${allRawReservations.length}/${totalExpected}`);
             }
             console.log(`[BULK-FETCH] Progress: ${allRawReservations.length}/${totalExpected} reservations`);
+
+            // Small delay between batches to avoid overwhelming the API
+            if (batchEnd < totalPages) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
         }
 
         console.log(`[BULK-FETCH] Fetched ${allRawReservations.length} raw reservations`);
@@ -352,8 +393,8 @@ class HostifyService {
         const childToParentMap = new Map();
         const parentListingIds = allListings.map(l => parseInt(l.id));
 
-        // Fetch children for all listings in parallel batches (50 at a time for speed)
-        const batchSize = 50;
+        // Fetch children for all listings in parallel batches (20 at a time to avoid API rate limits)
+        const batchSize = 20;
         for (let i = 0; i < parentListingIds.length; i += batchSize) {
             const batch = parentListingIds.slice(i, i + batchSize);
             const childResults = await Promise.all(
@@ -368,6 +409,11 @@ class HostifyService {
                     childToParentMap.set(childId, parentId);
                 });
             });
+
+            // Small delay between batches to avoid overwhelming the API
+            if (i + batchSize < parentListingIds.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
 
             if (progressCallback) {
                 progressCallback(`Building listing map: ${Math.min(i + batchSize, parentListingIds.length)}/${parentListingIds.length}`);
@@ -404,9 +450,9 @@ class HostifyService {
 
         console.log(`[BULK-FETCH] Transformed ${dedupedReservations.length} unique reservations`);
 
-        // Step 4: NO EXTRA API CALLS NEEDED!
-        // fees=1 parameter in list API already includes: pets_fee, extras_price, addons_price, extra_person
-        console.log('[BULK-FETCH] Step 4: Fees already included via fees=1 parameter - no extra calls needed!');
+        // Note: Fee data (pets_fee, extras_price, addons_price, extra_person) is already
+        // extracted in transformReservation() from the list API with fees=1 parameter.
+        // The fees=1 parameter should include all fee details - no enrichment needed.
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`[BULK-FETCH] Complete! ${dedupedReservations.length} reservations fetched in ${elapsed}s`);
@@ -471,8 +517,8 @@ class HostifyService {
         return await this.makeRequest(`/listings/${listingId}`);
     }
 
-    // Get child listings for a parent listing (with caching)
-    async getChildListings(parentId) {
+    // Get child listings for a parent listing (with caching and retry)
+    async getChildListings(parentId, retries = 2) {
         const cacheKey = parseInt(parentId);
 
         // Check cache first
@@ -481,25 +527,33 @@ class HostifyService {
             return cached.childIds;
         }
 
-        try {
-            const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
-            if (response.success && response.listings && response.listings.length > 0) {
-                const childIds = response.listings.map(l => parseInt(l.id));
-                console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
+        for (let attempt = 1; attempt <= retries + 1; attempt++) {
+            try {
+                const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
+                if (response.success && response.listings && response.listings.length > 0) {
+                    const childIds = response.listings.map(l => parseInt(l.id));
+                    console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
 
-                // Cache the result
-                this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
-                return childIds;
+                    // Cache the result
+                    this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
+                    return childIds;
+                }
+
+                // Cache empty result too (listing has no children)
+                this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
+                return [];
+            } catch (error) {
+                if (attempt <= retries) {
+                    console.log(`[PARENT-CHILD] Retry ${attempt}/${retries} for listing ${parentId}: ${error.message}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                } else {
+                    console.log(`[PARENT-CHILD] Failed after ${retries + 1} attempts for listing ${parentId}: ${error.message}`);
+                    // Don't cache errors - network issues should be retried next time
+                    return [];
+                }
             }
-
-            // Cache empty result too
-            this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
-            return [];
-        } catch (error) {
-            console.log(`[PARENT-CHILD] Error fetching children for listing ${parentId}: ${error.message}`);
-            // Don't cache errors - network issues should be retried
-            return [];
         }
+        return [];
     }
 
     // Expand listing IDs to include child listings
@@ -541,6 +595,7 @@ class HostifyService {
 
     // Calculate cleaningAndOtherFees from fees array
     // Sum all fees where fee.type === "fee" (excluding Claims Fee, Resort Fee, Management Fee)
+    // Also include "Extra guest fee" (type: "accommodation") in guest fees
     // Also extract Resort Fee separately for "Guest Paid Damage Coverage" column
     calculateFeesFromArray(fees) {
         if (!fees || !Array.isArray(fees)) {
@@ -558,9 +613,16 @@ class HostifyService {
             const feeType = feeItem.fee?.type;
             const feeName = feeItem.fee?.name || '';
             const feeNameLower = feeName.toLowerCase();
-            const amount = parseFloat(feeItem.amount_gross || 0);
+            // Use amount_gross_total for total fee amount (handles per-night fees like extra guest fee)
+            const amount = parseFloat(feeItem.amount_gross_total || feeItem.amount_gross || 0);
 
-            // Only process fees of type "fee" (not "accommodation" or "tax")
+            // Process "Extra guest fee" (type: accommodation) as guest fees
+            if (feeType === 'accommodation' && feeNameLower.includes('extra guest')) {
+                otherFees += amount;
+                return;
+            }
+
+            // Process fees of type "fee" (not "accommodation" or "tax")
             if (feeType === 'fee') {
                 // Extract resort fee for "Guest Paid Damage Coverage" column
                 if (feeNameLower.includes('resort fee') && amount > 0) {
@@ -678,28 +740,45 @@ class HostifyService {
 
         // Extract detailed financial data from Hostify response
         const baseRate = parseFloat(hostifyReservation.base_price || 0);
-        const cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
-        // Pet fee is in its own field
-        const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
-        // extras_price may contain additional fees, addons_price for other add-ons
-        const extrasPrice = parseFloat(hostifyReservation.extras_price || 0);
-        const addonsPrice = parseFloat(hostifyReservation.addons_price || 0);
-        // extra_person fee for additional guests
-        const extraPersonFee = parseFloat(hostifyReservation.extra_person || 0);
-        const cleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
-
-        // Debug logging for pet/extra fees (only when non-zero)
-        if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-            console.log(`[FEE] ${guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${cleaningAndOtherFees}`);
-        }
         const channelCommission = parseFloat(hostifyReservation.channel_commission || 0);
         const transactionFee = parseFloat(hostifyReservation.transaction_fee || 0);
         const platformFees = channelCommission + transactionFee;
         const taxAmount = parseFloat(hostifyReservation.tax_amount || 0);
-        
+        const clientPayout = parseFloat(hostifyReservation.payout_price || 0);
+
+        // Check if fees array is available (from list API with fees=1)
+        // The fees array is in hostifyReservation.fees.fees format
+        let cleaningFee = 0;
+        let cleaningAndOtherFees = 0;
+        let resortFee = 0;
+
+        const feesArray = hostifyReservation.fees?.fees || hostifyReservation.fees;
+        if (Array.isArray(feesArray) && feesArray.length > 0) {
+            // Use calculateFeesFromArray to extract fees from detailed array
+            const feeCalc = this.calculateFeesFromArray(feesArray);
+            cleaningFee = feeCalc.cleaningFee;
+            cleaningAndOtherFees = feeCalc.totalFees;
+            resortFee = feeCalc.resortFee || 0;
+
+            if (feeCalc.otherFees > 0) {
+                console.log(`[FEE-ARRAY] ${guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${cleaningAndOtherFees}`);
+            }
+        } else {
+            // Fallback to flat fields if fees array not available
+            cleaningFee = parseFloat(hostifyReservation.cleaning_fee || 0);
+            const petsFee = parseFloat(hostifyReservation.pets_fee || 0);
+            const extrasPrice = parseFloat(hostifyReservation.extras_price || 0);
+            const addonsPrice = parseFloat(hostifyReservation.addons_price || 0);
+            const extraGuestFee = parseFloat(hostifyReservation.extra_guest_price || hostifyReservation.extra_person || 0);
+            cleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
+
+            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                console.log(`[FEE-FLAT] ${guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${cleaningAndOtherFees}`);
+            }
+        }
+
         // Calculate totals - Revenue = base + fees - platform
         const clientRevenue = baseRate + cleaningAndOtherFees - platformFees;
-        const clientPayout = parseFloat(hostifyReservation.payout_price || 0);
         
         return {
             ...baseReservation,
@@ -712,6 +791,7 @@ class HostifyService {
             luxuryLodgingFee: 0, // PM Commission will be calculated based on property's pmFeePercentage
             clientTaxResponsibility: taxAmount,
             clientPayout: clientPayout,
+            resortFee: resortFee,
             // Legacy fields for compatibility
             grossAmount: clientRevenue,
             hostPayoutAmount: clientPayout,
@@ -823,7 +903,7 @@ class HostifyService {
             const filteredReservations = Array.from(allReservations.values());
             console.log(`[OVERLAP] Enriching ${filteredReservations.length} reservations with detailed financial data...`);
 
-            const batchSize = 50; // Increased for better performance with caching
+            const batchSize = 100; // Increased for better performance with caching
             const enrichedReservations = [];
 
             for (let i = 0; i < filteredReservations.length; i += batchSize) {
@@ -862,12 +942,12 @@ class HostifyService {
                                 const petsFee = resPetFee || listingPetFee;
                                 const extrasPrice = parseFloat(detailData.extras_price || 0);
                                 const addonsPrice = parseFloat(detailData.addons_price || 0);
-                                const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                                const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
                                 const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
 
-                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                                 }
 
                                 return {
@@ -949,7 +1029,7 @@ class HostifyService {
         });
 
         // Fetch detailed financial data for filtered reservations only (pets_fee, extras, etc.)
-        const batchSize = 50; // Increased for better performance with caching
+        const batchSize = 20; // Reduced to avoid API rate limits
         const enrichedReservations = [];
 
         console.log(`[FINANCE] Enriching ${allReservations.length} reservations with detailed financial data...`);
@@ -990,12 +1070,12 @@ class HostifyService {
                             const petsFee = resPetFee || listingPetFee;
                             const extrasPrice = parseFloat(detailData.extras_price || 0);
                             const addonsPrice = parseFloat(detailData.addons_price || 0);
-                            const extraPersonFee = parseFloat(detailData.extra_person || 0);
+                            const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
                             const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraPersonFee;
+                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
 
-                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraPersonFee > 0) {
-                                console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraPerson=${extraPersonFee} => TOTAL=${newCleaningAndOtherFees}`);
+                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                             }
 
                             return {
