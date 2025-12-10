@@ -6,7 +6,7 @@ function generateStatementHTML(statement, id) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner Statement ${id} - Luxury Lodging Host</title>
+    <title>${statement.propertyName || `Statement ${id}`} - Luxury Lodging</title>
     <style>
         :root {
             --luxury-navy: #1e3a5f;
@@ -567,7 +567,18 @@ function generateStatementHTML(statement, id) {
             ` : ''}
             <tr>
                 <td class="summary-label">Expenses</td>
-                <td class="summary-value expense">-$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="summary-value expense">-$${(statement.items?.filter(item => {
+                    if (item.type !== 'expense') return false;
+                    // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                    if (statement.cleaningFeePassThrough) {
+                        const category = (item.category || '').toLowerCase();
+                        const description = (item.description || '').toLowerCase();
+                        if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             <tr class="total-row">
                 <td class="summary-label"><strong>NET PAYOUT</strong></td>
@@ -592,7 +603,18 @@ function generateStatementHTML(statement, id) {
                         return sum + grossPayout;
                     }, 0) || 0;
                     const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-                    const expenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
+                    const expenses = statement.items?.filter(item => {
+                        if (item.type !== 'expense') return false;
+                        // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                        if (statement.cleaningFeePassThrough) {
+                            const category = (item.category || '').toLowerCase();
+                            const description = (item.description || '').toLowerCase();
+                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }).reduce((sum, item) => sum + item.amount, 0) || 0;
                     return (totalGrossPayout + upsells - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 })()}</strong></td>
             </tr>
@@ -749,7 +771,19 @@ function generateStatementHTML(statement, id) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${statement.items?.filter(item => item.type === 'expense').map(expense => {
+                    ${statement.items?.filter(item => {
+                        if (item.type !== 'expense') return false;
+                        // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
+                        // (they're already shown in the Rental Activity table's Cleaning Expense column)
+                        if (statement.cleaningFeePassThrough) {
+                            const category = (item.category || '').toLowerCase();
+                            const description = (item.description || '').toLowerCase();
+                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }).map(expense => {
                         // Check if this expense is part of a duplicate warning
                         const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
                             const matchesExpense1 = dup.expense1.description === expense.description && 
@@ -779,7 +813,18 @@ function generateStatementHTML(statement, id) {
                     }).join('') || '<tr><td colspan="5" style="text-align: center; padding: 24px; color: #9ca3af; font-style: italic;">No expenses for this period</td></tr>'}
                     <tr class="total-row">
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
-                        <td style="text-align: right;"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td style="text-align: right;"><strong>$${(statement.items?.filter(item => {
+                            if (item.type !== 'expense') return false;
+                            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                            if (statement.cleaningFeePassThrough) {
+                                const category = (item.category || '').toLowerCase();
+                                const description = (item.description || '').toLowerCase();
+                                if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>
             </table>
