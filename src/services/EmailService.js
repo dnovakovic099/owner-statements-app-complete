@@ -157,7 +157,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period ${periodDisplay}.
 
@@ -260,7 +260,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period ${periodDisplay}.
 
@@ -318,7 +318,7 @@ Thank you again for your trust and partnership.
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
@@ -339,7 +339,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period of ${periodDisplay}.
 
@@ -397,7 +397,7 @@ Thank you again for your trust and partnership.
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
@@ -420,7 +420,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period of ${periodDisplay}.
 
@@ -541,7 +541,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period ${periodDisplay}.
 
@@ -608,7 +608,7 @@ Thank you again for your trust and partnership.
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0;">
-<p style="margin: 0 0 8px 0;">Hi,</p>
+<p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toFixed(2)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
@@ -629,7 +629,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
 </body>
 </html>`,
-            text: `Hi,
+            text: `Hi${ownerName ? ' ' + ownerName : ''},
 
 Attached is your statement for the period of ${periodDisplay}.
 
