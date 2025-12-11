@@ -19,102 +19,74 @@ class ListingService {
             }
 
             const hostifyListings = response.result;
+            const sequelize = Listing.sequelize;
             let synced = 0;
+            let created = 0;
             let errors = 0;
 
             for (const hostifyListing of hostifyListings) {
                 try {
                     const existingListing = await Listing.findByPk(hostifyListing.id);
 
-                    // Extract owner info from users array
-                    const ownerInfo = this.extractOwnerFromUsers(hostifyListing.users);
-
-                    const listingData = {
-                        id: hostifyListing.id,
-                        name: hostifyListing.name || 'Unknown',
-                        nickname: hostifyListing.nickname || null,
-                        street: hostifyListing.street || null,
-                        city: hostifyListing.city || null,
-                        state: hostifyListing.state || null,
-                        country: hostifyListing.country || null,
-                        cleaningFee: hostifyListing.cleaning_fee || null, // Default cleaning fee from Hostify
-                        isActive: hostifyListing.is_listed === 1,
-                        lastSyncedAt: new Date()
-                    };
-
-                    // Add owner info if found (only update if not already set by user)
-                    if (ownerInfo) {
-                        if (existingListing) {
-                            // Only update owner info if not manually set
-                            if (!existingListing.ownerEmail) {
-                                listingData.ownerEmail = ownerInfo.email;
-                            }
-                            if (!existingListing.ownerGreeting) {
-                                listingData.ownerGreeting = ownerInfo.greeting;
-                            }
-                        } else {
-                            // New listing - set owner info
-                            listingData.ownerEmail = ownerInfo.email;
-                            listingData.ownerGreeting = ownerInfo.greeting;
-                        }
-                    }
-
                     if (existingListing) {
-                        // Update but preserve PM fee and manually set owner info
-                        delete listingData.pmFeePercentage; // Don't overwrite
-                        await existingListing.update(listingData);
+                        await sequelize.query(`
+                            UPDATE listings SET
+                                name = :name,
+                                nickname = :nickname,
+                                street = :street,
+                                city = :city,
+                                state = :state,
+                                country = :country,
+                                is_active = :isActive,
+                                last_synced_at = :lastSyncedAt,
+                                updated_at = :updatedAt
+                            WHERE id = :id
+                        `, {
+                            replacements: {
+                                id: hostifyListing.id,
+                                name: hostifyListing.name || 'Unknown',
+                                nickname: hostifyListing.nickname || null,
+                                street: hostifyListing.street || null,
+                                city: hostifyListing.city || null,
+                                state: hostifyListing.state || null,
+                                country: hostifyListing.country || null,
+                                isActive: hostifyListing.is_listed === 1,
+                                lastSyncedAt: new Date(),
+                                updatedAt: new Date()
+                            },
+                            type: sequelize.QueryTypes.UPDATE
+                        });
+                        synced++;
                     } else {
-                        // Create new with default PM fee
-                        listingData.pmFeePercentage = 15.00;
-                        await Listing.create(listingData);
+                        // Create NEW listing only (not duplicate)
+                        await Listing.create({
+                            id: hostifyListing.id,
+                            name: hostifyListing.name || 'Unknown',
+                            nickname: hostifyListing.nickname || null,
+                            street: hostifyListing.street || null,
+                            city: hostifyListing.city || null,
+                            state: hostifyListing.state || null,
+                            country: hostifyListing.country || null,
+                            isActive: hostifyListing.is_listed === 1,
+                            lastSyncedAt: new Date(),
+                            pmFeePercentage: 15.00
+                        });
+                        created++;
+                        console.log(`Created new listing: ${hostifyListing.name} (ID: ${hostifyListing.id})`);
                     }
-
-                    synced++;
                 } catch (error) {
                     console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
                     errors++;
                 }
             }
 
-            console.log(`Synced ${synced} listings from Hostify (${errors} errors)`);
-            return { synced, errors };
+            console.log(`Synced ${synced} listings, created ${created} new (${errors} errors)`);
+            return { synced, created, errors };
 
         } catch (error) {
             console.error('Error syncing listings from Hostify:', error);
             throw error;
         }
-    }
-
-    /**
-     * Extract owner email and name from Hostify users array
-     * Looks for user with role "Standard Listing Owner"
-     */
-    extractOwnerFromUsers(users) {
-        if (!users || !Array.isArray(users)) {
-            return null;
-        }
-
-        // Find user with "Standard Listing Owner" role
-        const owner = users.find(user =>
-            user.roles && user.roles.toLowerCase().includes('listing owner')
-        );
-
-        if (!owner) {
-            return null;
-        }
-
-        // Username is the email in Hostify
-        const email = owner.username || null;
-
-        // Build greeting from first name
-        let greeting = null;
-        if (owner.first_name) {
-            greeting = owner.first_name;
-        } else if (owner.last_name) {
-            greeting = owner.last_name;
-        }
-
-        return email || greeting ? { email, greeting } : null;
     }
 
     /**

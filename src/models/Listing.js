@@ -42,7 +42,7 @@ const Listing = sequelize.define('Listing', {
     pmFeePercentage: {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
-        defaultValue: 15.00,
+        // NO defaultValue - prevents Sequelize from ever auto-applying defaults
         field: 'pm_fee_percentage',
         comment: 'Property Management fee percentage (e.g., 15.00 for 15%)'
     },

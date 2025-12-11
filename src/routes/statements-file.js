@@ -1442,7 +1442,18 @@ router.put('/:id', async (req, res) => {
 
         if (modified) {
             // Recalculate totals after modifications
-            const expenses = statement.items.filter(item => item.type === 'expense');
+            const expenses = statement.items.filter(item => {
+                if (item.type !== 'expense') return false;
+                // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                if (statement.cleaningFeePassThrough) {
+                    const category = (item.category || '').toLowerCase();
+                    const description = (item.description || '').toLowerCase();
+                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        return false;
+                    }
+                }
+                return true;
+            });
 
             // Calculate totalRevenue from reservations array (which has correct prorated values)
             // Use clientRevenue for detailed finance, otherwise fall back to grossAmount
@@ -1784,7 +1795,18 @@ router.get('/:id/view', async (req, res) => {
         });
 
         const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-        const totalExpenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalExpenses = statement.items?.filter(item => {
+            if (item.type !== 'expense') return false;
+            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+            if (statement.cleaningFeePassThrough) {
+                const category = (item.category || '').toLowerCase();
+                const description = (item.description || '').toLowerCase();
+                if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    return false;
+                }
+            }
+            return true;
+        }).reduce((sum, item) => sum + item.amount, 0) || 0;
         const recalculatedNetPayout = recalculatedGrossPayout + totalUpsells - totalExpenses;
 
         // Update statement with recalculated values and save to database
@@ -1815,7 +1837,7 @@ router.get('/:id/view', async (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner Statement ${id} - Luxury Lodging Host</title>
+    <title>${statement.propertyName || `Statement ${id}`} - Luxury Lodging</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -3297,8 +3319,19 @@ router.get('/:id/view', async (req, res) => {
     </div>
     ` : ''}
 
-    <!-- Expenses Section - only show if there are expenses -->
-    ${statement.items?.filter(item => item.type === 'expense').length > 0 ? `
+    <!-- Expenses Section - only show if there are expenses (excluding cleaning when pass-through enabled) -->
+    ${statement.items?.filter(item => {
+        if (item.type !== 'expense') return false;
+        // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+        if (statement.cleaningFeePassThrough) {
+            const category = (item.category || '').toLowerCase();
+            const description = (item.description || '').toLowerCase();
+            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                return false;
+            }
+        }
+        return true;
+    }).length > 0 ? `
     <div class="section">
         <h2 class="section-title">EXPENSES</h2>
         <div class="expenses-container">
@@ -3313,7 +3346,18 @@ router.get('/:id/view', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                    ${statement.items?.filter(item => item.type === 'expense').map(expense => {
+                    ${statement.items?.filter(item => {
+                        if (item.type !== 'expense') return false;
+                        // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
+                        if (statement.cleaningFeePassThrough) {
+                            const category = (item.category || '').toLowerCase();
+                            const description = (item.description || '').toLowerCase();
+                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }).map(expense => {
                         // Check if this expense is part of a duplicate warning
                         const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
                             const matchesExpense1 = dup.expense1.description === expense.description &&
@@ -3343,7 +3387,18 @@ router.get('/:id/view', async (req, res) => {
                     }).join('')}
                     <tr class="totals-row">
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
-                        <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => {
+                            if (item.type !== 'expense') return false;
+                            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                            if (statement.cleaningFeePassThrough) {
+                                const category = (item.category || '').toLowerCase();
+                                const description = (item.description || '').toLowerCase();
+                                if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
         </table>
@@ -3446,7 +3501,18 @@ router.get('/:id/view', async (req, res) => {
         });
 
         const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
-        const totalExpenses = statement.items?.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalExpenses = statement.items?.filter(item => {
+            if (item.type !== 'expense') return false;
+            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+            if (statement.cleaningFeePassThrough) {
+                const category = (item.category || '').toLowerCase();
+                const description = (item.description || '').toLowerCase();
+                if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    return false;
+                }
+            }
+            return true;
+        }).reduce((sum, item) => sum + item.amount, 0) || 0;
         const netPayout = summaryGrossPayout + totalUpsells - totalExpenses;
 
         return `
