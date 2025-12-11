@@ -135,13 +135,21 @@ router.get('/', async (req, res) => {
             if (s.reservations && s.reservations.length > 0) {
                 const statementPropertyIds = s.propertyIds || (s.propertyId ? [s.propertyId] : []);
 
-                // Check if any property has cleaningFeePassThrough enabled
+                // Check if any property has cleaningFeePassThrough enabled or waiver active
                 const hasPassThrough = statementPropertyIds.some(propId => {
                     const listing = listingMap.get(parseInt(propId));
                     return listing && listing.cleaningFeePassThrough;
                 });
+                const hasWaiver = statementPropertyIds.some(propId => {
+                    const listing = listingMap.get(parseInt(propId));
+                    if (!listing?.waiveCommission) return false;
+                    if (!listing?.waiveCommissionUntil) return true;
+                    const waiverEnd = new Date(listing.waiveCommissionUntil + 'T23:59:59');
+                    const stmtEnd = new Date(s.weekEndDate + 'T00:00:00');
+                    return stmtEnd <= waiverEnd;
+                });
 
-                if (hasPassThrough) {
+                if (hasPassThrough || hasWaiver) {
                     // Recalculate gross payout with listing default cleaning fees
                     let grossPayoutSum = 0;
                     for (const res of s.reservations) {
@@ -161,15 +169,27 @@ router.get('/', async (req, res) => {
                         // Use listing's default cleaning fee if reservation cleaning fee is 0
                         const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
 
+                        // Check if PM commission waiver is active
+                        const waiveCommission = listing?.waiveCommission || false;
+                        const waiveCommissionUntil = listing?.waiveCommissionUntil || null;
+                        const isWaiverActive = (() => {
+                            if (!waiveCommission) return false;
+                            if (!waiveCommissionUntil) return true;
+                            const waiverEnd = new Date(waiveCommissionUntil + 'T23:59:59');
+                            const stmtEnd = new Date(s.weekEndDate + 'T00:00:00');
+                            return stmtEnd <= waiverEnd;
+                        })();
+                        const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -luxuryFee - cleaningFeeForPassThrough;
+                            grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
-                            grossPayout = clientRevenue - luxuryFee + taxResponsibility - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
-                            grossPayout = clientRevenue - luxuryFee - cleaningFeeForPassThrough;
+                            grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
                         }
                         grossPayoutSum += grossPayout;
                     }
@@ -1781,7 +1801,7 @@ router.get('/:id/view', async (req, res) => {
             if (!isCohostAirbnb) {
                 recalculatedTotalRevenue += clientRevenue;
             }
-            recalculatedPmCommission += luxuryFee; // Always show full PM commission for display
+            recalculatedPmCommission += luxuryFeeToDeduct; // Show $0 when waived
 
             let grossPayout;
             if (isCohostAirbnb) {
@@ -3182,7 +3202,7 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell expense-amount">-$${luxuryFeeToDeduct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     ${anyCleaningFeePassThrough ? `<td class="amount-cell expense-amount">-$${cleaningFeeForPassThrough.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : ''}
                                     <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'info-amount'}">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -3255,7 +3275,7 @@ router.get('/:id/view', async (req, res) => {
                                     totalCleaningFees += cleaningFees;
                                     totalPlatformFees += platformFees;
                                     totalClientRevenue += clientRevenue;
-                                    totalLuxuryFee += luxuryFee;
+                                    totalLuxuryFee += luxuryFeeToDeduct;
                                     totalCleaningExpense += cleaningFeeForPassThrough;
                                     totalTaxResponsibility += taxResponsibility;
                                     totalGrossPayout += grossPayout;
