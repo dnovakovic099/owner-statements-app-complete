@@ -9,54 +9,79 @@ class ListingService {
      */
     async syncListingsFromHostify() {
         console.log('Syncing listings from Hostify to database...');
-        
+
         try {
             const response = await HostifyService.getAllProperties();
-            
+
             if (!response || !response.result || !Array.isArray(response.result)) {
                 console.error('No listings received from Hostify');
                 return { synced: 0, errors: 0 };
             }
 
             const hostifyListings = response.result;
+            const sequelize = Listing.sequelize;
             let synced = 0;
+            let created = 0;
             let errors = 0;
 
             for (const hostifyListing of hostifyListings) {
                 try {
                     const existingListing = await Listing.findByPk(hostifyListing.id);
 
-                    const listingData = {
-                        id: hostifyListing.id,
-                        name: hostifyListing.name || 'Unknown',
-                        nickname: hostifyListing.nickname || null,
-                        street: hostifyListing.street || null,
-                        city: hostifyListing.city || null,
-                        state: hostifyListing.state || null,
-                        country: hostifyListing.country || null,
-                        isActive: hostifyListing.is_listed === 1,
-                        lastSyncedAt: new Date()
-                    };
-
                     if (existingListing) {
-                        // Update but preserve PM fee
-                        delete listingData.pmFeePercentage; // Don't overwrite
-                        await existingListing.update(listingData);
+                        await sequelize.query(`
+                            UPDATE listings SET
+                                name = :name,
+                                nickname = :nickname,
+                                street = :street,
+                                city = :city,
+                                state = :state,
+                                country = :country,
+                                is_active = :isActive,
+                                last_synced_at = :lastSyncedAt,
+                                updated_at = :updatedAt
+                            WHERE id = :id
+                        `, {
+                            replacements: {
+                                id: hostifyListing.id,
+                                name: hostifyListing.name || 'Unknown',
+                                nickname: hostifyListing.nickname || null,
+                                street: hostifyListing.street || null,
+                                city: hostifyListing.city || null,
+                                state: hostifyListing.state || null,
+                                country: hostifyListing.country || null,
+                                isActive: hostifyListing.is_listed === 1,
+                                lastSyncedAt: new Date(),
+                                updatedAt: new Date()
+                            },
+                            type: sequelize.QueryTypes.UPDATE
+                        });
+                        synced++;
                     } else {
-                        // Create new with default PM fee
-                        listingData.pmFeePercentage = 15.00;
-                        await Listing.create(listingData);
+                        // Create NEW listing only (not duplicate)
+                        await Listing.create({
+                            id: hostifyListing.id,
+                            name: hostifyListing.name || 'Unknown',
+                            nickname: hostifyListing.nickname || null,
+                            street: hostifyListing.street || null,
+                            city: hostifyListing.city || null,
+                            state: hostifyListing.state || null,
+                            country: hostifyListing.country || null,
+                            isActive: hostifyListing.is_listed === 1,
+                            lastSyncedAt: new Date(),
+                            pmFeePercentage: 15.00
+                        });
+                        created++;
+                        console.log(`Created new listing: ${hostifyListing.name} (ID: ${hostifyListing.id})`);
                     }
-                    
-                    synced++;
                 } catch (error) {
                     console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
                     errors++;
                 }
             }
 
-            console.log(`Synced ${synced} listings from Hostify (${errors} errors)`);
-            return { synced, errors };
+            console.log(`Synced ${synced} listings, created ${created} new (${errors} errors)`);
+            return { synced, created, errors };
 
         } catch (error) {
             console.error('Error syncing listings from Hostify:', error);
