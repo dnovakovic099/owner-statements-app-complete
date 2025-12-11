@@ -14,13 +14,9 @@ const models = {
 // Sync database
 async function syncDatabase() {
     try {
-        // In production, use { alter: true } to automatically adjust schema
-        // In development, use { force: false } to preserve data
-        const syncOptions = process.env.NODE_ENV === 'production' 
-            ? { alter: true } 
-            : { force: false };
-        
-        await sequelize.sync(syncOptions);
+        // Use force: false to only create tables if they don't exist
+        // Schema changes should be done via manual migrations
+        await sequelize.sync({ force: false });
         console.log('Database models synchronized');
     } catch (error) {
         console.error('Error synchronizing database:', error);

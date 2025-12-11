@@ -180,6 +180,33 @@ propertyName,type,description,amount,date,vendor,invoiceNumber,category,notes
 
 ## Development
 
+### Database Migrations
+
+**Important:** Automatic schema changes (`alter: true`) are disabled in production to prevent unintended data modifications. Schema changes must be done via manual migrations.
+
+**When adding new columns to models:**
+
+1. Update the Sequelize model in `src/models/` (e.g., `Listing.js`)
+2. Create a migration SQL file in `migrations/` folder
+3. Run the migration manually on the production database
+
+**Example migration:**
+```sql
+-- migrations/add_new_field.sql
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS new_field TEXT;
+```
+
+**Running migrations:**
+```bash
+# For PostgreSQL (production)
+psql $DATABASE_URL -f migrations/add_new_field.sql
+
+# For SQLite (local development)
+sqlite3 database/owner_statements.db < migrations/add_new_field.sql
+```
+
+**Note:** The `{ force: false }` sync option only creates tables if they don't exist - it will NOT modify existing tables or columns.
+
 ### Adding New Expense Sources
 1. Create service in `src/services/` (e.g., `NewServiceAPI.js`)
 2. Add transformation logic for expense data format

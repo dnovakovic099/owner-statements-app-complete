@@ -3,7 +3,7 @@ const axios = require('axios');
 class HostifyService {
     constructor() {
         this.baseURL = process.env.HOSTIFY_API_URL || 'https://api-rms.hostify.com';
-        this.apiKey = process.env.HOSTIFY_API_KEY || 'CePFsroZu03LA6C5szMsRuA2Eh62rGDS';
+        this.apiKey = process.env.HOSTIFY_API_KEY || 'aOGSVrcPGOvvSsGD4idPKvxKaD0HGaAW';
 
         // AGGRESSIVE CACHING
         this._reservationsCache = new Map(); // key: "startDate|endDate|listingId|dateType"
