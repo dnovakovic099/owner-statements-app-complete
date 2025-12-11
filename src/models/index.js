@@ -11,15 +11,15 @@ const models = {
     sequelize
 };
 
-// Sync database
+// Sync database - DISABLED to prevent any schema/data modifications
+// Tables already exist in production - use manual migrations for changes
 async function syncDatabase() {
     try {
-        // Use force: false to only create tables if they don't exist
-        // Schema changes should be done via manual migrations
-        await sequelize.sync({ force: false });
-        console.log('Database models synchronized');
+        // Just verify connection, don't sync models
+        await sequelize.authenticate();
+        console.log('Database connection verified');
     } catch (error) {
-        console.error('Error synchronizing database:', error);
+        console.error('Error connecting to database:', error);
         throw error;
     }
 }
