@@ -698,7 +698,7 @@ function generateStatementHTML(statement, id) {
                         <td class="amount-cell">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="amount-cell expense-amount">-$${luxuryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="amount-cell expense-amount">-$${pmFeeToDeduct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'expense-amount'}">${shouldAddTax ? '+' : '-'}$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td class="amount-cell payout-amount">$${clientPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
@@ -715,10 +715,16 @@ function generateStatementHTML(statement, id) {
                         const rawRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                         return sum + (isCohostAirbnb ? 0 : rawRevenue);
                     }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                    <td class="amount-cell"><strong>-$${Math.abs(statement.reservations?.reduce((sum, res) => {
-                        const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
-                        return sum + (clientRevenue * (statement.pmPercentage / 100));
-                    }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                    <td class="amount-cell"><strong>-$${(() => {
+                        const isWaiverActive = !statement.waiveCommission ? false :
+                            (!statement.waiveCommissionUntil ? true :
+                                new Date(statement.weekEndDate + 'T00:00:00') <= new Date(statement.waiveCommissionUntil + 'T23:59:59'));
+                        if (isWaiverActive) return '0.00';
+                        return Math.abs(statement.reservations?.reduce((sum, res) => {
+                            const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                            return sum + (clientRevenue * (statement.pmPercentage / 100));
+                        }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    })()}</strong></td>
                     <td class="amount-cell"><strong>$${(statement.reservations?.reduce((sum, res) => sum + (res.hasDetailedFinance ? res.clientTaxResponsibility : 0), 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     <td class="amount-cell payout-cell"><strong>$${(() => {
                         // Check if PM commission is waived
