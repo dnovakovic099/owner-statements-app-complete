@@ -27,6 +27,14 @@ class EmailSchedulerService {
      * Start all scheduled cron jobs
      */
     start() {
+        // Check if scheduler is enabled via environment variable (default: disabled)
+        // Set ENABLE_EMAIL_SCHEDULER=true to enable
+        const isEnabled = process.env.ENABLE_EMAIL_SCHEDULER === 'true';
+        if (!isEnabled) {
+            console.log('[EmailScheduler] Email scheduler DISABLED (set ENABLE_EMAIL_SCHEDULER=true to enable)');
+            return;
+        }
+
         if (this.isRunning) {
             console.log('[EmailScheduler] Already running');
             return;
