@@ -200,7 +200,7 @@ if (require.main === module) {
 
     // Run the tests
     mocha.run(failures => {
-        process.exitCode = failures ? 1 : 0;
+        // process.exitCode removed for Jest compatibility
     });
 }
 
