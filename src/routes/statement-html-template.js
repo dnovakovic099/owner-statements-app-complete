@@ -436,6 +436,63 @@ function generateStatementHTML(statement, id) {
             letter-spacing: 0.5px;
         }
         
+        /* Calendar Conversion Notice Banner */
+        .calendar-notice {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+
+        .calendar-notice-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .calendar-notice-icon {
+            font-size: 20px;
+        }
+
+        .calendar-notice-title {
+            font-weight: 700;
+            color: #92400e;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .calendar-notice-message {
+            color: #78350f;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .overlapping-reservations {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f59e0b;
+        }
+
+        .overlapping-reservations-title {
+            font-weight: 600;
+            color: #92400e;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .overlapping-reservation-item {
+            background: rgba(255,255,255,0.5);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: #78350f;
+        }
+
         .footer {
             background: var(--luxury-light-gray);
             padding: 20px;
@@ -454,7 +511,11 @@ function generateStatementHTML(statement, id) {
             body {
                 padding: 20px;
             }
-            
+
+            .calendar-notice {
+                display: none !important;
+            }
+
             .page-break-avoid {
                 page-break-inside: avoid !important;
             }
@@ -509,6 +570,31 @@ function generateStatementHTML(statement, id) {
             </div>
         </div>
     </div>
+
+    <!-- Calendar Conversion Notice (if applicable) -->
+    ${(statement.shouldConvertToCalendar || statement.calendarConversionNotice) ? `
+    <div class="calendar-notice">
+        <div class="calendar-notice-header">
+            <span class="calendar-notice-icon">&#9888;</span>
+            <span class="calendar-notice-title">Calendar Conversion Recommended</span>
+        </div>
+        <div class="calendar-notice-message">${statement.calendarConversionNotice || (
+            statement.calculationType === 'checkout'
+                ? 'This property has reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.'
+                : 'This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.'
+        )}</div>
+        ${statement.overlappingReservations && statement.overlappingReservations.length > 0 ? `
+        <div class="overlapping-reservations">
+            <div class="overlapping-reservations-title">Reservations during this period:</div>
+            ${statement.overlappingReservations.map(res => `
+            <div class="overlapping-reservation-item">
+                <strong>${res.guestName}</strong> - ${res.checkInDate} to ${res.checkOutDate} (${res.source || 'Direct'}) - $${(res.grossAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            `).join('')}
+        </div>
+        ` : ''}
+    </div>
+    ` : ''}
 
     <!-- Summary Box - Moved to top -->
     <div class="summary-box page-break-avoid">
