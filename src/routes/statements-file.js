@@ -245,6 +245,24 @@ router.get('/', async (req, res) => {
                 }
             }
 
+            // Compute needsReview marker - true if statement has ANY expenses or additional payouts
+            const allExpenses = s.expenses || [];
+            // Expenses are negative amounts (costs to owner)
+            const expenseItems = allExpenses.filter(exp => {
+                const isUpsell = exp.amount > 0 ||
+                    (exp.type && exp.type.toLowerCase() === 'upsell') ||
+                    (exp.category && exp.category.toLowerCase() === 'upsell');
+                return !isUpsell;
+            });
+            // Additional payouts are positive amounts (credits to owner)
+            const additionalPayouts = allExpenses.filter(exp => {
+                const isUpsell = exp.amount > 0 ||
+                    (exp.type && exp.type.toLowerCase() === 'upsell') ||
+                    (exp.category && exp.category.toLowerCase() === 'upsell');
+                return isUpsell;
+            });
+            const needsReview = expenseItems.length > 0 || additionalPayouts.length > 0;
+
             return {
                 id: s.id,
                 ownerId: s.ownerId,
@@ -272,7 +290,12 @@ router.get('/', async (req, res) => {
                 cleaningMismatchWarning,
                 shouldConvertToCalendar: s.shouldConvertToCalendar || false,
                 calendarConversionNotice: s.calendarConversionNotice || null,
-                overlappingReservationCount: s.overlappingReservations ? s.overlappingReservations.length : 0
+                overlappingReservationCount: s.overlappingReservations ? s.overlappingReservations.length : 0,
+                needsReview,
+                reviewDetails: needsReview ? {
+                    expenseCount: expenseItems.length,
+                    additionalPayoutCount: additionalPayouts.length
+                } : null
             };
         });
 

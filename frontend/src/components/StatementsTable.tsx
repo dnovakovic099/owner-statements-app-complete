@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -286,6 +286,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const pmPercentage = row.original.pmPercentage ?? 15;
         const cleaningWarning = row.original.cleaningMismatchWarning;
         const shouldConvertToCalendar = row.original.shouldConvertToCalendar;
+        const needsReview = row.original.needsReview;
+        const reviewDetails = row.original.reviewDetails;
         return (
           <span className="cursor-default inline-flex items-center gap-1.5 group/cell relative">
             <span className="text-gray-700 truncate">
@@ -299,23 +301,29 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 </span>
               </span>
             )}
-            {cleaningWarning ? (
+            {cleaningWarning && (
               <span className="relative group/warn flex-shrink-0">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/warn:inline-flex items-center bg-amber-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
                   {cleaningWarning.message}
                 </span>
-                <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
-                  <span className="text-blue-300 mr-1">PM:</span>
-                  <span className="font-semibold">{pmPercentage}%</span>
-                </span>
-              </span>
-            ) : (
-              <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
-                <span className="text-blue-300 mr-1">PM:</span>
-                <span className="font-semibold">{pmPercentage}%</span>
               </span>
             )}
+            {needsReview && (
+              <span className="relative group/review flex-shrink-0">
+                <ClipboardList className="h-4 w-4 text-purple-500" />
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/review:inline-flex items-center bg-purple-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                  {reviewDetails?.expenseCount ? `${reviewDetails.expenseCount} expense${reviewDetails.expenseCount > 1 ? 's' : ''}` : ''}
+                  {reviewDetails?.expenseCount && reviewDetails?.additionalPayoutCount ? ', ' : ''}
+                  {reviewDetails?.additionalPayoutCount ? `${reviewDetails.additionalPayoutCount} additional payout${reviewDetails.additionalPayoutCount > 1 ? 's' : ''}` : ''}
+                  {!reviewDetails?.expenseCount && !reviewDetails?.additionalPayoutCount && 'Has expenses or additional payouts'}
+                </span>
+              </span>
+            )}
+            <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+              <span className="text-blue-300 mr-1">PM:</span>
+              <span className="font-semibold">{pmPercentage}%</span>
+            </span>
           </span>
         );
       },
