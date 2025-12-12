@@ -111,13 +111,23 @@ class FileDataService {
                         listing.tags = dbListing.tags || [];
                         listing.displayName = dbListing.displayName;
                         listing.pmFeePercentage = dbListing.pmFeePercentage;
-                        listing.isCohostOnAirbnb = dbListing.isCohostOnAirbnb || false;
-                        listing.cleaningFeePassThrough = dbListing.cleaningFeePassThrough || false;
+                        listing.isCohostOnAirbnb = Boolean(dbListing.isCohostOnAirbnb);
+                        listing.cleaningFeePassThrough = Boolean(dbListing.cleaningFeePassThrough);
+                        listing.disregardTax = Boolean(dbListing.disregardTax);
+                        listing.airbnbPassThroughTax = Boolean(dbListing.airbnbPassThroughTax);
+                        listing.guestPaidDamageCoverage = Boolean(dbListing.guestPaidDamageCoverage);
+                        listing.waiveCommission = Boolean(dbListing.waiveCommission);
+                        listing.waiveCommissionUntil = dbListing.waiveCommissionUntil || null;
                     } else {
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
                         listing.isCohostOnAirbnb = false;
                         listing.cleaningFeePassThrough = false;
+                        listing.disregardTax = false;
+                        listing.airbnbPassThroughTax = false;
+                        listing.guestPaidDamageCoverage = false;
+                        listing.waiveCommission = false;
+                        listing.waiveCommissionUntil = null;
                     }
                 });
             } catch (dbError) {
@@ -126,6 +136,11 @@ class FileDataService {
                     listing.pmFeePercentage = 15.00;
                     listing.isCohostOnAirbnb = false;
                     listing.cleaningFeePassThrough = false;
+                    listing.disregardTax = false;
+                    listing.airbnbPassThroughTax = false;
+                    listing.guestPaidDamageCoverage = false;
+                    listing.waiveCommission = false;
+                    listing.waiveCommissionUntil = null;
                 });
             }
 
