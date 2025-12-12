@@ -805,14 +805,17 @@ Thank you again for your trust and partnership.
     getFrequencyFromTags(tags) {
         const tagArray = Array.isArray(tags) ? tags : (tags || '').split(',').map(t => t.trim());
 
-        const frequencyTags = ['Weekly', 'Bi-Weekly', 'Monthly'];
-
         for (const tag of tagArray) {
-            const normalizedTag = tag.trim();
-            for (const freq of frequencyTags) {
-                if (normalizedTag.toLowerCase() === freq.toLowerCase()) {
-                    return freq;
-                }
+            const normalizedTag = tag.trim().toUpperCase();
+
+            if (normalizedTag === 'WEEKLY') {
+                return 'Weekly';
+            }
+            if (normalizedTag.startsWith('BI-WEEKLY') || normalizedTag === 'BIWEEKLY') {
+                return 'Bi-Weekly';
+            }
+            if (normalizedTag === 'MONTHLY') {
+                return 'Monthly';
             }
         }
 
@@ -909,11 +912,15 @@ Thank you again for your trust and partnership.
 
             // Call the existing download endpoint to get the PDF
             const pdfBuffer = await new Promise((resolve, reject) => {
+                // Use provided auth header or fall back to internal basic auth
+                const internalAuth = authHeader || 'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER || 'LL'}:${process.env.BASIC_AUTH_PASS || 'bnb547!'}`).toString('base64');
+
                 const options = {
-                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                    headers: { 'Authorization': internalAuth },
+                    timeout: 120000 // 2 minute timeout for PDF generation
                 };
 
-                http.get(downloadUrl, options, (response) => {
+                const req = http.get(downloadUrl, options, (response) => {
                     // Check if response is successful
                     if (response.statusCode !== 200) {
                         reject(new Error(`Download failed with status ${response.statusCode}`));
@@ -925,7 +932,13 @@ Thank you again for your trust and partnership.
                     response.on('data', chunk => chunks.push(chunk));
                     response.on('end', () => resolve(Buffer.concat(chunks)));
                     response.on('error', reject);
-                }).on('error', reject);
+                });
+
+                req.on('error', reject);
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error('PDF download timeout'));
+                });
             });
 
             // Generate filename using property nickname
