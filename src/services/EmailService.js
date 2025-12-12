@@ -301,10 +301,13 @@ Thank you again for your trust and partnership.
     getMonthlyCalendarTemplate(data) {
         const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName } = data;
 
-        // Format period as "November 2025" style
+        // Format period as "November 2025" style - use the actual statement period month
+        // Monthly statements are for a complete month, so use the month from the statement dates
         const formatPeriod = (start, end) => {
             try {
                 const startDate = new Date(start);
+                const endDate = new Date(end);
+                // Use the month from the statement dates (which should be the full month period)
                 return startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             } catch {
                 return `${start} to ${end}`;
@@ -758,12 +761,14 @@ Thank you again for your trust and partnership.
 
         // Add PDF attachment if provided
         if (pdfAttachment) {
+            console.log(`[EmailService] PDF attachment type: ${typeof pdfAttachment}, isBuffer: ${Buffer.isBuffer(pdfAttachment)}, size: ${pdfAttachment.length || 'N/A'}`);
             if (Buffer.isBuffer(pdfAttachment)) {
                 mailOptions.attachments.push({
                     filename: pdfFilename || `statement-${statement.id}.pdf`,
                     content: pdfAttachment,
                     contentType: 'application/pdf'
                 });
+                console.log(`[EmailService] Attached PDF: ${pdfFilename}, size: ${pdfAttachment.length} bytes`);
             } else if (typeof pdfAttachment === 'string') {
                 mailOptions.attachments.push({
                     filename: pdfFilename || path.basename(pdfAttachment),
@@ -771,6 +776,8 @@ Thank you again for your trust and partnership.
                     contentType: 'application/pdf'
                 });
             }
+        } else {
+            console.log(`[EmailService] No PDF attachment provided`);
         }
 
         try {
@@ -805,14 +812,17 @@ Thank you again for your trust and partnership.
     getFrequencyFromTags(tags) {
         const tagArray = Array.isArray(tags) ? tags : (tags || '').split(',').map(t => t.trim());
 
-        const frequencyTags = ['Weekly', 'Bi-Weekly', 'Monthly'];
-
         for (const tag of tagArray) {
-            const normalizedTag = tag.trim();
-            for (const freq of frequencyTags) {
-                if (normalizedTag.toLowerCase() === freq.toLowerCase()) {
-                    return freq;
-                }
+            const normalizedTag = tag.trim().toUpperCase();
+
+            if (normalizedTag === 'WEEKLY') {
+                return 'Weekly';
+            }
+            if (normalizedTag.startsWith('BI-WEEKLY') || normalizedTag === 'BIWEEKLY') {
+                return 'Bi-Weekly';
+            }
+            if (normalizedTag === 'MONTHLY') {
+                return 'Monthly';
             }
         }
 
@@ -907,13 +917,17 @@ Thank you again for your trust and partnership.
             const port = process.env.PORT || 3003;
             const downloadUrl = `http://localhost:${port}/api/statements/${statementId}/download`;
 
+            // Use provided auth header or fall back to internal basic auth
+            const internalAuth = authHeader || 'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER || 'LL'}:${process.env.BASIC_AUTH_PASS || 'bnb547!'}`).toString('base64');
+
             // Call the existing download endpoint to get the PDF
             const pdfBuffer = await new Promise((resolve, reject) => {
                 const options = {
-                    headers: authHeader ? { 'Authorization': authHeader } : {}
+                    headers: { 'Authorization': internalAuth },
+                    timeout: 120000 // 2 minute timeout for PDF generation
                 };
 
-                http.get(downloadUrl, options, (response) => {
+                const req = http.get(downloadUrl, options, (response) => {
                     // Check if response is successful
                     if (response.statusCode !== 200) {
                         reject(new Error(`Download failed with status ${response.statusCode}`));
@@ -925,7 +939,13 @@ Thank you again for your trust and partnership.
                     response.on('data', chunk => chunks.push(chunk));
                     response.on('end', () => resolve(Buffer.concat(chunks)));
                     response.on('error', reject);
-                }).on('error', reject);
+                });
+
+                req.on('error', reject);
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error('PDF download timeout'));
+                });
             });
 
             // Generate filename using property nickname
