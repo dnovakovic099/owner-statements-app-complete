@@ -10,6 +10,7 @@ require('dotenv').config();
 // Database initialization
 const { syncDatabase } = require('./models');
 const ListingService = require('./services/ListingService');
+const EmailSchedulerService = require('./services/EmailSchedulerService');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -182,6 +183,8 @@ app.use('/api/listings', authMiddleware, require('./routes/listings'));
 app.use('/api/expenses', authMiddleware, require('./routes/expenses'));
 app.use('/api/reservations-import', authMiddleware, require('./routes/reservations'));
 app.use('/api/quickbooks', authMiddleware, require('./routes/quickbooks'));
+app.use('/api/email', authMiddleware, require('./routes/email'));
+app.use('/api/email-scheduler', authMiddleware, require('./routes/email-scheduler'));
 
 // Removed unused database routes
 
@@ -222,6 +225,10 @@ async function startServer() {
             .catch(err => {
                 console.warn('Listing sync failed (will retry later):', err.message);
             });
+
+        // Start email scheduler
+        console.log('Starting email scheduler...');
+        EmailSchedulerService.start();
 
         // Start server
         app.listen(PORT, () => {

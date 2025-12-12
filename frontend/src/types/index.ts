@@ -87,6 +87,7 @@ export interface Statement {
     message: string;
     reservationCount: number;
     cleaningExpenseCount: number;
+    reservationsWithOwnFee?: number;
     difference: number;
   } | null;
   shouldConvertToCalendar?: boolean;

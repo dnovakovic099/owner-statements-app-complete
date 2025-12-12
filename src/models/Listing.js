@@ -74,6 +74,13 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    cleaningFee: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: null,
+        field: 'cleaning_fee',
+        comment: 'Default cleaning fee amount from Hostify (used when reservation cleaningFee is 0)'
+    },
     guestPaidDamageCoverage: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -125,6 +132,18 @@ const Listing = sequelize.define('Listing', {
                 this.setDataValue('tags', null);
             }
         }
+    },
+    ownerEmail: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'owner_email',
+        comment: 'Owner email address for automated statement emails'
+    },
+    ownerGreeting: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'owner_greeting',
+        comment: 'Name to use in email greeting (e.g., "John" for "Dear John,")'
     },
     isActive: {
         type: DataTypes.BOOLEAN,
