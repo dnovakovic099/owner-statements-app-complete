@@ -175,7 +175,14 @@ const Statement = sequelize.define('Statement', {
     timestamps: true,
     underscored: true,
     createdAt: 'created_at',
-    updatedAt: 'updated_at'
+    updatedAt: 'updated_at',
+    indexes: [
+        { fields: ['property_id'] },
+        { fields: ['owner_id'] },
+        { fields: ['status'] },
+        { fields: ['week_start_date', 'week_end_date'] },
+        { fields: ['property_id', 'week_start_date', 'week_end_date'] }
+    ]
 });
 
 module.exports = Statement;
