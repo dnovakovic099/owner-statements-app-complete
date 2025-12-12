@@ -117,14 +117,37 @@ router.get('/', async (req, res) => {
                         res.cleaningFee && res.cleaningFee > 0
                     );
 
-                    // Show warning if some reservations are using listing default (missing their own cleaning fee)
-                    if (passThroughReservations.length > 0 && reservationsWithOwnCleaningFee.length !== passThroughReservations.length) {
+                    // Count cleaning expenses in the expenses array
+                    const cleaningExpenses = (s.expenses || []).filter(exp => {
+                        const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
+                        if (!expPropertyId || !propertiesWithPassThrough.includes(expPropertyId)) return false;
+                        const category = (exp.category || '').toLowerCase();
+                        const type = (exp.type || '').toLowerCase();
+                        const description = (exp.description || '').toLowerCase();
+                        return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+                    });
+
+                    // Check for mismatches - prioritize showing the most relevant warning
+                    const missingOwnCleaningFee = passThroughReservations.length - reservationsWithOwnCleaningFee.length;
+                    const expenseCountMismatch = cleaningExpenses.length !== passThroughReservations.length;
+
+                    if (missingOwnCleaningFee > 0 || expenseCountMismatch) {
+                        let message = '';
+                        if (missingOwnCleaningFee > 0 && expenseCountMismatch) {
+                            message = `${reservationsWithOwnCleaningFee.length}/${passThroughReservations.length} have guest-paid cleaning fees, ${cleaningExpenses.length} cleaning expenses (should be ${passThroughReservations.length})`;
+                        } else if (missingOwnCleaningFee > 0) {
+                            message = `${reservationsWithOwnCleaningFee.length} of ${passThroughReservations.length} reservations have cleaning fees (using listing default for others)`;
+                        } else {
+                            message = `${cleaningExpenses.length} cleaning expenses for ${passThroughReservations.length} reservations - review recommended`;
+                        }
+
                         cleaningMismatchWarning = {
                             type: 'cleaning_mismatch',
-                            message: `${reservationsWithOwnCleaningFee.length} of ${passThroughReservations.length} reservations have cleaning fees (using listing default for others)`,
+                            message,
                             reservationCount: passThroughReservations.length,
-                            cleaningExpenseCount: reservationsWithOwnCleaningFee.length,
-                            difference: passThroughReservations.length - reservationsWithOwnCleaningFee.length
+                            cleaningExpenseCount: cleaningExpenses.length,
+                            reservationsWithOwnFee: reservationsWithOwnCleaningFee.length,
+                            difference: missingOwnCleaningFee
                         };
                     }
                 }
@@ -195,9 +218,23 @@ router.get('/', async (req, res) => {
                     }
 
                     // Calculate expenses and upsells
+                    // Filter out cleaning expenses for properties with cleaningFeePassThrough (already deducted in grossPayout)
                     const totalExpenses = (s.expenses || []).reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
-                        return isUpsell ? sum : sum + Math.abs(exp.amount);
+                        if (isUpsell) return sum;
+
+                        // Check if this is a cleaning expense for a property with pass-through enabled
+                        const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
+                        const expListing = expPropertyId ? listingMap.get(expPropertyId) : null;
+                        if (expListing?.cleaningFeePassThrough) {
+                            const category = (exp.category || '').toLowerCase();
+                            const type = (exp.type || '').toLowerCase();
+                            const description = (exp.description || '').toLowerCase();
+                            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+                            if (isCleaning) return sum; // Skip cleaning expenses - already deducted in grossPayout
+                        }
+
+                        return sum + Math.abs(exp.amount);
                     }, 0);
                     const totalUpsells = (s.expenses || []).reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
@@ -207,6 +244,24 @@ router.get('/', async (req, res) => {
                     recalculatedPayout = grossPayoutSum + totalUpsells - totalExpenses;
                 }
             }
+
+            // Compute needsReview marker - true if statement has ANY expenses or additional payouts
+            const allExpenses = s.expenses || [];
+            // Expenses are negative amounts (costs to owner)
+            const expenseItems = allExpenses.filter(exp => {
+                const isUpsell = exp.amount > 0 ||
+                    (exp.type && exp.type.toLowerCase() === 'upsell') ||
+                    (exp.category && exp.category.toLowerCase() === 'upsell');
+                return !isUpsell;
+            });
+            // Additional payouts are positive amounts (credits to owner)
+            const additionalPayouts = allExpenses.filter(exp => {
+                const isUpsell = exp.amount > 0 ||
+                    (exp.type && exp.type.toLowerCase() === 'upsell') ||
+                    (exp.category && exp.category.toLowerCase() === 'upsell');
+                return isUpsell;
+            });
+            const needsReview = expenseItems.length > 0 || additionalPayouts.length > 0;
 
             return {
                 id: s.id,
@@ -235,7 +290,12 @@ router.get('/', async (req, res) => {
                 cleaningMismatchWarning,
                 shouldConvertToCalendar: s.shouldConvertToCalendar || false,
                 calendarConversionNotice: s.calendarConversionNotice || null,
-                overlappingReservationCount: s.overlappingReservations ? s.overlappingReservations.length : 0
+                overlappingReservationCount: s.overlappingReservations ? s.overlappingReservations.length : 0,
+                needsReview,
+                reviewDetails: needsReview ? {
+                    expenseCount: expenseItems.length,
+                    additionalPayoutCount: additionalPayouts.length
+                } : null
             };
         });
 

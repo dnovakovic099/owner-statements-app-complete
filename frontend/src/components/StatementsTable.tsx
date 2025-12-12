@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -188,6 +188,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isRowsDropdownOpen, setIsRowsDropdownOpen] = useState(false);
+  const [markerFilter, setMarkerFilter] = useState<string[]>([]);
 
   // Get selected statement IDs
   const selectedIds = React.useMemo(() => {
@@ -286,6 +287,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const pmPercentage = row.original.pmPercentage ?? 15;
         const cleaningWarning = row.original.cleaningMismatchWarning;
         const shouldConvertToCalendar = row.original.shouldConvertToCalendar;
+        const needsReview = row.original.needsReview;
+        const reviewDetails = row.original.reviewDetails;
         return (
           <span className="cursor-default inline-flex items-center gap-1.5 group/cell relative">
             <span className="text-gray-700 truncate">
@@ -299,23 +302,29 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 </span>
               </span>
             )}
-            {cleaningWarning ? (
+            {cleaningWarning && (
               <span className="relative group/warn flex-shrink-0">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/warn:inline-flex items-center bg-amber-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
                   {cleaningWarning.message}
                 </span>
-                <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
-                  <span className="text-blue-300 mr-1">PM:</span>
-                  <span className="font-semibold">{pmPercentage}%</span>
-                </span>
-              </span>
-            ) : (
-              <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
-                <span className="text-blue-300 mr-1">PM:</span>
-                <span className="font-semibold">{pmPercentage}%</span>
               </span>
             )}
+            {needsReview && (
+              <span className="relative group/review flex-shrink-0">
+                <ClipboardList className="h-4 w-4 text-purple-500" />
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/review:inline-flex items-center bg-purple-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                  {reviewDetails?.expenseCount ? `${reviewDetails.expenseCount} expense${reviewDetails.expenseCount > 1 ? 's' : ''}` : ''}
+                  {reviewDetails?.expenseCount && reviewDetails?.additionalPayoutCount ? ', ' : ''}
+                  {reviewDetails?.additionalPayoutCount ? `${reviewDetails.additionalPayoutCount} additional payout${reviewDetails.additionalPayoutCount > 1 ? 's' : ''}` : ''}
+                  {!reviewDetails?.expenseCount && !reviewDetails?.additionalPayoutCount && 'Has expenses or additional payouts'}
+                </span>
+              </span>
+            )}
+            <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-50 hidden group-hover/cell:inline-flex items-center bg-gray-900 text-white px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap pointer-events-none">
+              <span className="text-blue-300 mr-1">PM:</span>
+              <span className="font-semibold">{pmPercentage}%</span>
+            </span>
           </span>
         );
       },
@@ -499,13 +508,25 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     },
   ];
 
+  // Filter statements by markers (client-side for current page)
+  const filteredStatements = React.useMemo(() => {
+    if (markerFilter.length === 0) return statements;
+
+    return statements.filter(s => {
+      if (markerFilter.includes('cleaning') && s.cleaningMismatchWarning) return true;
+      if (markerFilter.includes('review') && s.needsReview) return true;
+      if (markerFilter.includes('calendar') && s.shouldConvertToCalendar) return true;
+      return false;
+    });
+  }, [statements, markerFilter]);
+
   // Calculate derived pagination values
   const pageCount = Math.ceil(pagination.total / pagination.pageSize);
   const canPreviousPage = pagination.pageIndex > 0;
   const canNextPage = pagination.pageIndex < pageCount - 1;
 
   const table = useReactTable({
-    data: statements,
+    data: filteredStatements,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -564,7 +585,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{pagination.total} total statements</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {markerFilter.length > 0
+                ? `${filteredStatements.length} of ${pagination.total} statements (filtered)`
+                : `${pagination.total} total statements`}
+            </p>
           </div>
 
           {/* Bulk Actions - shown when items are selected */}
@@ -713,6 +738,66 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Markers Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                  Markers
+                  {markerFilter.length > 0 && (
+                    <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">
+                      {markerFilter.length}
+                    </span>
+                  )}
+                  <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Markers</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={markerFilter.includes('cleaning')}
+                  onCheckedChange={(checked) => {
+                    setMarkerFilter(prev =>
+                      checked ? [...prev, 'cleaning'] : prev.filter(v => v !== 'cleaning')
+                    );
+                  }}
+                >
+                  Cleaning Mismatch
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={markerFilter.includes('review')}
+                  onCheckedChange={(checked) => {
+                    setMarkerFilter(prev =>
+                      checked ? [...prev, 'review'] : prev.filter(v => v !== 'review')
+                    );
+                  }}
+                >
+                  Has Expenses/Payouts
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={markerFilter.includes('calendar')}
+                  onCheckedChange={(checked) => {
+                    setMarkerFilter(prev =>
+                      checked ? [...prev, 'calendar'] : prev.filter(v => v !== 'calendar')
+                    );
+                  }}
+                >
+                  Calendar Conversion
+                </DropdownMenuCheckboxItem>
+                {markerFilter.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <button
+                      onClick={() => setMarkerFilter([])}
+                      className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                    >
+                      Clear filters
+                    </button>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Column Visibility */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -742,7 +827,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         </div>
 
         {/* Active Filters Display */}
-        {(globalFilter || columnFilters.length > 0) && (
+        {(globalFilter || columnFilters.length > 0 || markerFilter.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-2 items-center">
             <span className="text-xs font-medium text-gray-500">Filters:</span>
             {globalFilter && (
@@ -762,10 +847,19 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 </button>
               </span>
             ))}
+            {markerFilter.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-md border border-purple-100">
+                Markers: {markerFilter.map(m =>
+                  m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : 'Calendar'
+                ).join(', ')}
+                <button onClick={() => setMarkerFilter([])} className="hover:text-purple-900 ml-0.5">×</button>
+              </span>
+            )}
             <button
               onClick={() => {
                 setGlobalFilter('');
                 setColumnFilters([]);
+                setMarkerFilter([]);
               }}
               className="text-xs font-medium text-red-600 hover:text-red-800"
             >
@@ -845,11 +939,22 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {/* Results info and page size */}
           <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6">
             <span className="text-sm text-gray-500">
-              <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
-              {' '}-{' '}
-              <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
-              {' '}of{' '}
-              <span className="font-medium text-gray-700">{pagination.total}</span>
+              {markerFilter.length > 0 ? (
+                <>
+                  <span className="font-medium text-gray-700">{filteredStatements.length}</span>
+                  {' '}of{' '}
+                  <span className="font-medium text-gray-700">{pagination.total}</span>
+                  {' '}(filtered)
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
+                  {' '}-{' '}
+                  <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
+                  {' '}of{' '}
+                  <span className="font-medium text-gray-700">{pagination.total}</span>
+                </>
+              )}
             </span>
 
             {/* Page size selector */}

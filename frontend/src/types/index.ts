@@ -87,7 +87,13 @@ export interface Statement {
     message: string;
     reservationCount: number;
     cleaningExpenseCount: number;
+    reservationsWithOwnFee?: number;
     difference: number;
+  } | null;
+  needsReview?: boolean;
+  reviewDetails?: {
+    expenseCount: number;
+    additionalPayoutCount: number;
   } | null;
   shouldConvertToCalendar?: boolean;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
