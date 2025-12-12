@@ -233,7 +233,9 @@ router.get('/', async (req, res) => {
                 createdAt: s.createdAt || s.created_at,
                 updatedAt: s.updatedAt || s.updated_at,
                 cleaningMismatchWarning,
-                shouldConvertToCalendar: s.shouldConvertToCalendar || false
+                shouldConvertToCalendar: s.shouldConvertToCalendar || false,
+                calendarConversionNotice: s.calendarConversionNotice || null,
+                overlappingReservationCount: s.overlappingReservations ? s.overlappingReservations.length : 0
             };
         });
 
@@ -703,12 +705,22 @@ router.post('/generate', async (req, res) => {
         // Child listings are always fetched automatically for all properties
 
         // OPTIMIZED: Fetch all data in parallel
-        const [listings, reservations, expenses, owners] = await Promise.all([
+        // For checkout mode, we also need calendar-based reservations to detect overlapping stays
+        const fetchPromises = [
             FileDataService.getListings(),
             FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
             FileDataService.getExpenses(startDate, endDate, propertyId),
             FileDataService.getOwners()
-        ]);
+        ];
+
+        // If checkout mode, also fetch calendar-based reservations to find overlapping stays
+        if (calculationType === 'checkout' && propertyId) {
+            fetchPromises.push(FileDataService.getReservations(startDate, endDate, propertyId, 'calendar'));
+        }
+
+        const results = await Promise.all(fetchPromises);
+        const [listings, reservations, expenses, owners] = results;
+        const calendarReservations = calculationType === 'checkout' && propertyId ? results[4] : null;
         
         // Check for duplicate warnings
         const duplicateWarnings = expenses.duplicateWarnings || [];
@@ -792,6 +804,42 @@ router.post('/generate', async (req, res) => {
 
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+        // Find ALL overlapping reservations (regardless of calculation type) for calendar conversion detection
+        // Use calendar-based reservations if available (for checkout mode), otherwise filter from current reservations
+        const reservationsToCheckForOverlap = calendarReservations || reservations;
+        const overlappingReservations = reservationsToCheckForOverlap.filter(res => {
+            if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
+                return false;
+            }
+            const checkIn = new Date(res.checkInDate);
+            const checkOut = new Date(res.checkOutDate);
+            // Overlaps if: checkIn <= periodEnd AND checkOut > periodStart
+            return checkIn <= periodEnd && checkOut > periodStart && allowedStatuses.includes(res.status);
+        });
+
+        // Determine if statement should be flagged for calendar conversion
+        let shouldConvertToCalendar = false;
+        let calendarConversionNotice = null;
+
+        if (calculationType === 'checkout') {
+            // For checkout mode: flag if there are overlapping reservations but no checkouts in period
+            if (overlappingReservations.length > 0 && periodReservations.length === 0) {
+                shouldConvertToCalendar = true;
+                calendarConversionNotice = `This property has ${overlappingReservations.length} reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.`;
+            }
+        } else {
+            // For calendar mode: flag if any reservation spans beyond the period (long stay)
+            const longStayReservations = overlappingReservations.filter(res => {
+                const checkIn = new Date(res.checkInDate);
+                const checkOut = new Date(res.checkOutDate);
+                return checkIn < periodStart || checkOut > periodEnd;
+            });
+            if (longStayReservations.length > 0) {
+                shouldConvertToCalendar = true;
+                calendarConversionNotice = `This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.`;
+            }
+        }
 
         // Get expenses for the date range
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
@@ -1016,6 +1064,18 @@ router.post('/generate', async (req, res) => {
             disregardTax: disregardTax,
             cleaningFeePassThrough: cleaningFeePassThrough,
             totalCleaningFee: Math.round(totalCleaningFeeFromReservations * 100) / 100,
+            shouldConvertToCalendar,
+            calendarConversionNotice,
+            overlappingReservations: shouldConvertToCalendar ? overlappingReservations.map(res => ({
+                id: res.id,
+                hostifyId: res.hostifyId,
+                guestName: res.guestName,
+                checkInDate: res.checkInDate,
+                checkOutDate: res.checkOutDate,
+                source: res.source,
+                grossAmount: res.grossAmount || 0,
+                status: res.status
+            })) : null,
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
@@ -1064,7 +1124,10 @@ router.post('/generate', async (req, res) => {
                 ownerPayout: statement.ownerPayout,
                 totalRevenue: statement.totalRevenue,
                 totalExpenses: statement.totalExpenses,
-                itemCount: statement.items.length
+                itemCount: statement.items.length,
+                shouldConvertToCalendar: statement.shouldConvertToCalendar,
+                calendarConversionNotice: statement.calendarConversionNotice,
+                overlappingReservationCount: statement.overlappingReservations ? statement.overlappingReservations.length : 0
             }
         });
     } catch (error) {
@@ -2188,7 +2251,63 @@ router.get('/:id/view', async (req, res) => {
             background: #fee2e2;
             color: var(--luxury-red);
         }
-        
+
+        /* Calendar Conversion Notice Banner */
+        .calendar-notice {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 0 20px 20px 20px;
+        }
+
+        .calendar-notice-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .calendar-notice-icon {
+            font-size: 20px;
+        }
+
+        .calendar-notice-title {
+            font-weight: 700;
+            color: #92400e;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .calendar-notice-message {
+            color: #78350f;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .overlapping-reservations {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f59e0b;
+        }
+
+        .overlapping-reservations-title {
+            font-weight: 600;
+            color: #92400e;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .overlapping-reservation-item {
+            background: rgba(255,255,255,0.5);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: #78350f;
+        }
+
         .footer {
             background: white;
             padding: 30px;
@@ -2260,6 +2379,7 @@ router.get('/:id/view', async (req, res) => {
             }
             .print-button { display: none; }
             .footer { display: none; }
+            .calendar-notice { display: none; }
 
             /* PDF-specific table styles */
             .rental-table, .expenses-table, .items-table {
@@ -2965,6 +3085,10 @@ router.get('/:id/view', async (req, res) => {
             display: none !important;
         }
 
+        body.pdf-mode .calendar-notice {
+            display: none !important;
+        }
+
         body.pdf-mode .expenses-table {
             font-size: 10px !important;
             width: 100% !important;
@@ -3086,6 +3210,31 @@ router.get('/:id/view', async (req, res) => {
         </div>
 
         <div class="content">
+    <!-- Calendar Conversion Notice (if applicable) - Hidden in PDF mode -->
+    ${(statement.shouldConvertToCalendar && !isPdf) ? `
+    <div class="calendar-notice">
+        <div class="calendar-notice-header">
+            <span class="calendar-notice-icon">&#9888;</span>
+            <span class="calendar-notice-title">Calendar Conversion Recommended</span>
+        </div>
+        <div class="calendar-notice-message">${statement.calendarConversionNotice || (
+            statement.calculationType === 'checkout'
+                ? 'This property has reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.'
+                : 'This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.'
+        )}</div>
+        ${statement.overlappingReservations && statement.overlappingReservations.length > 0 ? `
+        <div class="overlapping-reservations">
+            <div class="overlapping-reservations-title">Reservations during this period:</div>
+            ${statement.overlappingReservations.map(res => `
+            <div class="overlapping-reservation-item">
+                <strong>${res.guestName}</strong> - ${res.checkInDate} to ${res.checkOutDate} (${res.source || 'Direct'}) - $${(res.grossAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            `).join('')}
+        </div>
+        ` : ''}
+    </div>
+    ` : ''}
+
     <div class="section">
                 <h2 class="section-title">RENTAL ACTIVITY</h2>
                 ${(() => {
@@ -4021,8 +4170,10 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
 
-                    // Skip if no activity (no reservations AND no expenses in period)
-                    if (periodReservations.length === 0 && periodExpenses.length === 0) {
+                    // NEW LOGIC: If there's ANY overlapping reservation, create the statement
+                    // This ensures long-stay guests are visible even if they don't checkout in the period
+                    // Skip ONLY if no overlapping reservations AND no expenses in period
+                    if (overlappingReservations.length === 0 && periodExpenses.length === 0) {
                         return {
                             success: false,
                             skipped: true,
@@ -4173,6 +4324,22 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             disregardTax,
                             cleaningFeePassThrough,
                             shouldConvertToCalendar,
+                            // Include overlapping reservations info when flagged for calendar conversion
+                            overlappingReservations: shouldConvertToCalendar ? overlappingReservations.map(res => ({
+                                id: res.id,
+                                hostifyId: res.hostifyId,
+                                guestName: res.guestName,
+                                checkInDate: res.checkInDate,
+                                checkOutDate: res.checkOutDate,
+                                source: res.source,
+                                grossAmount: res.grossAmount || 0,
+                                status: res.status
+                            })) : null,
+                            calendarConversionNotice: shouldConvertToCalendar ?
+                                (calculationType === 'checkout'
+                                    ? `This property has ${overlappingReservations.length} reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.`
+                                    : `This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.`)
+                                : null,
                             status: 'draft',
                             sentAt: null,
                             createdAt: new Date().toISOString(),
