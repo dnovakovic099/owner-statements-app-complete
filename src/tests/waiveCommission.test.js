@@ -7,7 +7,7 @@
  * The waiver is time-limited based on waiveCommissionUntil date.
  */
 
-const { expect } = require('chai');
+// Using Jest's built-in expect
 
 // Helper function to calculate gross payout (mirrors the actual logic)
 function calculateGrossPayout({
@@ -68,8 +68,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.isWaiverActive).to.be.false;
-            expect(result.luxuryFeeToDeduct).to.equal(100); // 10% of 1000
+            expect(result.isWaiverActive).toBe(false);
+            expect(result.luxuryFeeToDeduct).toBe(100); // 10% of 1000
         });
 
         it('should return true when waiveCommission is true and waiveCommissionUntil is null (indefinite)', () => {
@@ -85,8 +85,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.isWaiverActive).to.be.true;
-            expect(result.luxuryFeeToDeduct).to.equal(0);
+            expect(result.isWaiverActive).toBe(true);
+            expect(result.luxuryFeeToDeduct).toBe(0);
         });
 
         it('should return true when statement end date is before waiver expiry', () => {
@@ -102,8 +102,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.isWaiverActive).to.be.true;
-            expect(result.luxuryFeeToDeduct).to.equal(0);
+            expect(result.isWaiverActive).toBe(true);
+            expect(result.luxuryFeeToDeduct).toBe(0);
         });
 
         it('should return true when statement end date equals waiver expiry', () => {
@@ -119,8 +119,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-14'
             });
 
-            expect(result.isWaiverActive).to.be.true;
-            expect(result.luxuryFeeToDeduct).to.equal(0);
+            expect(result.isWaiverActive).toBe(true);
+            expect(result.luxuryFeeToDeduct).toBe(0);
         });
 
         it('should return false when statement end date is after waiver expiry', () => {
@@ -136,8 +136,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-15'
             });
 
-            expect(result.isWaiverActive).to.be.false;
-            expect(result.luxuryFeeToDeduct).to.equal(100); // 10% of 1000
+            expect(result.isWaiverActive).toBe(false);
+            expect(result.luxuryFeeToDeduct).toBe(100); // 10% of 1000
         });
     });
 
@@ -157,8 +157,8 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = 1000 - 150 - 0 = 850
-            expect(result.grossPayout).to.equal(850);
-            expect(result.luxuryFee).to.equal(150); // Still calculated for display
+            expect(result.grossPayout).toBe(850);
+            expect(result.luxuryFee).toBe(150); // Still calculated for display
         });
 
         it('should NOT deduct PM fee when waiver IS active', () => {
@@ -175,8 +175,8 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = 1000 - 0 - 0 = 1000
-            expect(result.grossPayout).to.equal(1000);
-            expect(result.luxuryFee).to.equal(150); // Still calculated for display
+            expect(result.grossPayout).toBe(1000);
+            expect(result.luxuryFee).toBe(150); // Still calculated for display
         });
 
         it('should include tax when shouldAddTax is true and waiver is active', () => {
@@ -193,7 +193,7 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = 1000 - 0 + 50 - 0 = 1050
-            expect(result.grossPayout).to.equal(1050);
+            expect(result.grossPayout).toBe(1050);
         });
 
         it('should deduct cleaning fee pass-through when waiver is active', () => {
@@ -210,7 +210,7 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = 1000 - 0 - 100 = 900
-            expect(result.grossPayout).to.equal(900);
+            expect(result.grossPayout).toBe(900);
         });
     });
 
@@ -231,8 +231,8 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = -83.05 - 0 = -83.05
-            expect(result.grossPayout).to.be.closeTo(-83.05, 0.01);
-            expect(result.luxuryFee).to.be.closeTo(83.05, 0.01);
+            expect(result.grossPayout).toBeCloseTo(-83.05, 1);
+            expect(result.luxuryFee).toBeCloseTo(83.05, 1);
         });
 
         it('should have zero gross payout when waiver IS active (PM fee waived)', () => {
@@ -249,10 +249,10 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            // grossPayout = -0 - 0 = 0
-            expect(result.grossPayout).to.equal(0);
-            expect(result.luxuryFee).to.be.closeTo(83.05, 0.01); // Still calculated for display
-            expect(result.isWaiverActive).to.be.true;
+            // grossPayout = -0 - 0 = 0 (use toBeCloseTo to handle -0 vs 0)
+            expect(result.grossPayout).toBeCloseTo(0, 2);
+            expect(result.luxuryFee).toBeCloseTo(83.05, 1); // Still calculated for display
+            expect(result.isWaiverActive).toBe(true);
         });
 
         it('should have negative gross payout (cleaning only) when waiver is active but cleaning pass-through exists', () => {
@@ -269,7 +269,7 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // grossPayout = -0 - 150 = -150
-            expect(result.grossPayout).to.equal(-150);
+            expect(result.grossPayout).toBe(-150);
         });
     });
 
@@ -294,7 +294,7 @@ describe('Waived PM Commission Feature', () => {
             const netPayout = result.grossPayout + totalUpsells - totalExpenses;
 
             // netPayout = 0 + 450 - 0 = 450
-            expect(netPayout).to.equal(450);
+            expect(netPayout).toBe(450);
         });
 
         it('should calculate correct net payout WITHOUT waiver (for comparison)', () => {
@@ -315,7 +315,7 @@ describe('Waived PM Commission Feature', () => {
             const netPayout = result.grossPayout + totalUpsells - totalExpenses;
 
             // netPayout = -83.05 + 450 - 0 = 366.95
-            expect(netPayout).to.be.closeTo(366.95, 0.01);
+            expect(netPayout).toBeCloseTo(366.95, 1);
         });
     });
 
@@ -334,8 +334,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.grossPayout).to.equal(0);
-            expect(result.luxuryFee).to.equal(0);
+            expect(result.grossPayout).toBe(0);
+            expect(result.luxuryFee).toBe(0);
         });
 
         it('should handle 0% PM fee percentage', () => {
@@ -351,8 +351,8 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.grossPayout).to.equal(1000);
-            expect(result.luxuryFee).to.equal(0);
+            expect(result.grossPayout).toBe(1000);
+            expect(result.luxuryFee).toBe(0);
         });
 
         it('should handle waiveCommission as truthy string "true"', () => {
@@ -370,7 +370,7 @@ describe('Waived PM Commission Feature', () => {
             });
 
             // Truthy string should activate waiver
-            expect(result.isWaiverActive).to.be.true;
+            expect(result.isWaiverActive).toBe(true);
         });
 
         it('should handle waiveCommission as 1 (SQLite boolean)', () => {
@@ -386,7 +386,7 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.isWaiverActive).to.be.true;
+            expect(result.isWaiverActive).toBe(true);
         });
 
         it('should handle waiveCommission as 0 (SQLite boolean)', () => {
@@ -402,7 +402,7 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2025-12-08'
             });
 
-            expect(result.isWaiverActive).to.be.false;
+            expect(result.isWaiverActive).toBe(false);
         });
     });
 
@@ -421,7 +421,7 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2026-01-01'
             });
 
-            expect(result.isWaiverActive).to.be.false;
+            expect(result.isWaiverActive).toBe(false);
         });
 
         it('should handle leap year dates', () => {
@@ -437,7 +437,7 @@ describe('Waived PM Commission Feature', () => {
                 statementEndDate: '2024-02-28'
             });
 
-            expect(result.isWaiverActive).to.be.true;
+            expect(result.isWaiverActive).toBe(true);
         });
     });
 });
