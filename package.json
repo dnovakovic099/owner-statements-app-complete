@@ -21,7 +21,9 @@
     "test:tax": "node src/tests/tax-calculation.test.js",
     "test:colors": "node src/tests/statement-colors-comprehensive.test.js",
     "test:master": "node src/tests/master-test-suite.test.js",
-    "test:api": "node src/tests/api-integration.test.js"
+    "test:api": "node src/tests/api-integration.test.js",
+    "test:jest": "jest",
+    "test:jest:calendar": "jest calendarConversion.jest.test.js --verbose"
   },
   "keywords": [
     "property-management",
@@ -61,6 +63,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "chai": "^6.2.1"
+    "chai": "^6.2.1",
+    "jest": "^30.2.0"
   }
 }

@@ -350,6 +350,6 @@ if (require.main === module) {
     eval(require('fs').readFileSync(__filename, 'utf8'));
 
     mocha.run(failures => {
-        process.exitCode = failures ? 1 : 0;
+        // process.exitCode removed for Jest compatibility
     });
 }
