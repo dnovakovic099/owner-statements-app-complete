@@ -90,6 +90,11 @@ export interface Statement {
     reservationsWithOwnFee?: number;
     difference: number;
   } | null;
+  needsReview?: boolean;
+  reviewDetails?: {
+    expenseCount: number;
+    additionalPayoutCount: number;
+  } | null;
   shouldConvertToCalendar?: boolean;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
