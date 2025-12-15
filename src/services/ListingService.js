@@ -4,6 +4,37 @@ const { Op } = require('sequelize');
 
 class ListingService {
     /**
+     * Extract PM fee percentage from tags string
+     * Looks for pattern like "20%,pm" or "15%,pm" in the tags
+     * @param {string} tags - Comma-separated tags string
+     * @returns {number|null} PM fee percentage or null if not found
+     */
+    extractPmFeeFromTags(tags) {
+        if (!tags || typeof tags !== 'string') {
+            return null;
+        }
+
+        // Split tags by comma and look for percentage followed by "pm"
+        const tagArray = tags.split(',').map(t => t.trim().toLowerCase());
+
+        for (let i = 0; i < tagArray.length - 1; i++) {
+            const tag = tagArray[i];
+            const nextTag = tagArray[i + 1];
+
+            // Check if current tag is a percentage and next tag is "pm"
+            if (tag.endsWith('%') && nextTag === 'pm') {
+                const percentValue = parseFloat(tag.replace('%', ''));
+                if (!isNaN(percentValue) && percentValue > 0 && percentValue <= 100) {
+                    console.log(`[PM-FEE] Extracted ${percentValue}% PM fee from tags`);
+                    return percentValue;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Sync listings from Hostify to database
      * Preserves PM fees, updates other listing info
      */
@@ -58,7 +89,24 @@ class ListingService {
                         });
                         synced++;
                     } else {
-                        // Create NEW listing only (not duplicate)
+                        // Create NEW listing - fetch detailed data to get tags for PM fee
+                        let pmFeePercentage = 15.00; // Default
+
+                        try {
+                            // Fetch detailed listing to get tags
+                            const detailedResponse = await HostifyService.getProperty(hostifyListing.id);
+                            if (detailedResponse.success && detailedResponse.listing) {
+                                const tags = detailedResponse.listing.tags;
+                                const extractedPmFee = this.extractPmFeeFromTags(tags);
+                                if (extractedPmFee !== null) {
+                                    pmFeePercentage = extractedPmFee;
+                                    console.log(`[NEW-LISTING] ${hostifyListing.nickname || hostifyListing.name}: PM fee from tags = ${pmFeePercentage}%`);
+                                }
+                            }
+                        } catch (detailError) {
+                            console.log(`[WARN] Could not fetch detailed listing ${hostifyListing.id} for PM fee: ${detailError.message}`);
+                        }
+
                         await Listing.create({
                             id: hostifyListing.id,
                             name: hostifyListing.name || 'Unknown',
@@ -69,10 +117,10 @@ class ListingService {
                             country: hostifyListing.country || null,
                             isActive: hostifyListing.is_listed === 1,
                             lastSyncedAt: new Date(),
-                            pmFeePercentage: 15.00
+                            pmFeePercentage: pmFeePercentage
                         });
                         created++;
-                        console.log(`Created new listing: ${hostifyListing.name} (ID: ${hostifyListing.id})`);
+                        console.log(`Created new listing: ${hostifyListing.nickname || hostifyListing.name} (ID: ${hostifyListing.id}) - PM Fee: ${pmFeePercentage}%`);
                     }
                 } catch (error) {
                     console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
@@ -282,6 +330,42 @@ class ListingService {
      */
     getDisplayName(listing) {
         return listing.displayName || listing.nickname || listing.name;
+    }
+
+    /**
+     * Get newly added listings (created within specified days)
+     * @param {number} days - Number of days to look back (default 7)
+     * @returns {Promise<Array>} Array of newly added listings
+     */
+    async getNewlyAddedListings(days = 7) {
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const sequelize = Listing.sequelize;
+
+            const listings = await Listing.findAll({
+                where: sequelize.where(sequelize.col('created_at'), Op.gte, cutoffDate),
+                order: [[sequelize.col('created_at'), 'DESC']],
+                attributes: [
+                    'id',
+                    'name',
+                    'displayName',
+                    'nickname',
+                    'city',
+                    'state',
+                    'pmFeePercentage',
+                    [sequelize.col('created_at'), 'createdAt']
+                ]
+            });
+
+            return listings.map(l => ({
+                ...l.toJSON(),
+                displayName: l.displayName || l.nickname || l.name
+            }));
+        } catch (error) {
+            console.error('Error fetching newly added listings:', error);
+            return [];
+        }
     }
 }
 

@@ -496,9 +496,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
-              tooltip="Delete"
+              tooltip={statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
               icon={<Trash2 className="w-[18px] h-[18px]" />}
               color="text-red-500"
+              disabled={statement.status !== 'draft'}
             />
           </div>
         );

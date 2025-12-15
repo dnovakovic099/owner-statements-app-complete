@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown } from 'lucide-react';
+import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown, Bell, X } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -31,6 +31,18 @@ interface ListingName {
   nickname?: string | null;
 }
 
+// Newly added listing for notifications
+interface NewListing {
+  id: number;
+  name: string;
+  displayName: string;
+  nickname: string | null;
+  city: string | null;
+  state: string | null;
+  pmFeePercentage: number | null;
+  createdAt: string;
+}
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { showToast, updateToast } = useToast();
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -45,8 +57,42 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings'>('dashboard');
+  const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+
+  // Notification states
+  const [newListings, setNewListings] = useState<NewListing[]>([]);
+  const [readListingIds, setReadListingIds] = useState<number[]>(() => {
+    try {
+      const stored = localStorage.getItem('readListingNotifications');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [showAutoNotification, setShowAutoNotification] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Filter out read notifications
+  const unreadListings = newListings.filter(l => !readListingIds.includes(l.id));
+
+  // Mark a listing as read
+  const markAsRead = (listingId: number) => {
+    const newReadIds = [...readListingIds, listingId];
+    setReadListingIds(newReadIds);
+    localStorage.setItem('readListingNotifications', JSON.stringify(newReadIds));
+  };
+
+  // Mark all as read
+  const markAllAsRead = () => {
+    const allIds = newListings.map(l => l.id);
+    const newReadIds = Array.from(new Set([...readListingIds, ...allIds]));
+    setReadListingIds(newReadIds);
+    localStorage.setItem('readListingNotifications', JSON.stringify(newReadIds));
+    setIsNotificationOpen(false);
+  };
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -98,9 +144,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
         setIsOwnerDropdownOpen(false);
       }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch newly added listings and show auto notification
+  useEffect(() => {
+    const fetchNewListings = async () => {
+      try {
+        const response = await listingsAPI.getNewlyAddedListings(7);
+        if (response.success && response.listings.length > 0) {
+          setNewListings(response.listings);
+          // Check if there are unread listings
+          const storedReadIds = localStorage.getItem('readListingNotifications');
+          const readIds = storedReadIds ? JSON.parse(storedReadIds) : [];
+          const hasUnread = response.listings.some(l => !readIds.includes(l.id));
+          if (hasUnread) {
+            // Show auto notification for 5 seconds
+            setShowAutoNotification(true);
+            setTimeout(() => {
+              setShowAutoNotification(false);
+            }, 5000);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch newly added listings:', error);
+      }
+    };
+    fetchNewListings();
   }, []);
 
   // Memoize filtered properties to prevent recalculation on every render
@@ -420,6 +495,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'delete') {
+        // Check if statement is draft before showing delete confirmation
+        const statement = statements.find(s => s.id === id);
+        if (statement && statement.status !== 'draft') {
+          setConfirmDialog({
+            isOpen: true,
+            title: 'Cannot Delete',
+            message: 'Cannot delete finalized statement. Please return to draft status first.',
+            type: 'danger',
+            onConfirm: () => {},
+          });
+          return;
+        }
         setConfirmDialog({
           isOpen: true,
           title: 'Delete Statement',
@@ -429,11 +516,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             try {
               await statementsAPI.deleteStatement(id);
               await loadStatements();
-            } catch (err) {
+            } catch (err: unknown) {
+              // Extract error message from API response
+              const errorMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+                || (err instanceof Error ? err.message : 'Unknown error');
               setConfirmDialog({
                 isOpen: true,
                 title: 'Error',
-                message: `Failed to delete statement: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                message: `Failed to delete statement: ${errorMessage}`,
                 type: 'danger',
                 onConfirm: () => {},
               });
@@ -476,18 +566,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       }
       setBulkProcessing(false);
     } else if (action === 'delete') {
+      // Filter to only draft statements - only drafts can be deleted
+      const draftIds = ids.filter(id => {
+        const statement = statements.find(s => s.id === id);
+        return statement && statement.status === 'draft';
+      });
+      const skippedCount = ids.length - draftIds.length;
+
+      if (draftIds.length === 0) {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Cannot Delete',
+          message: 'None of the selected statements can be deleted. Only draft statements can be deleted. Please return finalized statements to draft status first.',
+          type: 'danger',
+          onConfirm: () => {},
+        });
+        return;
+      }
+
+      const warningMessage = skippedCount > 0
+        ? `Are you sure you want to delete ${draftIds.length} draft statement(s)? ${skippedCount} finalized statement(s) will be skipped. This action cannot be undone.`
+        : `Are you sure you want to delete ${draftIds.length} statement(s)? This action cannot be undone.`;
+
       // Show confirmation dialog for bulk delete
       setConfirmDialog({
         isOpen: true,
         title: 'Delete Statements',
-        message: `Are you sure you want to delete ${ids.length} statement(s)? This action cannot be undone.`,
+        message: warningMessage,
         type: 'danger',
         onConfirm: async () => {
-          const toastId = showToast(`Deleting ${ids.length} statement(s)...`, 'loading');
+          const toastId = showToast(`Deleting ${draftIds.length} statement(s)...`, 'loading');
           let successCount = 0;
           let failCount = 0;
 
-          for (const id of ids) {
+          for (const id of draftIds) {
             try {
               await statementsAPI.deleteStatement(id);
               successCount++;
@@ -663,8 +775,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Show listings page if selected
   if (currentPage === 'listings') {
     return (
-      <ListingsPage 
-        onBack={() => setCurrentPage('dashboard')} 
+      <ListingsPage
+        onBack={() => {
+          setCurrentPage('dashboard');
+          setSelectedListingId(null);
+        }}
+        initialSelectedListingId={selectedListingId}
       />
     );
   }
@@ -681,7 +797,119 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <p className="text-white/80 text-sm mt-1">Welcome, {user.username}</p>
               )}
             </div>
-            <div className="flex space-x-2 sm:space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              {/* Notification Bell */}
+              <div className="relative" ref={notificationRef}>
+                <button
+                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                  className="relative flex items-center justify-center w-10 h-10 bg-yellow-500/20 border border-yellow-300/30 rounded-md hover:bg-yellow-500/30 transition-colors"
+                  title="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadListings.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
+                      {unreadListings.length > 9 ? '9+' : unreadListings.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Dropdown */}
+                {isNotificationOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-gray-900">New Listings</h3>
+                        <span className="text-xs text-gray-500">{unreadListings.length} unread of {newListings.length}</span>
+                      </div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {newListings.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-gray-500">
+                          No new listings
+                        </div>
+                      ) : (
+                        newListings.slice(0, 5).map((listing) => {
+                          const isRead = readListingIds.includes(listing.id);
+                          return (
+                            <div
+                              key={listing.id}
+                              className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${isRead ? 'bg-gray-50/50' : 'bg-white'}`}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div
+                                  className="flex-1 min-w-0 cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedListingId(listing.id);
+                                    setCurrentPage('listings');
+                                    setIsNotificationOpen(false);
+                                    if (!isRead) markAsRead(listing.id);
+                                  }}
+                                >
+                                  <p className={`font-medium truncate ${isRead ? 'text-gray-500' : 'text-gray-900'}`}>
+                                    {listing.displayName}
+                                  </p>
+                                  <p className={`text-sm truncate ${isRead ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {listing.city}{listing.state ? `, ${listing.state}` : ''}
+                                  </p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    Added {new Date(listing.createdAt).toLocaleDateString()}
+                                  </p>
+                                </div>
+                                <div className="ml-2 flex flex-col items-end gap-1">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${isRead ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-800'}`}>
+                                    {listing.pmFeePercentage || 15}% PM
+                                  </span>
+                                  {!isRead && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markAsRead(listing.id);
+                                      }}
+                                      className="text-xs text-gray-400 hover:text-blue-600"
+                                    >
+                                      Mark read
+                                    </button>
+                                  )}
+                                  {isRead && (
+                                    <span className="text-xs text-gray-400">Read</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    {newListings.length > 0 && (
+                      <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                        {unreadListings.length > 0 ? (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+                          >
+                            Mark all read
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">All read</span>
+                        )}
+                        {newListings.length > 5 && (
+                          <button
+                            onClick={() => {
+                              setSelectedListingId(null);
+                              setCurrentPage('listings');
+                              setIsNotificationOpen(false);
+                            }}
+                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            View All ({newListings.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => setCurrentPage('listings')}
                 className="flex items-center px-3 sm:px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors text-sm"
@@ -702,6 +930,64 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </div>
         </div>
       </header>
+
+      {/* Auto-show notification for most recent listing (appears for 5 seconds) */}
+      {showAutoNotification && unreadListings.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 notification-slide-in">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 w-80 overflow-hidden">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center text-white">
+                <Bell className="w-4 h-4 mr-2" />
+                <span className="font-medium text-sm">New Listing Added</span>
+              </div>
+              <button
+                onClick={() => setShowAutoNotification(false)}
+                className="text-white/80 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-4 py-3">
+              <p className="font-medium text-gray-900">{unreadListings[0].displayName}</p>
+              <p className="text-sm text-gray-500">
+                {unreadListings[0].city}{unreadListings[0].state ? `, ${unreadListings[0].state}` : ''}
+              </p>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-gray-400">
+                  Added {new Date(unreadListings[0].createdAt).toLocaleDateString()}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                  {unreadListings[0].pmFeePercentage || 15}% PM Fee
+                </span>
+              </div>
+              <div className="flex items-center mt-2">
+                <button
+                  onClick={() => {
+                    setSelectedListingId(unreadListings[0].id);
+                    setCurrentPage('listings');
+                    setShowAutoNotification(false);
+                    markAsRead(unreadListings[0].id);
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  View Property
+                </button>
+                {unreadListings.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setShowAutoNotification(false);
+                      setIsNotificationOpen(true);
+                    }}
+                    className="ml-3 text-sm text-gray-500 hover:text-gray-700 font-medium"
+                  >
+                    +{unreadListings.length - 1} more
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full px-4 py-8">
 

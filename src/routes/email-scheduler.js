@@ -68,10 +68,13 @@ router.post('/stop', async (req, res) => {
 /**
  * POST /api/email-scheduler/trigger/:tag
  * Manually trigger email send for a specific tag (for testing)
+ * Query params:
+ *   - limit: number of emails to send (default: all)
  */
 router.post('/trigger/:tag', async (req, res) => {
     try {
         const { tag } = req.params;
+        const { limit, offset } = req.query;
         const validTags = ['WEEKLY', 'BI-WEEKLY A', 'BI-WEEKLY B', 'MONTHLY'];
 
         if (!validTags.includes(tag.toUpperCase())) {
@@ -80,8 +83,10 @@ router.post('/trigger/:tag', async (req, res) => {
             });
         }
 
-        console.log(`[EmailScheduler] Manual trigger requested for ${tag}`);
-        const result = await EmailSchedulerService.triggerManual(tag.toUpperCase());
+        const emailLimit = limit ? parseInt(limit) : null;
+        const emailOffset = offset ? parseInt(offset) : 0;
+        console.log(`[EmailScheduler] Manual trigger requested for ${tag}${emailLimit ? ` (limit: ${emailLimit})` : ''}${emailOffset ? ` (offset: ${emailOffset})` : ''}`);
+        const result = await EmailSchedulerService.triggerManual(tag.toUpperCase(), emailLimit, emailOffset);
 
         res.json({
             success: true,

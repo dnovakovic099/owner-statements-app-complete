@@ -6,13 +6,14 @@ import LoadingSpinner from './LoadingSpinner';
 
 interface ListingsPageProps {
   onBack: () => void;
+  initialSelectedListingId?: number | null;
 }
 
-const ListingsPage: React.FC<ListingsPageProps> = ({ onBack }) => {
+const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedListingId }) => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
+  const [selectedListingId, setSelectedListingId] = useState<number | null>(initialSelectedListingId || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

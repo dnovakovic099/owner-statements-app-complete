@@ -78,14 +78,26 @@ class EmailService {
      * @param {string} frequencyTag - 'Weekly', 'Bi-Weekly', or 'Monthly'
      * @param {Object} data - Template data (ownerName, propertyName, period, etc.)
      */
-    getEmailTemplate(frequencyTag, data) {
+    getEmailTemplate(frequencyTag, data, calculationType = 'checkout') {
+        // Normalize the frequency tag (handle WEEKLY, BI-WEEKLY A, BI-WEEKLY B, MONTHLY)
+        const normalizedTag = (frequencyTag || '').toUpperCase().trim();
+
+        let templateKey = 'Monthly'; // Default
+        if (normalizedTag === 'WEEKLY') {
+            templateKey = 'Weekly';
+        } else if (normalizedTag.startsWith('BI-WEEKLY')) {
+            templateKey = 'Bi-Weekly';
+        } else if (normalizedTag === 'MONTHLY') {
+            templateKey = 'Monthly';
+        }
+
         const templates = {
             'Weekly': this.getWeeklyTemplate(data),
             'Bi-Weekly': this.getBiWeeklyTemplate(data),
-            'Monthly': this.getMonthlyTemplate(data)
+            'Monthly': this.getMonthlyTemplate(data, calculationType)
         };
 
-        return templates[frequencyTag] || templates['Monthly']; // Default to Monthly
+        return templates[templateKey];
     }
 
     /**

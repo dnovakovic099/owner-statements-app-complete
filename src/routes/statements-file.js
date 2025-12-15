@@ -1664,11 +1664,19 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // Check if statement exists
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Only allow deletion of draft statements
+        if (statement.status && statement.status !== 'draft') {
+            return res.status(403).json({
+                error: 'Cannot delete finalized statement. Please return to draft status first.',
+                status: statement.status
+            });
         }
 
         // Delete the statement

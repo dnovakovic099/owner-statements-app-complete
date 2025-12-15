@@ -407,6 +407,24 @@ export const listingsAPI = {
     const response = await api.post('/listings/sync');
     return response.data;
   },
+
+  getNewlyAddedListings: async (days: number = 7): Promise<{
+    success: boolean;
+    count: number;
+    listings: Array<{
+      id: number;
+      name: string;
+      displayName: string;
+      nickname: string | null;
+      city: string | null;
+      state: string | null;
+      pmFeePercentage: number | null;
+      createdAt: string;
+    }>;
+  }> => {
+    const response = await api.get(`/listings/newly-added?days=${days}`);
+    return response.data;
+  },
 };
 
 export default api;

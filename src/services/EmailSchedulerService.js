@@ -11,6 +11,10 @@
 const cron = require('node-cron');
 const { Listing, Statement } = require('../models');
 const EmailService = require('./EmailService');
+const FileDataService = require('./FileDataService');
+const DatabaseService = require('./DatabaseService');
+const BusinessRulesService = require('./BusinessRulesService');
+const ListingService = require('./ListingService');
 const { Op } = require('sequelize');
 
 class EmailSchedulerService {
@@ -19,7 +23,7 @@ class EmailSchedulerService {
         this.isRunning = false;
         this.lastRun = {};
         // TEST MODE: Only send to this email address
-        this.testModeEmail = 'devendravariya73@gmail.com';
+        this.testModeEmail = 'ferdinand@luxurylodgingpm.com';
         this.testModeEnabled = true; // Set to false for production
     }
 
@@ -154,22 +158,35 @@ class EmailSchedulerService {
                 startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         }
 
+        // Format dates without timezone conversion
+        const formatDate = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
         return {
-            startDate: startDate.toISOString().split('T')[0],
-            endDate: endDate.toISOString().split('T')[0]
+            startDate: formatDate(startDate),
+            endDate: formatDate(endDate)
         };
     }
 
     /**
      * Send scheduled emails for a specific frequency tag
+     * @param {string} frequencyTag - The frequency tag
+     * @param {number|null} limit - Max number of emails to send (null = all)
+     * @param {number} offset - Number of listings to skip (default: 0)
      */
-    async sendScheduledEmails(frequencyTag) {
+    async sendScheduledEmails(frequencyTag, limit = null, offset = 0) {
         const results = {
             tag: frequencyTag,
             timestamp: new Date().toISOString(),
             sent: [],
             failed: [],
-            skipped: []
+            skipped: [],
+            limit: limit,
+            offset: offset
         };
 
         try {
@@ -187,7 +204,7 @@ class EmailSchedulerService {
             });
 
             // Filter listings by tag
-            const matchingListings = listings.filter(listing => {
+            let matchingListings = listings.filter(listing => {
                 const tags = listing.tags || [];
                 return tags.some(tag => tag.toUpperCase() === frequencyTag.toUpperCase());
             });
@@ -198,6 +215,16 @@ class EmailSchedulerService {
                 results.skipped.push({ reason: 'No listings with this tag and configured email' });
                 this.lastRun[frequencyTag] = results;
                 return results;
+            }
+
+            // Apply offset and limit if specified
+            if (offset && offset > 0) {
+                matchingListings = matchingListings.slice(offset);
+                console.log(`[EmailScheduler] Skipping first ${offset} listing(s), ${matchingListings.length} remaining`);
+            }
+            if (limit && limit > 0) {
+                matchingListings = matchingListings.slice(0, limit);
+                console.log(`[EmailScheduler] Limiting to ${limit} listing(s)`);
             }
 
             // Get statement period
@@ -217,33 +244,50 @@ class EmailSchedulerService {
                         }
                     });
 
-                    if (!statement) {
-                        results.skipped.push({
-                            listingId: listing.id,
-                            listingName: listing.nickname || listing.name,
-                            reason: 'No statement found for period'
-                        });
-                        continue;
+                    // If no statement exists, generate one
+                    let statementToUse = statement;
+                    if (!statementToUse) {
+                        console.log(`[EmailScheduler] No statement found for ${listing.nickname || listing.name}, generating...`);
+                        try {
+                            statementToUse = await this.generateStatementForListing(listing.id, startDate, endDate, frequencyTag);
+                            if (!statementToUse) {
+                                results.skipped.push({
+                                    listingId: listing.id,
+                                    listingName: listing.nickname || listing.name,
+                                    reason: 'Failed to generate statement'
+                                });
+                                continue;
+                            }
+                            console.log(`[EmailScheduler] Generated statement ${statementToUse.id} for ${listing.nickname || listing.name}`);
+                        } catch (genError) {
+                            console.error(`[EmailScheduler] Error generating statement for ${listing.id}:`, genError.message);
+                            results.skipped.push({
+                                listingId: listing.id,
+                                listingName: listing.nickname || listing.name,
+                                reason: `Generation error: ${genError.message}`
+                            });
+                            continue;
+                        }
                     }
 
                     // Check for negative balance
-                    const ownerPayout = parseFloat(statement.ownerPayout) || 0;
+                    const ownerPayout = parseFloat(statementToUse.ownerPayout) || 0;
                     if (ownerPayout < 0) {
                         results.skipped.push({
                             listingId: listing.id,
                             listingName: listing.nickname || listing.name,
-                            statementId: statement.id,
+                            statementId: statementToUse.id,
                             reason: 'Negative balance',
                             ownerPayout
                         });
 
                         // Flag the statement
-                        await statement.update({ status: 'flagged_negative_balance' });
+                        await statementToUse.update({ status: 'flagged_negative_balance' });
                         continue;
                     }
 
                     // Prepare statement data with greeting name
-                    const statementData = statement.toJSON();
+                    const statementData = statementToUse.toJSON();
                     if (listing.ownerGreeting) {
                         statementData.ownerName = listing.ownerGreeting;
                     } else if (listing.nickname) {
@@ -284,13 +328,13 @@ class EmailSchedulerService {
                         results.sent.push({
                             listingId: listing.id,
                             listingName: listing.nickname || listing.name,
-                            statementId: statement.id,
+                            statementId: statementToUse.id,
                             recipientEmail: listing.ownerEmail,
                             ownerPayout
                         });
 
                         // Update statement status
-                        await statement.update({
+                        await statementToUse.update({
                             status: 'sent',
                             sentAt: new Date()
                         });
@@ -298,7 +342,7 @@ class EmailSchedulerService {
                         results.failed.push({
                             listingId: listing.id,
                             listingName: listing.nickname || listing.name,
-                            statementId: statement.id,
+                            statementId: statementToUse.id,
                             error: emailResult.error || emailResult.message
                         });
                     }
@@ -325,10 +369,13 @@ class EmailSchedulerService {
 
     /**
      * Manually trigger email send for a specific tag (for testing)
+     * @param {string} frequencyTag - The tag to trigger
+     * @param {number|null} limit - Max number of emails to send (null = all)
+     * @param {number} offset - Number of listings to skip (default: 0)
      */
-    async triggerManual(frequencyTag) {
-        console.log(`[EmailScheduler] Manual trigger for ${frequencyTag}`);
-        return await this.sendScheduledEmails(frequencyTag);
+    async triggerManual(frequencyTag, limit = null, offset = 0) {
+        console.log(`[EmailScheduler] Manual trigger for ${frequencyTag}${limit ? ` (limit: ${limit})` : ''}${offset ? ` (offset: ${offset})` : ''}`);
+        return await this.sendScheduledEmails(frequencyTag, limit, offset);
     }
 
     /**
@@ -441,6 +488,226 @@ class EmailSchedulerService {
         }
 
         return summary;
+    }
+
+    /**
+     * Generate a statement for a single listing
+     * @param {number} listingId - The listing ID
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @param {string} frequencyTag - The frequency tag (for calculation type selection)
+     * @returns {object|null} The generated statement or null if failed
+     */
+    async generateStatementForListing(listingId, startDate, endDate, frequencyTag) {
+        try {
+            console.log(`[EmailScheduler] Generating statement for listing ${listingId} (${startDate} to ${endDate})`);
+
+            // Get listing info
+            const listingInfo = await ListingService.getListingWithPmFee(listingId);
+            if (!listingInfo) {
+                console.error(`[EmailScheduler] Listing ${listingId} not found`);
+                return null;
+            }
+
+            // Default to calendar calculation type for scheduled emails
+            const calculationType = 'calendar';
+
+            // Get property settings
+            const isCohostOnAirbnb = listingInfo.isCohostOnAirbnb || false;
+            const airbnbPassThroughTax = listingInfo.airbnbPassThroughTax || false;
+            const disregardTax = listingInfo.disregardTax || false;
+            const cleaningFeePassThrough = listingInfo.cleaningFeePassThrough || false;
+            const pmPercentage = listingInfo.pmFeePercentage ?? 15;
+            const waiveCommission = listingInfo.waiveCommission || false;
+            const waiveCommissionUntil = listingInfo.waiveCommissionUntil || null;
+
+            // Fetch reservations and expenses
+            const [reservations, expenses] = await Promise.all([
+                FileDataService.getReservations(startDate, endDate, listingId, calculationType),
+                FileDataService.getExpenses(startDate, endDate, listingId)
+            ]);
+
+            const periodStart = new Date(startDate);
+            const periodEnd = new Date(endDate);
+
+            // Filter reservations
+            const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+            const periodReservations = reservations.filter(res => {
+                if (parseInt(res.propertyId) !== parseInt(listingId)) return false;
+                return allowedStatuses.includes(res.status);
+            }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+            // Filter expenses
+            const periodExpenses = expenses.filter(exp => {
+                if (exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(listingId)) return false;
+                const expenseDate = new Date(exp.date);
+                return expenseDate >= periodStart && expenseDate <= periodEnd;
+            });
+
+            // Filter expenses - if cleaningFeePassThrough is enabled, exclude "Cleaning" expenses
+            const filteredExpenses = cleaningFeePassThrough
+                ? periodExpenses.filter(exp => {
+                    const category = (exp.category || '').toLowerCase();
+                    const type = (exp.type || '').toLowerCase();
+                    const description = (exp.description || '').toLowerCase();
+                    return !category.includes('cleaning') && !type.includes('cleaning') && !description.startsWith('cleaning');
+                  })
+                : periodExpenses;
+
+            // Generate cleaning fee expenses from reservations when pass-through is enabled
+            const cleaningFeeExpenses = [];
+            if (cleaningFeePassThrough && periodReservations.length > 0) {
+                for (const res of periodReservations) {
+                    const cleaningFee = res.cleaningFee || listingInfo.cleaningFee || 0;
+                    if (cleaningFee > 0) {
+                        cleaningFeeExpenses.push({
+                            id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
+                            propertyId: res.propertyId,
+                            date: res.checkOutDate,
+                            description: `Cleaning - ${res.guestName}`,
+                            amount: -Math.abs(cleaningFee),
+                            category: 'Cleaning',
+                            type: 'cleaning',
+                            vendor: 'Cleaning Service',
+                            isAutoGenerated: true
+                        });
+                    }
+                }
+            }
+
+            // Combine filtered expenses with cleaning fee expenses
+            const allExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
+
+            // Calculate total revenue
+            const totalRevenue = periodReservations.reduce((sum, res) => {
+                const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                if (isAirbnb && isCohostOnAirbnb) return sum;
+                const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                return sum + revenue;
+            }, 0);
+
+            // Calculate total cleaning fee from reservations (for pass-through feature)
+            let totalCleaningFeeFromReservations = 0;
+            if (cleaningFeePassThrough) {
+                totalCleaningFeeFromReservations = periodReservations.reduce((sum, res) => {
+                    return sum + (res.cleaningFee || 0);
+                }, 0);
+            }
+
+            // Calculate total expenses
+            const totalExpenses = filteredExpenses.reduce((sum, exp) => {
+                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                return isUpsell ? sum : sum + Math.abs(exp.amount);
+            }, 0);
+
+            // Calculate total upsells (additional payouts)
+            const totalUpsells = filteredExpenses.reduce((sum, exp) => {
+                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                return isUpsell ? sum + exp.amount : sum;
+            }, 0);
+
+            // Calculate PM commission
+            const pmCommission = totalRevenue * (pmPercentage / 100);
+
+            // Check if PM commission waiver is active
+            const isWaiverActive = (() => {
+                if (!waiveCommission) return false;
+                if (!waiveCommissionUntil) return true;
+                const waiverEnd = new Date(waiveCommissionUntil + 'T23:59:59');
+                const stmtEnd = new Date(endDate + 'T00:00:00');
+                return stmtEnd <= waiverEnd;
+            })();
+
+            // Calculate owner payout
+            let grossPayoutSum = 0;
+            for (const res of periodReservations) {
+                const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
+
+                const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                const luxuryFee = clientRevenue * (pmPercentage / 100);
+                const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listingInfo.cleaningFee || 0) : 0;
+
+                const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
+
+                let grossPayout;
+                if (isCohostAirbnb) {
+                    grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                } else if (shouldAddTax) {
+                    grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
+                } else {
+                    grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                }
+                grossPayoutSum += grossPayout;
+            }
+
+            const ownerPayout = grossPayoutSum + totalUpsells - totalExpenses;
+
+            // Create statement object
+            const statementData = {
+                ownerId: 1, // Default owner
+                ownerName: 'Default', // Use Default owner for auto-generated statements
+                propertyId: listingId,
+                propertyName: listingInfo.nickname || listingInfo.displayName || listingInfo.name,
+                weekStartDate: startDate,
+                weekEndDate: endDate,
+                calculationType,
+                totalRevenue: Math.round(totalRevenue * 100) / 100,
+                totalExpenses: Math.round(totalExpenses * 100) / 100,
+                pmCommission: Math.round(pmCommission * 100) / 100,
+                pmPercentage: pmPercentage,
+                techFees: 0,
+                insuranceFees: 0,
+                adjustments: 0,
+                ownerPayout: Math.round(ownerPayout * 100) / 100,
+                isCohostOnAirbnb: isCohostOnAirbnb,
+                airbnbPassThroughTax: airbnbPassThroughTax,
+                disregardTax: disregardTax,
+                cleaningFeePassThrough: cleaningFeePassThrough,
+                totalCleaningFee: Math.round(totalCleaningFeeFromReservations * 100) / 100,
+                status: 'draft',
+                sentAt: null,
+                reservations: periodReservations,
+                expenses: allExpenses,
+                items: [
+                    ...periodReservations.map(res => {
+                        const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                        return {
+                            type: 'revenue',
+                            description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                            amount: revenue,
+                            date: res.checkOutDate,
+                            category: 'booking'
+                        };
+                    }),
+                    ...filteredExpenses.map(exp => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                        return {
+                            type: isUpsell ? 'upsell' : 'expense',
+                            description: exp.description,
+                            amount: Math.abs(exp.amount),
+                            date: exp.date,
+                            category: exp.type || exp.category || 'expense',
+                            vendor: exp.vendor,
+                            listing: exp.listing
+                        };
+                    })
+                ]
+            };
+
+            // Save to database
+            const savedStatement = await DatabaseService.saveStatement(statementData);
+            console.log(`[EmailScheduler] Generated statement ID ${savedStatement.id} for listing ${listingId}`);
+
+            // Return as Statement model instance for compatibility
+            return await Statement.findByPk(savedStatement.id);
+
+        } catch (error) {
+            console.error(`[EmailScheduler] Error generating statement for listing ${listingId}:`, error);
+            throw error;
+        }
     }
 }
 

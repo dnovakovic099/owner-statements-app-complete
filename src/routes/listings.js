@@ -74,6 +74,23 @@ router.get('/names', async (req, res) => {
     }
 });
 
+// GET /api/listings/newly-added - Get newly added listings (for notifications)
+// NOTE: This must come BEFORE /:id routes
+router.get('/newly-added', async (req, res) => {
+    try {
+        const { days = 7 } = req.query;
+        const listings = await ListingService.getNewlyAddedListings(parseInt(days));
+        res.json({
+            success: true,
+            count: listings.length,
+            listings
+        });
+    } catch (error) {
+        console.error('Error fetching newly added listings:', error);
+        res.status(500).json({ error: 'Failed to fetch newly added listings' });
+    }
+});
+
 // POST /api/listings/sync - Sync listings from Hostify
 // NOTE: This must come BEFORE /:id routes
 router.post('/sync', async (req, res) => {
