@@ -73,6 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   });
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [showAutoNotification, setShowAutoNotification] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   // Filter out read notifications
@@ -92,6 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setReadListingIds(newReadIds);
     localStorage.setItem('readListingNotifications', JSON.stringify(newReadIds));
     setIsNotificationOpen(false);
+    setShowAllNotifications(false);
   };
 
   // Pagination state
@@ -146,6 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       }
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setIsNotificationOpen(false);
+        setShowAllNotifications(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -828,7 +831,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           No new listings
                         </div>
                       ) : (
-                        newListings.slice(0, 5).map((listing) => {
+                        (showAllNotifications ? newListings : newListings.slice(0, 5)).map((listing) => {
                           const isRead = readListingIds.includes(listing.id);
                           return (
                             <div
@@ -842,6 +845,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     setSelectedListingId(listing.id);
                                     setCurrentPage('listings');
                                     setIsNotificationOpen(false);
+                                    setShowAllNotifications(false);
                                     if (!isRead) markAsRead(listing.id);
                                   }}
                                 >
@@ -894,14 +898,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         )}
                         {newListings.length > 5 && (
                           <button
-                            onClick={() => {
-                              setSelectedListingId(null);
-                              setCurrentPage('listings');
-                              setIsNotificationOpen(false);
-                            }}
+                            onClick={() => setShowAllNotifications(!showAllNotifications)}
                             className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                           >
-                            View All ({newListings.length})
+                            {showAllNotifications ? 'Show Less' : `View All (${newListings.length})`}
                           </button>
                         )}
                       </div>

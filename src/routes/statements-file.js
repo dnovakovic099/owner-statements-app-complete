@@ -889,11 +889,13 @@ router.post('/generate', async (req, res) => {
                 calendarConversionNotice = `This property has ${overlappingReservations.length} reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.`;
             }
         } else {
-            // For calendar mode: flag if any reservation spans beyond the period (long stay)
+            // For calendar mode: flag if any reservation spans beyond the period AND is 14+ nights (long stay)
             const longStayReservations = overlappingReservations.filter(res => {
                 const checkIn = new Date(res.checkInDate);
                 const checkOut = new Date(res.checkOutDate);
-                return checkIn < periodStart || checkOut > periodEnd;
+                const nights = Math.round((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+                // Only flag as long-stay if: spans beyond period AND is 14+ nights
+                return (checkIn < periodStart || checkOut > periodEnd) && nights >= 14;
             });
             if (longStayReservations.length > 0) {
                 shouldConvertToCalendar = true;
@@ -4216,16 +4218,17 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             console.log(`[BULK-FLAG] Property ${property.id}: Has ${overlappingReservations.length} overlapping reservation(s) but 0 checkouts - recommend calendar mode`);
                         }
                     } else {
-                        // For calendar mode: flag if any reservation spans beyond the period (long stay)
+                        // For calendar mode: flag if any reservation spans beyond the period AND is 14+ nights (long stay)
                         const longStayReservations = overlappingReservations.filter(res => {
                             const checkIn = new Date(res.checkInDate);
                             const checkOut = new Date(res.checkOutDate);
-                            // Long stay = checks in before period start OR checks out after period end
-                            return checkIn < periodStart || checkOut > periodEnd;
+                            const nights = Math.round((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+                            // Only flag as long-stay if: spans beyond period AND is 14+ nights
+                            return (checkIn < periodStart || checkOut > periodEnd) && nights >= 14;
                         });
                         if (longStayReservations.length > 0) {
                             shouldConvertToCalendar = true;
-                            console.log(`[BULK-FLAG] Property ${property.id}: Has ${longStayReservations.length} long-stay reservation(s) spanning beyond period - prorated calendar calculation applied`);
+                            console.log(`[BULK-FLAG] Property ${property.id}: Has ${longStayReservations.length} long-stay reservation(s) (14+ nights) spanning beyond period - prorated calendar calculation applied`);
                         }
                     }
 
