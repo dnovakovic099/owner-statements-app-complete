@@ -155,16 +155,16 @@ class EmailService {
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: WEEKLY PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: WEEKLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
@@ -258,16 +258,16 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: BI-WEEKLY PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: BI-WEEKLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
@@ -340,16 +340,16 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
@@ -419,18 +419,18 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
@@ -538,20 +538,20 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 12px 0;">Since we're on a co-host setup on Airbnb, payouts for Airbnb reservations go directly to your account. This means this statement reflects a negative balance as we need to collect our management commission and any expenses we've covered on your behalf during the period.</p>
 <p style="margin: 0 0 16px 0;">You can pay the balance using ${invoiceLinkHtml}.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: CO-HOST ON AIRBNB</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Airbnb sends the reservation payouts directly to you. Our management commission and any other covered expenses are then invoiced and reflected as a balance due.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: RESERVATION CALCULATION</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: CO-HOST ON AIRBNB</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Airbnb sends the reservation payouts directly to you. Our management commission and any other covered expenses are then invoiced and reflected as a balance due.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: RESERVATION CALCULATION</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Starting December 2025, we will shift to a check-out-based model. Meaning, reservations will be fully accounted for in the statement covering their check-out date. For stays longer than 14 nights, we will still apply calendar (prorated) basis to better reflect earnings throughout the stay.</p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
@@ -630,16 +630,16 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>CALCULATING YOUR STATEMENT</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Base Rate + Guest Fees - Platform Fee = Revenue<br>
 Revenue - PM Commission = Gross Payout<br>
 Gross Payout - Expenses + Additional Payouts = Net Payout</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: TAXES</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
-<p style="margin: 0 0 6px 0; font-size: 13px; color: #555;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
-<p style="margin: 0 0 12px 0; font-size: 13px; color: #555;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: EXPENSES AND ADDITIONAL PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Some items may appear on a later statement if they were recorded at the time the payment was actually made.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: TAXES</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">Any tax responsibilities that need to be remitted will be added to your Gross Payout.</p>
+<p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>NOTE: MONTHLY PAYOUTS</strong></p>
+<p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
 <p style="margin: 0;">Thank you again for your trust and partnership.</p>
