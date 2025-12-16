@@ -127,6 +127,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     onConfirm: () => {}
   });
 
+  // Statement period & settings state
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editCalculationType, setEditCalculationType] = useState<'checkout' | 'calendar'>('checkout');
+  const [isReconfiguring, setIsReconfiguring] = useState(false);
+
   const loadStatement = useCallback(async () => {
     if (!statementId) return;
 
@@ -144,6 +150,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setCleaningFeeEdits({});
       setInternalNotes(response.internalNotes || '');
       setNotesModified(false);
+      // Initialize statement period & settings
+      setEditStartDate(response.weekStartDate || '');
+      setEditEndDate(response.weekEndDate || '');
+      setEditCalculationType((response.calculationType as 'checkout' | 'calendar') || 'checkout');
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -173,6 +183,62 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     } finally {
       setLoadingAvailable(false);
     }
+  };
+
+  // Quick select date helpers
+  const setThisMonth = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setEditStartDate(firstDay.toISOString().split('T')[0]);
+    setEditEndDate(lastDay.toISOString().split('T')[0]);
+  };
+
+  const setLastMonth = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+    setEditStartDate(firstDay.toISOString().split('T')[0]);
+    setEditEndDate(lastDay.toISOString().split('T')[0]);
+  };
+
+  const setThisYear = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), 0, 1);
+    const lastDay = new Date(now.getFullYear(), 11, 31);
+    setEditStartDate(firstDay.toISOString().split('T')[0]);
+    setEditEndDate(lastDay.toISOString().split('T')[0]);
+  };
+
+  // Handle reconfigure statement
+  const handleReconfigure = async () => {
+    if (!statementId || !editStartDate || !editEndDate) return;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reconfigure Statement',
+      message: `This will regenerate the statement with the new date range (${editStartDate} to ${editEndDate}) and calculation method (${editCalculationType}). Custom reservations will be preserved. Continue?`,
+      confirmText: 'Update Statement',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setIsReconfiguring(true);
+        try {
+          await statementsAPI.reconfigureStatement(statementId, {
+            startDate: editStartDate,
+            endDate: editEndDate,
+            calculationType: editCalculationType
+          });
+          await loadStatement();
+          onStatementUpdated();
+        } catch (err) {
+          setError('Failed to reconfigure statement');
+          console.error('Failed to reconfigure statement:', err);
+        } finally {
+          setIsReconfiguring(false);
+        }
+      }
+    });
   };
 
   const handleExpenseToggle = (index: number) => {
@@ -466,9 +532,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
+        <div className="flex items-center justify-between p-6 border-b flex-shrink-0">
           <h2 className="text-xl font-semibold">Edit Statement</h2>
           <button
             onClick={handleClose}
@@ -478,7 +544,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+        <div className="p-6 overflow-y-auto flex-1">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-lg">Loading statement...</div>
@@ -515,6 +581,126 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       Revenue: ${statement.totalRevenue.toLocaleString()} - Expenses: ${statement.totalExpenses.toLocaleString()}
                     </div>
                   </div>
+                </div>
+
+                {/* Statement Period & Settings */}
+                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 pb-5">
+                  <div className="flex items-center mb-3">
+                    <Calendar className="w-4 h-4 text-blue-600 mr-2" />
+                    <p className="text-sm font-medium text-blue-800">Statement Period & Settings</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Start Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={editStartDate}
+                        onChange={(e) => setEditStartDate(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        End Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={editEndDate}
+                        onChange={(e) => setEditEndDate(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs text-gray-500">Quick select:</span>
+                    <button
+                      type="button"
+                      onClick={setThisMonth}
+                      className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                    >
+                      This Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={setLastMonth}
+                      className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                    >
+                      Last Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={setThisYear}
+                      className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                    >
+                      This Year
+                    </button>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                      Calculation Method <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${
+                        editCalculationType === 'checkout'
+                          ? 'bg-blue-50 border-blue-300'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="calculationType"
+                          value="checkout"
+                          checked={editCalculationType === 'checkout'}
+                          onChange={() => setEditCalculationType('checkout')}
+                          className="mt-0.5 mr-2"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">Check-out Based</div>
+                          <div className="text-xs text-gray-500">Reservations that check out during period</div>
+                        </div>
+                      </label>
+                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${
+                        editCalculationType === 'calendar'
+                          ? 'bg-blue-50 border-blue-300'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="calculationType"
+                          value="calendar"
+                          checked={editCalculationType === 'calendar'}
+                          onChange={() => setEditCalculationType('calendar')}
+                          className="mt-0.5 mr-2"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">Calendar Based</div>
+                          <div className="text-xs text-gray-500">Prorate reservations by days in period</div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleReconfigure}
+                    disabled={isReconfiguring || !editStartDate || !editEndDate}
+                    className="w-full flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isReconfiguring ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Updating Statement...
+                      </>
+                    ) : (
+                      'Update Statement'
+                    )}
+                  </button>
                 </div>
 
                 {/* Internal Notes - Editable */}
@@ -1056,7 +1242,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 p-6 border-t bg-gray-50">
+        <div className="flex items-center justify-end space-x-3 p-6 border-t bg-gray-50 flex-shrink-0">
           <button
             onClick={handleClose}
             className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"

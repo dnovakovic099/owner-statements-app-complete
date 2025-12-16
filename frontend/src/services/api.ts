@@ -223,6 +223,15 @@ export const statementsAPI = {
     const response = await api.get(`/statements/${id}/available-reservations`);
     return response.data;
   },
+
+  reconfigureStatement: async (id: number, data: {
+    startDate: string;
+    endDate: string;
+    calculationType: 'checkout' | 'calendar';
+  }): Promise<{ message: string; statement: Statement }> => {
+    const response = await api.put(`/statements/${id}/reconfigure`, data);
+    return response.data;
+  },
 };
 
 // Reservations API
@@ -435,6 +444,80 @@ export const listingsAPI = {
     }>;
   }> => {
     const response = await api.get(`/listings/newly-added?days=${days}`);
+    return response.data;
+  },
+};
+
+// Email API
+export interface EmailLog {
+  id: number;
+  statementId: number;
+  propertyId: number | null;
+  recipientEmail: string;
+  recipientName: string | null;
+  propertyName: string | null;
+  frequencyTag: string | null;
+  subject: string | null;
+  status: 'pending' | 'sent' | 'failed' | 'bounced';
+  messageId: string | null;
+  errorMessage: string | null;
+  errorCode: string | null;
+  attemptedAt: string | null;
+  sentAt: string | null;
+  retryCount: number;
+  metadata: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailStats {
+  sent: number;
+  failed: number;
+  pending: number;
+  bounced: number;
+}
+
+export const emailAPI = {
+  getEmailLogs: async (filters?: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    recipientEmail?: string;
+    statementId?: number;
+  }): Promise<{ logs: EmailLog[]; total: number }> => {
+    const params = new URLSearchParams();
+    if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());
+    if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.recipientEmail) params.append('recipientEmail', filters.recipientEmail);
+    if (filters?.statementId !== undefined) params.append('statementId', filters.statementId.toString());
+
+    const response = await api.get(`/email/logs?${params.toString()}`);
+    return { logs: response.data.logs, total: response.data.total };
+  },
+
+  getEmailStats: async (): Promise<EmailStats> => {
+    const response = await api.get('/email/logs/stats');
+    const stats = response.data.stats;
+    return {
+      sent: stats.totalSent,
+      failed: stats.totalFailed,
+      pending: stats.totalPending,
+      bounced: stats.totalBounced
+    };
+  },
+
+  getEmailLog: async (id: number): Promise<EmailLog> => {
+    const response = await api.get(`/email/logs/${id}`);
+    return response.data;
+  },
+
+  retryEmail: async (id: number): Promise<{ success: boolean; message: string; log?: EmailLog }> => {
+    const response = await api.post(`/email/logs/${id}/retry`);
     return response.data;
   },
 };

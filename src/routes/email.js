@@ -11,7 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const EmailService = require('../services/EmailService');
-const { Statement, Listing } = require('../models');
+const { Statement, Listing, EmailLog } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -511,6 +511,224 @@ router.get('/summary', async (req, res) => {
     } catch (error) {
         console.error('Error fetching email summary:', error);
         res.status(500).json({ error: 'Failed to fetch email summary' });
+    }
+});
+
+// ============================================
+// EMAIL LOGS ROUTES
+// ============================================
+
+/**
+ * GET /api/email/logs
+ * Get email logs with optional filtering
+ */
+router.get('/logs', async (req, res) => {
+    try {
+        const {
+            status,
+            startDate,
+            endDate,
+            recipientEmail,
+            statementId,
+            limit = 100,
+            offset = 0
+        } = req.query;
+
+        const where = {};
+
+        if (status) {
+            where.status = status;
+        }
+
+        if (recipientEmail) {
+            where.recipientEmail = { [Op.like]: `%${recipientEmail}%` };
+        }
+
+        if (statementId) {
+            where.statementId = parseInt(statementId);
+        }
+
+        if (startDate && endDate) {
+            where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate + 'T23:59:59')] };
+        } else if (startDate) {
+            where.createdAt = { [Op.gte]: new Date(startDate) };
+        } else if (endDate) {
+            where.createdAt = { [Op.lte]: new Date(endDate + 'T23:59:59') };
+        }
+
+        const { count, rows: logs } = await EmailLog.findAndCountAll({
+            where,
+            order: [['created_at', 'DESC']],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        });
+
+        res.json({
+            success: true,
+            total: count,
+            logs: logs.map(log => ({
+                id: log.id,
+                statementId: log.statementId,
+                propertyId: log.propertyId,
+                recipientEmail: log.recipientEmail,
+                recipientName: log.recipientName,
+                propertyName: log.propertyName,
+                frequencyTag: log.frequencyTag,
+                subject: log.subject,
+                status: log.status,
+                messageId: log.messageId,
+                errorMessage: log.errorMessage,
+                errorCode: log.errorCode,
+                attemptedAt: log.attemptedAt,
+                sentAt: log.sentAt,
+                retryCount: log.retryCount,
+                createdAt: log.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching email logs:', error);
+        res.status(500).json({ error: 'Failed to fetch email logs' });
+    }
+});
+
+/**
+ * GET /api/email/logs/stats
+ * Get email statistics summary
+ */
+router.get('/logs/stats', async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        const where = {};
+        if (startDate && endDate) {
+            where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate + 'T23:59:59')] };
+        }
+
+        // Get counts by status
+        const totalSent = await EmailLog.count({ where: { ...where, status: 'sent' } });
+        const totalFailed = await EmailLog.count({ where: { ...where, status: 'failed' } });
+        const totalBounced = await EmailLog.count({ where: { ...where, status: 'bounced' } });
+        const totalPending = await EmailLog.count({ where: { ...where, status: 'pending' } });
+
+        // Get recent failures
+        const recentFailures = await EmailLog.findAll({
+            where: { ...where, status: 'failed' },
+            order: [['created_at', 'DESC']],
+            limit: 10
+        });
+
+        res.json({
+            success: true,
+            stats: {
+                totalSent,
+                totalFailed,
+                totalBounced,
+                totalPending,
+                total: totalSent + totalFailed + totalBounced + totalPending,
+                successRate: totalSent + totalFailed > 0
+                    ? Math.round((totalSent / (totalSent + totalFailed)) * 100)
+                    : 0
+            },
+            recentFailures: recentFailures.map(log => ({
+                id: log.id,
+                statementId: log.statementId,
+                recipientEmail: log.recipientEmail,
+                propertyName: log.propertyName,
+                errorMessage: log.errorMessage,
+                createdAt: log.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching email stats:', error);
+        res.status(500).json({ error: 'Failed to fetch email stats' });
+    }
+});
+
+/**
+ * GET /api/email/logs/:id
+ * Get a specific email log
+ */
+router.get('/logs/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const log = await EmailLog.findByPk(id);
+        if (!log) {
+            return res.status(404).json({ error: 'Email log not found' });
+        }
+
+        res.json({
+            success: true,
+            log: {
+                id: log.id,
+                statementId: log.statementId,
+                propertyId: log.propertyId,
+                recipientEmail: log.recipientEmail,
+                recipientName: log.recipientName,
+                propertyName: log.propertyName,
+                frequencyTag: log.frequencyTag,
+                subject: log.subject,
+                status: log.status,
+                messageId: log.messageId,
+                errorMessage: log.errorMessage,
+                errorCode: log.errorCode,
+                attemptedAt: log.attemptedAt,
+                sentAt: log.sentAt,
+                retryCount: log.retryCount,
+                metadata: log.metadata,
+                createdAt: log.created_at,
+                updatedAt: log.updated_at
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching email log:', error);
+        res.status(500).json({ error: 'Failed to fetch email log' });
+    }
+});
+
+/**
+ * POST /api/email/logs/:id/retry
+ * Retry a failed email
+ */
+router.post('/logs/:id/retry', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const log = await EmailLog.findByPk(id);
+        if (!log) {
+            return res.status(404).json({ error: 'Email log not found' });
+        }
+
+        if (log.status !== 'failed') {
+            return res.status(400).json({ error: 'Can only retry failed emails' });
+        }
+
+        // Get the statement
+        const statement = await Statement.findByPk(log.statementId);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Increment retry count
+        await log.update({ retryCount: log.retryCount + 1 });
+
+        // Resend the email
+        const result = await EmailService.sendStatementEmailWithPdf({
+            to: log.recipientEmail,
+            statement: statement.toJSON(),
+            frequencyTag: log.frequencyTag || 'Monthly',
+            attachPdf: true,
+            authHeader: req.headers.authorization
+        });
+
+        res.json({
+            success: result.success,
+            message: result.success ? 'Email resent successfully' : 'Failed to resend email',
+            result
+        });
+    } catch (error) {
+        console.error('Error retrying email:', error);
+        res.status(500).json({ error: 'Failed to retry email' });
     }
 });
 

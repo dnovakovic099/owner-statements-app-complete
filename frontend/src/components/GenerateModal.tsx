@@ -41,7 +41,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const { showToast } = useToast();
   const [ownerId, setOwnerId] = useState('');
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
-  const [selectedTag, setSelectedTag] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [calculationType, setCalculationType] = useState('checkout');
@@ -159,7 +159,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           await onGenerate({
             ownerId: generateAll ? 'all' : ownerId,
             propertyIds: selectedPropertyIds,
-            tag: selectedTag || undefined,
+            tag: selectedTags.length === 1 ? selectedTags[0] : undefined,
             startDate,
             endDate,
             calculationType,
@@ -176,7 +176,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
               await onGenerate({
                 ownerId: generateAll ? 'all' : ownerId,
                 propertyId: propId,
-                tag: selectedTag || undefined,
+                tag: selectedTags.length === 1 ? selectedTags[0] : undefined,
                 startDate,
                 endDate,
                 calculationType,
@@ -186,21 +186,41 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
             }
           }
         }
+      } else if (selectedTags.length > 0) {
+        // Multiple tags selected - generate separate statements per tag
+        const total = selectedTags.length;
+        setGenerationProgress({ current: 0, total });
+
+        for (let i = 0; i < selectedTags.length; i++) {
+          const tag = selectedTags[i];
+          setGenerationProgress({ current: i + 1, total });
+
+          try {
+            await onGenerate({
+              ownerId: generateAll ? 'all' : ownerId,
+              tag,
+              startDate,
+              endDate,
+              calculationType,
+              generateCombined,
+            });
+          } catch (err) {
+            console.error(`Error generating statement for tag ${tag}:`, err);
+          }
+        }
       } else {
         setGenerationProgress({ current: 0, total: 1 });
         await onGenerate({
           ownerId: generateAll ? 'all' : ownerId,
-          tag: selectedTag || undefined,
           startDate,
           endDate,
           calculationType,
-          generateCombined: selectedTag ? generateCombined : undefined,
         });
       }
 
       setOwnerId('');
       setSelectedPropertyIds([]);
-      setSelectedTag('');
+      setSelectedTags([]);
       setGenerateAll(false);
       setGenerateCombined(true);
       setPropertySearch('');
@@ -480,35 +500,91 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                       )}
                     </div>
 
-                    {/* Tag Filter */}
+                    {/* Tag Filter - Multi-select Dropdown */}
                     <div className="bg-gray-50 border rounded-md p-3 space-y-2">
                       <Label className="flex items-center">
                         <Tag className="w-4 h-4 mr-2" />
-                        Filter by Tag <span className="text-gray-400 font-normal ml-1">(Optional)</span>
+                        Filter by Tags <span className="text-gray-400 font-normal ml-1">(Optional)</span>
                       </Label>
-                      <Select
-                        value={selectedTag}
-                        onValueChange={(value: string) => {
-                          setSelectedTag(value === 'all' ? '' : value);
-                          if (value && value !== 'all') {
-                            setSelectedPropertyIds([]);
-                          }
-                        }}
-                        disabled={!ownerId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={availableTags.length === 0 ? 'No tags available' : 'All Tags'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Tags</SelectItem>
-                          {availableTags.map((tag) => (
-                            <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+
+                      {availableTags.length === 0 ? (
+                        <p className="text-sm text-gray-500">No tags available</p>
+                      ) : (
+                        <Select
+                          value={selectedTags.length > 0 ? selectedTags[0] : ''}
+                          onValueChange={() => {}}
+                          disabled={!ownerId}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {selectedTags.length === 0
+                                ? 'Select tags...'
+                                : `${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''} selected`}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <div className="p-2">
+                              {selectedTags.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTags([])}
+                                  className="w-full text-left text-xs text-gray-500 hover:text-gray-700 mb-2 pb-2 border-b"
+                                >
+                                  Clear all
+                                </button>
+                              )}
+                              {availableTags.map((tag) => {
+                                const isSelected = selectedTags.includes(tag);
+                                return (
+                                  <div
+                                    key={tag}
+                                    className="flex items-center space-x-2 py-1.5 px-1 hover:bg-gray-100 rounded cursor-pointer"
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedTags(selectedTags.filter(t => t !== tag));
+                                      } else {
+                                        setSelectedTags([...selectedTags, tag]);
+                                        setSelectedPropertyIds([]);
+                                      }
+                                    }}
+                                  >
+                                    <Checkbox
+                                      checked={isSelected}
+                                      onCheckedChange={() => {}}
+                                      className="pointer-events-none"
+                                    />
+                                    <span className="text-sm">{tag}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      {/* Show selected tags */}
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {selectedTags.map(tag => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))}
+                                className="ml-1 hover:text-purple-900"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </div>
+                      )}
 
                       {/* Combined/Separate toggle for tag-based generation */}
-                      {selectedTag && (
+                      {selectedTags.length > 0 && (
                         <div className="bg-purple-50 border border-purple-200 rounded-md p-3 mt-2">
                           <div className="flex items-start space-x-3">
                             <Checkbox
@@ -519,12 +595,16 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                             />
                             <div>
                               <Label htmlFor="generateCombinedTag" className="cursor-pointer text-sm font-medium text-purple-900">
-                                Generate combined statement
+                                Generate combined statement per tag
                               </Label>
                               <p className="text-xs text-purple-700 mt-0.5">
-                                {generateCombined
-                                  ? `Create ONE statement for all "${selectedTag}" listings`
-                                  : `Create SEPARATE statements for each "${selectedTag}" listing`}
+                                {selectedTags.length === 1
+                                  ? (generateCombined
+                                      ? `Create ONE statement for all "${selectedTags[0]}" listings`
+                                      : `Create SEPARATE statements for each "${selectedTags[0]}" listing`)
+                                  : (generateCombined
+                                      ? `Create ${selectedTags.length} combined statements (one per tag)`
+                                      : `Create separate statements for each listing in each tag`)}
                               </p>
                             </div>
                           </div>
@@ -674,25 +754,31 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                             : selectedPropertyIds.length}
                         </span>
                       </div>
-                      {selectedTag && (
+                      {selectedTags.length > 0 && (
                         <div className="flex justify-between">
-                          <span>Tag Filter:</span>
-                          <span className="font-medium text-purple-600">{selectedTag}</span>
+                          <span>Tags:</span>
+                          <span className="font-medium text-purple-600">{selectedTags.join(', ')}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
                         <span>Period:</span>
                         <span className="font-medium">{startDate} to {endDate}</span>
                       </div>
-                      {(selectedPropertyIds.length > 1 || selectedTag) && (
+                      {(selectedPropertyIds.length > 1 || selectedTags.length > 0) && (
                         <div className="flex justify-between">
                           <span>Output:</span>
                           <span className={`font-medium ${generateCombined ? 'text-green-600' : 'text-purple-600'}`}>
-                            {generateCombined
-                              ? '1 Combined Statement'
-                              : selectedTag
-                                ? `Separate Statements (per listing)`
-                                : `${selectedPropertyIds.length} Separate Statements`}
+                            {selectedTags.length > 1
+                              ? (generateCombined
+                                  ? `${selectedTags.length} Combined Statements (per tag)`
+                                  : `Separate Statements (per listing)`)
+                              : selectedTags.length === 1
+                                ? (generateCombined
+                                    ? '1 Combined Statement'
+                                    : `Separate Statements (per listing)`)
+                                : (generateCombined
+                                    ? '1 Combined Statement'
+                                    : `${selectedPropertyIds.length} Separate Statements`)}
                           </span>
                         </div>
                       )}

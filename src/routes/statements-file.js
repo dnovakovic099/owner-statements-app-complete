@@ -1372,6 +1372,367 @@ router.get('/:id/available-reservations', async (req, res) => {
     }
 });
 
+// PUT /api/statements-file/:id/reconfigure - Reconfigure statement dates and calculation type
+router.put('/:id/reconfigure', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { startDate, endDate, calculationType = 'checkout' } = req.body;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'Start date and end date are required' });
+        }
+
+        const periodStart = new Date(startDate);
+        const periodEnd = new Date(endDate);
+
+        if (periodStart > periodEnd) {
+            return res.status(400).json({ error: 'Start date must be before end date' });
+        }
+
+        // Get existing statement
+        const existingStatement = await FileDataService.getStatementById(id);
+        if (!existingStatement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Preserve custom reservations (manually added)
+        const customReservations = (existingStatement.reservations || []).filter(r => r.isCustom === true);
+        const customReservationItems = (existingStatement.items || []).filter(item =>
+            item.type === 'revenue' && customReservations.some(cr =>
+                item.description && item.description.includes(cr.guestName)
+            )
+        );
+
+        // Preserve manually removed expense descriptions (to re-remove them)
+        // We can't perfectly track this, but we preserve the statement's manual edits flag
+
+        const propertyId = existingStatement.propertyId;
+        const propertyIds = existingStatement.propertyIds;
+        const ownerId = existingStatement.ownerId;
+
+        // Handle combined multi-property statements
+        if (existingStatement.isCombinedStatement && propertyIds && propertyIds.length > 1) {
+            // Regenerate as combined statement
+            const [listings, owners] = await Promise.all([
+                FileDataService.getListings(),
+                FileDataService.getOwners()
+            ]);
+
+            const targetListings = listings.filter(l => propertyIds.includes(l.id) || propertyIds.includes(l.id.toString()));
+            const owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
+
+            // Fetch reservations and expenses for all properties
+            const reservationPromises = propertyIds.map(pid =>
+                FileDataService.getReservations(startDate, endDate, pid, calculationType)
+            );
+            const expensePromises = propertyIds.map(pid =>
+                FileDataService.getExpenses(startDate, endDate, pid)
+            );
+
+            const [reservationsArrays, expensesArrays] = await Promise.all([
+                Promise.all(reservationPromises),
+                Promise.all(expensePromises)
+            ]);
+
+            // Flatten and dedupe
+            const allReservations = reservationsArrays.flat();
+            const allExpenses = expensesArrays.flat();
+
+            // Build property PM fees map
+            const propertyPmFees = {};
+            targetListings.forEach(l => {
+                propertyPmFees[l.id] = l.pmFeePercentage ?? 15;
+            });
+
+            // Calculate totals
+            let totalRevenue = 0;
+            let pmCommission = 0;
+            let totalExpenses = 0;
+            let totalUpsells = 0;
+
+            for (const res of allReservations) {
+                const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                totalRevenue += revenue;
+                const resPmFee = propertyPmFees[res.propertyId] ?? 15;
+                pmCommission += revenue * (resPmFee / 100);
+            }
+
+            for (const exp of allExpenses) {
+                const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell');
+                if (isUpsell) {
+                    totalUpsells += Math.abs(exp.amount);
+                } else {
+                    totalExpenses += Math.abs(exp.amount);
+                }
+            }
+
+            const techFees = targetListings.length * 50;
+            const insuranceFees = targetListings.length * 25;
+            const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
+
+            // Merge custom reservations back
+            const mergedReservations = [...allReservations, ...customReservations];
+
+            // Recalculate with custom reservations
+            for (const cr of customReservations) {
+                totalRevenue += cr.amount || 0;
+            }
+            const finalOwnerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
+
+            // Update the statement
+            const updatedStatement = {
+                weekStartDate: startDate,
+                weekEndDate: endDate,
+                calculationType,
+                totalRevenue: Math.round(totalRevenue * 100) / 100,
+                totalExpenses: Math.round(totalExpenses * 100) / 100,
+                pmCommission: Math.round(pmCommission * 100) / 100,
+                techFees: Math.round(techFees * 100) / 100,
+                insuranceFees: Math.round(insuranceFees * 100) / 100,
+                ownerPayout: Math.round(finalOwnerPayout * 100) / 100,
+                status: 'draft',
+                updatedAt: new Date().toISOString(),
+                reservations: mergedReservations,
+                expenses: allExpenses,
+                items: [
+                    ...allReservations.map(res => ({
+                        type: 'revenue',
+                        description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                        amount: res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0),
+                        date: res.checkOutDate,
+                        category: 'booking'
+                    })),
+                    // Add custom reservation items back
+                    ...customReservations.map(cr => ({
+                        type: 'revenue',
+                        description: `${cr.guestName} - ${cr.checkInDate} to ${cr.checkOutDate}`,
+                        amount: cr.amount || 0,
+                        date: cr.checkOutDate,
+                        category: 'custom'
+                    })),
+                    ...allExpenses.map(exp => {
+                        const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell');
+                        return {
+                            type: isUpsell ? 'upsell' : 'expense',
+                            description: exp.description,
+                            amount: Math.abs(exp.amount),
+                            date: exp.date,
+                            category: exp.type || exp.category || 'expense',
+                            vendor: exp.vendor,
+                            listing: exp.listing
+                        };
+                    })
+                ]
+            };
+
+            await FileDataService.updateStatement(id, updatedStatement);
+            const refreshedStatement = await FileDataService.getStatementById(id);
+
+            return res.json({
+                message: 'Statement reconfigured successfully',
+                statement: refreshedStatement,
+                preserved: { customReservations: customReservations.length }
+            });
+        }
+
+        // Single property statement
+        const [listings, reservations, expenses, owners] = await Promise.all([
+            FileDataService.getListings(),
+            FileDataService.getReservations(startDate, endDate, propertyId, calculationType),
+            FileDataService.getExpenses(startDate, endDate, propertyId),
+            FileDataService.getOwners()
+        ]);
+
+        const listing = listings.find(l => l.id === parseInt(propertyId));
+        if (!listing) {
+            return res.status(404).json({ error: 'Property not found' });
+        }
+
+        const owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
+
+        // Get listing configuration
+        const pmPercentage = listing.pmFeePercentage ?? 15;
+        const isCohostOnAirbnb = listing.isCohostOnAirbnb || false;
+        const airbnbPassThroughTax = listing.airbnbPassThroughTax || false;
+        const disregardTax = listing.disregardTax || false;
+        const cleaningFeePassThrough = listing.cleaningFeePassThrough || false;
+        const waiveCommission = listing.waiveCommission || false;
+        const waiveCommissionUntil = listing.waiveCommissionUntil || null;
+
+        // Filter reservations for this property
+        const periodReservations = reservations.filter(res => {
+            if (propertyId && res.propertyId !== parseInt(propertyId)) return false;
+            const validStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+            return validStatuses.includes(res.status?.toLowerCase());
+        });
+
+        // Calculate totals
+        let totalRevenue = 0;
+        let totalCleaningFeeFromReservations = 0;
+
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            if (isAirbnb && isCohostOnAirbnb) continue;
+            const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            totalRevenue += revenue;
+            if (cleaningFeePassThrough) {
+                totalCleaningFeeFromReservations += res.cleaningFee || listing.cleaningFee || 0;
+            }
+        }
+
+        // Filter and calculate expenses
+        const filteredExpenses = cleaningFeePassThrough
+            ? expenses.filter(exp => {
+                const cat = (exp.category || exp.type || '').toLowerCase();
+                return !cat.includes('cleaning');
+            })
+            : expenses;
+
+        let totalExpenses = 0;
+        let totalUpsells = 0;
+
+        for (const exp of filteredExpenses) {
+            const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
+            if (isUpsell) {
+                totalUpsells += Math.abs(exp.amount);
+            } else {
+                totalExpenses += Math.abs(exp.amount);
+            }
+        }
+
+        // Add cleaning fee expenses if pass-through enabled
+        const allExpenses = [...filteredExpenses];
+        if (cleaningFeePassThrough && periodReservations.length > 0) {
+            for (const res of periodReservations) {
+                const cleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+                if (cleaningFee > 0) {
+                    allExpenses.push({
+                        description: `Cleaning Fee - ${res.guestName}`,
+                        amount: -cleaningFee,
+                        date: res.checkOutDate,
+                        category: 'Cleaning',
+                        type: 'cleaning',
+                        autoGenerated: true
+                    });
+                    totalExpenses += cleaningFee;
+                }
+            }
+        }
+
+        // Calculate PM commission
+        const pmCommission = totalRevenue * (pmPercentage / 100);
+
+        // Calculate fees
+        const techFees = 50;
+        const insuranceFees = 25;
+
+        // Check if PM commission waiver is active
+        const isWaiverActive = (() => {
+            if (!waiveCommission) return false;
+            if (!waiveCommissionUntil) return true;
+            const waiverEnd = new Date(waiveCommissionUntil + 'T23:59:59');
+            const stmtEnd = new Date(endDate + 'T00:00:00');
+            return stmtEnd <= waiverEnd;
+        })();
+
+        // Calculate owner payout
+        let grossPayoutSum = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
+            const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            const luxuryFee = clientRevenue * (pmPercentage / 100);
+            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+            const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing.cleaningFee || 0) : 0;
+            const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
+
+            let grossPayout;
+            if (isCohostAirbnb) {
+                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+            } else if (shouldAddTax) {
+                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
+            } else {
+                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
+            }
+            grossPayoutSum += grossPayout;
+        }
+
+        // Merge custom reservations back and recalculate
+        const mergedReservations = [...periodReservations, ...customReservations];
+        let customRevenue = 0;
+        for (const cr of customReservations) {
+            customRevenue += cr.amount || 0;
+        }
+        const finalTotalRevenue = totalRevenue + customRevenue;
+        const finalOwnerPayout = grossPayoutSum + customRevenue + totalUpsells - totalExpenses;
+
+        // Update the statement
+        const updatedStatement = {
+            weekStartDate: startDate,
+            weekEndDate: endDate,
+            calculationType,
+            totalRevenue: Math.round(finalTotalRevenue * 100) / 100,
+            totalExpenses: Math.round(totalExpenses * 100) / 100,
+            pmCommission: Math.round(pmCommission * 100) / 100,
+            pmPercentage,
+            techFees: Math.round(techFees * 100) / 100,
+            insuranceFees: Math.round(insuranceFees * 100) / 100,
+            ownerPayout: Math.round(finalOwnerPayout * 100) / 100,
+            isCohostOnAirbnb,
+            airbnbPassThroughTax,
+            disregardTax,
+            cleaningFeePassThrough,
+            totalCleaningFee: Math.round(totalCleaningFeeFromReservations * 100) / 100,
+            status: 'draft',
+            updatedAt: new Date().toISOString(),
+            reservations: mergedReservations,
+            expenses: allExpenses,
+            items: [
+                ...periodReservations.map(res => ({
+                    type: 'revenue',
+                    description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                    amount: res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0),
+                    date: res.checkOutDate,
+                    category: 'booking'
+                })),
+                // Add custom reservation items back
+                ...customReservations.map(cr => ({
+                    type: 'revenue',
+                    description: `${cr.guestName} - ${cr.checkInDate} to ${cr.checkOutDate}`,
+                    amount: cr.amount || 0,
+                    date: cr.checkOutDate,
+                    category: 'custom'
+                })),
+                ...filteredExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing
+                    };
+                })
+            ]
+        };
+
+        await FileDataService.updateStatement(id, updatedStatement);
+        const refreshedStatement = await FileDataService.getStatementById(id);
+
+        res.json({
+            message: 'Statement reconfigured successfully',
+            statement: refreshedStatement,
+            preserved: { customReservations: customReservations.length }
+        });
+    } catch (error) {
+        console.error('Statement reconfigure error:', error);
+        res.status(500).json({ error: 'Failed to reconfigure statement' });
+    }
+});
+
 // PUT /api/statements-file/:id - Edit statement (remove expenses, add cancelled reservations, etc.)
 router.put('/:id', async (req, res) => {
     try {
