@@ -88,6 +88,7 @@ export const statementsAPI = {
     startDate: string;
     endDate: string;
     calculationType: string;
+    generateCombined?: boolean; // For tag-based generation: true = one combined statement, false = separate statements
   }): Promise<{ 
     message: string;
     jobId?: string;  // For background jobs (bulk generation)

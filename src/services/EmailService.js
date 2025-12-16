@@ -725,7 +725,7 @@ Thank you again for your trust and partnership.
      * @param {string} options.pdfFilename - Filename for the attachment
      */
     async sendStatementEmail(options) {
-        const { to, statement, frequencyTag, pdfAttachment, pdfFilename } = options;
+        const { to, statement, frequencyTag, pdfAttachment, pdfFilename, testNote } = options;
 
         // Check SMTP configuration
         if (!this.isConfigured) {
@@ -761,13 +761,30 @@ Thank you again for your trust and partnership.
 
         const template = this.getEmailTemplate(frequencyTag, templateData);
 
+        // If testNote is provided, prepend it to the email body
+        let emailHtml = template.html;
+        let emailText = template.text;
+        let emailSubject = template.subject;
+
+        if (testNote) {
+            const testNoteHtml = `
+                <div style="background-color: #fff3cd; border: 2px solid #ffc107; padding: 20px; margin-bottom: 20px; border-radius: 8px; font-family: monospace;">
+                    <h2 style="color: #856404; margin-top: 0;">TEST EMAIL - DO NOT FORWARD TO OWNER</h2>
+                    <pre style="white-space: pre-wrap; color: #856404;">${testNote}</pre>
+                </div>
+            `;
+            emailHtml = emailHtml.replace('<body>', '<body>' + testNoteHtml);
+            emailText = testNote + '\n\n' + emailText;
+            emailSubject = '[TEST] ' + emailSubject;
+        }
+
         // Prepare email
         const mailOptions = {
             from: process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com',
             to: to,
-            subject: template.subject,
-            html: template.html,
-            text: template.text,
+            subject: emailSubject,
+            html: emailHtml,
+            text: emailText,
             attachments: []
         };
 

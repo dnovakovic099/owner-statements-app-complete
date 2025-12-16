@@ -11,7 +11,10 @@
 const express = require('express');
 const router = express.Router();
 const EmailSchedulerService = require('../services/EmailSchedulerService');
-const { Listing } = require('../models');
+const ListingService = require('../services/ListingService');
+const EmailService = require('../services/EmailService');
+const { Listing, Statement } = require('../models');
+const { Op } = require('sequelize');
 
 /**
  * GET /api/email-scheduler/status
@@ -241,6 +244,131 @@ router.get('/history', async (req, res) => {
     } catch (error) {
         console.error('Error getting history:', error);
         res.status(500).json({ error: 'Failed to get history' });
+    }
+});
+
+/**
+ * POST /api/email-scheduler/sync-owner-emails
+ * Sync owner emails from Hostify for all listings
+ * Query params:
+ *   - onlyMissing: true (default) to only sync listings without owner email
+ */
+router.post('/sync-owner-emails', async (req, res) => {
+    try {
+        const onlyMissing = req.query.onlyMissing !== 'false';
+        console.log(`[API] Syncing owner emails (onlyMissing: ${onlyMissing})`);
+
+        const result = await ListingService.syncOwnerEmails(onlyMissing);
+
+        res.json({
+            success: true,
+            message: `Synced owner emails: ${result.updated} updated, ${result.skipped} skipped, ${result.errors} errors`,
+            ...result
+        });
+    } catch (error) {
+        console.error('Error syncing owner emails:', error);
+        res.status(500).json({ error: 'Failed to sync owner emails' });
+    }
+});
+
+/**
+ * POST /api/email-scheduler/test-email
+ * Send a test email to verify owner email configuration
+ * Body:
+ *   - testEmail: Email address to send test to (required)
+ *   - listingId: Specific listing to test (optional, picks random if not provided)
+ */
+router.post('/test-email', async (req, res) => {
+    try {
+        const { testEmail, listingId } = req.body;
+
+        if (!testEmail) {
+            return res.status(400).json({ error: 'testEmail is required' });
+        }
+
+        // Find a listing with owner email configured
+        let listing;
+        if (listingId) {
+            listing = await Listing.findByPk(listingId);
+        } else {
+            // Find any listing with owner email
+            listing = await Listing.findOne({
+                where: {
+                    ownerEmail: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] }
+                }
+            });
+        }
+
+        if (!listing) {
+            return res.status(404).json({ error: 'No listing with owner email found' });
+        }
+
+        // Find the most recent statement for this listing
+        const statement = await Statement.findOne({
+            where: { propertyId: listing.id },
+            order: [['createdAt', 'DESC']]
+        });
+
+        if (!statement) {
+            return res.status(404).json({
+                error: 'No statement found for this listing',
+                listing: {
+                    id: listing.id,
+                    name: listing.nickname || listing.name,
+                    ownerEmail: listing.ownerEmail,
+                    ownerGreeting: listing.ownerGreeting
+                }
+            });
+        }
+
+        // Send test email with note about actual owner
+        const testNote = `
+============================================================
+TEST EMAIL - DO NOT FORWARD TO OWNER
+============================================================
+This is a TEST email to verify owner email configuration.
+
+INTENDED RECIPIENT:
+  Email: ${listing.ownerEmail}
+  Name: ${listing.ownerGreeting || 'Not set'}
+  Property: ${listing.nickname || listing.name} (ID: ${listing.id})
+
+If the above info is correct, the automation is working!
+============================================================
+
+`;
+
+        // Prepare statement data with test note prepended to greeting
+        const statementData = {
+            ...statement.toJSON(),
+            propertyName: listing.nickname || listing.name,
+            ownerGreeting: listing.ownerGreeting
+        };
+
+        // Send email
+        const result = await EmailService.sendStatementEmail({
+            to: testEmail,
+            statement: statementData,
+            frequencyTag: 'TEST',
+            testNote: testNote  // Will be handled in email template
+        });
+
+        res.json({
+            success: result.success,
+            message: result.success ? 'Test email sent successfully' : 'Failed to send test email',
+            sentTo: testEmail,
+            intendedFor: {
+                email: listing.ownerEmail,
+                greeting: listing.ownerGreeting,
+                property: listing.nickname || listing.name,
+                propertyId: listing.id
+            },
+            statementId: statement.id,
+            error: result.error || null
+        });
+    } catch (error) {
+        console.error('Error sending test email:', error);
+        res.status(500).json({ error: 'Failed to send test email: ' + error.message });
     }
 });
 

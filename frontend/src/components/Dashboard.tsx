@@ -249,17 +249,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     startDate: string;
     endDate: string;
     calculationType: string;
+    generateCombined?: boolean;
   }) => {
     // No toast here - the modal has its own loading overlay
 
     try {
       const response = await statementsAPI.generateStatement(data);
 
-      // Check if this is a background job (bulk generation or tag-based generation)
-      if (response.jobId && (data.ownerId === 'all' || (data.tag && !data.propertyId))) {
+      // Check if this is a background job (bulk generation or tag-based SEPARATE generation)
+      // Combined tag-based statements are NOT background jobs
+      const isBackgroundJob = data.ownerId === 'all' || (data.tag && !data.propertyId && !data.generateCombined);
+      if (response.jobId && isBackgroundJob) {
         const isTagBased = data.tag && !data.propertyId;
         const message = isTagBased
-          ? `Generating statements for properties with tag "${data.tag}". This runs in the background.`
+          ? `Generating separate statements for properties with tag "${data.tag}". This runs in the background.`
           : 'Bulk statement generation started. This runs in the background.';
 
         const toastId = showToast(message, 'loading');
@@ -784,6 +787,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           setSelectedListingId(null);
         }}
         initialSelectedListingId={selectedListingId}
+        newListings={newListings}
+        readListingIds={readListingIds}
+        onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead}
       />
     );
   }

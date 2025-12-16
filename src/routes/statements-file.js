@@ -720,7 +720,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, propertyIds, ownerId, tag, startDate, endDate, calculationType = 'checkout' } = req.body;
+        const { propertyId, propertyIds, ownerId, tag, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
@@ -735,7 +735,30 @@ router.post('/generate', async (req, res) => {
             return await generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType);
         }
 
-        // Handle "Generate All" option or tag-based generation - run in background
+        // Handle tag-based COMBINED statement generation
+        if (tag && !propertyId && generateCombined === true) {
+            console.log(`[Tag Combined] Generating combined statement for tag "${tag}"`);
+
+            // Get all listings with this tag
+            const listings = await FileDataService.getListings();
+            const tagLower = tag.toLowerCase().trim();
+            const taggedListings = listings.filter(l => {
+                const listingTags = l.tags || [];
+                return listingTags.some(t => t.toLowerCase().trim() === tagLower);
+            });
+
+            if (taggedListings.length === 0) {
+                return res.status(404).json({ error: `No properties found with tag: ${tag}` });
+            }
+
+            console.log(`[Tag Combined] Found ${taggedListings.length} listings with tag "${tag}"`);
+
+            // Generate combined statement using the existing function
+            const taggedPropertyIds = taggedListings.map(l => l.id.toString());
+            return await generateCombinedStatement(req, res, taggedPropertyIds, ownerId, startDate, endDate, calculationType);
+        }
+
+        // Handle "Generate All" option or tag-based SEPARATE statement generation - run in background
         if (ownerId === 'all' || (tag && !propertyId)) {
             
             const jobId = await BackgroundJobService.runInBackground(

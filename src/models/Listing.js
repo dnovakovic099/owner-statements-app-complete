@@ -145,6 +145,13 @@ const Listing = sequelize.define('Listing', {
         field: 'owner_greeting',
         comment: 'Name to use in email greeting (e.g., "John" for "Dear John,")'
     },
+    autoSendStatements: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+        field: 'auto_send_statements',
+        comment: 'If true, automatically send statements via email for this listing'
+    },
     isActive: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

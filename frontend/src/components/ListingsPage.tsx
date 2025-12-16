@@ -1,15 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Save, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Search, Save, RefreshCw, AlertCircle, CheckCircle, Bell, X } from 'lucide-react';
 import { listingsAPI } from '../services/api';
 import { Listing } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 
+interface NewListing {
+  id: number;
+  name: string;
+  displayName: string;
+  nickname: string | null;
+  city: string | null;
+  state: string | null;
+  pmFeePercentage: number | null;
+  createdAt: string;
+}
+
 interface ListingsPageProps {
   onBack: () => void;
   initialSelectedListingId?: number | null;
+  newListings?: NewListing[];
+  readListingIds?: number[];
+  onMarkAsRead?: (listingId: number) => void;
+  onMarkAllAsRead?: () => void;
 }
 
-const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedListingId }) => {
+const ListingsPage: React.FC<ListingsPageProps> = ({
+  onBack,
+  initialSelectedListingId,
+  newListings = [],
+  readListingIds = [],
+  onMarkAsRead,
+  onMarkAllAsRead
+}) => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +40,22 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Filter out read notifications
+  const unreadListings = newListings.filter(l => !readListingIds.includes(l.id));
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
@@ -31,6 +69,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerGreeting, setOwnerGreeting] = useState('');
+  const [autoSendStatements, setAutoSendStatements] = useState(true);
 
   useEffect(() => {
     loadListings();
@@ -50,6 +91,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage || 15);
         setTags(listing.tags || []);
+        setOwnerEmail(listing.ownerEmail || '');
+        setOwnerGreeting(listing.ownerGreeting || '');
+        setAutoSendStatements(listing.autoSendStatements !== false);
       }
     } else {
       resetForm();
@@ -101,6 +145,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
     setPmFeePercentage(15);
     setTags([]);
     setNewTag('');
+    setOwnerEmail('');
+    setOwnerGreeting('');
+    setAutoSendStatements(true);
   };
 
   const handleSave = async () => {
@@ -121,6 +168,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
         tags,
+        ownerEmail: ownerEmail.trim() || null,
+        ownerGreeting: ownerGreeting.trim() || null,
+        autoSendStatements,
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -186,14 +236,97 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="flex items-center px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync from Hostify'}
-            </button>
+            <div className="flex items-center space-x-3">
+              {/* Notification Bell */}
+              <div className="relative" ref={notificationRef}>
+                <button
+                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                  className="relative flex items-center justify-center w-10 h-10 bg-yellow-500/20 border border-yellow-300/30 rounded-md hover:bg-yellow-500/30 transition-colors"
+                  title="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadListings.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
+                      {unreadListings.length > 9 ? '9+' : unreadListings.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Dropdown */}
+                {isNotificationOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center text-white">
+                        <Bell className="w-4 h-4 mr-2" />
+                        <span className="font-medium">New Listings ({unreadListings.length})</span>
+                      </div>
+                      {unreadListings.length > 0 && onMarkAllAsRead && (
+                        <button
+                          onClick={onMarkAllAsRead}
+                          className="text-white/80 hover:text-white text-xs underline"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto">
+                      {unreadListings.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-gray-500">
+                          <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                          <p className="text-sm">No new listings</p>
+                        </div>
+                      ) : (
+                        unreadListings.map((listing) => (
+                          <div
+                            key={listing.id}
+                            className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => {
+                              setSelectedListingId(listing.id);
+                              onMarkAsRead?.(listing.id);
+                              setIsNotificationOpen(false);
+                            }}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 truncate">
+                                  {listing.displayName || listing.nickname || listing.name}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {listing.city}{listing.state ? `, ${listing.state}` : ''} • PM: {listing.pmFeePercentage ?? 15}%
+                                </p>
+                                <p className="text-xs text-green-600 mt-1">
+                                  Added {new Date(listing.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onMarkAsRead?.(listing.id);
+                                }}
+                                className="ml-2 text-gray-400 hover:text-gray-600"
+                                title="Mark as read"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Sync from Hostify'}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -519,6 +652,60 @@ const ListingsPage: React.FC<ListingsPageProps> = ({ onBack, initialSelectedList
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
                       The percentage charged for property management services (e.g., 15% = 15.00)
+                    </p>
+                  </div>
+
+                  {/* Owner Email */}
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <div className="flex gap-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-teal-900 mb-2">
+                          Owner Email
+                        </label>
+                        <input
+                          type="email"
+                          value={ownerEmail}
+                          onChange={(e) => setOwnerEmail(e.target.value)}
+                          placeholder="owner@example.com"
+                          className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="w-40">
+                        <label className="block text-sm font-medium text-teal-900 mb-2">
+                          Greeting
+                        </label>
+                        <input
+                          type="text"
+                          value={ownerGreeting}
+                          onChange={(e) => setOwnerGreeting(e.target.value)}
+                          placeholder="e.g., John"
+                          className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <label className="block text-sm font-medium text-teal-900 mb-2">
+                          Auto-Send
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setAutoSendStatements(!autoSendStatements)}
+                          className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${
+                            autoSendStatements ? 'bg-teal-600' : 'bg-gray-300'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-md transition-transform ${
+                              autoSendStatements ? 'translate-x-11' : 'translate-x-1'
+                            }`}
+                          />
+                          <span className={`absolute text-xs font-medium ${autoSendStatements ? 'left-2 text-white' : 'right-2 text-gray-600'}`}>
+                            {autoSendStatements ? 'ON' : 'OFF'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-teal-700 mt-2">
+                      Email for sending statements. Auto-Send: if ON, statements will be sent automatically.
                     </p>
                   </div>
 

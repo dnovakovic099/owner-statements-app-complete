@@ -26,7 +26,7 @@ import {
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; tag?: string; startDate: string; endDate: string; calculationType: string }) => Promise<void>;
+  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; tag?: string; startDate: string; endDate: string; calculationType: string; generateCombined?: boolean }) => Promise<void>;
   owners: Owner[];
   properties: Property[];
 }
@@ -194,6 +194,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           startDate,
           endDate,
           calculationType,
+          generateCombined: selectedTag ? generateCombined : undefined,
         });
       }
 
@@ -505,6 +506,30 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                           ))}
                         </SelectContent>
                       </Select>
+
+                      {/* Combined/Separate toggle for tag-based generation */}
+                      {selectedTag && (
+                        <div className="bg-purple-50 border border-purple-200 rounded-md p-3 mt-2">
+                          <div className="flex items-start space-x-3">
+                            <Checkbox
+                              id="generateCombinedTag"
+                              checked={generateCombined}
+                              onCheckedChange={(checked: boolean | 'indeterminate') => setGenerateCombined(checked === true)}
+                              className="mt-0.5"
+                            />
+                            <div>
+                              <Label htmlFor="generateCombinedTag" className="cursor-pointer text-sm font-medium text-purple-900">
+                                Generate combined statement
+                              </Label>
+                              <p className="text-xs text-purple-700 mt-0.5">
+                                {generateCombined
+                                  ? `Create ONE statement for all "${selectedTag}" listings`
+                                  : `Create SEPARATE statements for each "${selectedTag}" listing`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -649,15 +674,25 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                             : selectedPropertyIds.length}
                         </span>
                       </div>
+                      {selectedTag && (
+                        <div className="flex justify-between">
+                          <span>Tag Filter:</span>
+                          <span className="font-medium text-purple-600">{selectedTag}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>Period:</span>
                         <span className="font-medium">{startDate} to {endDate}</span>
                       </div>
-                      {selectedPropertyIds.length > 1 && (
+                      {(selectedPropertyIds.length > 1 || selectedTag) && (
                         <div className="flex justify-between">
                           <span>Output:</span>
-                          <span className="font-medium text-green-600">
-                            {generateCombined ? '1 Combined Statement' : `${selectedPropertyIds.length} Separate Statements`}
+                          <span className={`font-medium ${generateCombined ? 'text-green-600' : 'text-purple-600'}`}>
+                            {generateCombined
+                              ? '1 Combined Statement'
+                              : selectedTag
+                                ? `Separate Statements (per listing)`
+                                : `${selectedPropertyIds.length} Separate Statements`}
                           </span>
                         </div>
                       )}

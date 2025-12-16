@@ -171,6 +171,9 @@ export interface Listing {
   waiveCommissionUntil?: string | null;
   defaultPetFee?: number | null;
   tags?: string[];
+  ownerEmail?: string | null;
+  ownerGreeting?: string | null;
+  autoSendStatements?: boolean;
   isActive: boolean;
   lastSyncedAt?: string;
   syncedAt?: string;

@@ -517,6 +517,100 @@ class HostifyService {
         return await this.makeRequest(`/listings/${listingId}`);
     }
 
+    /**
+     * Get all owners from /users API with pagination
+     * Much more efficient than calling contract endpoint for each listing
+     * @returns {Promise<{ownerMap: Object, ownerCount: number, listingCount: number}>}
+     * ownerMap: { listingId: { email, firstName } }
+     */
+    async getAllOwners() {
+        console.log('[HostifyService] Fetching all owners from /users API...');
+        const ownerMap = {};  // listingId -> { email, firstName }
+        let ownerCount = 0;
+        let page = 1;
+        const maxPages = 20;  // Safety limit
+
+        try {
+            while (page <= maxPages) {
+                const response = await this.makeRequest(`/users?page=${page}`);
+
+                if (!response.success || !response.users || response.users.length === 0) {
+                    break;
+                }
+
+                for (const user of response.users) {
+                    const role = (user.roles || '').toLowerCase();
+                    // Check if role contains 'owner'
+                    if (role.includes('owner')) {
+                        ownerCount++;
+                        const email = user.username;
+                        const firstName = user.first_name || '';
+
+                        // Map each listing to this owner
+                        for (const listing of (user.listings || [])) {
+                            ownerMap[listing.id] = { email, firstName };
+                        }
+                    }
+                }
+
+                console.log(`[HostifyService] Page ${page}: ${ownerCount} owners, ${Object.keys(ownerMap).length} listings mapped`);
+
+                // Check if there are more pages
+                if (!response.next_page) {
+                    break;
+                }
+                page++;
+            }
+
+            console.log(`[HostifyService] Done: ${ownerCount} owners, ${Object.keys(ownerMap).length} listings with owner emails`);
+            return {
+                success: true,
+                ownerMap,
+                ownerCount,
+                listingCount: Object.keys(ownerMap).length
+            };
+        } catch (error) {
+            console.error('[HostifyService] Error fetching owners:', error.message);
+            return { success: false, ownerMap: {}, ownerCount: 0, listingCount: 0 };
+        }
+    }
+
+    /**
+     * Get listing contract info including owner details
+     * @param {number} listingId - The listing ID
+     * @returns {Promise<{success: boolean, ownerEmail: string|null, ownerName: string|null, ownerPhone: string|null}>}
+     */
+    async getListingContract(listingId) {
+        try {
+            const response = await this.makeRequest(`/listings/${listingId}/contract`);
+
+            if (!response.success || !response.listing || !response.listing.users) {
+                return { success: false, ownerEmail: null, ownerName: null, ownerPhone: null };
+            }
+
+            // Find owner in the users array (match any owner role variant)
+            const ownerRoles = ['Standard Listing Owner', 'Standard Owner', 'Owner'];
+            const owner = response.listing.users.find(user =>
+                user.roles && ownerRoles.some(role => user.roles.includes(role))
+            );
+
+            if (owner) {
+                return {
+                    success: true,
+                    ownerEmail: owner.username || null,  // username is the email
+                    ownerFirstName: owner.first_name || null,  // For greeting: "Hi Ozzie,"
+                    ownerName: `${owner.first_name || ''} ${owner.last_name || ''}`.trim() || null,
+                    ownerPhone: owner.phone ? String(owner.phone) : null
+                };
+            }
+
+            return { success: false, ownerEmail: null, ownerName: null, ownerPhone: null };
+        } catch (error) {
+            console.log(`[WARN] Failed to get contract for listing ${listingId}: ${error.message}`);
+            return { success: false, ownerEmail: null, ownerName: null, ownerPhone: null };
+        }
+    }
+
     // Get child listings for a parent listing (with caching and retry)
     async getChildListings(parentId, retries = 2) {
         const cacheKey = parseInt(parentId);

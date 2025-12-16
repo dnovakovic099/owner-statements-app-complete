@@ -89,8 +89,10 @@ class ListingService {
                         });
                         synced++;
                     } else {
-                        // Create NEW listing - fetch detailed data to get tags for PM fee
+                        // Create NEW listing - fetch detailed data to get tags for PM fee and owner email
                         let pmFeePercentage = 15.00; // Default
+                        let ownerEmail = null;
+                        let ownerName = null;
 
                         try {
                             // Fetch detailed listing to get tags
@@ -107,6 +109,18 @@ class ListingService {
                             console.log(`[WARN] Could not fetch detailed listing ${hostifyListing.id} for PM fee: ${detailError.message}`);
                         }
 
+                        // Fetch owner email from contract endpoint
+                        try {
+                            const contractResponse = await HostifyService.getListingContract(hostifyListing.id);
+                            if (contractResponse.success && contractResponse.ownerEmail) {
+                                ownerEmail = contractResponse.ownerEmail;
+                                ownerName = contractResponse.ownerFirstName || contractResponse.ownerName;  // Use first name for greeting
+                                console.log(`[NEW-LISTING] ${hostifyListing.nickname || hostifyListing.name}: Owner email = ${ownerEmail}, Greeting = ${ownerName}`);
+                            }
+                        } catch (contractError) {
+                            console.log(`[WARN] Could not fetch contract for listing ${hostifyListing.id}: ${contractError.message}`);
+                        }
+
                         await Listing.create({
                             id: hostifyListing.id,
                             name: hostifyListing.name || 'Unknown',
@@ -117,10 +131,12 @@ class ListingService {
                             country: hostifyListing.country || null,
                             isActive: hostifyListing.is_listed === 1,
                             lastSyncedAt: new Date(),
-                            pmFeePercentage: pmFeePercentage
+                            pmFeePercentage: pmFeePercentage,
+                            ownerEmail: ownerEmail,
+                            ownerGreeting: ownerName
                         });
                         created++;
-                        console.log(`Created new listing: ${hostifyListing.nickname || hostifyListing.name} (ID: ${hostifyListing.id}) - PM Fee: ${pmFeePercentage}%`);
+                        console.log(`Created new listing: ${hostifyListing.nickname || hostifyListing.name} (ID: ${hostifyListing.id}) - PM Fee: ${pmFeePercentage}%${ownerEmail ? `, Owner: ${ownerEmail}` : ''}`);
                     }
                 } catch (error) {
                     console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
@@ -314,6 +330,9 @@ class ListingService {
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
             if (config.defaultPetFee !== undefined) updates.defaultPetFee = config.defaultPetFee;
             if (config.tags !== undefined) updates.tags = config.tags;
+            if (config.ownerEmail !== undefined) updates.ownerEmail = config.ownerEmail;
+            if (config.ownerGreeting !== undefined) updates.ownerGreeting = config.ownerGreeting;
+            if (config.autoSendStatements !== undefined) updates.autoSendStatements = config.autoSendStatements;
 
             await listing.update(updates);
             console.log(`Updated listing ${listingId} configuration`);
@@ -365,6 +384,83 @@ class ListingService {
         } catch (error) {
             console.error('Error fetching newly added listings:', error);
             return [];
+        }
+    }
+
+    /**
+     * Sync owner emails from Hostify using bulk /users API (much faster)
+     * Falls back to contract endpoint for any remaining listings
+     * @param {boolean} onlyMissing - If true, only sync listings without owner email
+     * @returns {Promise<{updated: number, skipped: number, errors: number}>}
+     */
+    async syncOwnerEmails(onlyMissing = true) {
+        console.log(`[SYNC-OWNER-EMAILS] Starting sync (onlyMissing: ${onlyMissing})...`);
+
+        try {
+            // Step 1: Get all owners from /users API (bulk, efficient)
+            const { success, ownerMap } = await HostifyService.getAllOwners();
+            if (!success) {
+                console.warn('[SYNC-OWNER-EMAILS] Failed to fetch owners from /users API, falling back to contract endpoint');
+            }
+
+            // Step 2: Get listings to update
+            const where = onlyMissing ? {
+                [Op.or]: [
+                    { ownerEmail: null },
+                    { ownerEmail: '' }
+                ]
+            } : {};
+
+            const listings = await Listing.findAll({ where });
+            console.log(`[SYNC-OWNER-EMAILS] Found ${listings.length} listings to process`);
+
+            let updated = 0;
+            let skipped = 0;
+            let errors = 0;
+
+            for (const listing of listings) {
+                try {
+                    let ownerEmail = null;
+                    let ownerGreeting = null;
+
+                    // Try bulk ownerMap first (from /users API)
+                    const ownerData = ownerMap[listing.id];
+                    if (ownerData && ownerData.email) {
+                        ownerEmail = ownerData.email;
+                        ownerGreeting = ownerData.firstName || listing.ownerGreeting;
+                    } else {
+                        // Fall back to contract endpoint for this listing
+                        const contractResponse = await HostifyService.getListingContract(listing.id);
+                        if (contractResponse.success && contractResponse.ownerEmail) {
+                            ownerEmail = contractResponse.ownerEmail;
+                            ownerGreeting = contractResponse.ownerFirstName || contractResponse.ownerName || listing.ownerGreeting;
+                        }
+                        // Small delay only for contract API calls
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    if (ownerEmail) {
+                        await listing.update({
+                            ownerEmail: ownerEmail,
+                            ownerGreeting: ownerGreeting
+                        });
+                        console.log(`[SYNC-OWNER-EMAILS] Updated ${listing.nickname || listing.name}: ${ownerEmail} (Greeting: ${ownerGreeting})`);
+                        updated++;
+                    } else {
+                        console.log(`[SYNC-OWNER-EMAILS] No owner found for ${listing.nickname || listing.name}`);
+                        skipped++;
+                    }
+                } catch (error) {
+                    console.error(`[SYNC-OWNER-EMAILS] Error for listing ${listing.id}: ${error.message}`);
+                    errors++;
+                }
+            }
+
+            console.log(`[SYNC-OWNER-EMAILS] Done: ${updated} updated, ${skipped} skipped, ${errors} errors`);
+            return { updated, skipped, errors };
+        } catch (error) {
+            console.error('[SYNC-OWNER-EMAILS] Error:', error);
+            throw error;
         }
     }
 }
