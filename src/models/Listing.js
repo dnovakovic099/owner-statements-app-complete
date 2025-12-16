@@ -152,6 +152,12 @@ const Listing = sequelize.define('Listing', {
         field: 'auto_send_statements',
         comment: 'If true, automatically send statements via email for this listing'
     },
+    internalNotes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'internal_notes',
+        comment: 'Internal notes about this listing (visible in app, NOT on PDF statements)'
+    },
     isActive: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

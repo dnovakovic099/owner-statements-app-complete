@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ListingService = require('../services/ListingService');
+const FileDataService = require('../services/FileDataService');
 
 // GET /api/listings - Get all listings with PM fees
 router.get('/', async (req, res) => {
@@ -189,7 +190,7 @@ router.put('/:id/cohost-status', async (req, res) => {
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -202,6 +203,7 @@ router.put('/:id/config', async (req, res) => {
         if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
         if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
         if (tags !== undefined) config.tags = tags;
+        if (internalNotes !== undefined) config.internalNotes = internalNotes;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);
             if (isNaN(pmFee) || pmFee < 0 || pmFee > 100) {
@@ -226,6 +228,10 @@ router.put('/:id/config', async (req, res) => {
         }
         
         const listing = await ListingService.updateListingConfig(parseInt(id), config);
+
+        // Clear the listings cache so changes are reflected immediately
+        FileDataService.clearListingsCache();
+
         res.json({ success: true, message: 'Listing configuration updated', listing });
     } catch (error) {
         console.error('Error updating listing configuration:', error);

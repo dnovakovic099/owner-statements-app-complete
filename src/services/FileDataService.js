@@ -118,6 +118,7 @@ class FileDataService {
                         listing.guestPaidDamageCoverage = Boolean(dbListing.guestPaidDamageCoverage);
                         listing.waiveCommission = Boolean(dbListing.waiveCommission);
                         listing.waiveCommissionUntil = dbListing.waiveCommissionUntil || null;
+                        listing.internalNotes = dbListing.internalNotes || null;
                     } else {
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
@@ -128,6 +129,7 @@ class FileDataService {
                         listing.guestPaidDamageCoverage = false;
                         listing.waiveCommission = false;
                         listing.waiveCommissionUntil = null;
+                        listing.internalNotes = null;
                     }
                 });
             } catch (dbError) {
@@ -141,6 +143,7 @@ class FileDataService {
                     listing.guestPaidDamageCoverage = false;
                     listing.waiveCommission = false;
                     listing.waiveCommissionUntil = null;
+                    listing.internalNotes = null;
                 });
             }
 

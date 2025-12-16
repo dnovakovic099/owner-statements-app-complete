@@ -367,6 +367,34 @@ router.get('/:id', async (req, res) => {
             }
         }
 
+        // Add listing's internal notes to the response
+        const listings = await FileDataService.getListings();
+
+        console.log(`[Statement ${id}] propertyId: ${statement.propertyId}, propertyIds: ${JSON.stringify(statement.propertyIds)}`);
+
+        if (statement.propertyId) {
+            // Single property statement
+            const listing = listings.find(l => l.id === parseInt(statement.propertyId));
+            console.log(`[Statement ${id}] Found listing: ${listing ? listing.displayName || listing.nickname || listing.name : 'NOT FOUND'}, internalNotes: ${listing?.internalNotes ? 'YES' : 'NO'}`);
+            if (listing && listing.internalNotes) {
+                statement.internalNotes = listing.internalNotes;
+                console.log(`[Statement ${id}] Added internal notes: ${listing.internalNotes.substring(0, 50)}...`);
+            }
+        } else if (statement.propertyIds && Array.isArray(statement.propertyIds)) {
+            // Combined statement - collect notes from all properties
+            const notesArray = [];
+            for (const propId of statement.propertyIds) {
+                const listing = listings.find(l => l.id === parseInt(propId));
+                if (listing && listing.internalNotes) {
+                    const displayName = listing.displayName || listing.nickname || listing.name;
+                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                }
+            }
+            if (notesArray.length > 0) {
+                statement.internalNotes = notesArray.join('\n\n');
+            }
+        }
+
         res.json(statement);
     } catch (error) {
         console.error('Statement get error:', error);
@@ -2006,6 +2034,15 @@ router.get('/:id/view', async (req, res) => {
             }
         }
 
+        // Fetch internal notes from listing (for single property or first property in combined)
+        const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        if (propertyIdForNotes) {
+            const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
+            if (listingForNotes && listingForNotes.internalNotes) {
+                statement.internalNotes = listingForNotes.internalNotes;
+            }
+        }
+
         // Generate HTML view of the statement
         const statementHTML = `
 <!DOCTYPE html>
@@ -2379,6 +2416,41 @@ router.get('/:id/view', async (req, res) => {
             line-height: 1.5;
         }
 
+        /* Internal Notes Banner (screen only, not in PDF) */
+        .internal-notes-banner {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #d97706;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 0 20px 20px 20px;
+        }
+
+        .internal-notes-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .internal-notes-icon {
+            font-size: 18px;
+        }
+
+        .internal-notes-title {
+            font-weight: 700;
+            color: #92400e;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .internal-notes-content {
+            color: #78350f;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
         .overlapping-reservations {
             margin-top: 12px;
             padding-top: 12px;
@@ -2473,6 +2545,7 @@ router.get('/:id/view', async (req, res) => {
             .print-button { display: none; }
             .footer { display: none; }
             .calendar-notice { display: none; }
+            .internal-notes-banner { display: none; }
 
             /* PDF-specific table styles */
             .rental-table, .expenses-table, .items-table {
@@ -3182,6 +3255,10 @@ router.get('/:id/view', async (req, res) => {
             display: none !important;
         }
 
+        body.pdf-mode .internal-notes-banner {
+            display: none !important;
+        }
+
         body.pdf-mode .expenses-table {
             font-size: 10px !important;
             width: 100% !important;
@@ -3325,6 +3402,16 @@ router.get('/:id/view', async (req, res) => {
             `).join('')}
         </div>
         ` : ''}
+    </div>
+    ` : ''}
+
+    <!-- Internal Notes (if any - visible on screen only, not in PDF) -->
+    ${(statement.internalNotes && !isPdf) ? `
+    <div class="internal-notes-banner">
+        <div class="internal-notes-header">
+            <span class="internal-notes-title">Internal Notes</span>
+        </div>
+        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
     </div>
     ` : ''}
 

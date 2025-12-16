@@ -123,16 +123,11 @@ router.post('/send/:statementId', async (req, res) => {
                 result
             });
         } else if (result.error === 'NEGATIVE_BALANCE_BLOCKED') {
-            // Flag statement for manual review
-            await statement.update({
-                status: 'flagged_negative_balance'
-            });
-
+            // Statement stays as draft, just return error
             res.status(400).json({
                 success: false,
                 error: 'NEGATIVE_BALANCE',
                 message: result.message,
-                flaggedForReview: true,
                 ownerPayout: result.ownerPayout
             });
         } else {
@@ -199,12 +194,7 @@ router.post('/send-bulk', async (req, res) => {
             );
         }
 
-        for (const blocked of results.blocked) {
-            await Statement.update(
-                { status: 'flagged_negative_balance' },
-                { where: { id: blocked.statementId } }
-            );
-        }
+        // Blocked statements stay as draft, no status change needed
 
         res.json({
             success: true,
@@ -219,14 +209,15 @@ router.post('/send-bulk', async (req, res) => {
 
 /**
  * GET /api/email/flagged
- * Get statements flagged for manual review (negative balance)
+ * Get draft statements with negative balance (need manual review)
  */
 router.get('/flagged', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
         const where = {
-            status: 'flagged_negative_balance'
+            status: 'draft',
+            ownerPayout: { [Op.lt]: 0 }
         };
 
         if (startDate && endDate) {

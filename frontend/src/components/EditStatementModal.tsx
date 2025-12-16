@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Calendar } from 'lucide-react';
-import { statementsAPI } from '../services/api';
+import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save } from 'lucide-react';
+import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 
 // Custom Confirm Dialog Component
@@ -105,6 +105,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Internal notes state
+  const [internalNotes, setInternalNotes] = useState('');
+  const [notesModified, setNotesModified] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -124,7 +129,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   const loadStatement = useCallback(async () => {
     if (!statementId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -137,6 +142,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setAvailableReservations([]);
       setShowAvailableSection(false);
       setCleaningFeeEdits({});
+      setInternalNotes(response.internalNotes || '');
+      setNotesModified(false);
     } catch (err) {
       setError('Failed to load statement details');
       console.error('Failed to load statement:', err);
@@ -398,8 +405,39 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setAvailableReservations([]);
     setShowAvailableSection(false);
     setCleaningFeeEdits({});
+    setInternalNotes('');
+    setNotesModified(false);
     setError(null);
     onClose();
+  };
+
+  const handleSaveInternalNotes = async () => {
+    if (!statement) return;
+
+    // Get propertyId - for combined statements, use the first property
+    const propertyId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+    if (!propertyId) {
+      setError('Cannot save notes: no property associated with this statement');
+      return;
+    }
+
+    try {
+      setSavingNotes(true);
+      setError(null);
+
+      await listingsAPI.updateListingConfig(propertyId, {
+        internalNotes: internalNotes.trim() || null
+      });
+
+      setNotesModified(false);
+      // Update local statement state with new notes
+      setStatement(prev => prev ? { ...prev, internalNotes: internalNotes.trim() || null } : null);
+    } catch (err) {
+      setError('Failed to save internal notes');
+      console.error('Failed to save internal notes:', err);
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -477,6 +515,39 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       Revenue: ${statement.totalRevenue.toLocaleString()} - Expenses: ${statement.totalExpenses.toLocaleString()}
                     </div>
                   </div>
+                </div>
+
+                {/* Internal Notes - Editable */}
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <FileText className="w-4 h-4 text-amber-600 mr-2" />
+                      <p className="text-sm font-medium text-amber-800">Internal Notes</p>
+                    </div>
+                    {notesModified && (
+                      <button
+                        onClick={handleSaveInternalNotes}
+                        disabled={savingNotes}
+                        className="flex items-center px-3 py-1 text-xs font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        {savingNotes ? 'Saving...' : 'Save Notes'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-600 mb-2">
+                    Private notes about this listing. Visible in the app only, NOT included on PDF statements.
+                  </p>
+                  <textarea
+                    value={internalNotes}
+                    onChange={(e) => {
+                      setInternalNotes(e.target.value);
+                      setNotesModified(true);
+                    }}
+                    placeholder="Add notes about this listing (owner preferences, special instructions, etc.)"
+                    className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm bg-white"
+                    rows={3}
+                  />
                 </div>
               </div>
 

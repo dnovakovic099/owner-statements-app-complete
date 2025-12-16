@@ -493,6 +493,42 @@ function generateStatementHTML(statement, id) {
             color: #78350f;
         }
 
+        /* Internal Notes Banner (screen only, not in PDF) */
+        .internal-notes-banner {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #d97706;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+
+        .internal-notes-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .internal-notes-icon {
+            font-size: 18px;
+        }
+
+        .internal-notes-title {
+            font-weight: 700;
+            color: #92400e;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .internal-notes-content {
+            color: #78350f;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
         .footer {
             background: var(--luxury-light-gray);
             padding: 20px;
@@ -513,6 +549,10 @@ function generateStatementHTML(statement, id) {
             }
 
             .calendar-notice {
+                display: none !important;
+            }
+
+            .internal-notes-banner {
                 display: none !important;
             }
 
@@ -593,6 +633,16 @@ function generateStatementHTML(statement, id) {
             `).join('')}
         </div>
         ` : ''}
+    </div>
+    ` : ''}
+
+    <!-- Internal Notes (if any - visible on screen only, not in PDF) -->
+    ${statement.internalNotes ? `
+    <div class="internal-notes-banner">
+        <div class="internal-notes-header">
+            <span class="internal-notes-title">Internal Notes</span>
+        </div>
+        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
     </div>
     ` : ''}
 

@@ -280,9 +280,7 @@ class EmailSchedulerService {
                             reason: 'Negative balance',
                             ownerPayout
                         });
-
-                        // Flag the statement
-                        await statementToUse.update({ status: 'flagged_negative_balance' });
+                        // Statement stays as draft, just skip sending
                         continue;
                     }
 

@@ -384,6 +384,17 @@ export const listingsAPI = {
     pmFeePercentage?: number;
     defaultPetFee?: number | null;
     tags?: string[];
+    airbnbPassThroughTax?: boolean;
+    disregardTax?: boolean;
+    cleaningFeePassThrough?: boolean;
+    guestPaidDamageCoverage?: boolean;
+    includeChildListings?: boolean;
+    waiveCommission?: boolean;
+    waiveCommissionUntil?: string | null;
+    ownerEmail?: string | null;
+    ownerGreeting?: string | null;
+    autoSendStatements?: boolean;
+    internalNotes?: string | null;
   }): Promise<{ success: boolean; message: string; listing: Listing }> => {
     const response = await api.put(`/listings/${id}/config`, config);
     return response.data;

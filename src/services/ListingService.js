@@ -333,6 +333,7 @@ class ListingService {
             if (config.ownerEmail !== undefined) updates.ownerEmail = config.ownerEmail;
             if (config.ownerGreeting !== undefined) updates.ownerGreeting = config.ownerGreeting;
             if (config.autoSendStatements !== undefined) updates.autoSendStatements = config.autoSendStatements;
+            if (config.internalNotes !== undefined) updates.internalNotes = config.internalNotes;
 
             await listing.update(updates);
             console.log(`Updated listing ${listingId} configuration`);

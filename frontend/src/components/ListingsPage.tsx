@@ -72,6 +72,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerGreeting, setOwnerGreeting] = useState('');
   const [autoSendStatements, setAutoSendStatements] = useState(true);
+  const [internalNotes, setInternalNotes] = useState('');
 
   useEffect(() => {
     loadListings();
@@ -94,6 +95,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setOwnerEmail(listing.ownerEmail || '');
         setOwnerGreeting(listing.ownerGreeting || '');
         setAutoSendStatements(listing.autoSendStatements !== false);
+        setInternalNotes(listing.internalNotes || '');
       }
     } else {
       resetForm();
@@ -148,6 +150,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setOwnerEmail('');
     setOwnerGreeting('');
     setAutoSendStatements(true);
+    setInternalNotes('');
   };
 
   const handleSave = async () => {
@@ -171,6 +174,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         ownerEmail: ownerEmail.trim() || null,
         ownerGreeting: ownerGreeting.trim() || null,
         autoSendStatements,
+        internalNotes: internalNotes.trim() || null,
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -772,6 +776,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         Add
                       </button>
                     </div>
+                  </div>
+
+                  {/* Internal Notes */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <h3 className="text-sm font-medium text-amber-800 mb-1">Internal Notes</h3>
+                    <p className="text-xs text-amber-600 mb-3">
+                      Private notes about this listing. Visible in the app only, NOT included on PDF statements.
+                    </p>
+                    <textarea
+                      value={internalNotes}
+                      onChange={(e) => setInternalNotes(e.target.value)}
+                      placeholder="Add notes about this listing (owner preferences, special instructions, etc.)"
+                      className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                      rows={3}
+                    />
                   </div>
 
                   {/* Location Info */}

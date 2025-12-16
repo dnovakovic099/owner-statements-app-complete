@@ -102,6 +102,7 @@ export interface Statement {
   reservations?: Reservation[];
   expenses?: any[];
   items?: StatementItem[];
+  internalNotes?: string | null;
 }
 
 export interface DashboardSummary {
@@ -174,6 +175,7 @@ export interface Listing {
   ownerEmail?: string | null;
   ownerGreeting?: string | null;
   autoSendStatements?: boolean;
+  internalNotes?: string | null;
   isActive: boolean;
   lastSyncedAt?: string;
   syncedAt?: string;
