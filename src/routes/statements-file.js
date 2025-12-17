@@ -2395,12 +2395,28 @@ router.get('/:id/view', async (req, res) => {
             }
         }
 
-        // Fetch internal notes from listing (for single property or first property in combined)
-        const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-        if (propertyIdForNotes) {
-            const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
-            if (listingForNotes && listingForNotes.internalNotes) {
-                statement.internalNotes = listingForNotes.internalNotes;
+        // Fetch internal notes from listing(s)
+        if (statement.propertyIds && statement.propertyIds.length > 1) {
+            // Combined statement - aggregate notes from all properties
+            const notesArray = [];
+            for (const propId of statement.propertyIds) {
+                const listing = allListings.find(l => parseInt(l.id) === parseInt(propId));
+                if (listing && listing.internalNotes) {
+                    const displayName = listing.nickname || listing.displayName || listing.name || `Property ${propId}`;
+                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                }
+            }
+            if (notesArray.length > 0) {
+                statement.internalNotes = notesArray.join('\n\n');
+            }
+        } else {
+            // Single property statement
+            const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+            if (propertyIdForNotes) {
+                const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
+                if (listingForNotes && listingForNotes.internalNotes) {
+                    statement.internalNotes = listingForNotes.internalNotes;
+                }
             }
         }
 
@@ -2869,7 +2885,216 @@ router.get('/:id/view', async (req, res) => {
         .print-button:hover {
             transform: translateY(-1px);
         }
-        
+
+        .action-buttons {
+            display: flex;
+            flex-wrap: nowrap;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .action-btn {
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .action-btn.edit {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .action-btn.regenerate {
+            background: #6366f1;
+            color: white;
+        }
+
+        .action-btn.download {
+            background: linear-gradient(135deg, var(--luxury-navy) 0%, #2d4a6b 100%);
+            color: white;
+        }
+
+        .action-btn.finalize {
+            background: #10b981;
+            color: white;
+        }
+
+        .action-btn.revert {
+            background: #f97316;
+            color: white;
+        }
+
+        .action-btn.delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .action-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .action-btn.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .action-btn.loading svg.spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Custom Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-box {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 420px;
+            width: 90%;
+            overflow: hidden;
+            animation: modalSlideIn 0.2s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .modal-header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-title svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .modal-title.warning svg { color: #f59e0b; }
+        .modal-title.danger svg { color: #ef4444; }
+        .modal-title.info svg { color: #3b82f6; }
+        .modal-title.success svg { color: #10b981; }
+
+        .modal-body {
+            padding: 20px 24px;
+        }
+
+        .modal-message {
+            font-size: 14px;
+            color: #4b5563;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .modal-footer {
+            padding: 16px 24px 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: none;
+        }
+
+        .modal-btn-cancel {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .modal-btn-cancel:hover {
+            background: #e5e7eb;
+        }
+
+        .modal-btn-confirm {
+            background: var(--luxury-navy);
+            color: white;
+        }
+
+        .modal-btn-confirm:hover {
+            background: #2d4a6b;
+        }
+
+        .modal-btn-confirm.danger {
+            background: #ef4444;
+        }
+
+        .modal-btn-confirm.danger:hover {
+            background: #dc2626;
+        }
+
+        .modal-btn-confirm.warning {
+            background: #f59e0b;
+        }
+
+        .modal-btn-confirm.warning:hover {
+            background: #d97706;
+        }
+
         .status-badge {
             display: inline-block;
             padding: 6px 12px;
@@ -3772,7 +3997,7 @@ router.get('/:id/view', async (req, res) => {
         <div class="internal-notes-header">
             <span class="internal-notes-title">Internal Notes</span>
         </div>
-        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
     </div>
     ` : ''}
 
@@ -4266,9 +4491,268 @@ router.get('/:id/view', async (req, res) => {
                         minute: '2-digit'
                     })}
                 </div>
-                <button onclick="window.open('/api/statements/${id}/download', '_blank')" class="print-button">Download PDF</button>
+                <div class="action-buttons">
+                    <button onclick="editStatement()" class="action-btn edit" ${statement.status === 'final' ? 'disabled title="Cannot edit finalized statement"' : ''}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Edit
+                    </button>
+                    <button onclick="regenerateStatement()" class="action-btn regenerate" id="regenerate-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                        Regenerate
+                    </button>
+                    <button onclick="downloadStatement()" class="action-btn download">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download
+                    </button>
+                    <button onclick="finalizeStatement()" class="action-btn finalize" id="finalize-btn" ${statement.status === 'final' ? 'disabled title="Already finalized"' : ''}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        Finalize
+                    </button>
+                    <button onclick="revertToDraft()" class="action-btn revert" id="revert-btn" ${statement.status === 'draft' ? 'disabled title="Already a draft"' : ''}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                        Return to Draft
+                    </button>
+                    <button onclick="deleteStatement()" class="action-btn delete" ${statement.status !== 'draft' ? 'disabled title="Can only delete draft statements"' : ''}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        Delete
+                    </button>
+                </div>
             </div>
-        </div>`}
+        </div>
+
+        <!-- Custom Modal -->
+        <div id="customModal" class="modal-overlay">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <h3 id="modalTitle" class="modal-title"></h3>
+                </div>
+                <div class="modal-body">
+                    <p id="modalMessage" class="modal-message"></p>
+                </div>
+                <div class="modal-footer">
+                    <button id="modalCancel" class="modal-btn modal-btn-cancel">Cancel</button>
+                    <button id="modalConfirm" class="modal-btn modal-btn-confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const statementId = ${id};
+            const statementStatus = '${statement.status}';
+            const statementData = {
+                ownerId: '${statement.ownerId}',
+                propertyId: '${statement.propertyId || ''}',
+                propertyIds: ${JSON.stringify(statement.propertyIds || [])},
+                startDate: '${statement.weekStartDate}',
+                endDate: '${statement.weekEndDate}',
+                calculationType: '${statement.calculationType || 'checkout'}'
+            };
+
+            // Custom Modal Functions
+            function showModal(options) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('customModal');
+                    const title = document.getElementById('modalTitle');
+                    const message = document.getElementById('modalMessage');
+                    const confirmBtn = document.getElementById('modalConfirm');
+                    const cancelBtn = document.getElementById('modalCancel');
+
+                    // Set icon based on type
+                    const icons = {
+                        warning: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+                        danger: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+                        info: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+                        success: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>'
+                    };
+
+                    title.className = 'modal-title ' + (options.type || 'info');
+                    title.innerHTML = (icons[options.type] || icons.info) + ' ' + options.title;
+                    message.textContent = options.message;
+                    confirmBtn.textContent = options.confirmText || 'Confirm';
+                    confirmBtn.className = 'modal-btn modal-btn-confirm ' + (options.type || '');
+
+                    // Show/hide cancel for alerts
+                    cancelBtn.style.display = options.isAlert ? 'none' : 'block';
+
+                    modal.classList.add('active');
+
+                    const cleanup = () => {
+                        modal.classList.remove('active');
+                        confirmBtn.removeEventListener('click', onConfirm);
+                        cancelBtn.removeEventListener('click', onCancel);
+                    };
+
+                    const onConfirm = () => { cleanup(); resolve(true); };
+                    const onCancel = () => { cleanup(); resolve(false); };
+
+                    confirmBtn.addEventListener('click', onConfirm);
+                    cancelBtn.addEventListener('click', onCancel);
+
+                    // Close on overlay click
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal && !options.isAlert) onCancel();
+                    }, { once: true });
+                });
+            }
+
+            function showAlert(title, message, type = 'info') {
+                return showModal({ title, message, type, isAlert: true, confirmText: 'OK' });
+            }
+
+            function showConfirm(title, message, type = 'warning') {
+                return showModal({ title, message, type, isAlert: false });
+            }
+
+            function showLoading(btnId) {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.classList.add('loading');
+                    btn.innerHTML = '<svg class="spinner" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg> Processing...';
+                }
+            }
+
+            function editStatement() {
+                // Open the edit modal in the main app
+                const editUrl = '/?editStatement=' + statementId;
+                window.location.href = editUrl;
+            }
+
+            async function regenerateStatement() {
+                const confirmed = await showConfirm('Regenerate Statement', 'Are you sure you want to regenerate this statement? This will refresh all data from Hostify.', 'info');
+                if (!confirmed) return;
+
+                showLoading('regenerate-btn');
+                try {
+                    // Step 1: Delete the existing statement
+                    const deleteResponse = await fetch('/api/statements/' + statementId, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (!deleteResponse.ok) {
+                        const error = await deleteResponse.json();
+                        throw new Error(error.error || 'Failed to delete old statement');
+                    }
+
+                    // Step 2: Generate a new statement with the same parameters
+                    const generatePayload = {
+                        ownerId: statementData.ownerId,
+                        startDate: statementData.startDate,
+                        endDate: statementData.endDate,
+                        calculationType: statementData.calculationType
+                    };
+
+                    // Handle combined vs single property statements
+                    if (statementData.propertyIds && statementData.propertyIds.length > 0) {
+                        generatePayload.propertyIds = statementData.propertyIds.map(id => String(id));
+                    } else if (statementData.propertyId) {
+                        generatePayload.propertyId = statementData.propertyId;
+                    }
+
+                    const generateResponse = await fetch('/api/statements/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(generatePayload)
+                    });
+
+                    if (!generateResponse.ok) {
+                        const error = await generateResponse.json();
+                        throw new Error(error.error || 'Failed to generate new statement');
+                    }
+
+                    const result = await generateResponse.json();
+
+                    // Redirect to the new statement's view page
+                    const newId = result.statement?.id || result.id;
+                    if (newId) {
+                        window.location.href = '/api/statements/' + newId + '/view';
+                    } else {
+                        await showAlert('Success', 'Statement regenerated successfully!', 'success');
+                        window.location.href = '/';
+                    }
+                } catch (error) {
+                    await showAlert('Error', 'Error regenerating statement: ' + error.message, 'danger');
+                    window.location.href = '/';
+                }
+            }
+
+            function downloadStatement() {
+                window.open('/api/statements/' + statementId + '/download', '_blank');
+            }
+
+            async function finalizeStatement() {
+                const confirmed = await showConfirm('Finalize Statement', 'Are you sure you want to finalize this statement? You will not be able to edit it after finalizing.', 'warning');
+                if (!confirmed) return;
+
+                showLoading('finalize-btn');
+                try {
+                    const response = await fetch('/api/statements/' + statementId + '/status', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'final' })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to finalize');
+                    }
+
+                    // Refresh the page to show updated status
+                    window.location.reload();
+                } catch (error) {
+                    await showAlert('Error', 'Error finalizing statement: ' + error.message, 'danger');
+                    window.location.reload();
+                }
+            }
+
+            async function revertToDraft() {
+                const confirmed = await showConfirm('Return to Draft', 'Are you sure you want to revert this statement to draft?', 'info');
+                if (!confirmed) return;
+
+                showLoading('revert-btn');
+                try {
+                    const response = await fetch('/api/statements/' + statementId + '/status', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'draft' })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to revert');
+                    }
+
+                    // Refresh the page to show updated status
+                    window.location.reload();
+                } catch (error) {
+                    await showAlert('Error', 'Error reverting statement: ' + error.message, 'danger');
+                    window.location.reload();
+                }
+            }
+
+            async function deleteStatement() {
+                const confirmed = await showConfirm('Delete Statement', 'Are you sure you want to delete this statement? This action cannot be undone.', 'danger');
+                if (!confirmed) return;
+
+                try {
+                    const response = await fetch('/api/statements/' + statementId, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to delete');
+                    }
+
+                    // Redirect to main page after delete
+                    await showAlert('Deleted', 'Statement deleted successfully', 'success');
+                    window.location.href = '/';
+                } catch (error) {
+                    await showAlert('Error', 'Error deleting statement: ' + error.message, 'danger');
+                }
+            }
+        </script>`}
     </div>
 </body>
 </html>`;

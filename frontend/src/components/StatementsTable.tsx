@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -39,6 +39,7 @@ interface ListingName {
   name: string;
   displayName?: string | null;
   nickname?: string | null;
+  internalNotes?: string | null;
 }
 
 interface PaginationState {
@@ -51,7 +52,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -653,6 +654,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               >
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 Delete
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'export-csv')}
+                disabled={bulkProcessing}
+                className="h-8 border-teal-300 bg-white text-teal-700 hover:bg-teal-50"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                Export CSV
               </Button>
               <button
                 onClick={() => setRowSelection({})}

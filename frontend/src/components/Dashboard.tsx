@@ -29,6 +29,7 @@ interface ListingName {
   name: string;
   displayName?: string | null;
   nickname?: string | null;
+  internalNotes?: string | null;
 }
 
 // Newly added listing for notifications
@@ -80,6 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [pendingRegenerateId, setPendingRegenerateId] = useState<number | null>(null);
 
   // Notification states
   const [newListings, setNewListings] = useState<NewListing[]>([]);
@@ -273,6 +275,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   useEffect(() => {
     loadStatements();
   }, [filters, pagination.pageIndex, pagination.pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle URL parameters for actions from statement view page
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    // Handle edit action
+    const editStatementId = params.get('editStatement');
+    if (editStatementId) {
+      const id = parseInt(editStatementId, 10);
+      if (!isNaN(id)) {
+        setEditingStatementId(id);
+        setIsEditModalOpen(true);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      return;
+    }
+
+    // Handle regenerate action
+    const regenerateStatementId = params.get('regenerateStatement');
+    if (regenerateStatementId) {
+      const id = parseInt(regenerateStatementId, 10);
+      if (!isNaN(id)) {
+        window.history.replaceState({}, '', window.location.pathname);
+        // Set pending regenerate to be processed after statements load
+        setPendingRegenerateId(id);
+      }
+    }
+  }, []);
 
   const loadInitialData = async () => {
     try {
@@ -611,7 +641,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft') => {
+  // Process pending regenerate from URL parameter after statements are loaded
+  useEffect(() => {
+    if (pendingRegenerateId && statements.length > 0 && !loading) {
+      const id = pendingRegenerateId;
+      setPendingRegenerateId(null);
+      handleStatementAction(id, 'refresh');
+    }
+  }, [pendingRegenerateId, statements, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv') => {
     if (ids.length === 0) return;
 
     setBulkProcessing(true);
@@ -817,6 +856,116 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         },
       });
       return; // Don't setBulkProcessing(false) here - wait for dialog action
+    } else if (action === 'export-csv') {
+      // Export selected statements to CSV
+      const selectedStatements = statements.filter(s => ids.includes(s.id));
+
+      // Debug: Log listings to check if internalNotes are present
+      console.log('Listings with internalNotes:', listings.filter(l => l.internalNotes).map(l => ({ id: l.id, nickname: l.nickname, internalNotes: l.internalNotes })));
+      console.log('Selected statements propertyIds:', selectedStatements.map(s => ({ id: s.id, propertyId: s.propertyId, propertyIds: s.propertyIds, propertyName: s.propertyName })));
+
+      // Build CSV content
+      const csvRows: string[] = [];
+      csvRows.push(['Property Name', 'Period', 'Type', 'Net Payout', 'Internal Note'].join(','));
+
+      // Helper to escape CSV values
+      const escapeCSV = (value: string | null | undefined): string => {
+        if (value === null || value === undefined) return '';
+        const stringValue = String(value);
+        // If contains comma, quotes, or newlines, wrap in quotes and escape internal quotes
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      };
+
+      // Helper to get display name for a property
+      const getPropertyDisplayName = (propertyId: number): string => {
+        const listing = listings.find(l => l.id === propertyId);
+        if (listing) {
+          return listing.nickname || listing.displayName || listing.name;
+        }
+        return `Property ${propertyId}`;
+      };
+
+      // Helper to get internal note for a property
+      const getPropertyInternalNote = (propertyId: number): string => {
+        const listing = listings.find(l => l.id === propertyId);
+        return listing?.internalNotes || '';
+      };
+
+      // Format date
+      const formatDate = (dateStr: string): string => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      };
+
+      for (const statement of selectedStatements) {
+        // Get property names (all if multiple)
+        let propertyNames: string[] = [];
+        if (statement.propertyIds && statement.propertyIds.length > 0) {
+          propertyNames = statement.propertyIds.map(id => getPropertyDisplayName(id));
+        } else if (statement.propertyId) {
+          propertyNames = [getPropertyDisplayName(statement.propertyId)];
+        } else {
+          propertyNames = [statement.propertyName];
+        }
+
+        // Get period
+        const period = `${formatDate(statement.weekStartDate)} - ${formatDate(statement.weekEndDate)}`;
+
+        // Get type
+        const type = statement.calculationType === 'calendar' ? 'Calendar' : 'Checkout';
+
+        // Get net payout - format as currency (ensure it's a number)
+        const payoutValue = typeof statement.ownerPayout === 'string'
+          ? parseFloat(statement.ownerPayout)
+          : statement.ownerPayout;
+        const netPayout = `$${(payoutValue || 0).toFixed(2)}`;
+
+        // Get internal notes (all if multiple properties)
+        let internalNotes: string[] = [];
+        if (statement.propertyIds && statement.propertyIds.length > 0) {
+          for (const propId of statement.propertyIds) {
+            const note = getPropertyInternalNote(propId);
+            if (note) {
+              const displayName = getPropertyDisplayName(propId);
+              internalNotes.push(`[${displayName}]: ${note}`);
+            }
+          }
+        } else if (statement.propertyId) {
+          const note = getPropertyInternalNote(statement.propertyId);
+          if (note) {
+            internalNotes = [note];
+          }
+        }
+
+        // Add row
+        csvRows.push([
+          escapeCSV(propertyNames.join('; ')),
+          escapeCSV(period),
+          escapeCSV(type),
+          escapeCSV(netPayout),
+          escapeCSV(internalNotes.join(' | '))
+        ].join(','));
+      }
+
+      // Create and download file
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().split('T')[0];
+      a.download = `statements-export-${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showToast(`Exported ${selectedStatements.length} statement(s) to CSV`, 'success');
+      setBulkProcessing(false);
+      return;
     }
 
     setBulkProcessing(false);

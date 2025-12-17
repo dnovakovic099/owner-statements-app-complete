@@ -52,14 +52,13 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files - serve React build in production, uploads in development
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../frontend/build')));
-} else {
-    app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
-    // Serve public files (like quickbooks-setup.html)
-    app.use(express.static(path.join(__dirname, '../public')));
+// Static files - serve React build and public files
+const reactBuildPath = path.join(__dirname, '../frontend/build');
+if (fs.existsSync(reactBuildPath)) {
+    app.use(express.static(reactBuildPath));
 }
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Auth routes (no authentication required for login)
 app.use('/api/auth', require('./routes/auth'));
@@ -188,10 +187,11 @@ app.use('/api/email-scheduler', authMiddleware, require('./routes/email-schedule
 
 // Removed unused database routes
 
-// Serve main page
+// Serve main page (always serve React build if it exists)
 app.get('/', (req, res) => {
-    if (process.env.NODE_ENV === 'production') {
-        res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+    const indexPath = path.join(__dirname, '../frontend/build/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
     } else {
         res.sendFile(path.join(__dirname, '../public/index.html'));
     }
