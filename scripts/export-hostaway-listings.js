@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+ #!/usr/bin/env node
 
 /**
  * Export all Hostify listings to CSV

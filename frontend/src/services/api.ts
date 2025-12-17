@@ -377,7 +377,7 @@ export const listingsAPI = {
     return response.data;
   },
 
-  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname'>[] }> => {
+  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes'>[] }> => {
     const response = await api.get('/listings/names');
     return response.data;
   },

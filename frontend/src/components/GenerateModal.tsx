@@ -113,6 +113,9 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     setStartDate(firstDay.toISOString().split('T')[0]);
     setEndDate(lastDay.toISOString().split('T')[0]);
 
+    // Set Default as the default owner
+    setOwnerId('default');
+
     loadListings();
   }, []);
 
