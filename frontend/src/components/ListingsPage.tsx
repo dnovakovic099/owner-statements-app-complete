@@ -160,6 +160,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   useEffect(() => {
     loadListings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
