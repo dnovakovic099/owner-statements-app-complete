@@ -167,7 +167,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -200,6 +201,9 @@ If a reservation's check-out falls beyond the current payout period, the associa
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }
@@ -270,7 +274,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -303,6 +308,9 @@ If a reservation's check-out falls beyond the current payout period, the associa
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }
@@ -352,7 +360,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This statement is calculated on a calendar (prorated) basis. For reservations that span different months, amounts are automatically prorated based on the number of nights within the current statement period.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -385,6 +394,9 @@ This statement is calculated on a calendar (prorated) basis. For reservations th
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }
@@ -433,7 +445,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -470,6 +483,9 @@ This transition ensures more accurate tracking of adjustments such as extensions
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }
@@ -554,7 +570,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">This transition ensures more accurate tracking of adjustments such as extensions, mid-stay issues, or early check-outs.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -596,6 +613,9 @@ This transition ensures more accurate tracking of adjustments such as extensions
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }
@@ -642,7 +662,8 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 <p style="margin: 0 0 12px 0; font-size: 10px; color: #333;">If a reservation's check-out falls beyond the current payout period, the associated earnings will carry over to the next statement.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 8px 0;">If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.</p>
-<p style="margin: 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0 0 20px 0;">Thank you again for your trust and partnership.</p>
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.</p>
 </body>
 </html>`,
             text: `Hi${ownerName ? ' ' + ownerName : ''},
@@ -675,6 +696,9 @@ If a reservation's check-out falls beyond the current payout period, the associa
 If you have any questions, need clarification, or would like to provide feedback, feel free to reach out.
 
 Thank you again for your trust and partnership.
+
+---
+This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
             `
         };
     }

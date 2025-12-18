@@ -58,7 +58,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedListingId, setSelectedListingId] = useState<number | null>(initialSelectedListingId || null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [citySearchTerm, setCitySearchTerm] = useState('');
+  const [selectedFrequencyTags, setSelectedFrequencyTags] = useState<string[]>([]);
+  const [cohostFilter, setCohostFilter] = useState<'all' | 'cohost' | 'not-cohost'>('all');
+  const [ownerEmailFilter, setOwnerEmailFilter] = useState<'all' | 'has-email' | 'no-email'>('all');
+  const [autoSendFilter, setAutoSendFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+
   const [saving, setSaving] = useState(false);
+  const [savingOwnerInfo, setSavingOwnerInfo] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -160,7 +174,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setGuestPaidDamageCoverage(listing.guestPaidDamageCoverage || false);
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
-        setPmFeePercentage(listing.pmFeePercentage || 15);
+        setPmFeePercentage(listing.pmFeePercentage ?? 15);
         setTags(listing.tags || []);
         setOwnerEmail(listing.ownerEmail || '');
         setOwnerGreeting(listing.ownerGreeting || '');
@@ -172,12 +186,37 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   }, [selectedListingId, listings]);
 
+  // Frequency tags that should be shown separately
+  const FREQUENCY_TAGS = ['WEEKLY', 'MONTHLY', 'BI-WEEKLY A', 'BI-WEEKLY B'];
+
   const loadListings = async () => {
     try {
       setLoading(true);
       setError(null);
       const response = await listingsAPI.getListings();
       setListings(response.listings);
+
+      // Extract all unique tags and cities for filters
+      const allTags = new Set<string>();
+      const allCities = new Set<string>();
+
+      response.listings.forEach((listing: Listing) => {
+        // Extract tags (excluding frequency tags)
+        if (listing.tags && listing.tags.length > 0) {
+          listing.tags.forEach((tag: string) => {
+            if (!FREQUENCY_TAGS.includes(tag.toUpperCase())) {
+              allTags.add(tag);
+            }
+          });
+        }
+        // Extract cities
+        if (listing.city) {
+          allCities.add(listing.city);
+        }
+      });
+
+      setAvailableTags(Array.from(allTags).sort());
+      setAvailableCities(Array.from(allCities).sort());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load listings');
     } finally {
@@ -268,18 +307,137 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   };
 
-  // Filter listings based on search term
+  // Save only owner info (email, greeting, auto-send)
+  const handleSaveOwnerInfo = async () => {
+    if (!selectedListingId) return;
+
+    try {
+      setSavingOwnerInfo(true);
+      setSaveMessage(null);
+
+      const config = {
+        ownerEmail: ownerEmail.trim() || null,
+        ownerGreeting: ownerGreeting.trim() || null,
+        autoSendStatements,
+      };
+
+      console.log('[FRONTEND] Saving owner info:', config);
+
+      const response = await listingsAPI.updateListingConfig(selectedListingId, config);
+
+      console.log('[FRONTEND] Response:', response);
+
+      // Update the listing in local state
+      setListings(prevListings =>
+        prevListings.map(listing =>
+          listing.id === selectedListingId ? response.listing : listing
+        )
+      );
+
+      showToast('Owner info saved successfully!', 'success');
+    } catch (err) {
+      console.error('[FRONTEND] Error saving owner info:', err);
+      showToast(err instanceof Error ? err.message : 'Failed to save owner info', 'error');
+    } finally {
+      setSavingOwnerInfo(false);
+    }
+  };
+
+  // Filter listings based on all filter criteria
   const filteredListings = listings.filter(listing => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      listing.name.toLowerCase().includes(searchLower) ||
-      listing.displayName?.toLowerCase().includes(searchLower) ||
-      listing.nickname?.toLowerCase().includes(searchLower) ||
-      listing.id.toString().includes(searchLower) ||
-      listing.city?.toLowerCase().includes(searchLower)
-    );
+    // Text search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = (
+        listing.name.toLowerCase().includes(searchLower) ||
+        listing.displayName?.toLowerCase().includes(searchLower) ||
+        listing.nickname?.toLowerCase().includes(searchLower) ||
+        listing.id.toString().includes(searchLower) ||
+        listing.city?.toLowerCase().includes(searchLower)
+      );
+      if (!matchesSearch) return false;
+    }
+
+    // Tag filter (custom tags, not frequency)
+    if (selectedFilterTags.length > 0) {
+      const listingTags = listing.tags || [];
+      const hasMatchingTag = selectedFilterTags.some(filterTag =>
+        listingTags.some(tag => tag.toLowerCase() === filterTag.toLowerCase())
+      );
+      if (!hasMatchingTag) return false;
+    }
+
+    // Frequency tag filter
+    if (selectedFrequencyTags.length > 0) {
+      const listingTags = (listing.tags || []).map(t => t.toUpperCase());
+      const hasMatchingFrequency = selectedFrequencyTags.some(freq =>
+        listingTags.includes(freq)
+      );
+      if (!hasMatchingFrequency) return false;
+    }
+
+    // City filter
+    if (selectedCities.length > 0) {
+      if (!listing.city || !selectedCities.includes(listing.city)) {
+        return false;
+      }
+    }
+
+    // Co-host filter
+    if (cohostFilter === 'cohost' && !listing.isCohostOnAirbnb) return false;
+    if (cohostFilter === 'not-cohost' && listing.isCohostOnAirbnb) return false;
+
+    // Owner email filter
+    if (ownerEmailFilter === 'has-email' && !listing.ownerEmail) return false;
+    if (ownerEmailFilter === 'no-email' && listing.ownerEmail) return false;
+
+    // Auto-send filter
+    if (autoSendFilter === 'enabled' && listing.autoSendStatements === false) return false;
+    if (autoSendFilter === 'disabled' && listing.autoSendStatements !== false) return false;
+
+    return true;
   });
+
+  // Toggle a tag in the filter
+  const toggleFilterTag = (tag: string) => {
+    setSelectedFilterTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  // Toggle a frequency tag
+  const toggleFrequencyTag = (tag: string) => {
+    setSelectedFrequencyTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  // Toggle a city
+  const toggleCity = (city: string) => {
+    setSelectedCities(prev =>
+      prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
+    );
+  };
+
+  // Count active filters
+  const activeFilterCount =
+    selectedFilterTags.length +
+    selectedFrequencyTags.length +
+    selectedCities.length +
+    (cohostFilter !== 'all' ? 1 : 0) +
+    (ownerEmailFilter !== 'all' ? 1 : 0) +
+    (autoSendFilter !== 'all' ? 1 : 0);
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setSelectedFilterTags([]);
+    setSelectedFrequencyTags([]);
+    setSelectedCities([]);
+    setCitySearchTerm('');
+    setCohostFilter('all');
+    setOwnerEmailFilter('all');
+    setAutoSendFilter('all');
+  };
 
   const selectedListing = listings.find(l => l.id === selectedListingId);
   const getListingDisplayName = (listing: Listing) => {
@@ -553,6 +711,193 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+
+            {/* Filters Toggle */}
+            <div className="mb-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center justify-between w-full text-sm text-gray-600 hover:text-gray-900 py-1.5 px-2 rounded-md hover:bg-gray-100"
+              >
+                <span className="font-medium flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded-full">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showFilters && (
+                <div className="mt-2 p-3 border border-gray-200 rounded-md bg-gray-50 space-y-3 max-h-80 overflow-y-auto">
+                  {/* Frequency Tags */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Frequency</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {FREQUENCY_TAGS.map(tag => (
+                        <button
+                          key={tag}
+                          onClick={() => toggleFrequencyTag(tag)}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            selectedFrequencyTags.includes(tag)
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* City Filter */}
+                  {availableCities.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">City</label>
+                      <input
+                        type="text"
+                        placeholder="Search cities..."
+                        value={citySearchTerm}
+                        onChange={(e) => setCitySearchTerm(e.target.value)}
+                        className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        {availableCities
+                          .filter(city => city.toLowerCase().includes(citySearchTerm.toLowerCase()))
+                          .map(city => (
+                          <button
+                            key={city}
+                            onClick={() => toggleCity(city)}
+                            className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                              selectedCities.includes(city)
+                                ? 'bg-green-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {city}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom Tags */}
+                  {availableTags.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Tags</label>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        {availableTags.map(tag => (
+                          <button
+                            key={tag}
+                            onClick={() => toggleFilterTag(tag)}
+                            className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                              selectedFilterTags.includes(tag)
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Co-host Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Co-host Status</label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'cohost', label: 'Co-host' },
+                        { value: 'not-cohost', label: 'Not Co-host' }
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setCohostFilter(opt.value as typeof cohostFilter)}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            cohostFilter === opt.value
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Owner Email Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Owner Email</label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'has-email', label: 'Has Email' },
+                        { value: 'no-email', label: 'No Email' }
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setOwnerEmailFilter(opt.value as typeof ownerEmailFilter)}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            ownerEmailFilter === opt.value
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Auto-send Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Auto-send Statements</label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'enabled', label: 'Enabled' },
+                        { value: 'disabled', label: 'Disabled' }
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setAutoSendFilter(opt.value as typeof autoSendFilter)}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            autoSendFilter === opt.value
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Clear All */}
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={clearAllFilters}
+                      className="w-full mt-2 py-1.5 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Listings List - Scrollable */}
@@ -878,6 +1223,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           </span>
                         </button>
                       </div>
+                      <button
+                        onClick={handleSaveOwnerInfo}
+                        disabled={savingOwnerInfo}
+                        className="flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50 h-10"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {savingOwnerInfo ? 'Saving...' : 'Save'}
+                      </button>
                     </div>
                     <p className="text-xs text-teal-700 mt-2">
                       Email for sending statements. Auto-Send: if ON, statements will be sent automatically.

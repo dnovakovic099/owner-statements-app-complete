@@ -311,8 +311,10 @@ class ListingService {
      */
     async updateListingConfig(listingId, config) {
         try {
+            console.log(`[UPDATE-CONFIG] Listing ${listingId} received config:`, JSON.stringify(config));
+
             const listing = await Listing.findByPk(listingId);
-            
+
             if (!listing) {
                 throw new Error(`Listing ${listingId} not found`);
             }
@@ -336,8 +338,9 @@ class ListingService {
             if (config.internalNotes !== undefined) updates.internalNotes = config.internalNotes;
 
             await listing.update(updates);
-            console.log(`Updated listing ${listingId} configuration`);
-            
+            await listing.reload(); // Reload to get fresh data from DB
+            console.log(`Updated listing ${listingId} configuration:`, JSON.stringify(updates));
+
             return listing.toJSON();
         } catch (error) {
             console.error(`Error updating listing ${listingId} configuration:`, error);
