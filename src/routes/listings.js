@@ -186,11 +186,12 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver, damage coverage)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver, damage coverage, owner email, auto-send)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes } = req.body;
+        console.log('[ROUTE] PUT /listings/:id/config - Request body:', JSON.stringify(req.body));
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes, ownerEmail, ownerGreeting, autoSendStatements } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -204,6 +205,9 @@ router.put('/:id/config', async (req, res) => {
         if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
         if (tags !== undefined) config.tags = tags;
         if (internalNotes !== undefined) config.internalNotes = internalNotes;
+        if (ownerEmail !== undefined) config.ownerEmail = ownerEmail;
+        if (ownerGreeting !== undefined) config.ownerGreeting = ownerGreeting;
+        if (autoSendStatements !== undefined) config.autoSendStatements = autoSendStatements;
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);
             if (isNaN(pmFee) || pmFee < 0 || pmFee > 100) {
@@ -223,11 +227,14 @@ router.put('/:id/config', async (req, res) => {
             }
         }
         
+        console.log('[ROUTE] Config to update:', JSON.stringify(config));
+
         if (Object.keys(config).length === 0) {
             return res.status(400).json({ error: 'No valid fields to update' });
         }
-        
+
         const listing = await ListingService.updateListingConfig(parseInt(id), config);
+        console.log('[ROUTE] Updated listing ownerEmail:', listing.ownerEmail, 'ownerGreeting:', listing.ownerGreeting);
 
         // Clear the listings cache so changes are reflected immediately
         FileDataService.clearListingsCache();

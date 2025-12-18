@@ -4536,6 +4536,105 @@ router.get('/:id/view', async (req, res) => {
             </div>
         </div>
 
+        <!-- Edit Statement Modal -->
+        <div id="editModal" class="modal-overlay" style="display: none;">
+            <div class="modal-box" style="max-width: 650px; max-height: 90vh; overflow-y: auto; padding: 24px;">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0;">Edit Statement</h3>
+                    <button onclick="closeEditModal()" style="background: none; border: none; cursor: pointer; padding: 8px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='none'">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+
+                <!-- Statement Info Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 20px; background: #f9fafb; border-radius: 10px; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+                    <div style="flex: 1; padding-right: 20px;">
+                        <div style="font-weight: 600; font-size: 17px; color: #111827; margin-bottom: 6px;">${statement.propertyName || 'Combined Statement'}</div>
+                        <div style="color: #9ca3af; font-size: 13px;">${statement.weekStartDate} to ${statement.weekEndDate}</div>
+                    </div>
+                    <div style="text-align: right; padding-left: 24px; margin-left: 8px; border-left: 2px solid #d1d5db;">
+                        <div style="color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Current Payout</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #10b981; line-height: 1;">$${parseFloat(statement.ownerPayout || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div style="color: #9ca3af; font-size: 12px; margin-top: 6px;">Revenue: $${parseFloat(statement.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - Expenses: $${parseFloat(statement.totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </div>
+                </div>
+
+                <!-- Statement Period & Settings -->
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        <span style="font-weight: 600; font-size: 15px; color: #0284c7;">Statement Period & Settings</span>
+                    </div>
+
+                    <!-- Date Inputs -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">Start Date <span style="color: #ef4444;">*</span></label>
+                            <input type="date" id="editStartDate" value="${statement.weekStartDate}" style="width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">End Date <span style="color: #ef4444;">*</span></label>
+                            <input type="date" id="editEndDate" value="${statement.weekEndDate}" style="width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                        </div>
+                    </div>
+
+                    <!-- Quick Select -->
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+                        <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">Quick select:</span>
+                        <div style="display: flex; gap: 6px;">
+                            <button onclick="setThisMonth()" style="padding: 6px 14px; background: white; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f3f4f6';this.style.borderColor='#9ca3af'" onmouseout="this.style.background='white';this.style.borderColor='#d1d5db'">This Month</button>
+                            <button onclick="setLastMonth()" style="padding: 6px 14px; background: white; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f3f4f6';this.style.borderColor='#9ca3af'" onmouseout="this.style.background='white';this.style.borderColor='#d1d5db'">Last Month</button>
+                            <button onclick="setThisYear()" style="padding: 6px 14px; background: white; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f3f4f6';this.style.borderColor='#9ca3af'" onmouseout="this.style.background='white';this.style.borderColor='#d1d5db'">This Year</button>
+                        </div>
+                    </div>
+
+                    <!-- Calculation Method -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 10px;">Calculation Method <span style="color: #ef4444;">*</span></label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <label id="checkoutLabel" style="display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 2px solid ${statement.calculationType === 'checkout' || !statement.calculationType ? '#3b82f6' : '#e5e7eb'}; border-radius: 8px; cursor: pointer; background: ${statement.calculationType === 'checkout' || !statement.calculationType ? '#eff6ff' : 'white'}; transition: all 0.2s;">
+                                <input type="radio" name="calcMethod" value="checkout" ${statement.calculationType === 'checkout' || !statement.calculationType ? 'checked' : ''} onchange="updateCalcMethod()" style="margin-top: 3px; width: 16px; height: 16px;">
+                                <div>
+                                    <div style="font-weight: 600; color: #111827; font-size: 14px;">Check-out Based</div>
+                                    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">Reservations that check out during period</div>
+                                </div>
+                            </label>
+                            <label id="calendarLabel" style="display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 2px solid ${statement.calculationType === 'calendar' ? '#3b82f6' : '#e5e7eb'}; border-radius: 8px; cursor: pointer; background: ${statement.calculationType === 'calendar' ? '#eff6ff' : 'white'}; transition: all 0.2s;">
+                                <input type="radio" name="calcMethod" value="calendar" ${statement.calculationType === 'calendar' ? 'checked' : ''} onchange="updateCalcMethod()" style="margin-top: 3px; width: 16px; height: 16px;">
+                                <div>
+                                    <div style="font-weight: 600; color: #111827; font-size: 14px;">Calendar Based</div>
+                                    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">Prorate reservations by days in period</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button onclick="updateStatement()" id="updateStatementBtn" style="width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                        Update Statement
+                    </button>
+                </div>
+
+                <!-- Internal Notes -->
+                <div style="background: #fefce8; border: 1px solid #fde047; border-radius: 8px; padding: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            <span style="font-weight: 600; color: #ca8a04;">Internal Notes</span>
+                        </div>
+                        <button onclick="saveInternalNotes()" id="saveNotesBtn" style="padding: 6px 12px; background: #ca8a04; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#a16207'" onmouseout="this.style.background='#ca8a04'">Save Notes</button>
+                    </div>
+                    <p style="font-size: 12px; color: #a16207; margin-bottom: 10px;">Private notes about this listing. Visible in the app only, NOT included on PDF statements.</p>
+                    <textarea id="editInternalNotes" style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #fde047; border-radius: 6px; font-size: 14px; color: #374151; resize: vertical; font-family: inherit; background: white;" placeholder="Add internal notes here...">${statement.internalNotes || ''}</textarea>
+                </div>
+
+                <!-- Footer -->
+                <div style="display: flex; justify-content: flex-end; padding-top: 20px; margin-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <button onclick="closeEditModal()" style="padding: 10px 20px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Close</button>
+                </div>
+            </div>
+        </div>
+
         <script>
             const statementId = ${id};
             const statementStatus = '${statement.status}';
@@ -4612,9 +4711,150 @@ router.get('/:id/view', async (req, res) => {
             }
 
             function editStatement() {
-                // Open the edit modal in the main app
-                const editUrl = '/?editStatement=' + statementId;
-                window.location.href = editUrl;
+                // Open the inline edit modal
+                document.getElementById('editModal').style.display = 'flex';
+            }
+
+            function closeEditModal() {
+                document.getElementById('editModal').style.display = 'none';
+            }
+
+            function updateCalcMethod() {
+                const checkoutLabel = document.getElementById('checkoutLabel');
+                const calendarLabel = document.getElementById('calendarLabel');
+                const checkoutInput = document.querySelector('input[value="checkout"]');
+                const calendarInput = document.querySelector('input[value="calendar"]');
+
+                if (checkoutInput.checked) {
+                    checkoutLabel.style.borderColor = '#3b82f6';
+                    checkoutLabel.style.background = '#eff6ff';
+                    calendarLabel.style.borderColor = '#e5e7eb';
+                    calendarLabel.style.background = 'white';
+                } else {
+                    calendarLabel.style.borderColor = '#3b82f6';
+                    calendarLabel.style.background = '#eff6ff';
+                    checkoutLabel.style.borderColor = '#e5e7eb';
+                    checkoutLabel.style.background = 'white';
+                }
+            }
+
+            function setThisMonth() {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                document.getElementById('editStartDate').value = formatDateForInput(start);
+                document.getElementById('editEndDate').value = formatDateForInput(end);
+            }
+
+            function setLastMonth() {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const end = new Date(now.getFullYear(), now.getMonth(), 0);
+                document.getElementById('editStartDate').value = formatDateForInput(start);
+                document.getElementById('editEndDate').value = formatDateForInput(end);
+            }
+
+            function setThisYear() {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), 0, 1);
+                const end = new Date(now.getFullYear(), 11, 31);
+                document.getElementById('editStartDate').value = formatDateForInput(start);
+                document.getElementById('editEndDate').value = formatDateForInput(end);
+            }
+
+            function formatDateForInput(date) {
+                return date.toISOString().split('T')[0];
+            }
+
+            async function saveInternalNotes() {
+                const btn = document.getElementById('saveNotesBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Saving...';
+                btn.disabled = true;
+
+                const notes = document.getElementById('editInternalNotes').value;
+                const propertyId = statementData.propertyId || (statementData.propertyIds && statementData.propertyIds[0]);
+
+                if (!propertyId) {
+                    alert('Cannot save notes: No property ID found');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/listings/' + propertyId + '/config', {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ internalNotes: notes })
+                    });
+
+                    if (response.ok) {
+                        btn.textContent = 'Saved!';
+                        btn.style.background = '#10b981';
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.style.background = '#ca8a04';
+                            btn.disabled = false;
+                        }, 2000);
+                    } else {
+                        throw new Error('Failed to save notes');
+                    }
+                } catch (error) {
+                    alert('Error saving notes: ' + error.message);
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            }
+
+            async function updateStatement() {
+                const btn = document.getElementById('updateStatementBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Updating...';
+                btn.disabled = true;
+
+                const startDate = document.getElementById('editStartDate').value;
+                const endDate = document.getElementById('editEndDate').value;
+                const calcMethod = document.querySelector('input[name="calcMethod"]:checked').value;
+
+                try {
+                    // Delete existing statement
+                    const deleteRes = await fetch('/api/statements/' + statementId, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+
+                    if (!deleteRes.ok) {
+                        throw new Error('Failed to delete old statement');
+                    }
+
+                    // Regenerate with new settings
+                    const response = await fetch('/api/statements/generate', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            propertyId: statementData.propertyId || null,
+                            propertyIds: statementData.propertyIds.length > 0 ? statementData.propertyIds : null,
+                            startDate: startDate,
+                            endDate: endDate,
+                            calculationType: calcMethod
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (response.ok && result.statement) {
+                        // Redirect to new statement
+                        window.location.href = '/api/statements/' + result.statement.id + '/view';
+                    } else {
+                        throw new Error(result.error || 'Failed to regenerate statement');
+                    }
+                } catch (error) {
+                    alert('Error updating statement: ' + error.message);
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
             }
 
             async function regenerateStatement() {
