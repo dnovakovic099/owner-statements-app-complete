@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, Filter, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
+import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
 import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
 import { Listing, Statement } from '../types';
 import { useToast } from './ui/toast';
