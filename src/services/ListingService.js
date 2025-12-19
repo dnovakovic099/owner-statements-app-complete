@@ -184,12 +184,12 @@ class ListingService {
     }
 
     /**
-     * Get lightweight listing names for lookups (id, name, displayName, nickname, internalNotes)
+     * Get lightweight listing names for lookups (id, name, displayName, nickname, internalNotes, ownerEmail, tags)
      */
     async getListingNames() {
         try {
             const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes']
+                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags']
             });
             return listings.map(l => l.toJSON());
         } catch (error) {
