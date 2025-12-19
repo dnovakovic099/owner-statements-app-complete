@@ -346,6 +346,87 @@ class TagScheduleService {
             where: { status: 'unread' }
         });
     }
+
+    // === Period Config Methods ===
+
+    /**
+     * Get all period configs (for all tags)
+     * Returns configs for tags that have period settings
+     */
+    async getAllPeriodConfigs() {
+        const schedules = await TagSchedule.findAll({
+            attributes: ['tagName', 'periodDays', 'calculationType', 'templateId']
+        });
+
+        // Convert to a map of tagName -> config
+        const configs = {};
+        for (const schedule of schedules) {
+            configs[schedule.tagName] = {
+                prefix: schedule.tagName,
+                days: schedule.periodDays || this.getDefaultDaysForTag(schedule.tagName),
+                calculationType: schedule.calculationType || 'checkout',
+                templateId: schedule.templateId || null
+            };
+        }
+        return configs;
+    }
+
+    /**
+     * Update period config for a specific tag
+     * Creates the schedule if it doesn't exist
+     */
+    async updatePeriodConfig(tagName, { periodDays, calculationType, templateId }) {
+        let schedule = await TagSchedule.findOne({
+            where: { tagName }
+        });
+
+        if (schedule) {
+            // Update existing
+            await schedule.update({
+                periodDays: periodDays !== undefined ? periodDays : schedule.periodDays,
+                calculationType: calculationType !== undefined ? calculationType : schedule.calculationType,
+                templateId: templateId !== undefined ? templateId : schedule.templateId
+            });
+        } else {
+            // Create new schedule with period config
+            schedule = await TagSchedule.create({
+                tagName,
+                frequencyType: this.getFrequencyTypeForTag(tagName),
+                isEnabled: true,
+                periodDays: periodDays || this.getDefaultDaysForTag(tagName),
+                calculationType: calculationType || 'checkout',
+                templateId: templateId || null
+            });
+        }
+
+        return {
+            prefix: schedule.tagName,
+            days: schedule.periodDays || this.getDefaultDaysForTag(schedule.tagName),
+            calculationType: schedule.calculationType || 'checkout',
+            templateId: schedule.templateId || null
+        };
+    }
+
+    /**
+     * Get default days for a tag based on its name
+     */
+    getDefaultDaysForTag(tagName) {
+        const upperTag = (tagName || '').toUpperCase();
+        if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) return 7;
+        if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) return 14;
+        if (upperTag.includes('MONTHLY')) return 30;
+        return 14; // Default
+    }
+
+    /**
+     * Get frequency type for a tag based on its name
+     */
+    getFrequencyTypeForTag(tagName) {
+        const upperTag = (tagName || '').toUpperCase();
+        if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) return 'weekly';
+        if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) return 'biweekly';
+        return 'monthly';
+    }
 }
 
 // Export singleton instance

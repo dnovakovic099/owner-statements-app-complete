@@ -586,6 +586,13 @@ export interface TagSchedule {
   nextScheduledAt?: string;
 }
 
+export interface PeriodConfig {
+  prefix: string;
+  days: number;
+  calculationType: 'checkout' | 'calendar';
+  templateId?: number | null;
+}
+
 export interface TagNotification {
   id: number;
   tagName: string;
@@ -662,6 +669,22 @@ export const tagScheduleAPI = {
     const response = await api.get(`/tag-schedules/listings-by-tag/${encodeURIComponent(tagName)}`);
     return response.data;
   },
+
+  // Get all period configs
+  getPeriodConfigs: async (): Promise<{ success: boolean; configs: Record<string, PeriodConfig> }> => {
+    const response = await api.get('/tag-schedules/period-configs');
+    return response.data;
+  },
+
+  // Update period config for a tag
+  updatePeriodConfig: async (tagName: string, config: Partial<PeriodConfig>): Promise<{ success: boolean; config: PeriodConfig; message: string }> => {
+    const response = await api.put(`/tag-schedules/period-configs/${encodeURIComponent(tagName)}`, {
+      periodDays: config.days,
+      calculationType: config.calculationType,
+      templateId: config.templateId
+    });
+    return response.data;
+  },
 };
 
 // Email Template Types
@@ -675,8 +698,11 @@ export interface EmailTemplate {
   id: number;
   name: string;
   frequencyType: 'weekly' | 'bi-weekly' | 'monthly' | 'custom';
+  calculationType?: 'checkout' | 'calendar';
   isDefault: boolean;
+  isSystem: boolean;
   isActive: boolean;
+  tags: string[];
   subject: string;
   htmlBody: string;
   textBody?: string;
@@ -715,6 +741,7 @@ export const emailTemplatesAPI = {
   createTemplate: async (data: {
     name: string;
     frequencyType?: string;
+    tags?: string[];
     subject: string;
     htmlBody: string;
     textBody?: string;
@@ -729,6 +756,7 @@ export const emailTemplatesAPI = {
   updateTemplate: async (id: number, data: {
     name?: string;
     frequencyType?: string;
+    tags?: string[];
     subject?: string;
     htmlBody?: string;
     textBody?: string;

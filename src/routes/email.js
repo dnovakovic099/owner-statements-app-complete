@@ -84,12 +84,16 @@ router.post('/send/:statementId', async (req, res) => {
             statementData.propertyName = listingNickname;
         }
 
+        // Get calculation type from statement (checkout or calendar)
+        const calculationType = statement.calculationType || 'checkout';
+
         // Send email with PDF attachment
         const attachPdf = req.body.attachPdf !== false; // Default to true
         const result = await EmailService.sendStatementEmailWithPdf({
             to: recipientEmail,
             statement: statementData,
             frequencyTag: frequency,
+            calculationType: calculationType, // Template selected based on statement's calculation type
             attachPdf: attachPdf,
             authHeader: req.headers.authorization,
             // Callback to refetch statement after PDF generation (to get recalculated values)
@@ -360,22 +364,26 @@ router.post('/force-send/:statementId', async (req, res) => {
             attachments: []
         };
 
-        // Generate PDF attachment if requested (default: true)
-        const attachPdf = req.body.attachPdf !== false;
-        if (attachPdf) {
-            const pdfResult = await EmailService.generateStatementPdf(
-                statementId,
-                statement.toJSON(),
-                req.headers.authorization
-            );
-            if (pdfResult.success) {
-                mailOptions.attachments.push({
-                    filename: pdfResult.filename,
-                    content: pdfResult.pdfBuffer,
-                    contentType: 'application/pdf'
-                });
-            }
+        // Generate PDF attachment (REQUIRED - no email without statement PDF)
+        const pdfResult = await EmailService.generateStatementPdf(
+            statementId,
+            statement.toJSON(),
+            req.headers.authorization
+        );
+
+        if (!pdfResult.success) {
+            return res.status(400).json({
+                success: false,
+                error: 'PDF_GENERATION_FAILED',
+                message: `Cannot send email without statement PDF attached. PDF generation failed: ${pdfResult.error}`
+            });
         }
+
+        mailOptions.attachments.push({
+            filename: pdfResult.filename,
+            content: pdfResult.pdfBuffer,
+            contentType: 'application/pdf'
+        });
 
         const result = await EmailService.transporter.sendMail(mailOptions);
 

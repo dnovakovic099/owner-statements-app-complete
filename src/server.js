@@ -183,6 +183,7 @@ app.use('/api/reservations-import', authMiddleware, require('./routes/reservatio
 app.use('/api/quickbooks', authMiddleware, require('./routes/quickbooks'));
 app.use('/api/email', authMiddleware, require('./routes/email'));
 app.use('/api/email-templates', authMiddleware, require('./routes/email-templates'));
+app.use('/api/tag-schedules', authMiddleware, require('./routes/tag-schedules'));
 
 // Removed unused database routes
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown, Bell, X, Mail } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI } from '../services/api';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
@@ -31,6 +31,8 @@ interface ListingName {
   displayName?: string | null;
   nickname?: string | null;
   internalNotes?: string | null;
+  ownerEmail?: string | null;
+  tags?: string[] | null;
 }
 
 // Newly added listing for notifications
@@ -583,7 +585,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   }, [pendingRegenerateId, statements, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv') => {
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email') => {
     if (ids.length === 0) return;
 
     setBulkProcessing(true);
@@ -897,6 +899,56 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       document.body.removeChild(a);
 
       showToast(`Exported ${selectedStatements.length} statement(s) to CSV`, 'success');
+      setBulkProcessing(false);
+      return;
+    } else if (action === 'send-email') {
+      // Send emails to owners for selected statements
+      const selectedStatements = statements.filter(s => ids.includes(s.id));
+      const toastId = showToast(`Sending ${selectedStatements.length} email(s)...`, 'loading');
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+
+      for (const statement of selectedStatements) {
+        try {
+          // Get listing to find owner email and frequency tag
+          const listing = listings.find(l => l.id === statement.propertyId);
+
+          if (!listing?.ownerEmail) {
+            skipped++;
+            continue;
+          }
+
+          // Get frequency tag from listing tags
+          const frequencyTag = listing.tags?.find(t =>
+            ['WEEKLY', 'BI-WEEKLY A', 'BI-WEEKLY B', 'MONTHLY'].includes(t)
+          ) || 'MONTHLY';
+
+          // Send email via API
+          const response = await emailAPI.sendStatementEmail(statement.id, listing.ownerEmail, frequencyTag);
+
+          if (response.success) {
+            sent++;
+          } else {
+            failed++;
+          }
+        } catch (error) {
+          console.error(`Failed to send email for statement ${statement.id}:`, error);
+          failed++;
+        }
+      }
+
+      if (sent > 0) {
+        updateToast(toastId, `Sent ${sent} email(s)${skipped > 0 ? `, ${skipped} skipped (no owner email)` : ''}${failed > 0 ? `, ${failed} failed` : ''}`, 'success');
+      } else if (skipped > 0) {
+        updateToast(toastId, `${skipped} statement(s) skipped - no owner email configured`, 'error');
+      } else {
+        updateToast(toastId, `Failed to send emails`, 'error');
+      }
+
+      // Refresh statements to update status
+      await loadStatements();
       setBulkProcessing(false);
       return;
     }

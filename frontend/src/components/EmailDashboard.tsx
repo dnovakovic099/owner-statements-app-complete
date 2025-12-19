@@ -1,17 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, Settings, ChevronDown, ChevronUp, History, Filter, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
+import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, Filter, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
 import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
 import { Listing, Statement } from '../types';
 import { useToast } from './ui/toast';
 
 interface EmailDashboardProps {
   onBack: () => void;
-}
-
-interface PeriodConfig {
-  prefix: string;
-  days: number;
-  calculationType: 'checkout' | 'calendar';
 }
 
 interface ScheduledBatch {
@@ -49,17 +43,11 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('09:00');
 
-  // Period configuration state
-  const [periodConfigs, setPeriodConfigs] = useState<Record<string, PeriodConfig>>(() => {
-    const saved = localStorage.getItem('emailDashboardPeriodConfigs');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [showSettings, setShowSettings] = useState(false);
+  // Custom period state
   const [useCustomPeriod, setUseCustomPeriod] = useState(false);
   const [customPeriodStart, setCustomPeriodStart] = useState('');
   const [customPeriodEnd, setCustomPeriodEnd] = useState('');
-  const [customCalculationType, setCustomCalculationType] = useState<'checkout' | 'calendar'>('checkout');
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  // Type is now automatically determined by tag (MONTHLY=calendar, WEEKLY/BI-WEEKLY=checkout)
 
   // Pending scheduled batches
   const [pendingBatches, setPendingBatches] = useState<ScheduledBatch[]>([]);
@@ -78,6 +66,9 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   const [emailStats, setEmailStats] = useState<EmailStats | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDateStart, setHistoryDateStart] = useState('');
+  const [historyDateEnd, setHistoryDateEnd] = useState('');
 
   // Email templates state
   const [showTemplates, setShowTemplates] = useState(false);
@@ -90,11 +81,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     frequencyType: 'custom' as 'weekly' | 'bi-weekly' | 'monthly' | 'custom',
+    tags: [] as string[],
     subject: '',
     htmlBody: '',
     textBody: '',
-    description: ''
+    description: '',
+    isDefault: false
   });
+
 
   // Fetch email history
   const fetchEmailHistory = async () => {
@@ -138,12 +132,10 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
     }
   };
 
-  // Fetch templates when opened
+  // Fetch templates on mount (for count) and when opened
   useEffect(() => {
-    if (showTemplates) {
-      fetchTemplates();
-    }
-  }, [showTemplates]);
+    fetchTemplates();
+  }, []);
 
   // Handle template save
   const handleSaveTemplate = async () => {
@@ -153,10 +145,12 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
         await emailTemplatesAPI.updateTemplate(editingTemplate.id, {
           name: newTemplate.name,
           frequencyType: newTemplate.frequencyType,
+          tags: newTemplate.tags,
           subject: newTemplate.subject,
           htmlBody: newTemplate.htmlBody,
           textBody: newTemplate.textBody,
-          description: newTemplate.description
+          description: newTemplate.description,
+          isDefault: newTemplate.isDefault
         });
         showToast('Template updated successfully', 'success');
       } else {
@@ -164,16 +158,18 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
         await emailTemplatesAPI.createTemplate({
           name: newTemplate.name,
           frequencyType: newTemplate.frequencyType,
+          tags: newTemplate.tags,
           subject: newTemplate.subject,
           htmlBody: newTemplate.htmlBody,
           textBody: newTemplate.textBody,
-          description: newTemplate.description
+          description: newTemplate.description,
+          isDefault: newTemplate.isDefault
         });
         showToast('Template created successfully', 'success');
       }
       setShowTemplateEditor(false);
       setEditingTemplate(null);
-      setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+      setNewTemplate({ name: '', frequencyType: 'custom', tags: [], subject: '', htmlBody: '', textBody: '', description: '', isDefault: false });
       fetchTemplates();
     } catch (error: any) {
       showToast(error.response?.data?.error || 'Failed to save template', 'error');
@@ -224,14 +220,16 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
       setNewTemplate({
         name: template.name,
         frequencyType: template.frequencyType,
+        tags: template.tags || [],
         subject: template.subject,
         htmlBody: template.htmlBody,
         textBody: template.textBody || '',
-        description: template.description || ''
+        description: template.description || '',
+        isDefault: template.isDefault || false
       });
     } else {
       setEditingTemplate(null);
-      setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+      setNewTemplate({ name: '', frequencyType: 'custom', tags: [], subject: '', htmlBody: '', textBody: '', description: '', isDefault: false });
     }
     setTemplatePreview(null);
     setShowTemplateEditor(true);
@@ -314,19 +312,6 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
     setSelectedTags(new Set());
   };
 
-  // Get period config for a tag
-  const getPeriodConfigForTag = (tag: string): PeriodConfig => {
-    if (periodConfigs[tag]) {
-      return periodConfigs[tag];
-    }
-    // Return default config if not customized
-    return {
-      prefix: tag,
-      days: getDefaultDaysForTag(tag),
-      calculationType: 'checkout',
-    };
-  };
-
   // Calculate period dates based on config
   const calculatePeriodDates = (days: number): { start: string; end: string } => {
     const today = new Date();
@@ -341,29 +326,64 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
     };
   };
 
+  // Get calculation type based on tag name
+  const getCalculationTypeForTag = (tag: string): 'checkout' | 'calendar' => {
+    const upperTag = tag.toUpperCase();
+    // MONTHLY tags use calendar-based statements
+    if (upperTag.includes('MONTHLY')) return 'calendar';
+    // WEEKLY and BI-WEEKLY tags use checkout-based statements
+    return 'checkout';
+  };
+
   // Get calculated period for selected tags
   const calculatedPeriod = useMemo(() => {
     if (selectedTags.size === 0) return null;
 
-    // Get the first tag's config
+    // Get the first tag's default days and calculation type based on tag name
     const firstTag = Array.from(selectedTags)[0];
-    const config = getPeriodConfigForTag(firstTag);
+    const days = getDefaultDaysForTag(firstTag);
+    const calculationType = getCalculationTypeForTag(firstTag);
 
-    const { start, end } = calculatePeriodDates(config.days);
-    return { start, end, calculationType: config.calculationType, config };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTags, periodConfigs]);
+    const { start, end } = calculatePeriodDates(days);
+    return { start, end, calculationType, days };
+  }, [selectedTags]);
 
-  // Update a specific tag's config
-  const updateTagConfig = (tag: string, updates: Partial<PeriodConfig>) => {
-    const currentConfig = getPeriodConfigForTag(tag);
-    const newConfigs = {
-      ...periodConfigs,
-      [tag]: { ...currentConfig, ...updates },
-    };
-    setPeriodConfigs(newConfigs);
-    localStorage.setItem('emailDashboardPeriodConfigs', JSON.stringify(newConfigs));
-  };
+  // Filter email logs based on search and date
+  const filteredEmailLogs = useMemo(() => {
+    let filtered = emailLogs;
+
+    // Filter by search term
+    if (historySearch) {
+      const searchLower = historySearch.toLowerCase();
+      filtered = filtered.filter(log =>
+        log.propertyName?.toLowerCase().includes(searchLower) ||
+        log.recipientEmail?.toLowerCase().includes(searchLower) ||
+        log.recipientName?.toLowerCase().includes(searchLower) ||
+        log.frequencyTag?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Filter by date range
+    if (historyDateStart) {
+      const startDate = new Date(historyDateStart);
+      startDate.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(log => {
+        const logDate = new Date(log.createdAt || log.sentAt || '');
+        return logDate >= startDate;
+      });
+    }
+
+    if (historyDateEnd) {
+      const endDate = new Date(historyDateEnd);
+      endDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(log => {
+        const logDate = new Date(log.createdAt || log.sentAt || '');
+        return logDate <= endDate;
+      });
+    }
+
+    return filtered;
+  }, [emailLogs, historySearch, historyDateStart, historyDateEnd]);
 
   // Handle schedule emails - adds to pending queue
   const handleScheduleEmails = () => {
@@ -376,22 +396,25 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
       return;
     }
 
-    // Determine period dates and calculation type
+    // Determine period dates and calculation type (type is always based on tag)
     let periodStart: string;
     let periodEnd: string;
     let calcType: 'checkout' | 'calendar';
 
+    if (!calculatedPeriod) {
+      showToast('Could not determine statement period. Please select a tag.', 'error');
+      return;
+    }
+
+    // Type is always determined by the tag
+    calcType = calculatedPeriod.calculationType;
+
     if (useCustomPeriod && customPeriodStart && customPeriodEnd) {
       periodStart = customPeriodStart;
       periodEnd = customPeriodEnd;
-      calcType = customCalculationType;
-    } else if (calculatedPeriod) {
+    } else {
       periodStart = calculatedPeriod.start;
       periodEnd = calculatedPeriod.end;
-      calcType = calculatedPeriod.calculationType;
-    } else {
-      showToast('Could not determine statement period. Please use custom dates.', 'error');
-      return;
     }
 
     const newBatch: ScheduledBatch = {
@@ -453,7 +476,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
       scheduledTime: new Date().toTimeString().slice(0, 5),
       periodStart: useCustomPeriod && customPeriodStart ? customPeriodStart : calculatedPeriod.start,
       periodEnd: useCustomPeriod && customPeriodEnd ? customPeriodEnd : calculatedPeriod.end,
-      calculationType: useCustomPeriod ? customCalculationType : calculatedPeriod.calculationType,
+      calculationType: calculatedPeriod.calculationType, // Always based on tag
       testEmail: testEmail,
       testSendAll: testSendAll,
       createdAt: new Date(),
@@ -578,6 +601,9 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
             // Use batch's test email if provided, otherwise use owner's email
             const recipientEmail = batch.testEmail || listing.ownerEmail;
 
+            // Find the tag for this listing that matches one of the batch tags
+            const listingTag = listing.tags?.find(t => batch.tags.includes(t)) || batch.tags[0] || 'manual';
+
             setSendProgress({
               current: i + 1,
               total: batch.listingIds.length,
@@ -588,13 +614,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
               statementId: statement.id,
               listingName: listing.name,
               originalOwnerEmail: listing.ownerEmail,
-              tag: batch.tags[0] || 'manual'
+              tag: listingTag
             });
 
+            // Template is auto-selected based on statement's calculation type
             await emailAPI.sendStatementEmail(
               statement.id,
               recipientEmail,
-              batch.tags[0] || 'manual'
+              listingTag
             );
             sent++;
             if (isTestSingleEmail) {
@@ -821,98 +848,6 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
           )}
         </div>
 
-        {/* Settings Panel */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <Settings className="w-5 h-5 text-gray-500" />
-              <span className="font-medium text-gray-700">Period Settings</span>
-            </div>
-            {showSettings ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
-            )}
-          </button>
-
-          {showSettings && (
-            <div className="px-4 pb-4 border-t border-gray-100">
-              <p className="text-sm text-gray-500 mt-3 mb-4">Configure statement periods for each tag</p>
-              <div className="space-y-3">
-                {availableTags.map((tag: string) => {
-                  const config: PeriodConfig = getPeriodConfigForTag(tag);
-                  const isDropdownOpen: boolean = openDropdown === tag;
-
-                  return (
-                    <div key={tag} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                      <span className="font-medium text-gray-700 min-w-[120px]">{tag}</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={config.days}
-                          onChange={(e) => updateTagConfig(tag, { days: parseInt(e.target.value) || 7 })}
-                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          min="1"
-                        />
-                        <span className="text-sm text-gray-500">days</span>
-                      </div>
-
-                      {/* Custom Dropdown */}
-                      <div className="relative">
-                        <button
-                          onClick={() => setOpenDropdown(isDropdownOpen ? null : tag)}
-                          className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50 min-w-[140px] justify-between"
-                        >
-                          <span>{config.calculationType === 'checkout' ? 'Checkout Based' : 'Calendar Based'}</span>
-                          <ChevronDown className="w-4 h-4 text-gray-400" />
-                        </button>
-
-                        {isDropdownOpen && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-10"
-                              onClick={() => setOpenDropdown(null)}
-                            />
-                            <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden">
-                              <button
-                                onClick={() => {
-                                  updateTagConfig(tag, { calculationType: 'checkout' });
-                                  setOpenDropdown(null);
-                                }}
-                                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                                  config.calculationType === 'checkout' ? 'bg-blue-50 text-blue-700' : ''
-                                }`}
-                              >
-                                {config.calculationType === 'checkout' && <Check className="w-4 h-4" />}
-                                <span className={config.calculationType === 'checkout' ? '' : 'ml-6'}>Checkout Based</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  updateTagConfig(tag, { calculationType: 'calendar' });
-                                  setOpenDropdown(null);
-                                }}
-                                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                                  config.calculationType === 'calendar' ? 'bg-blue-50 text-blue-700' : ''
-                                }`}
-                              >
-                                {config.calculationType === 'calendar' && <Check className="w-4 h-4" />}
-                                <span className={config.calculationType === 'calendar' ? '' : 'ml-6'}>Calendar Based</span>
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Schedule Section - Only show when tags are selected */}
         {selectedTags.size > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -930,93 +865,6 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                 </p>
               </div>
             </div>
-
-            {/* Statement Period Info */}
-            {calculatedPeriod && !useCustomPeriod && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">Statement Period (Auto)</p>
-                    <p className="text-sm text-blue-600">
-                      {new Date(calculatedPeriod.start).toLocaleDateString()} - {new Date(calculatedPeriod.end).toLocaleDateString()}
-                      <span className="ml-2 text-blue-500">({calculatedPeriod.calculationType})</span>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setUseCustomPeriod(true);
-                      setCustomPeriodStart(calculatedPeriod.start);
-                      setCustomPeriodEnd(calculatedPeriod.end);
-                      setCustomCalculationType(calculatedPeriod.calculationType);
-                    }}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Customize
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Custom Period Selection */}
-            {useCustomPeriod && (
-              <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-medium text-gray-700">Custom Statement Period</p>
-                  <button
-                    onClick={() => setUseCustomPeriod(false)}
-                    className="text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    Use Default
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      value={customPeriodStart}
-                      onChange={(e) => setCustomPeriodStart(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">End Date</label>
-                    <input
-                      type="date"
-                      value={customPeriodEnd}
-                      onChange={(e) => setCustomPeriodEnd(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Type</label>
-                    <select
-                      value={customCalculationType}
-                      onChange={(e) => setCustomCalculationType(e.target.value as 'checkout' | 'calendar')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-                    >
-                      <option value="checkout">Checkout</option>
-                      <option value="calendar">Calendar</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* No config warning */}
-            {!calculatedPeriod && !useCustomPeriod && (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-sm text-amber-800">
-                  No period config found for selected tags.
-                  <button
-                    onClick={() => setUseCustomPeriod(true)}
-                    className="ml-1 text-amber-700 font-medium underline"
-                  >
-                    Set custom dates
-                  </button>
-                </p>
-              </div>
-            )}
 
             {listingsWithoutStatements.length > 0 && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -1184,50 +1032,88 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
             <div className="px-4 pb-4 border-t border-gray-100">
               {/* Stats Cards */}
               {emailStats && (
-                <div className="grid grid-cols-4 gap-3 mt-4 mb-4">
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                <div className="grid grid-cols-4 gap-4 mt-4 mb-4">
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
                     <div className="text-2xl font-bold text-green-700">{emailStats.sent}</div>
                     <div className="text-xs text-green-600">Sent</div>
                   </div>
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
                     <div className="text-2xl font-bold text-red-700">{emailStats.failed}</div>
                     <div className="text-xs text-red-600">Failed</div>
                   </div>
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
                     <div className="text-2xl font-bold text-yellow-700">{emailStats.pending}</div>
                     <div className="text-xs text-yellow-600">Pending</div>
                   </div>
-                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-center">
+                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg text-center">
                     <div className="text-2xl font-bold text-orange-700">{emailStats.bounced}</div>
                     <div className="text-xs text-orange-600">Bounced</div>
                   </div>
                 </div>
               )}
 
-              {/* Filter and Refresh */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-gray-400" />
-                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                    {(['all', 'sent', 'failed', 'pending'] as const).map(status => (
-                      <button
-                        key={status}
-                        onClick={() => setHistoryFilter(status)}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors capitalize ${
-                          historyFilter === status
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
+              {/* Filters Row - Full Width */}
+              <div className="flex items-center gap-3 mb-4">
+                {/* Status Filter */}
+                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                  {(['all', 'sent', 'failed', 'pending'] as const).map(status => (
+                    <button
+                      key={status}
+                      onClick={() => setHistoryFilter(status)}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
+                        historyFilter === status
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  ))}
                 </div>
+
+                {/* Search - Flexible Width */}
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="flex-1 h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+
+                {/* Date Range */}
+                <input
+                  type="date"
+                  value={historyDateStart}
+                  onChange={(e) => setHistoryDateStart(e.target.value)}
+                  className="h-9 px-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <span className="text-gray-400">–</span>
+                <input
+                  type="date"
+                  value={historyDateEnd}
+                  onChange={(e) => setHistoryDateEnd(e.target.value)}
+                  className="h-9 px-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+
+                {/* Clear */}
+                {(historySearch || historyDateStart || historyDateEnd) && (
+                  <button
+                    onClick={() => {
+                      setHistorySearch('');
+                      setHistoryDateStart('');
+                      setHistoryDateEnd('');
+                    }}
+                    className="h-9 px-3 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+
+                {/* Refresh */}
                 <button
                   onClick={fetchEmailHistory}
                   disabled={historyLoading}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="h-9 flex items-center gap-2 px-3 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
                   Refresh
@@ -1239,13 +1125,13 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                 <div className="flex items-center justify-center py-8">
                   <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 </div>
-              ) : emailLogs.length === 0 ? (
+              ) : filteredEmailLogs.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  No email logs found
+                  {emailLogs.length === 0 ? 'No email logs found' : 'No results match your search'}
                 </div>
               ) : (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {emailLogs.map(log => (
+                  {filteredEmailLogs.map(log => (
                     <div
                       key={log.id}
                       className={`p-3 rounded-lg border ${
@@ -1372,22 +1258,16 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                                 Default
                               </span>
                             )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              template.frequencyType === 'weekly' ? 'bg-green-100 text-green-700' :
-                              template.frequencyType === 'bi-weekly' ? 'bg-purple-100 text-purple-700' :
-                              template.frequencyType === 'monthly' ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {template.frequencyType}
-                            </span>
+                            {template.calculationType && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                template.calculationType === 'checkout' ? 'bg-purple-100 text-purple-700' : 'bg-cyan-100 text-cyan-700'
+                              }`}>
+                                {template.calculationType === 'checkout' ? 'Check-Out' : 'Calendar'}
+                              </span>
+                            )}
                             {!template.isActive && (
                               <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">
                                 Inactive
-                              </span>
-                            )}
-                            {['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
-                              <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full">
-                                System
                               </span>
                             )}
                           </div>
@@ -1401,7 +1281,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                           )}
                         </div>
                         <div className="flex items-center gap-1 ml-4">
-                          {!template.isDefault && !['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
+                          {!template.isDefault && !template.isSystem && (
                             <button
                               onClick={() => handleSetDefault(template.id)}
                               className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
@@ -1417,7 +1297,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          {!template.isDefault && !['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
+                          {!template.isSystem && !template.isDefault && (
                             <button
                               onClick={() => handleDeleteTemplate(template.id)}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -1439,7 +1319,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
         {/* Template Editor Modal */}
         {showTemplateEditor && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl shadow-xl max-w-[90vw] w-full max-h-[85vh] overflow-hidden flex flex-col">
               {/* Modal Header */}
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -1450,7 +1330,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                     setShowTemplateEditor(false);
                     setEditingTemplate(null);
                     setTemplatePreview(null);
-                    setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+                    setNewTemplate({ name: '', frequencyType: 'custom', tags: [], subject: '', htmlBody: '', textBody: '', description: '', isDefault: false });
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
@@ -1460,33 +1340,32 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
 
               {/* Modal Body */}
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Left Column - Form */}
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                <div className="grid grid-cols-3 gap-6">
+                  {/* Left Column - Form (2/3 width) */}
+                  <div className="col-span-2 space-y-4">
+                    <div className="flex items-end gap-4">
+                      <div className="flex-1">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Template Name</label>
                         <input
                           type="text"
                           value={newTemplate.name}
                           onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
-                          placeholder="e.g., Weekly Statement"
+                          placeholder="e.g., Check-Out Statement"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Frequency Type</label>
-                        <select
-                          value={newTemplate.frequencyType}
-                          onChange={(e) => setNewTemplate({ ...newTemplate, frequencyType: e.target.value as any })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                        >
-                          <option value="weekly">Weekly</option>
-                          <option value="bi-weekly">Bi-Weekly</option>
-                          <option value="monthly">Monthly</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                      </div>
+                      <label className="flex items-center gap-2 px-4 py-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newTemplate.isDefault}
+                          onChange={(e) => setNewTemplate({ ...newTemplate, isDefault: e.target.checked })}
+                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="flex items-center gap-1 text-sm font-medium text-gray-700">
+                          <Star className="w-4 h-4 text-yellow-500" />
+                          Set as Default
+                        </span>
+                      </label>
                     </div>
 
                     <div>
@@ -1534,8 +1413,8 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                     </div>
                   </div>
 
-                  {/* Right Column - Variables & Preview */}
-                  <div className="space-y-4">
+                  {/* Right Column - Variables & Preview (1/3 width) */}
+                  <div className="space-y-4 sticky top-0">
                     {/* Available Variables */}
                     <div className="bg-gray-50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-700 mb-3">Available Variables</h4>
@@ -1602,7 +1481,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                     setShowTemplateEditor(false);
                     setEditingTemplate(null);
                     setTemplatePreview(null);
-                    setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+                    setNewTemplate({ name: '', frequencyType: 'custom', tags: [], subject: '', htmlBody: '', textBody: '', description: '', isDefault: false });
                   }}
                   className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors"
                 >

@@ -13,6 +13,7 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 const http = require('http');
 const EmailLog = require('../models/EmailLog');
+const { EmailTemplate } = require('../models');
 
 class EmailService {
     constructor() {
@@ -83,6 +84,31 @@ class EmailService {
     }
 
     /**
+     * Format period display for email templates
+     * @param {string} start - Period start date
+     * @param {string} end - Period end date
+     * @returns {string} Formatted period string (e.g., "Dec 1-14, 2025")
+     */
+    formatPeriodDisplay(start, end) {
+        try {
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+            const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+            const startDay = startDate.getDate();
+            const endDay = endDate.getDate();
+            const year = endDate.getFullYear();
+
+            if (startMonth === endMonth) {
+                return `${startMonth} ${startDay}-${endDay}, ${year}`;
+            }
+            return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${year}`;
+        } catch {
+            return `${start} to ${end}`;
+        }
+    }
+
+    /**
      * Get email template based on frequency tag
      * @param {string} frequencyTag - 'Weekly', 'Bi-Weekly', or 'Monthly'
      * @param {Object} data - Template data (ownerName, propertyName, period, etc.)
@@ -107,6 +133,77 @@ class EmailService {
         };
 
         return templates[templateKey];
+    }
+
+    /**
+     * Get email template from database by calculation type
+     * Uses the default template for the given calculationType
+     * @param {string} calculationType - 'checkout' or 'calendar'
+     * @param {Object} data - Template data for variable replacement
+     * @returns {Object|null} Template with subject, html, and text
+     */
+    async getTemplateFromDatabase(calculationType, data) {
+        try {
+            let template = null;
+
+            // Step 1: Find template by calculationType, prefer the default one
+            if (calculationType) {
+                // First try to find one that is both matching type AND marked as default
+                template = await EmailTemplate.findOne({
+                    where: {
+                        isActive: true,
+                        calculationType: calculationType,
+                        isDefault: true
+                    }
+                });
+
+                // If no default for this type, find any active template with this type
+                if (!template) {
+                    template = await EmailTemplate.findOne({
+                        where: {
+                            isActive: true,
+                            calculationType: calculationType
+                        }
+                    });
+                }
+
+                if (template) {
+                    console.log(`[EmailService] Found template for '${calculationType}': ${template.name}`);
+                }
+            }
+
+            // Step 2: Fall back to any default template
+            if (!template) {
+                template = await EmailTemplate.findOne({
+                    where: {
+                        isActive: true,
+                        isDefault: true
+                    }
+                });
+                if (template) {
+                    console.log(`[EmailService] Using default template: ${template.name}`);
+                }
+            }
+
+            if (!template) {
+                return null;
+            }
+
+            // Apply variable replacements
+            const subject = EmailTemplate.replaceVariables(template.subject, data);
+            const html = EmailTemplate.replaceVariables(template.htmlBody, data);
+            const text = template.textBody ? EmailTemplate.replaceVariables(template.textBody, data) : '';
+
+            return {
+                subject,
+                html,
+                text,
+                templateName: template.name
+            };
+        } catch (error) {
+            console.error('[EmailService] Error fetching template from database:', error);
+            return null;
+        }
     }
 
     /**
@@ -738,7 +835,17 @@ Thank you again for your trust and partnership.
      * @param {string} options.pdfFilename - Filename for the attachment
      */
     async sendStatementEmail(options) {
-        const { to, statement, frequencyTag, pdfAttachment, pdfFilename, testNote } = options;
+        const { to, statement, frequencyTag, calculationType, pdfAttachment, pdfFilename, testNote } = options;
+
+        // CRITICAL: PDF attachment is REQUIRED - no email without statement PDF
+        if (!pdfAttachment) {
+            console.error(`[EmailService] BLOCKED: No PDF attachment for statement ${statement?.id} - email cannot be sent without statement`);
+            return {
+                success: false,
+                error: 'PDF_REQUIRED',
+                message: 'Cannot send email without statement PDF attached. PDF attachment is required.'
+            };
+        }
 
         // Check SMTP configuration
         if (!this.isConfigured) {
@@ -762,17 +869,37 @@ Thank you again for your trust and partnership.
             };
         }
 
-        // Get email template
+        // Prepare template data for variable replacement
+        const ownerPayout = parseFloat(statement.ownerPayout) || 0;
         const templateData = {
             ownerName: statement.ownerName,
             propertyName: statement.propertyName || 'Multiple Properties',
             periodStart: statement.weekStartDate,
             periodEnd: statement.weekEndDate,
-            ownerPayout: parseFloat(statement.ownerPayout) || 0,
-            companyName: process.env.COMPANY_NAME || 'Luxury Lodging PM'
+            periodDisplay: this.formatPeriodDisplay(statement.weekStartDate, statement.weekEndDate),
+            ownerPayout: ownerPayout,
+            rawPayout: ownerPayout.toFixed(2),
+            totalRevenue: statement.totalRevenue || '0.00',
+            totalExpenses: statement.totalExpenses || '0.00',
+            pmCommission: statement.pmCommission || '0.00',
+            balanceSuffix: ownerPayout < 0 ? ' (Credit Due)' : '',
+            isNegativeBalance: ownerPayout < 0 ? 'true' : 'false',
+            companyName: process.env.COMPANY_NAME || 'Luxury Lodging PM',
+            currentDate: new Date().toLocaleDateString(),
+            currentYear: new Date().getFullYear().toString()
         };
 
-        const template = this.getEmailTemplate(frequencyTag, templateData);
+        // Get calculation type from statement or options (default to checkout)
+        const statementCalcType = calculationType || statement.calculationType || 'checkout';
+
+        // Try to get template from database based on calculationType
+        let template = await this.getTemplateFromDatabase(statementCalcType, templateData);
+
+        // Fall back to hardcoded template if no database template found
+        if (!template) {
+            console.log(`[EmailService] No database template found for '${statementCalcType}', using hardcoded template`);
+            template = this.getEmailTemplate(frequencyTag, templateData, statementCalcType);
+        }
 
         // If testNote is provided, prepend it to the email body
         let emailHtml = template.html;
@@ -967,11 +1094,12 @@ Thank you again for your trust and partnership.
             const tags = listingTags[statement.propertyId] || [];
             const frequencyTag = this.getFrequencyFromTags(tags);
 
-            const sendResult = await this.sendStatementEmail({
+            // Use sendStatementEmailWithPdf to ensure PDF is always attached
+            const sendResult = await this.sendStatementEmailWithPdf({
                 to: ownerEmail,
                 statement,
-                frequencyTag
-                // Note: PDF attachment would need to be generated separately
+                frequencyTag,
+                attachPdf: true // REQUIRED - no email without statement PDF
             });
 
             if (sendResult.success) {
@@ -1091,7 +1219,7 @@ Thank you again for your trust and partnership.
      * @param {Function} options.refetchStatement - Function to refetch statement after PDF generation
      */
     async sendStatementEmailWithPdf(options) {
-        const { to, statement, frequencyTag, attachPdf = true, authHeader, refetchStatement } = options;
+        const { to, statement, frequencyTag, calculationType, attachPdf = true, authHeader, refetchStatement } = options;
 
         let pdfAttachment = null;
         let pdfFilename = null;
@@ -1118,15 +1246,33 @@ Thank you again for your trust and partnership.
                     }
                 }
             } else {
-                console.warn(`[EmailService] PDF generation failed, sending email without attachment`);
+                // BLOCK: Do not send email without PDF statement attached
+                console.error(`[EmailService] PDF generation failed for statement ${statement.id} - email blocked`);
+                return {
+                    success: false,
+                    error: 'PDF_GENERATION_FAILED',
+                    message: `Cannot send email without statement PDF attached. PDF generation failed: ${pdfResult.error}`
+                };
             }
         }
 
+        // Verify PDF is attached before sending
+        if (attachPdf && !pdfAttachment) {
+            console.error(`[EmailService] No PDF attachment for statement ${statement.id} - email blocked`);
+            return {
+                success: false,
+                error: 'NO_PDF_ATTACHMENT',
+                message: 'Cannot send email without statement PDF attached'
+            };
+        }
+
         // Call the existing send method with updated statement
+        // Template is auto-selected based on statement's calculationType
         return this.sendStatementEmail({
             to,
             statement: updatedStatement,
             frequencyTag,
+            calculationType: calculationType || statement.calculationType,
             pdfAttachment,
             pdfFilename
         });

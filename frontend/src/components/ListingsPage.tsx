@@ -154,14 +154,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   useEffect(() => {
     loadListings();
     loadTagSchedules();
-
-    // Check for pending tag filter from notification click
-    const pendingTag = localStorage.getItem('pendingTagFilter');
-    if (pendingTag) {
-      setSelectedFilterTags([pendingTag]);
-      setShowFilters(true);
-      localStorage.removeItem('pendingTagFilter');
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

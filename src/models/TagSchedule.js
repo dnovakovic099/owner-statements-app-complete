@@ -63,6 +63,26 @@ const TagSchedule = sequelize.define('TagSchedule', {
         allowNull: true,
         field: 'next_scheduled_at',
         comment: 'Next scheduled notification time (calculated)'
+    },
+    // Period config fields for email sending
+    periodDays: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'period_days',
+        comment: 'Number of days for the statement period (e.g., 7 for weekly, 14 for bi-weekly)'
+    },
+    calculationType: {
+        type: DataTypes.ENUM('checkout', 'calendar'),
+        allowNull: true,
+        field: 'calculation_type',
+        defaultValue: 'checkout',
+        comment: 'Statement calculation type: checkout or calendar based'
+    },
+    templateId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'template_id',
+        comment: 'ID of the email template to use for this tag'
     }
 }, {
     tableName: 'tag_schedules',

@@ -69,23 +69,26 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
     try {
-        const { name, frequencyType, subject, htmlBody, textBody, description, isDefault } = req.body;
+        const { name, frequencyType, calculationType, tags, subject, htmlBody, textBody, description, isDefault } = req.body;
 
         if (!name || !subject || !htmlBody) {
             return res.status(400).json({ error: 'Name, subject, and htmlBody are required' });
         }
 
-        // If setting as default, unset other defaults for this frequency type
-        if (isDefault && frequencyType) {
+        // If setting as default, unset other defaults for same calculationType
+        if (isDefault) {
+            const calcType = calculationType || 'checkout';
             await EmailTemplate.update(
                 { isDefault: false },
-                { where: { frequencyType, isDefault: true } }
+                { where: { calculationType: calcType, isDefault: true } }
             );
         }
 
         const template = await EmailTemplate.create({
             name,
             frequencyType: frequencyType || 'custom',
+            calculationType: calculationType || 'checkout',
+            tags: tags || [],
             subject,
             htmlBody,
             textBody,
@@ -113,19 +116,22 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Template not found' });
         }
 
-        const { name, frequencyType, subject, htmlBody, textBody, description, isDefault, isActive } = req.body;
+        const { name, frequencyType, calculationType, tags, subject, htmlBody, textBody, description, isDefault, isActive } = req.body;
 
-        // If setting as default, unset other defaults for this frequency type
-        if (isDefault && frequencyType) {
+        // If setting as default, unset other defaults for same calculationType
+        if (isDefault) {
+            const calcType = calculationType || template.calculationType || 'checkout';
             await EmailTemplate.update(
                 { isDefault: false },
-                { where: { frequencyType, isDefault: true, id: { [require('sequelize').Op.ne]: template.id } } }
+                { where: { calculationType: calcType, isDefault: true, id: { [require('sequelize').Op.ne]: template.id } } }
             );
         }
 
         await template.update({
             name: name !== undefined ? name : template.name,
             frequencyType: frequencyType !== undefined ? frequencyType : template.frequencyType,
+            calculationType: calculationType !== undefined ? calculationType : template.calculationType,
+            tags: tags !== undefined ? tags : template.tags,
             subject: subject !== undefined ? subject : template.subject,
             htmlBody: htmlBody !== undefined ? htmlBody : template.htmlBody,
             textBody: textBody !== undefined ? textBody : template.textBody,
@@ -141,9 +147,6 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// System templates that cannot be deleted
-const PROTECTED_TEMPLATES = ['Calendar Statement', 'Check-Out Statement'];
-
 /**
  * DELETE /api/email-templates/:id
  * Delete an email template
@@ -156,8 +159,8 @@ router.delete('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Template not found' });
         }
 
-        // Don't allow deleting protected system templates
-        if (PROTECTED_TEMPLATES.includes(template.name)) {
+        // Don't allow deleting system templates
+        if (template.isSystem) {
             return res.status(400).json({ error: 'Cannot delete system template. This is a protected template.' });
         }
 

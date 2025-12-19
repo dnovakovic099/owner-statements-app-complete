@@ -32,10 +32,25 @@ const EmailTemplate = sequelize.define('EmailTemplate', {
         defaultValue: 'custom',
         comment: 'Which frequency this template is used for'
     },
+    calculationType: {
+        type: DataTypes.ENUM('checkout', 'calendar'),
+        allowNull: true,
+        comment: 'Statement calculation type this template is for'
+    },
     isDefault: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
         comment: 'If true, this is the default template for the frequency type'
+    },
+    isSystem: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: 'If true, this is a system template and cannot be deleted'
+    },
+    tags: {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        defaultValue: [],
+        comment: 'Tags that use this template (e.g., WEEKLY, BI-WEEKLY A, MONTHLY)'
     },
     isActive: {
         type: DataTypes.BOOLEAN,

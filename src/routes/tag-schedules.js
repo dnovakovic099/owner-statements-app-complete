@@ -217,4 +217,39 @@ router.post('/trigger-check', async (req, res) => {
     }
 });
 
+// === Period Config Routes ===
+
+// Get all period configs (for all tags)
+router.get('/period-configs', async (req, res) => {
+    try {
+        const configs = await TagScheduleService.getAllPeriodConfigs();
+        res.json({ success: true, configs });
+    } catch (error) {
+        console.error('Error fetching period configs:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update period config for a specific tag
+router.put('/period-configs/:tagName', async (req, res) => {
+    try {
+        const { tagName } = req.params;
+        const { periodDays, calculationType, templateId } = req.body;
+
+        const config = await TagScheduleService.updatePeriodConfig(
+            decodeURIComponent(tagName),
+            { periodDays, calculationType, templateId }
+        );
+
+        res.json({
+            success: true,
+            config,
+            message: 'Period config updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating period config:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
