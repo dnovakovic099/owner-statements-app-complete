@@ -993,6 +993,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         readListingIds={readListingIds}
         onMarkAsRead={markAsRead}
         onMarkAllAsRead={markAllAsRead}
+        onOpenEmailDashboard={() => setCurrentPage('email')}
       />
     );
   }

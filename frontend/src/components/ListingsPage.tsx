@@ -44,6 +44,7 @@ interface ListingsPageProps {
   readListingIds?: number[];
   onMarkAsRead?: (listingId: number) => void;
   onMarkAllAsRead?: () => void;
+  onOpenEmailDashboard?: () => void;
 }
 
 const ListingsPage: React.FC<ListingsPageProps> = ({
@@ -52,7 +53,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   newListings = [],
   readListingIds = [],
   onMarkAsRead,
-  onMarkAllAsRead
+  onMarkAllAsRead,
+  onOpenEmailDashboard
 }) => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,12 +68,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const notificationRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
 
-  // Email logs states
-  const [isEmailLogsOpen, setIsEmailLogsOpen] = useState(false);
-  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
-  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
+  // Email stats for badge
   const [emailStats, setEmailStats] = useState<{ totalSent: number; totalFailed: number; successRate: number } | null>(null);
-  const emailLogsRef = useRef<HTMLDivElement>(null);
 
   // Tag schedule modal states
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -88,23 +86,15 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setIsNotificationOpen(false);
       }
-      if (emailLogsRef.current && !emailLogsRef.current.contains(event.target as Node)) {
-        setIsEmailLogsOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch email logs
-  const fetchEmailLogs = async () => {
-    setEmailLogsLoading(true);
+  // Fetch email stats for badge
+  const fetchEmailStats = async () => {
     try {
-      const [logsResponse, statsResponse] = await Promise.all([
-        emailAPI.getEmailLogs({ limit: 20 }),
-        emailAPI.getEmailStats()
-      ]);
-      setEmailLogs(logsResponse.logs);
+      const statsResponse = await emailAPI.getEmailStats();
       const total = statsResponse.sent + statsResponse.failed + statsResponse.pending + statsResponse.bounced;
       const successRate = total > 0 ? Math.round((statsResponse.sent / total) * 100) : 0;
       setEmailStats({
@@ -113,26 +103,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         successRate
       });
     } catch (error) {
-      console.error('Failed to fetch email logs:', error);
-    } finally {
-      setEmailLogsLoading(false);
+      console.error('Failed to fetch email stats:', error);
     }
   };
 
-  // Retry failed email
-  const retryEmail = async (logId: number) => {
-    try {
-      const response = await emailAPI.retryEmail(logId);
-      if (response.success) {
-        showToast('Email resent successfully', 'success');
-        fetchEmailLogs();
-      } else {
-        showToast(response.message || 'Failed to retry email', 'error');
-      }
-    } catch (error) {
-      showToast('Failed to retry email', 'error');
-    }
-  };
+  // Fetch email stats on mount
+  useEffect(() => {
+    fetchEmailStats();
+  }, []);
 
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
@@ -445,15 +423,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                 )}
               </div>
 
-              {/* Email Logs */}
-              <div className="relative" ref={emailLogsRef}>
+              {/* Email Dashboard Button */}
+              <div className="relative">
                 <button
                   onClick={() => {
-                    setIsEmailLogsOpen(!isEmailLogsOpen);
-                    if (!isEmailLogsOpen) fetchEmailLogs();
+                    if (onOpenEmailDashboard) {
+                      onOpenEmailDashboard();
+                    }
                   }}
                   className="relative flex items-center justify-center w-10 h-10 bg-blue-500/20 border border-blue-300/30 rounded-md hover:bg-blue-500/30 transition-colors"
-                  title="Email Logs"
+                  title="Email Dashboard"
                 >
                   <Mail className="w-5 h-5" />
                   {emailStats && emailStats.totalFailed > 0 && (
@@ -462,88 +441,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </span>
                   )}
                 </button>
-
-                {/* Email Logs Dropdown */}
-                {isEmailLogsOpen && (
-                  <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900">Email Logs</h3>
-                        <button
-                          onClick={fetchEmailLogs}
-                          className="text-gray-500 hover:text-gray-700"
-                          title="Refresh"
-                        >
-                          <RefreshCw className={`w-4 h-4 ${emailLogsLoading ? 'animate-spin' : ''}`} />
-                        </button>
-                      </div>
-                      {emailStats && (
-                        <div className="flex items-center gap-4 mt-2 text-xs">
-                          <span className="text-green-600">Sent: {emailStats.totalSent}</span>
-                          <span className="text-red-600">Failed: {emailStats.totalFailed}</span>
-                          <span className="text-gray-500">Success: {emailStats.successRate}%</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {emailLogsLoading ? (
-                        <div className="px-4 py-6 text-center text-gray-500">
-                          <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
-                          Loading...
-                        </div>
-                      ) : emailLogs.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-gray-500">
-                          No email logs yet
-                        </div>
-                      ) : (
-                        emailLogs.map((log) => (
-                          <div
-                            key={log.id}
-                            className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${
-                              log.status === 'failed' ? 'bg-red-50' : ''
-                            }`}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {log.propertyName || `Statement #${log.statementId}`}
-                                </p>
-                                <p className="text-xs text-gray-500 truncate">{log.recipientEmail}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                                    log.status === 'sent' ? 'bg-green-100 text-green-700' :
-                                    log.status === 'failed' ? 'bg-red-100 text-red-700' :
-                                    log.status === 'bounced' ? 'bg-orange-100 text-orange-700' :
-                                    'bg-gray-100 text-gray-700'
-                                  }`}>
-                                    {log.status}
-                                  </span>
-                                  <span className="text-xs text-gray-400">
-                                    {new Date(log.createdAt).toLocaleString()}
-                                  </span>
-                                </div>
-                                {log.status === 'failed' && log.errorMessage && (
-                                  <p className="text-xs text-red-600 mt-1 truncate" title={log.errorMessage}>
-                                    {log.errorMessage}
-                                  </p>
-                                )}
-                              </div>
-                              {log.status === 'failed' && (
-                                <button
-                                  onClick={() => retryEmail(log.id)}
-                                  className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                                  title="Retry"
-                                >
-                                  Retry
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <button
