@@ -6,26 +6,6 @@ import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
 import TagScheduleModal from './TagScheduleModal';
 
-// Email log interface
-interface EmailLog {
-  id: number;
-  statementId: number;
-  propertyId: number | null;
-  recipientEmail: string;
-  recipientName: string | null;
-  propertyName: string | null;
-  frequencyTag: string | null;
-  subject: string | null;
-  status: 'sent' | 'failed' | 'pending' | 'bounced';
-  messageId: string | null;
-  errorMessage: string | null;
-  errorCode: string | null;
-  attemptedAt: string | null;
-  sentAt: string | null;
-  retryCount: number;
-  createdAt: string;
-}
-
 interface NewListing {
   id: number;
   name: string;
