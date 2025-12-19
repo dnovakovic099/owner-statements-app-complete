@@ -3,6 +3,10 @@ const Statement = require('./Statement');
 const UploadedExpense = require('./UploadedExpense');
 const Listing = require('./Listing');
 const EmailLog = require('./EmailLog');
+const TagSchedule = require('./TagSchedule');
+const TagNotification = require('./TagNotification');
+const ScheduledEmail = require('./ScheduledEmail');
+const EmailTemplate = require('./EmailTemplate');
 
 // Initialize models
 const models = {
@@ -10,6 +14,10 @@ const models = {
     UploadedExpense,
     Listing,
     EmailLog,
+    TagSchedule,
+    TagNotification,
+    ScheduledEmail,
+    EmailTemplate,
     sequelize
 };
 

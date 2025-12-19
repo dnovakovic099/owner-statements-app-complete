@@ -520,6 +520,247 @@ export const emailAPI = {
     const response = await api.post(`/email/logs/${id}/retry`);
     return response.data;
   },
+
+  sendStatementEmail: async (statementId: number, recipientEmail: string, frequencyTag: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/email/send/${statementId}`, {
+      recipientEmail,
+      frequencyTag,
+      attachPdf: true
+    });
+    return response.data;
+  },
+
+  scheduleEmails: async (statementIds: number[], scheduledFor: string): Promise<{
+    success: boolean;
+    message: string;
+    scheduled: Array<{ id: number; statementId: number; propertyName: string; recipientEmail: string; scheduledFor: string }>;
+    skipped: Array<{ statementId: number; reason: string }>;
+    summary: { scheduled: number; skipped: number; total: number };
+  }> => {
+    const response = await api.post('/email/schedule', { statementIds, scheduledFor });
+    return response.data;
+  },
+
+  getScheduledEmails: async (status?: string, limit?: number): Promise<{
+    success: boolean;
+    total: number;
+    emails: Array<{
+      id: number;
+      statementId: number;
+      propertyId: number;
+      recipientEmail: string;
+      recipientName: string;
+      propertyName: string;
+      frequencyTag: string;
+      scheduledFor: string;
+      status: string;
+      sentAt: string | null;
+      errorMessage: string | null;
+      createdAt: string;
+    }>;
+  }> => {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/email/scheduled?${params.toString()}`);
+    return response.data;
+  },
+
+  cancelScheduledEmail: async (id: number): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/email/scheduled/${id}`);
+    return response.data;
+  },
+};
+
+// Tag Schedule API
+export interface TagSchedule {
+  id?: number;
+  tagName: string;
+  isEnabled: boolean;
+  frequencyType: 'weekly' | 'biweekly' | 'monthly';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  timeOfDay: string;
+  biweeklyWeek?: 'A' | 'B';
+  lastNotifiedAt?: string;
+  nextScheduledAt?: string;
+}
+
+export interface TagNotification {
+  id: number;
+  tagName: string;
+  scheduleId: number;
+  message: string;
+  status: 'unread' | 'read' | 'dismissed' | 'actioned';
+  listingCount: number;
+  scheduledFor: string;
+  readAt?: string;
+  actionedAt?: string;
+  createdAt: string;
+}
+
+export const tagScheduleAPI = {
+  // Get all schedules
+  getSchedules: async (): Promise<{ success: boolean; schedules: TagSchedule[] }> => {
+    const response = await api.get('/tag-schedules/schedules');
+    return response.data;
+  },
+
+  // Get schedule for a specific tag
+  getScheduleByTag: async (tagName: string): Promise<{ success: boolean; schedule: TagSchedule | null }> => {
+    const response = await api.get(`/tag-schedules/schedules/${encodeURIComponent(tagName)}`);
+    return response.data;
+  },
+
+  // Create or update a schedule
+  saveSchedule: async (schedule: Omit<TagSchedule, 'id' | 'lastNotifiedAt' | 'nextScheduledAt'>): Promise<{ success: boolean; schedule: TagSchedule; message: string }> => {
+    const response = await api.post('/tag-schedules/schedules', schedule);
+    return response.data;
+  },
+
+  // Delete a schedule
+  deleteSchedule: async (tagName: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/tag-schedules/schedules/${encodeURIComponent(tagName)}`);
+    return response.data;
+  },
+
+  // Get notifications
+  getNotifications: async (status?: string, limit?: number): Promise<{ success: boolean; notifications: TagNotification[]; unreadCount: number }> => {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/tag-schedules/notifications?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get unread count
+  getNotificationCount: async (): Promise<{ success: boolean; count: number }> => {
+    const response = await api.get('/tag-schedules/notifications/count');
+    return response.data;
+  },
+
+  // Mark notification as read
+  markNotificationRead: async (id: number): Promise<{ success: boolean; notification: TagNotification }> => {
+    const response = await api.put(`/tag-schedules/notifications/${id}/read`);
+    return response.data;
+  },
+
+  // Mark notification as actioned
+  markNotificationActioned: async (id: number): Promise<{ success: boolean; notification: TagNotification }> => {
+    const response = await api.put(`/tag-schedules/notifications/${id}/action`);
+    return response.data;
+  },
+
+  // Dismiss notification
+  dismissNotification: async (id: number): Promise<{ success: boolean; notification: TagNotification }> => {
+    const response = await api.put(`/tag-schedules/notifications/${id}/dismiss`);
+    return response.data;
+  },
+
+  // Get listings by tag
+  getListingsByTag: async (tagName: string): Promise<{ success: boolean; tagName: string; count: number; listings: any[] }> => {
+    const response = await api.get(`/tag-schedules/listings-by-tag/${encodeURIComponent(tagName)}`);
+    return response.data;
+  },
+};
+
+// Email Template Types
+export interface EmailTemplateVariable {
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface EmailTemplate {
+  id: number;
+  name: string;
+  frequencyType: 'weekly' | 'bi-weekly' | 'monthly' | 'custom';
+  isDefault: boolean;
+  isActive: boolean;
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Email Templates API
+export const emailTemplatesAPI = {
+  // Get all templates
+  getTemplates: async (filters?: {
+    frequencyType?: string;
+    isActive?: boolean;
+  }): Promise<{ templates: EmailTemplate[]; variables: EmailTemplateVariable[] }> => {
+    const params = new URLSearchParams();
+    if (filters?.frequencyType) params.append('frequencyType', filters.frequencyType);
+    if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
+    const response = await api.get(`/email-templates?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get template variables
+  getVariables: async (): Promise<{ variables: EmailTemplateVariable[] }> => {
+    const response = await api.get('/email-templates/variables');
+    return response.data;
+  },
+
+  // Get single template
+  getTemplate: async (id: number): Promise<{ template: EmailTemplate }> => {
+    const response = await api.get(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  // Create template
+  createTemplate: async (data: {
+    name: string;
+    frequencyType?: string;
+    subject: string;
+    htmlBody: string;
+    textBody?: string;
+    description?: string;
+    isDefault?: boolean;
+  }): Promise<{ template: EmailTemplate }> => {
+    const response = await api.post('/email-templates', data);
+    return response.data;
+  },
+
+  // Update template
+  updateTemplate: async (id: number, data: {
+    name?: string;
+    frequencyType?: string;
+    subject?: string;
+    htmlBody?: string;
+    textBody?: string;
+    description?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }): Promise<{ template: EmailTemplate }> => {
+    const response = await api.put(`/email-templates/${id}`, data);
+    return response.data;
+  },
+
+  // Delete template
+  deleteTemplate: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  // Set as default
+  setDefault: async (id: number): Promise<{ template: EmailTemplate; message: string }> => {
+    const response = await api.post(`/email-templates/${id}/set-default`);
+    return response.data;
+  },
+
+  // Preview template
+  previewTemplate: async (data: {
+    subject: string;
+    htmlBody: string;
+    textBody?: string;
+  }): Promise<{ subject: string; htmlBody: string; textBody: string; sampleData: Record<string, string> }> => {
+    const response = await api.post('/email-templates/preview', data);
+    return response.data;
+  },
 };
 
 export default api;

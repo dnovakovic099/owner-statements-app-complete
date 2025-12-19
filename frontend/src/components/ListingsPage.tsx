@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Search, Save, RefreshCw, AlertCircle, CheckCircle, Bell, X, Mail } from 'lucide-react';
-import { listingsAPI, emailAPI } from '../services/api';
+import { ArrowLeft, Search, Save, RefreshCw, AlertCircle, CheckCircle, Bell, X, Mail, Clock } from 'lucide-react';
+import { listingsAPI, emailAPI, tagScheduleAPI } from '../services/api';
 import { Listing } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
+import TagScheduleModal from './TagScheduleModal';
 
 // Email log interface
 interface EmailLog {
@@ -71,6 +72,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
   const [emailStats, setEmailStats] = useState<{ totalSent: number; totalFailed: number; successRate: number } | null>(null);
   const emailLogsRef = useRef<HTMLDivElement>(null);
+
+  // Tag schedule modal states
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [scheduleTagName, setScheduleTagName] = useState<string>('');
+  const [existingSchedule, setExistingSchedule] = useState<any>(null);
+  const [tagSchedules, setTagSchedules] = useState<Record<string, any>>({});
 
   // Filter out read notifications
   const unreadListings = newListings.filter(l => !readListingIds.includes(l.id));
@@ -146,7 +153,61 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   useEffect(() => {
     loadListings();
+    loadTagSchedules();
+
+    // Check for pending tag filter from notification click
+    const pendingTag = localStorage.getItem('pendingTagFilter');
+    if (pendingTag) {
+      setSelectedFilterTags([pendingTag]);
+      setShowFilters(true);
+      localStorage.removeItem('pendingTagFilter');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load all tag schedules
+  const loadTagSchedules = async () => {
+    try {
+      const response = await tagScheduleAPI.getSchedules();
+      if (response.success && response.schedules) {
+        const scheduleMap: Record<string, any> = {};
+        response.schedules.forEach((s: any) => {
+          scheduleMap[s.tagName] = s;
+        });
+        setTagSchedules(scheduleMap);
+      }
+    } catch (error) {
+      console.error('Failed to load tag schedules:', error);
+    }
+  };
+
+  // Open schedule modal for a tag
+  const openScheduleModal = async (tagName: string) => {
+    setScheduleTagName(tagName);
+    try {
+      const response = await tagScheduleAPI.getScheduleByTag(tagName);
+      setExistingSchedule(response.schedule || null);
+    } catch (error) {
+      setExistingSchedule(null);
+    }
+    setIsScheduleModalOpen(true);
+  };
+
+  // Save tag schedule
+  const handleSaveSchedule = async (schedule: any) => {
+    await tagScheduleAPI.saveSchedule(schedule);
+    await loadTagSchedules();
+    showToast('Schedule saved', 'success');
+  };
+
+  // Delete tag schedule
+  const handleDeleteSchedule = async () => {
+    if (scheduleTagName) {
+      await tagScheduleAPI.deleteSchedule(scheduleTagName);
+      await loadTagSchedules();
+      showToast('Schedule removed', 'success');
+    }
+  };
 
   useEffect(() => {
     if (selectedListingId) {
@@ -886,13 +947,15 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                   {/* Tags */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <label className="block text-sm font-medium text-blue-900 mb-2">
-                      Tags
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-blue-900">
+                        Tags
+                      </label>
+                    </div>
                     <p className="text-xs text-blue-700 mb-3">
-                      Add tags to group and filter listings. Use tags like "Downtown", "Luxury", "Pet-Friendly", etc.
+                      Add tags to group and filter listings. Click <Clock className="w-3 h-3 inline" /> to set a reminder schedule for a tag.
                     </p>
-                    
+
                     {/* Existing Tags */}
                     {tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -903,8 +966,18 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           >
                             {tag}
                             <button
+                              onClick={() => openScheduleModal(tag)}
+                              className={`ml-1.5 p-0.5 rounded hover:bg-blue-200 transition-colors ${
+                                tagSchedules[tag] ? 'text-green-600' : 'text-blue-500'
+                              }`}
+                              type="button"
+                              title={tagSchedules[tag] ? 'Edit schedule' : 'Set reminder'}
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => setTags(tags.filter((_, i) => i !== idx))}
-                              className="ml-2 text-blue-600 hover:text-blue-800"
+                              className="ml-1 text-blue-600 hover:text-blue-800"
                               type="button"
                             >
                               ×
@@ -993,6 +1066,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Tag Schedule Modal */}
+      <TagScheduleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        tagName={scheduleTagName}
+        existingSchedule={existingSchedule}
+        onSave={handleSaveSchedule}
+        onDelete={existingSchedule ? handleDeleteSchedule : undefined}
+      />
     </div>
   );
 };

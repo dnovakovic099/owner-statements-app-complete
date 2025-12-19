@@ -1,0 +1,1744 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, Settings, ChevronDown, ChevronUp, History, Filter, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
+import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
+import { Listing, Statement } from '../types';
+import { useToast } from './ui/toast';
+
+interface EmailDashboardProps {
+  onBack: () => void;
+}
+
+interface PeriodConfig {
+  prefix: string;
+  days: number;
+  calculationType: 'checkout' | 'calendar';
+}
+
+interface ScheduledBatch {
+  id: string;
+  tags: string[];
+  listingIds: number[];
+  listingsToGenerate: number;
+  scheduledDate: string;
+  scheduledTime: string;
+  periodStart: string;
+  periodEnd: string;
+  calculationType: 'checkout' | 'calendar';
+  testEmail?: string;
+  testSendAll?: boolean; // true = send all to test email, false = send just one
+  createdAt: Date;
+}
+
+// Default period configurations based on tag prefix
+const getDefaultDaysForTag = (tag: string): number => {
+  const upperTag = tag.toUpperCase();
+  if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) return 7;
+  if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) return 14;
+  if (upperTag.includes('MONTHLY')) return 30;
+  return 14; // Default to 14 days
+};
+
+const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
+  const { showToast } = useToast();
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [statements, setStatements] = useState<Statement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+
+  // Schedule state
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('09:00');
+
+  // Period configuration state
+  const [periodConfigs, setPeriodConfigs] = useState<Record<string, PeriodConfig>>(() => {
+    const saved = localStorage.getItem('emailDashboardPeriodConfigs');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [useCustomPeriod, setUseCustomPeriod] = useState(false);
+  const [customPeriodStart, setCustomPeriodStart] = useState('');
+  const [customPeriodEnd, setCustomPeriodEnd] = useState('');
+  const [customCalculationType, setCustomCalculationType] = useState<'checkout' | 'calendar'>('checkout');
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  // Pending scheduled batches
+  const [pendingBatches, setPendingBatches] = useState<ScheduledBatch[]>([]);
+
+  // Sending state
+  const [sendingBatchId, setSendingBatchId] = useState<string | null>(null);
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+
+  // Test email state
+  const [testEmail, setTestEmail] = useState('');
+  const [testSendAll, setTestSendAll] = useState(false); // false = send just one, true = send all
+
+  // Email history state
+  const [showHistory, setShowHistory] = useState(false);
+  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [emailStats, setEmailStats] = useState<EmailStats | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
+
+  // Email templates state
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [templateVariables, setTemplateVariables] = useState<EmailTemplateVariable[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [templatePreview, setTemplatePreview] = useState<{ subject: string; htmlBody: string } | null>(null);
+  const [newTemplate, setNewTemplate] = useState({
+    name: '',
+    frequencyType: 'custom' as 'weekly' | 'bi-weekly' | 'monthly' | 'custom',
+    subject: '',
+    htmlBody: '',
+    textBody: '',
+    description: ''
+  });
+
+  // Fetch email history
+  const fetchEmailHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const [logsRes, statsRes] = await Promise.all([
+        emailAPI.getEmailLogs({
+          limit: 100,
+          status: historyFilter === 'all' ? undefined : historyFilter
+        }),
+        emailAPI.getEmailStats()
+      ]);
+      setEmailLogs(logsRes.logs || []);
+      setEmailStats(statsRes);
+    } catch (error) {
+      console.error('Failed to fetch email history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Fetch history when filter changes or when opened
+  useEffect(() => {
+    if (showHistory) {
+      fetchEmailHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHistory, historyFilter]);
+
+  // Fetch email templates
+  const fetchTemplates = async () => {
+    setTemplatesLoading(true);
+    try {
+      const res = await emailTemplatesAPI.getTemplates();
+      setTemplates(res.templates || []);
+      setTemplateVariables(res.variables || []);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  // Fetch templates when opened
+  useEffect(() => {
+    if (showTemplates) {
+      fetchTemplates();
+    }
+  }, [showTemplates]);
+
+  // Handle template save
+  const handleSaveTemplate = async () => {
+    try {
+      if (editingTemplate) {
+        // Update existing
+        await emailTemplatesAPI.updateTemplate(editingTemplate.id, {
+          name: newTemplate.name,
+          frequencyType: newTemplate.frequencyType,
+          subject: newTemplate.subject,
+          htmlBody: newTemplate.htmlBody,
+          textBody: newTemplate.textBody,
+          description: newTemplate.description
+        });
+        showToast('Template updated successfully', 'success');
+      } else {
+        // Create new
+        await emailTemplatesAPI.createTemplate({
+          name: newTemplate.name,
+          frequencyType: newTemplate.frequencyType,
+          subject: newTemplate.subject,
+          htmlBody: newTemplate.htmlBody,
+          textBody: newTemplate.textBody,
+          description: newTemplate.description
+        });
+        showToast('Template created successfully', 'success');
+      }
+      setShowTemplateEditor(false);
+      setEditingTemplate(null);
+      setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+      fetchTemplates();
+    } catch (error: any) {
+      showToast(error.response?.data?.error || 'Failed to save template', 'error');
+    }
+  };
+
+  // Handle template delete
+  const handleDeleteTemplate = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) return;
+    try {
+      await emailTemplatesAPI.deleteTemplate(id);
+      showToast('Template deleted', 'success');
+      fetchTemplates();
+    } catch (error: any) {
+      showToast(error.response?.data?.error || 'Failed to delete template', 'error');
+    }
+  };
+
+  // Handle set default
+  const handleSetDefault = async (id: number) => {
+    try {
+      await emailTemplatesAPI.setDefault(id);
+      showToast('Template set as default', 'success');
+      fetchTemplates();
+    } catch (error: any) {
+      showToast(error.response?.data?.error || 'Failed to set default', 'error');
+    }
+  };
+
+  // Preview template
+  const handlePreviewTemplate = async () => {
+    try {
+      const preview = await emailTemplatesAPI.previewTemplate({
+        subject: newTemplate.subject,
+        htmlBody: newTemplate.htmlBody,
+        textBody: newTemplate.textBody
+      });
+      setTemplatePreview({ subject: preview.subject, htmlBody: preview.htmlBody });
+    } catch (error) {
+      showToast('Failed to preview template', 'error');
+    }
+  };
+
+  // Open template editor
+  const openTemplateEditor = (template?: EmailTemplate) => {
+    if (template) {
+      setEditingTemplate(template);
+      setNewTemplate({
+        name: template.name,
+        frequencyType: template.frequencyType,
+        subject: template.subject,
+        htmlBody: template.htmlBody,
+        textBody: template.textBody || '',
+        description: template.description || ''
+      });
+    } else {
+      setEditingTemplate(null);
+      setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+    }
+    setTemplatePreview(null);
+    setShowTemplateEditor(true);
+  };
+
+  // Insert variable at cursor
+  const insertVariable = (varName: string) => {
+    const variable = `{{${varName}}}`;
+    setNewTemplate(prev => ({
+      ...prev,
+      htmlBody: prev.htmlBody + variable
+    }));
+  };
+
+  // Fetch data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [listingsRes, statementsRes, statsRes] = await Promise.all([
+          listingsAPI.getListings(),
+          statementsAPI.getStatements({ status: 'draft', limit: 500 }),
+          emailAPI.getEmailStats()
+        ]);
+        setListings(listingsRes.listings || []);
+        setStatements(statementsRes.statements || []);
+        setEmailStats(statsRes);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Extract unique tags from listings
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    listings.forEach(listing => {
+      listing.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [listings]);
+
+  // Get listings for selected tags
+  const selectedListings = useMemo(() => {
+    if (selectedTags.size === 0) return [];
+    return listings.filter(l => l.tags?.some(t => selectedTags.has(t)));
+  }, [listings, selectedTags]);
+
+  // Get listings with and without statements
+  const { listingsWithStatements, listingsWithoutStatements } = useMemo(() => {
+    const statementPropertyIds = new Set(statements.map(s => s.propertyId));
+    const withStatements = selectedListings.filter(l => statementPropertyIds.has(l.id));
+    const withoutStatements = selectedListings.filter(l => !statementPropertyIds.has(l.id));
+    return { listingsWithStatements: withStatements, listingsWithoutStatements: withoutStatements };
+  }, [selectedListings, statements]);
+
+
+  // Toggle tag selection
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => {
+      const next = new Set(prev);
+      if (next.has(tag)) {
+        next.delete(tag);
+      } else {
+        next.add(tag);
+      }
+      return next;
+    });
+  };
+
+  // Select all tags
+  const selectAllTags = () => {
+    setSelectedTags(new Set(availableTags));
+  };
+
+  // Clear all tags
+  const clearAllTags = () => {
+    setSelectedTags(new Set());
+  };
+
+  // Get period config for a tag
+  const getPeriodConfigForTag = (tag: string): PeriodConfig => {
+    if (periodConfigs[tag]) {
+      return periodConfigs[tag];
+    }
+    // Return default config if not customized
+    return {
+      prefix: tag,
+      days: getDefaultDaysForTag(tag),
+      calculationType: 'checkout',
+    };
+  };
+
+  // Calculate period dates based on config
+  const calculatePeriodDates = (days: number): { start: string; end: string } => {
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() - 1); // Yesterday as end date
+    const start = new Date(end);
+    start.setDate(start.getDate() - days + 1);
+
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+    };
+  };
+
+  // Get calculated period for selected tags
+  const calculatedPeriod = useMemo(() => {
+    if (selectedTags.size === 0) return null;
+
+    // Get the first tag's config
+    const firstTag = Array.from(selectedTags)[0];
+    const config = getPeriodConfigForTag(firstTag);
+
+    const { start, end } = calculatePeriodDates(config.days);
+    return { start, end, calculationType: config.calculationType, config };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTags, periodConfigs]);
+
+  // Update a specific tag's config
+  const updateTagConfig = (tag: string, updates: Partial<PeriodConfig>) => {
+    const currentConfig = getPeriodConfigForTag(tag);
+    const newConfigs = {
+      ...periodConfigs,
+      [tag]: { ...currentConfig, ...updates },
+    };
+    setPeriodConfigs(newConfigs);
+    localStorage.setItem('emailDashboardPeriodConfigs', JSON.stringify(newConfigs));
+  };
+
+  // Handle schedule emails - adds to pending queue
+  const handleScheduleEmails = () => {
+    if (!scheduledDate) {
+      showToast('Please select a date', 'error');
+      return;
+    }
+    if (selectedListings.length === 0) {
+      showToast('No listings selected', 'error');
+      return;
+    }
+
+    // Determine period dates and calculation type
+    let periodStart: string;
+    let periodEnd: string;
+    let calcType: 'checkout' | 'calendar';
+
+    if (useCustomPeriod && customPeriodStart && customPeriodEnd) {
+      periodStart = customPeriodStart;
+      periodEnd = customPeriodEnd;
+      calcType = customCalculationType;
+    } else if (calculatedPeriod) {
+      periodStart = calculatedPeriod.start;
+      periodEnd = calculatedPeriod.end;
+      calcType = calculatedPeriod.calculationType;
+    } else {
+      showToast('Could not determine statement period. Please use custom dates.', 'error');
+      return;
+    }
+
+    const newBatch: ScheduledBatch = {
+      id: `batch-${Date.now()}`,
+      tags: Array.from(selectedTags),
+      listingIds: selectedListings.map(l => l.id),
+      listingsToGenerate: listingsWithoutStatements.length,
+      scheduledDate,
+      scheduledTime,
+      periodStart,
+      periodEnd,
+      calculationType: calcType,
+      testEmail: testEmail || undefined,
+      testSendAll: testEmail ? testSendAll : undefined,
+      createdAt: new Date(),
+    };
+
+    setPendingBatches(prev => [...prev, newBatch]);
+
+    const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+    const formattedDate = scheduledDateTime.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    const formattedTime = scheduledDateTime.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    showToast(`Added ${selectedListings.length} listings to pending queue for ${formattedDate} at ${formattedTime}`, 'success');
+
+    // Reset selection
+    setSelectedTags(new Set());
+    setScheduledDate('');
+    setScheduledTime('09:00');
+    setUseCustomPeriod(false);
+    setCustomPeriodStart('');
+    setCustomPeriodEnd('');
+  };
+
+  // Remove a pending batch
+  const removeBatch = (batchId: string) => {
+    setPendingBatches(prev => prev.filter(b => b.id !== batchId));
+    showToast('Scheduled batch removed', 'success');
+  };
+
+  // Send test email immediately (without adding to queue)
+  const handleSendTestNow = async () => {
+    if (!testEmail || !calculatedPeriod) return;
+
+    // Create a temporary batch for immediate sending
+    const tempBatch: ScheduledBatch = {
+      id: `temp-${Date.now()}`,
+      tags: Array.from(selectedTags),
+      listingIds: selectedListings.map(l => l.id),
+      listingsToGenerate: listingsWithoutStatements.length,
+      scheduledDate: new Date().toISOString().split('T')[0],
+      scheduledTime: new Date().toTimeString().slice(0, 5),
+      periodStart: useCustomPeriod && customPeriodStart ? customPeriodStart : calculatedPeriod.start,
+      periodEnd: useCustomPeriod && customPeriodEnd ? customPeriodEnd : calculatedPeriod.end,
+      calculationType: useCustomPeriod ? customCalculationType : calculatedPeriod.calculationType,
+      testEmail: testEmail,
+      testSendAll: testSendAll,
+      createdAt: new Date(),
+    };
+
+    // Send immediately with the batch directly
+    await executeBatchSend(tempBatch, false);
+  };
+
+  // Send a batch immediately (from pending queue)
+  const handleSendBatchNow = async (batchId: string) => {
+    const batch = pendingBatches.find(b => b.id === batchId);
+    if (!batch) return;
+    await executeBatchSend(batch, true);
+  };
+
+  // Execute batch send logic
+  const executeBatchSend = async (batch: ScheduledBatch, removeFromQueue: boolean) => {
+    if (!batch) return;
+
+    setSendingBatchId(batch.id);
+    setSendProgress({ current: 0, total: batch.listingIds.length, status: 'Starting...' });
+
+    try {
+      // Build a map of existing statements by propertyId
+      const statementMap = new Map<number, Statement>();
+      statements.forEach(s => {
+        if (s.propertyId) {
+          statementMap.set(s.propertyId, s);
+        }
+      });
+
+      // Step 1 & 2: Process each listing - generate statement if needed, then send email
+      const isTestSingleEmail = batch.testEmail && !batch.testSendAll;
+
+      let sent = 0;
+      let failed = 0;
+      let skipped = 0;
+      let generated = 0;
+      let testEmailSent = false;
+
+      for (let i = 0; i < batch.listingIds.length; i++) {
+        // If test mode with single email and we already sent one, skip the rest
+        if (isTestSingleEmail && testEmailSent) {
+          skipped++;
+          continue;
+        }
+
+        const listingId = batch.listingIds[i];
+        const listing = listings.find(l => l.id === listingId);
+
+        if (!listing) {
+          console.warn(`Listing ${listingId} not found`);
+          skipped++;
+          setSendProgress({
+            current: i + 1,
+            total: batch.listingIds.length,
+            status: `Sent ${sent}, Skipped ${skipped}, Failed ${failed}`
+          });
+          continue;
+        }
+
+        if (!listing.ownerEmail) {
+          console.warn(`Listing ${listingId} (${listing.name}) has no owner email`);
+          if (!isTestSingleEmail) {
+            skipped++;
+            setSendProgress({
+              current: i + 1,
+              total: batch.listingIds.length,
+              status: `Sent ${sent}, Skipped ${skipped} (no email), Failed ${failed}`
+            });
+          }
+          continue;
+        }
+
+        // Check if statement exists for this listing
+        let statement = statementMap.get(listingId);
+
+        // If no statement, try to generate one
+        if (!statement) {
+          setSendProgress({
+            current: i + 1,
+            total: batch.listingIds.length,
+            status: `Generating statement for ${listing.name}...`
+          });
+
+          try {
+            console.log(`Generating statement for listing ${listingId} (${listing.name})...`);
+            const result = await statementsAPI.generateStatement({
+              ownerId: '0', // Let backend figure out owner from property
+              propertyId: listingId.toString(),
+              startDate: batch.periodStart,
+              endDate: batch.periodEnd,
+              calculationType: batch.calculationType,
+            });
+            console.log(`Statement generation result for ${listing.name}:`, result);
+
+            // Fetch the newly created statement
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const statementsRes = await statementsAPI.getStatements({
+              propertyId: listingId.toString(),
+              startDate: batch.periodStart,
+              endDate: batch.periodEnd,
+              limit: 10
+            });
+
+            if (statementsRes.statements && statementsRes.statements.length > 0) {
+              statement = statementsRes.statements[0];
+              statementMap.set(listingId, statement);
+              generated++;
+              console.log(`Found generated statement ${statement.id} for ${listing.name}`);
+            } else {
+              console.warn(`No statement found after generation for ${listing.name}`);
+            }
+          } catch (error: any) {
+            console.error(`Failed to generate statement for ${listing.name}:`, error);
+          }
+        }
+
+        if (statement) {
+          try {
+            // Use batch's test email if provided, otherwise use owner's email
+            const recipientEmail = batch.testEmail || listing.ownerEmail;
+
+            setSendProgress({
+              current: i + 1,
+              total: batch.listingIds.length,
+              status: `Sending to ${listing.name}...`
+            });
+
+            console.log(`[${batch.testEmail ? 'TEST' : 'LIVE'}] Sending email to ${recipientEmail}:`, {
+              statementId: statement.id,
+              listingName: listing.name,
+              originalOwnerEmail: listing.ownerEmail,
+              tag: batch.tags[0] || 'manual'
+            });
+
+            await emailAPI.sendStatementEmail(
+              statement.id,
+              recipientEmail,
+              batch.tags[0] || 'manual'
+            );
+            sent++;
+            if (isTestSingleEmail) {
+              testEmailSent = true;
+            }
+          } catch (error: any) {
+            console.error(`Failed to send email for listing ${listingId}:`, error);
+            failed++;
+          }
+        } else {
+          // No statement found and couldn't generate one
+          console.warn(`No statement for listing ${listingId} (${listing.name}) - skipping`);
+          if (!isTestSingleEmail) {
+            skipped++;
+          }
+        }
+
+        if (!isTestSingleEmail) {
+          const statusParts = [`Sent ${sent}`];
+          if (generated > 0) statusParts.push(`Generated ${generated}`);
+          if (skipped > 0) statusParts.push(`Skipped ${skipped}`);
+          if (failed > 0) statusParts.push(`Failed ${failed}`);
+
+          setSendProgress({
+            current: i + 1,
+            total: batch.listingIds.length,
+            status: statusParts.join(', ')
+          });
+
+          // Small delay between emails to avoid overwhelming the server
+          if (i < batch.listingIds.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+      }
+
+      // Calculate skipped for test single email mode
+      if (isTestSingleEmail && sent > 0) {
+        skipped = batch.listingIds.length - 1;
+      }
+
+      // Build result message
+      let resultMessage: string;
+      if (isTestSingleEmail) {
+        resultMessage = sent > 0
+          ? `Test email sent to ${batch.testEmail}${generated > 0 ? ` (${generated} statement generated)` : ''}`
+          : `Failed to send test email`;
+      } else {
+        const parts = [`${sent} sent`];
+        if (generated > 0) parts.push(`${generated} generated`);
+        if (skipped > 0) parts.push(`${skipped} skipped`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        resultMessage = `Completed: ${parts.join(', ')}`;
+      }
+      showToast(resultMessage, sent > 0 ? 'success' : 'error');
+
+      // Remove batch from pending if it was from the queue
+      if (removeFromQueue) {
+        setPendingBatches(prev => prev.filter(b => b.id !== batch.id));
+      }
+
+    } catch (error: any) {
+      console.error('Failed to send batch:', error);
+      showToast(`Failed to send emails: ${error.message || 'Unknown error'}`, 'error');
+    } finally {
+      setSendingBatchId(null);
+      setSendProgress(null);
+    }
+  };
+
+  // Format date for display
+  const formatScheduledDate = (date: string, time: string) => {
+    const dateTime = new Date(`${date}T${time}`);
+    return {
+      date: dateTime.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      }),
+      time: dateTime.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    };
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="px-6 py-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onBack}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Email Dashboard</h1>
+              <p className="text-sm text-gray-500">Manage email automation</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Content */}
+      <div className="p-6 space-y-6">
+        {/* Global Progress Bar - Shows during any send operation */}
+        {sendingBatchId && sendProgress && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <div>
+                <p className="font-medium text-blue-800">
+                  {sendingBatchId.startsWith('temp-') ? 'Sending Test Email...' : 'Sending Emails...'}
+                </p>
+                <p className="text-sm text-blue-600">{sendProgress.status}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-blue-700">Progress</span>
+              <span className="text-sm font-medium text-blue-800">
+                {sendProgress.current}/{sendProgress.total} ({Math.round((sendProgress.current / sendProgress.total) * 100)}%)
+              </span>
+            </div>
+            <div className="w-full h-3 bg-blue-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                style={{ width: `${Math.round((sendProgress.current / sendProgress.total) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tag Selection */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Select Tags</h2>
+              <p className="text-sm text-gray-500">Choose which property groups to include</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={selectAllTags}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Select All
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={clearAllTags}
+                className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : availableTags.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No tags found. Add tags to your listings first.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {availableTags.map(tag => {
+                const isSelected = selectedTags.has(tag);
+                // Count listings with this tag
+                const listingsWithTag = listings.filter(l => l.tags?.includes(tag)).length;
+
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300 bg-white'
+                    }`}>
+                      {isSelected && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <span className="font-medium">{tag}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      isSelected
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {listingsWithTag}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedTags.size > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium text-gray-900">{selectedTags.size}</span> tag{selectedTags.size !== 1 ? 's' : ''} selected
+                {' · '}
+                <span className="font-medium text-gray-900">{selectedListings.length}</span> properties
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="text-green-600">
+                  <span className="font-medium">{listingsWithStatements.length}</span> with statements
+                </span>
+                {listingsWithoutStatements.length > 0 && (
+                  <span className="text-amber-600">
+                    <span className="font-medium">{listingsWithoutStatements.length}</span> need generation
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Settings Panel */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Settings className="w-5 h-5 text-gray-500" />
+              <span className="font-medium text-gray-700">Period Settings</span>
+            </div>
+            {showSettings ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+
+          {showSettings && (
+            <div className="px-4 pb-4 border-t border-gray-100">
+              <p className="text-sm text-gray-500 mt-3 mb-4">Configure statement periods for each tag</p>
+              <div className="space-y-3">
+                {availableTags.map((tag: string) => {
+                  const config: PeriodConfig = getPeriodConfigForTag(tag);
+                  const isDropdownOpen: boolean = openDropdown === tag;
+
+                  return (
+                    <div key={tag} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium text-gray-700 min-w-[120px]">{tag}</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={config.days}
+                          onChange={(e) => updateTagConfig(tag, { days: parseInt(e.target.value) || 7 })}
+                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="1"
+                        />
+                        <span className="text-sm text-gray-500">days</span>
+                      </div>
+
+                      {/* Custom Dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setOpenDropdown(isDropdownOpen ? null : tag)}
+                          className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50 min-w-[140px] justify-between"
+                        >
+                          <span>{config.calculationType === 'checkout' ? 'Checkout Based' : 'Calendar Based'}</span>
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        </button>
+
+                        {isDropdownOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenDropdown(null)}
+                            />
+                            <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden">
+                              <button
+                                onClick={() => {
+                                  updateTagConfig(tag, { calculationType: 'checkout' });
+                                  setOpenDropdown(null);
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                  config.calculationType === 'checkout' ? 'bg-blue-50 text-blue-700' : ''
+                                }`}
+                              >
+                                {config.calculationType === 'checkout' && <Check className="w-4 h-4" />}
+                                <span className={config.calculationType === 'checkout' ? '' : 'ml-6'}>Checkout Based</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  updateTagConfig(tag, { calculationType: 'calendar' });
+                                  setOpenDropdown(null);
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                  config.calculationType === 'calendar' ? 'bg-blue-50 text-blue-700' : ''
+                                }`}
+                              >
+                                {config.calculationType === 'calendar' && <Check className="w-4 h-4" />}
+                                <span className={config.calculationType === 'calendar' ? '' : 'ml-6'}>Calendar Based</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Schedule Section - Only show when tags are selected */}
+        {selectedTags.size > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Calendar className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Schedule Emails</h2>
+                <p className="text-sm text-gray-500">
+                  {listingsWithoutStatements.length > 0
+                    ? `Will generate ${listingsWithoutStatements.length} statements and queue ${selectedListings.length} emails`
+                    : `Add ${selectedListings.length} email${selectedListings.length !== 1 ? 's' : ''} to pending queue`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Statement Period Info */}
+            {calculatedPeriod && !useCustomPeriod && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-800">Statement Period (Auto)</p>
+                    <p className="text-sm text-blue-600">
+                      {new Date(calculatedPeriod.start).toLocaleDateString()} - {new Date(calculatedPeriod.end).toLocaleDateString()}
+                      <span className="ml-2 text-blue-500">({calculatedPeriod.calculationType})</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setUseCustomPeriod(true);
+                      setCustomPeriodStart(calculatedPeriod.start);
+                      setCustomPeriodEnd(calculatedPeriod.end);
+                      setCustomCalculationType(calculatedPeriod.calculationType);
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Customize
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Period Selection */}
+            {useCustomPeriod && (
+              <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-gray-700">Custom Statement Period</p>
+                  <button
+                    onClick={() => setUseCustomPeriod(false)}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Use Default
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={customPeriodStart}
+                      onChange={(e) => setCustomPeriodStart(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={customPeriodEnd}
+                      onChange={(e) => setCustomPeriodEnd(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Type</label>
+                    <select
+                      value={customCalculationType}
+                      onChange={(e) => setCustomCalculationType(e.target.value as 'checkout' | 'calendar')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                    >
+                      <option value="checkout">Checkout</option>
+                      <option value="calendar">Calendar</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* No config warning */}
+            {!calculatedPeriod && !useCustomPeriod && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800">
+                  No period config found for selected tags.
+                  <button
+                    onClick={() => setUseCustomPeriod(true)}
+                    className="ml-1 text-amber-700 font-medium underline"
+                  >
+                    Set custom dates
+                  </button>
+                </p>
+              </div>
+            )}
+
+            {listingsWithoutStatements.length > 0 && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800">
+                  <span className="font-medium">{listingsWithoutStatements.length} listing{listingsWithoutStatements.length !== 1 ? 's' : ''}</span> don't have statements yet.
+                  They will be generated automatically when you send.
+                </p>
+              </div>
+            )}
+
+            {/* Test Email Field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Test Email <span className="text-gray-400 font-normal">(optional - leave empty to send to actual owners)</span>
+              </label>
+              <input
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="Enter test email to receive emails instead of owners"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              {testEmail && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm font-medium text-yellow-800">Send to test email:</span>
+                      <div className="flex items-center gap-2 bg-white rounded-lg border border-yellow-300 p-1">
+                        <button
+                          onClick={() => setTestSendAll(false)}
+                          disabled={sendingBatchId !== null}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                            !testSendAll
+                              ? 'bg-yellow-500 text-white'
+                              : 'text-yellow-700 hover:bg-yellow-100'
+                          } disabled:opacity-50`}
+                        >
+                          Just 1 Email
+                        </button>
+                        <button
+                          onClick={() => setTestSendAll(true)}
+                          disabled={sendingBatchId !== null}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                            testSendAll
+                              ? 'bg-yellow-500 text-white'
+                              : 'text-yellow-700 hover:bg-yellow-100'
+                          } disabled:opacity-50`}
+                        >
+                          All {selectedListings.length} Emails
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleSendTestNow}
+                      disabled={sendingBatchId !== null || !calculatedPeriod}
+                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {sendingBatchId?.startsWith('temp-') ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      {sendingBatchId?.startsWith('temp-') ? 'Sending...' : 'Send Test Now'}
+                    </button>
+                  </div>
+
+                  {/* Progress Bar for Test Send */}
+                  {sendingBatchId?.startsWith('temp-') && sendProgress && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-yellow-800">{sendProgress.status}</span>
+                        <span className="text-sm text-yellow-700">
+                          {sendProgress.current}/{sendProgress.total} ({Math.round((sendProgress.current / sendProgress.total) * 100)}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-yellow-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-yellow-600 transition-all duration-300 ease-out"
+                          style={{ width: `${Math.round((sendProgress.current / sendProgress.total) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {!sendingBatchId?.startsWith('temp-') && (
+                    <p className="mt-2 text-sm text-yellow-700">
+                      {testSendAll
+                        ? `All ${selectedListings.length} emails will be sent to ${testEmail}`
+                        : `Only 1 test email will be sent to ${testEmail} (others will be skipped)`
+                      }
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Send Date</label>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Send Time</label>
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleScheduleEmails}
+              disabled={selectedListings.length === 0 || !scheduledDate || (!calculatedPeriod && !useCustomPeriod)}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Calendar className="w-4 h-4" />
+              Add {selectedListings.length} to Pending Queue
+            </button>
+          </div>
+        )}
+
+        {/* Email History Section */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <History className="w-5 h-5 text-gray-500" />
+              <span className="font-medium text-gray-700">Email History</span>
+              {emailStats && (
+                <div className="flex items-center gap-2 ml-2">
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                    {emailStats.sent} sent
+                  </span>
+                  {emailStats.failed > 0 && (
+                    <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">
+                      {emailStats.failed} failed
+                    </span>
+                  )}
+                  {emailStats.pending > 0 && (
+                    <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full">
+                      {emailStats.pending} pending
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            {showHistory ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+
+          {showHistory && (
+            <div className="px-4 pb-4 border-t border-gray-100">
+              {/* Stats Cards */}
+              {emailStats && (
+                <div className="grid grid-cols-4 gap-3 mt-4 mb-4">
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-green-700">{emailStats.sent}</div>
+                    <div className="text-xs text-green-600">Sent</div>
+                  </div>
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-red-700">{emailStats.failed}</div>
+                    <div className="text-xs text-red-600">Failed</div>
+                  </div>
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-yellow-700">{emailStats.pending}</div>
+                    <div className="text-xs text-yellow-600">Pending</div>
+                  </div>
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-orange-700">{emailStats.bounced}</div>
+                    <div className="text-xs text-orange-600">Bounced</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Filter and Refresh */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                    {(['all', 'sent', 'failed', 'pending'] as const).map(status => (
+                      <button
+                        key={status}
+                        onClick={() => setHistoryFilter(status)}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors capitalize ${
+                          historyFilter === status
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={fetchEmailHistory}
+                  disabled={historyLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
+
+              {/* Email Logs List */}
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : emailLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No email logs found
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {emailLogs.map(log => (
+                    <div
+                      key={log.id}
+                      className={`p-3 rounded-lg border ${
+                        log.status === 'sent' ? 'bg-green-50 border-green-200' :
+                        log.status === 'failed' ? 'bg-red-50 border-red-200' :
+                        log.status === 'pending' ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className={`p-1.5 rounded-full ${
+                            log.status === 'sent' ? 'bg-green-100' :
+                            log.status === 'failed' ? 'bg-red-100' :
+                            log.status === 'pending' ? 'bg-yellow-100' :
+                            'bg-gray-100'
+                          }`}>
+                            {log.status === 'sent' ? <CheckCircle className="w-4 h-4 text-green-600" /> :
+                             log.status === 'failed' ? <XCircle className="w-4 h-4 text-red-600" /> :
+                             <AlertCircle className="w-4 h-4 text-yellow-600" />}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900 text-sm">
+                              {log.propertyName || `Statement #${log.statementId}`}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              To: {log.recipientEmail}
+                            </div>
+                            {log.frequencyTag && (
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                Tag: {log.frequencyTag}
+                              </div>
+                            )}
+                            {log.errorMessage && (
+                              <div className="text-xs text-red-600 mt-1">
+                                Error: {log.errorMessage}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            log.status === 'sent' ? 'bg-green-100 text-green-700' :
+                            log.status === 'failed' ? 'bg-red-100 text-red-700' :
+                            log.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {log.status}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {log.sentAt ? new Date(log.sentAt).toLocaleString() :
+                             log.attemptedAt ? new Date(log.attemptedAt).toLocaleString() :
+                             new Date(log.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Email Templates Section */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <button
+            onClick={() => setShowTemplates(!showTemplates)}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-gray-500" />
+              <span className="font-medium text-gray-700">Email Templates</span>
+              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                {templates.length} templates
+              </span>
+            </div>
+            {showTemplates ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+
+          {showTemplates && (
+            <div className="px-4 pb-4 border-t border-gray-100">
+              {/* Add New Template Button */}
+              <div className="flex items-center justify-between mt-4 mb-4">
+                <p className="text-sm text-gray-500">Customize email templates for different frequency types</p>
+                <button
+                  onClick={() => openTemplateEditor()}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Template
+                </button>
+              </div>
+
+              {/* Templates List */}
+              {templatesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No templates found. Create your first template.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {templates.map(template => (
+                    <div
+                      key={template.id}
+                      className={`p-4 rounded-lg border ${
+                        template.isDefault ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">{template.name}</span>
+                            {template.isDefault && (
+                              <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                <Star className="w-3 h-3" />
+                                Default
+                              </span>
+                            )}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              template.frequencyType === 'weekly' ? 'bg-green-100 text-green-700' :
+                              template.frequencyType === 'bi-weekly' ? 'bg-purple-100 text-purple-700' :
+                              template.frequencyType === 'monthly' ? 'bg-orange-100 text-orange-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {template.frequencyType}
+                            </span>
+                            {!template.isActive && (
+                              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">
+                                Inactive
+                              </span>
+                            )}
+                            {['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
+                              <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full">
+                                System
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            Subject: {template.subject}
+                          </div>
+                          {template.description && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              {template.description}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 ml-4">
+                          {!template.isDefault && !['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
+                            <button
+                              onClick={() => handleSetDefault(template.id)}
+                              className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                              title="Set as Default"
+                            >
+                              <Star className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openTemplateEditor(template)}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          {!template.isDefault && !['Calendar Statement', 'Check-Out Statement'].includes(template.name) && (
+                            <button
+                              onClick={() => handleDeleteTemplate(template.id)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Template Editor Modal */}
+        {showTemplateEditor && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editingTemplate ? 'Edit Template' : 'New Template'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowTemplateEditor(false);
+                    setEditingTemplate(null);
+                    setTemplatePreview(null);
+                    setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Left Column - Form */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Template Name</label>
+                        <input
+                          type="text"
+                          value={newTemplate.name}
+                          onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                          placeholder="e.g., Weekly Statement"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Frequency Type</label>
+                        <select
+                          value={newTemplate.frequencyType}
+                          onChange={(e) => setNewTemplate({ ...newTemplate, frequencyType: e.target.value as any })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        >
+                          <option value="weekly">Weekly</option>
+                          <option value="bi-weekly">Bi-Weekly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                      <input
+                        type="text"
+                        value={newTemplate.subject}
+                        onChange={(e) => setNewTemplate({ ...newTemplate, subject: e.target.value })}
+                        placeholder="e.g., Owner Statement - {{periodDisplay}}"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">HTML Body</label>
+                      <textarea
+                        value={newTemplate.htmlBody}
+                        onChange={(e) => setNewTemplate({ ...newTemplate, htmlBody: e.target.value })}
+                        rows={12}
+                        placeholder="Enter HTML email template..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Plain Text Body (optional)</label>
+                      <textarea
+                        value={newTemplate.textBody}
+                        onChange={(e) => setNewTemplate({ ...newTemplate, textBody: e.target.value })}
+                        rows={4}
+                        placeholder="Plain text version for email clients that don't support HTML..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                      <input
+                        type="text"
+                        value={newTemplate.description}
+                        onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+                        placeholder="Brief description of this template"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column - Variables & Preview */}
+                  <div className="space-y-4">
+                    {/* Available Variables */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Available Variables</h4>
+                      <p className="text-xs text-gray-500 mb-3">Click to insert into HTML body</p>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {['owner', 'property', 'period', 'amount', 'status', 'general'].map(category => {
+                          const categoryVars = templateVariables.filter(v => v.category === category);
+                          if (categoryVars.length === 0) return null;
+                          return (
+                            <div key={category}>
+                              <div className="text-xs font-medium text-gray-500 uppercase mb-1">{category}</div>
+                              <div className="flex flex-wrap gap-1">
+                                {categoryVars.map(variable => (
+                                  <button
+                                    key={variable.name}
+                                    onClick={() => insertVariable(variable.name)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors"
+                                    title={variable.description}
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    {`{{${variable.name}}}`}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Preview Button */}
+                    <button
+                      onClick={handlePreviewTemplate}
+                      disabled={!newTemplate.subject || !newTemplate.htmlBody}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Preview with Sample Data
+                    </button>
+
+                    {/* Preview Display */}
+                    {templatePreview && (
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Preview</h4>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3">
+                          <div className="text-sm font-medium text-gray-900 mb-2 pb-2 border-b border-gray-100">
+                            Subject: {templatePreview.subject}
+                          </div>
+                          <div
+                            className="text-sm prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ __html: templatePreview.htmlBody }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setShowTemplateEditor(false);
+                    setEditingTemplate(null);
+                    setTemplatePreview(null);
+                    setNewTemplate({ name: '', frequencyType: 'custom', subject: '', htmlBody: '', textBody: '', description: '' });
+                  }}
+                  className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTemplate}
+                  disabled={!newTemplate.name || !newTemplate.subject || !newTemplate.htmlBody}
+                  className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {editingTemplate ? 'Save Changes' : 'Create Template'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Scheduled Batches */}
+        {pendingBatches.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Pending Scheduled Emails</h2>
+                <p className="text-sm text-gray-500">{pendingBatches.length} batch{pendingBatches.length !== 1 ? 'es' : ''} waiting to be sent</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {pendingBatches.map(batch => {
+                const { date, time } = formatScheduledDate(batch.scheduledDate, batch.scheduledTime);
+                const isSending = sendingBatchId === batch.id;
+                const progressPercent = sendProgress ? Math.round((sendProgress.current / sendProgress.total) * 100) : 0;
+
+                return (
+                  <div
+                    key={batch.id}
+                    className={`p-4 border rounded-lg ${isSending ? 'bg-blue-50 border-blue-300' : 'bg-purple-50 border-purple-200'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-lg ${isSending ? 'bg-blue-100' : 'bg-purple-100'}`}>
+                          {isSending ? (
+                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Clock className="w-5 h-5 text-purple-600" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-900">
+                              {batch.listingIds.length} listing{batch.listingIds.length !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-gray-400">·</span>
+                            <span className="text-sm text-gray-600">
+                              {batch.tags.join(', ')}
+                            </span>
+                            {batch.listingsToGenerate > 0 && !isSending && (
+                              <>
+                                <span className="text-gray-400">·</span>
+                                <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                                  {batch.listingsToGenerate} to generate
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                            <span>Period: {new Date(batch.periodStart).toLocaleDateString()} - {new Date(batch.periodEnd).toLocaleDateString()}</span>
+                            <span className="text-gray-300">|</span>
+                            <span className="capitalize">{batch.calculationType}</span>
+                          </div>
+                          {!isSending && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                              <span className="text-sm text-gray-500">
+                                Send: {date} at {time}
+                              </span>
+                            </div>
+                          )}
+                          {batch.testEmail && (
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full">
+                                Test: {batch.testEmail}
+                              </span>
+                              <span className="text-xs px-2 py-0.5 bg-yellow-50 text-yellow-600 rounded-full border border-yellow-200">
+                                {batch.testSendAll ? `All ${batch.listingIds.length}` : 'Just 1'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {!isSending && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleSendBatchNow(batch.id)}
+                            disabled={sendingBatchId !== null}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            Send Now
+                          </button>
+                          <button
+                            onClick={() => removeBatch(batch.id)}
+                            disabled={sendingBatchId !== null}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress Bar */}
+                    {isSending && sendProgress && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-blue-700">{sendProgress.status}</span>
+                          <span className="text-sm text-blue-600">{sendProgress.current}/{sendProgress.total} ({progressPercent}%)</span>
+                        </div>
+                        <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default EmailDashboard;

@@ -11,7 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const EmailService = require('../services/EmailService');
-const { Statement, Listing, EmailLog } = require('../models');
+const { Statement, Listing, EmailLog, ScheduledEmail } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -729,6 +729,300 @@ router.post('/logs/:id/retry', async (req, res) => {
     } catch (error) {
         console.error('Error retrying email:', error);
         res.status(500).json({ error: 'Failed to retry email' });
+    }
+});
+
+// ============================================
+// SCHEDULED EMAILS ROUTES
+// ============================================
+
+/**
+ * POST /api/email/schedule
+ * Schedule emails for later delivery
+ */
+router.post('/schedule', async (req, res) => {
+    try {
+        const { statementIds, scheduledFor } = req.body;
+
+        if (!statementIds || !Array.isArray(statementIds) || statementIds.length === 0) {
+            return res.status(400).json({ error: 'statementIds array is required' });
+        }
+
+        if (!scheduledFor) {
+            return res.status(400).json({ error: 'scheduledFor datetime is required' });
+        }
+
+        const scheduledDate = new Date(scheduledFor);
+        if (isNaN(scheduledDate.getTime())) {
+            return res.status(400).json({ error: 'Invalid scheduledFor datetime' });
+        }
+
+        if (scheduledDate <= new Date()) {
+            return res.status(400).json({ error: 'scheduledFor must be in the future' });
+        }
+
+        // Get statements
+        const statements = await Statement.findAll({
+            where: { id: { [Op.in]: statementIds } }
+        });
+
+        if (statements.length === 0) {
+            return res.status(404).json({ error: 'No statements found' });
+        }
+
+        // Get listings for email info
+        const propertyIds = [...new Set(statements.map(s => s.propertyId).filter(Boolean))];
+        const listings = await Listing.findAll({
+            where: { id: { [Op.in]: propertyIds } }
+        });
+
+        const listingMap = {};
+        listings.forEach(l => {
+            listingMap[l.id] = l;
+        });
+
+        // Create scheduled email records
+        const scheduled = [];
+        const skipped = [];
+
+        for (const statement of statements) {
+            const listing = listingMap[statement.propertyId];
+
+            if (!listing?.ownerEmail) {
+                skipped.push({
+                    statementId: statement.id,
+                    reason: 'No owner email configured'
+                });
+                continue;
+            }
+
+            const frequencyTag = EmailService.getFrequencyFromTags(listing.tags);
+
+            const scheduledEmail = await ScheduledEmail.create({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                recipientEmail: listing.ownerEmail,
+                recipientName: listing.ownerGreeting || statement.ownerName,
+                propertyName: listing.nickname || statement.propertyName,
+                frequencyTag,
+                scheduledFor: scheduledDate,
+                status: 'pending'
+            });
+
+            scheduled.push({
+                id: scheduledEmail.id,
+                statementId: statement.id,
+                propertyName: statement.propertyName,
+                recipientEmail: listing.ownerEmail,
+                scheduledFor: scheduledDate
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `Scheduled ${scheduled.length} email(s) for ${scheduledDate.toISOString()}`,
+            scheduled,
+            skipped,
+            summary: {
+                scheduled: scheduled.length,
+                skipped: skipped.length,
+                total: statementIds.length
+            }
+        });
+    } catch (error) {
+        console.error('Error scheduling emails:', error);
+        res.status(500).json({ error: 'Failed to schedule emails' });
+    }
+});
+
+/**
+ * GET /api/email/scheduled
+ * Get all scheduled emails
+ */
+router.get('/scheduled', async (req, res) => {
+    try {
+        const { status, limit = 100, offset = 0 } = req.query;
+
+        const where = {};
+        if (status) {
+            where.status = status;
+        }
+
+        const { count, rows: emails } = await ScheduledEmail.findAndCountAll({
+            where,
+            order: [['scheduled_for', 'ASC']],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        });
+
+        res.json({
+            success: true,
+            total: count,
+            emails: emails.map(e => ({
+                id: e.id,
+                statementId: e.statementId,
+                propertyId: e.propertyId,
+                recipientEmail: e.recipientEmail,
+                recipientName: e.recipientName,
+                propertyName: e.propertyName,
+                frequencyTag: e.frequencyTag,
+                scheduledFor: e.scheduledFor,
+                status: e.status,
+                sentAt: e.sentAt,
+                errorMessage: e.errorMessage,
+                createdAt: e.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching scheduled emails:', error);
+        res.status(500).json({ error: 'Failed to fetch scheduled emails' });
+    }
+});
+
+/**
+ * DELETE /api/email/scheduled/:id
+ * Cancel a scheduled email
+ */
+router.delete('/scheduled/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const scheduledEmail = await ScheduledEmail.findByPk(id);
+        if (!scheduledEmail) {
+            return res.status(404).json({ error: 'Scheduled email not found' });
+        }
+
+        if (scheduledEmail.status !== 'pending') {
+            return res.status(400).json({
+                error: `Cannot cancel email with status: ${scheduledEmail.status}`
+            });
+        }
+
+        await scheduledEmail.update({ status: 'cancelled' });
+
+        res.json({
+            success: true,
+            message: 'Scheduled email cancelled',
+            email: {
+                id: scheduledEmail.id,
+                statementId: scheduledEmail.statementId,
+                status: 'cancelled'
+            }
+        });
+    } catch (error) {
+        console.error('Error cancelling scheduled email:', error);
+        res.status(500).json({ error: 'Failed to cancel scheduled email' });
+    }
+});
+
+/**
+ * POST /api/email/scheduled/process
+ * Process due scheduled emails (call this via cron job or manually)
+ */
+router.post('/scheduled/process', async (req, res) => {
+    try {
+        const now = new Date();
+
+        // Find all pending emails that are due
+        const dueEmails = await ScheduledEmail.findAll({
+            where: {
+                status: 'pending',
+                scheduledFor: { [Op.lte]: now }
+            },
+            limit: 50 // Process in batches
+        });
+
+        if (dueEmails.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No scheduled emails to process',
+                processed: 0
+            });
+        }
+
+        const results = {
+            sent: [],
+            failed: []
+        };
+
+        for (const scheduledEmail of dueEmails) {
+            try {
+                // Get statement
+                const statement = await Statement.findByPk(scheduledEmail.statementId);
+                if (!statement) {
+                    await scheduledEmail.update({
+                        status: 'failed',
+                        errorMessage: 'Statement not found'
+                    });
+                    results.failed.push({
+                        id: scheduledEmail.id,
+                        error: 'Statement not found'
+                    });
+                    continue;
+                }
+
+                // Send the email
+                const result = await EmailService.sendStatementEmailWithPdf({
+                    to: scheduledEmail.recipientEmail,
+                    statement: {
+                        ...statement.toJSON(),
+                        ownerName: scheduledEmail.recipientName || statement.ownerName,
+                        propertyName: scheduledEmail.propertyName || statement.propertyName
+                    },
+                    frequencyTag: scheduledEmail.frequencyTag || 'Monthly',
+                    attachPdf: true,
+                    authHeader: req.headers.authorization
+                });
+
+                if (result.success) {
+                    await scheduledEmail.update({
+                        status: 'sent',
+                        sentAt: new Date()
+                    });
+
+                    // Update statement status
+                    await statement.update({
+                        status: 'sent',
+                        sentAt: new Date()
+                    });
+
+                    results.sent.push({
+                        id: scheduledEmail.id,
+                        statementId: scheduledEmail.statementId
+                    });
+                } else {
+                    await scheduledEmail.update({
+                        status: 'failed',
+                        errorMessage: result.message || 'Failed to send'
+                    });
+                    results.failed.push({
+                        id: scheduledEmail.id,
+                        error: result.message
+                    });
+                }
+            } catch (error) {
+                await scheduledEmail.update({
+                    status: 'failed',
+                    errorMessage: error.message
+                });
+                results.failed.push({
+                    id: scheduledEmail.id,
+                    error: error.message
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Processed ${dueEmails.length} scheduled emails`,
+            processed: dueEmails.length,
+            sent: results.sent.length,
+            failed: results.failed.length,
+            results
+        });
+    } catch (error) {
+        console.error('Error processing scheduled emails:', error);
+        res.status(500).json({ error: 'Failed to process scheduled emails' });
     }
 });
 

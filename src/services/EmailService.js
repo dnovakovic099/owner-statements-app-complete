@@ -75,6 +75,14 @@ class EmailService {
     }
 
     /**
+     * Format currency with commas (e.g., 2513.57 -> "2,513.57")
+     */
+    formatCurrency(amount) {
+        const num = Math.abs(parseFloat(amount) || 0);
+        return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    /**
      * Get email template based on frequency tag
      * @param {string} frequencyTag - 'Weekly', 'Bi-Weekly', or 'Monthly'
      * @param {Object} data - Template data (ownerName, propertyName, period, etc.)
@@ -142,6 +150,8 @@ class EmailService {
 
         const periodDisplay = formatWeeklyPeriod(periodStart, periodEnd);
         const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
+        const formattedAmount = this.formatCurrency(ownerPayout);
+        const balanceSuffix = ownerPayout < 0 ? ' (Balance Due)' : '';
 
         return {
             subject: `Owner Statement - ${subjectPeriod}`,
@@ -152,7 +162,7 @@ class EmailService {
 <p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
-<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${formattedAmount}${balanceSuffix}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
@@ -175,7 +185,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 Attached is your statement for the period ${periodDisplay}.
 
 STATEMENT TOTAL
-$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+$${formattedAmount}${balanceSuffix}
 
 Payment will be sent shortly to your provided account.
 
@@ -245,6 +255,8 @@ Thank you again for your trust and partnership.
 
         const periodDisplay = formatBiWeeklyPeriod(periodStart, periodEnd);
         const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
+        const formattedAmount = this.formatCurrency(ownerPayout);
+        const balanceSuffix = ownerPayout < 0 ? ' (Balance Due)' : '';
 
         return {
             subject: `Owner Statement - ${subjectPeriod}`,
@@ -255,7 +267,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
-<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${formattedAmount}${balanceSuffix}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
@@ -278,7 +290,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 Attached is your statement for the period ${periodDisplay}.
 
 STATEMENT TOTAL
-$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+$${formattedAmount}${balanceSuffix}
 
 Payment will be sent shortly to your provided account.
 
@@ -337,7 +349,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
-<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
@@ -360,7 +372,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 Attached is your statement for the period of ${periodDisplay}.
 
 STATEMENT TOTAL
-$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
 Payment will be sent shortly to your provided account.
 
@@ -416,7 +428,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
-<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
@@ -441,7 +453,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 Attached is your statement for the period of ${periodDisplay}.
 
 STATEMENT TOTAL
-$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
 Payment will be sent shortly to your provided account.
 
@@ -517,7 +529,7 @@ Thank you again for your trust and partnership.
 
         const periodDisplay = formatPeriod(periodStart, periodEnd);
         const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
-        const balanceAmount = Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const balanceAmount = this.formatCurrency(ownerPayout);
 
         // Stripe invoice link - use provided URL or placeholder
         const invoiceLink = stripeInvoiceUrl || '[Stripe Invoice Link]';
@@ -627,7 +639,7 @@ Thank you again for your trust and partnership.
 <p style="margin: 0 0 8px 0;">Hi${ownerName ? ' ' + ownerName : ''},</p>
 <p style="margin: 0 0 12px 0;">Attached is your statement for the period of ${periodDisplay}.</p>
 <p style="margin: 0;"><strong>STATEMENT TOTAL</strong></p>
-<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
+<p style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold;">$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}</p>
 <p style="margin: 0 0 16px 0;">Payment will be sent shortly to your provided account.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;"><tr><td style="border-top: 2px solid #999;"></td></tr></table>
 <p style="margin: 0 0 6px 0; font-size: 10px; color: #333;"><strong>CALCULATING YOUR STATEMENT</strong></p>
@@ -650,7 +662,7 @@ Gross Payout - Expenses + Additional Payouts = Net Payout</p>
 Attached is your statement for the period of ${periodDisplay}.
 
 STATEMENT TOTAL
-$${Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${ownerPayout < 0 ? ' (Balance Due)' : ''}
+$${this.formatCurrency(ownerPayout)}${ownerPayout < 0 ? ' (Balance Due)' : ''}
 
 Payment will be sent shortly to your provided account.
 
