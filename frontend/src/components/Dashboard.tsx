@@ -131,6 +131,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     status: '',
     startDate: '',
     endDate: '',
+    hideZeroActivity: true, // Default: hide statements with $0 revenue AND $0 payout
   });
 
   // Property search state
@@ -205,7 +206,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   useEffect(() => {
     // Reset to first page when filters change
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
-  }, [filters.ownerId, filters.propertyId, filters.propertyIds, filters.status, filters.startDate, filters.endDate]);
+  }, [filters.ownerId, filters.propertyId, filters.propertyIds, filters.status, filters.startDate, filters.endDate, filters.hideZeroActivity]);
 
   useEffect(() => {
     loadStatements();
@@ -1436,6 +1437,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+          {/* Hide $0 Activity Toggle */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.hideZeroActivity}
+                onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="ml-2 text-sm text-gray-600">Hide $0 activity statements</span>
+              <span className="ml-1 text-xs text-gray-400">(no revenue & no payout)</span>
+            </label>
           </div>
         </div>
 

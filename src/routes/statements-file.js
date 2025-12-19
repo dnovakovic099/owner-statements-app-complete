@@ -31,11 +31,22 @@ router.get('/', async (req, res) => {
             status,
             startDate,
             endDate,
+            hideZeroActivity, // Hide statements with $0 revenue AND $0 payout
             limit = 50,
             offset = 0
         } = req.query;
 
         let statements = await FileDataService.getStatements();
+
+        // Filter out $0 revenue AND $0 payout statements when hideZeroActivity=true
+        if (hideZeroActivity === 'true') {
+            statements = statements.filter(s => {
+                const revenue = parseFloat(s.totalRevenue) || 0;
+                const payout = parseFloat(s.ownerPayout) || 0;
+                // Keep if either revenue OR payout is non-zero
+                return revenue !== 0 || payout !== 0;
+            });
+        }
 
         // Get all listings to check cleaningFeePassThrough setting
         const allListings = await FileDataService.getListings();

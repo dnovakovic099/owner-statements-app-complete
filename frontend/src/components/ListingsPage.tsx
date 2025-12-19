@@ -17,7 +17,7 @@ interface NewListing {
   createdAt: string;
 }
 
-interface ListingsPageProps {
+interface ListingsPageProps { 
   onBack: () => void;
   initialSelectedListingId?: number | null;
   newListings?: NewListing[];

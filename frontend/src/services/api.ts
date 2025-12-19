@@ -60,6 +60,7 @@ export const statementsAPI = {
     status?: string;
     startDate?: string;
     endDate?: string;
+    hideZeroActivity?: boolean; // Hide statements with $0 revenue AND $0 payout
     limit?: number;
     offset?: number;
   }): Promise<{ statements: Statement[]; total: number; limit: number; offset: number }> => {
@@ -73,6 +74,7 @@ export const statementsAPI = {
     if (filters?.status) params.append('status', filters.status);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.hideZeroActivity) params.append('hideZeroActivity', 'true');
     if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());
     if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());
 

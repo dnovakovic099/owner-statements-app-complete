@@ -825,12 +825,26 @@ This is an auto-generated email. If you have any questions or need clarification
     }
 
     /**
-     * Check if statement can be sent (Negative Balance Guardrail)
+     * Check if statement can be sent (Guardrails)
+     * - Blocks negative balance statements
+     * - Blocks statements where both revenue and payout are $0 (nothing to report)
      * @param {Object} statement - Statement object
      * @returns {Object} { canSend: boolean, reason: string }
      */
     checkNegativeBalanceGuardrail(statement) {
         const ownerPayout = parseFloat(statement.ownerPayout) || 0;
+        const totalRevenue = parseFloat(statement.totalRevenue) || 0;
+
+        // Block if both revenue and payout are $0 (nothing to report)
+        if (totalRevenue === 0 && ownerPayout === 0) {
+            return {
+                canSend: false,
+                reason: 'ZERO_ACTIVITY',
+                message: 'Statement has $0 revenue and $0 payout. No activity to report.',
+                ownerPayout,
+                totalRevenue
+            };
+        }
 
         if (ownerPayout < 0) {
             return {
@@ -880,16 +894,17 @@ This is an auto-generated email. If you have any questions or need clarification
             };
         }
 
-        // Negative Balance Guardrail Check
+        // Guardrail Check (negative balance, zero activity, etc.)
         const guardrailCheck = this.checkNegativeBalanceGuardrail(statement);
         if (!guardrailCheck.canSend) {
             console.log(`[EmailService] BLOCKED: Statement ${statement.id} - ${guardrailCheck.message}`);
             return {
                 success: false,
-                error: 'NEGATIVE_BALANCE_BLOCKED',
+                error: guardrailCheck.reason === 'ZERO_ACTIVITY' ? 'ZERO_ACTIVITY_BLOCKED' : 'NEGATIVE_BALANCE_BLOCKED',
                 message: guardrailCheck.message,
-                flaggedForReview: true,
-                ownerPayout: guardrailCheck.ownerPayout
+                flaggedForReview: guardrailCheck.reason === 'NEGATIVE_BALANCE',
+                ownerPayout: guardrailCheck.ownerPayout,
+                totalRevenue: guardrailCheck.totalRevenue
             };
         }
 
@@ -942,10 +957,16 @@ This is an auto-generated email. If you have any questions or need clarification
             emailSubject = '[TEST] ' + emailSubject;
         }
 
-        // Prepare email
+        // Prepare email with dynamic CC recipients from environment
+        // Default CC: admin@luxurylodgingpm.com, ferdinand@luxurylodgingpm.com
+        const ccRecipients = process.env.STATEMENT_EMAIL_CC
+            ? process.env.STATEMENT_EMAIL_CC.split(',').map(e => e.trim()).filter(e => e)
+            : ['admin@luxurylodgingpm.com', 'ferdinand@luxurylodgingpm.com'];
+
         const mailOptions = {
             from: `"Luxury Lodging" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
             to: to,
+            cc: ccRecipients,
             subject: emailSubject,
             html: emailHtml,
             text: emailText,
@@ -1144,6 +1165,18 @@ This is an auto-generated email. If you have any questions or need clarification
                     reason: 'NEGATIVE_BALANCE'
                 });
                 results.summary.blockedCount++;
+            } else if (sendResult.error === 'ZERO_ACTIVITY_BLOCKED') {
+                // Skip $0/$0 statements silently - no activity to report
+                results.blocked.push({
+                    statementId: statement.id,
+                    ownerId: statement.ownerId,
+                    ownerName: statement.ownerName,
+                    propertyName: statement.propertyName,
+                    ownerPayout: sendResult.ownerPayout,
+                    totalRevenue: sendResult.totalRevenue,
+                    reason: 'ZERO_ACTIVITY'
+                });
+                results.summary.blockedCount++;
             } else {
                 results.failed.push({
                     statementId: statement.id,
@@ -1169,9 +1202,6 @@ This is an auto-generated email. If you have any questions or need clarification
         try {
             const port = process.env.PORT || 3003;
             const downloadUrl = `http://localhost:${port}/api/statements/${statementId}/download`;
-
-            // Use provided auth header or fall back to internal basic auth
-            const internalAuth = authHeader || 'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER || 'LL'}:${process.env.BASIC_AUTH_PASS || 'bnb547!'}`).toString('base64');
 
             // Call the existing download endpoint to get the PDF
             const pdfBuffer = await new Promise((resolve, reject) => {
