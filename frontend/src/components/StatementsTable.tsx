@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -52,7 +52,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -664,6 +664,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               >
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'send-email')}
+                disabled={bulkProcessing}
+                className="h-8 border-purple-300 bg-white text-purple-700 hover:bg-purple-50"
+              >
+                <Mail className="w-4 h-4 mr-1.5" />
+                Send Email
               </Button>
               <button
                 onClick={() => setRowSelection({})}
