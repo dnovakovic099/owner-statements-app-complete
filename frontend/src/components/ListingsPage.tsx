@@ -50,6 +50,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [availableCities, setAvailableCities] = useState<string[]>([]);
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [selectedFrequencyTags, setSelectedFrequencyTags] = useState<string[]>([]);
+  const [availableFrequencyTags, setAvailableFrequencyTags] = useState<string[]>([]);
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [cohostFilter, setCohostFilter] = useState<'all' | 'cohost' | 'not-cohost'>('all');
   const [ownerEmailFilter, setOwnerEmailFilter] = useState<'all' | 'has-email' | 'no-email'>('all');
   const [autoSendFilter, setAutoSendFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
@@ -197,9 +199,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   }, [selectedListingId, listings]);
 
-  // Frequency tags that should be shown separately
-  const FREQUENCY_TAGS = ['WEEKLY', 'MONTHLY', 'BI-WEEKLY A', 'BI-WEEKLY B'];
-
   const loadListings = async () => {
     try {
       setLoading(true);
@@ -209,15 +208,15 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
       // Extract all unique tags and cities for filters
       const allTags = new Set<string>();
+      const frequencyTags = new Set<string>();
       const allCities = new Set<string>();
 
       response.listings.forEach((listing: Listing) => {
-        // Extract tags (excluding frequency tags)
+        // Extract tags
         if (listing.tags && listing.tags.length > 0) {
           listing.tags.forEach((tag: string) => {
-            if (!FREQUENCY_TAGS.includes(tag.toUpperCase())) {
-              allTags.add(tag);
-            }
+            const upperTag = tag.toUpperCase();
+            frequencyTags.add(upperTag);
           });
         }
         // Extract cities
@@ -227,6 +226,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       });
 
       setAvailableTags(Array.from(allTags).sort());
+      setAvailableFrequencyTags(Array.from(frequencyTags).sort());
       setAvailableCities(Array.from(allCities).sort());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load listings');
@@ -378,13 +378,17 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       if (!hasMatchingTag) return false;
     }
 
-    // Frequency tag filter
+    // Tag filter
     if (selectedFrequencyTags.length > 0) {
       const listingTags = (listing.tags || []).map(t => t.toUpperCase());
-      const hasMatchingFrequency = selectedFrequencyTags.some(freq =>
-        listingTags.includes(freq)
-      );
-      if (!hasMatchingFrequency) return false;
+      const hasNoTag = listingTags.length === 0;
+      const selectedActualTags = selectedFrequencyTags.filter(t => t !== 'NO TAG');
+      const noTagSelected = selectedFrequencyTags.includes('NO TAG');
+
+      const hasMatchingTag = selectedActualTags.some(freq => listingTags.includes(freq));
+      const matchesNoTag = noTagSelected && hasNoTag;
+
+      if (!hasMatchingTag && !matchesNoTag) return false;
     }
 
     // City filter
@@ -445,6 +449,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setSelectedFrequencyTags([]);
     setSelectedCities([]);
     setCitySearchTerm('');
+    setTagSearchTerm('');
     setCohostFilter('all');
     setOwnerEmailFilter('all');
     setAutoSendFilter('all');
@@ -672,11 +677,20 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
               {showFilters && (
                 <div className="mt-2 p-3 border border-gray-200 rounded-md bg-gray-50 space-y-3 max-h-80 overflow-y-auto">
-                  {/* Frequency Tags */}
+                  {/* Tag Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Frequency</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Tag</label>
+                    <input
+                      type="text"
+                      placeholder="Search tags..."
+                      value={tagSearchTerm}
+                      onChange={(e) => setTagSearchTerm(e.target.value)}
+                      className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                     <div className="flex flex-wrap gap-1.5">
-                      {FREQUENCY_TAGS.map(tag => (
+                      {availableFrequencyTags
+                        .filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase()))
+                        .map(tag => (
                         <button
                           key={tag}
                           onClick={() => toggleFrequencyTag(tag)}
@@ -689,6 +703,18 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           {tag}
                         </button>
                       ))}
+                      {'NO TAG'.toLowerCase().includes(tagSearchTerm.toLowerCase()) && (
+                        <button
+                          onClick={() => toggleFrequencyTag('NO TAG')}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            selectedFrequencyTags.includes('NO TAG')
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          NO TAG
+                        </button>
+                      )}
                     </div>
                   </div>
 
