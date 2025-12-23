@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -32,6 +32,20 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table';
+
+// Helper to get auth token for PDF viewing
+const getAuthToken = (): string | null => {
+  try {
+    const stored = localStorage.getItem('luxury-lodging-auth');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed.token || null;
+    }
+  } catch {
+    // Ignore
+  }
+  return null;
+};
 
 // Lightweight listing type for name lookups
 interface ListingName {
@@ -457,7 +471,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         return (
           <div className="flex items-center">
             <ActionButton
-              href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view`}
+              href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view?token=${getAuthToken() || ''}`}
               tooltip="View Statement"
               icon={<Eye className="w-[18px] h-[18px]" />}
               color="text-blue-600"

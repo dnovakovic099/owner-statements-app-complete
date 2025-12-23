@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ListingService = require('../services/ListingService');
 const FileDataService = require('../services/FileDataService');
+const { ActivityLog } = require('../models');
 
 // GET /api/listings - Get all listings with PM fees
 router.get('/', async (req, res) => {
@@ -238,6 +239,12 @@ router.put('/:id/config', async (req, res) => {
 
         // Clear the listings cache so changes are reflected immediately
         FileDataService.clearListingsCache();
+
+        // Log activity
+        await ActivityLog.log(req, 'UPDATE_LISTING', 'listing', id, {
+            listingName: listing.nickname || listing.displayName || listing.name,
+            changes: Object.keys(config)
+        });
 
         res.json({ success: true, message: 'Listing configuration updated', listing });
     } catch (error) {

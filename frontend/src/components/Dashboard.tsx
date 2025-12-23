@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown, Bell, X, Mail } from 'lucide-react';
+import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown, Bell, X, Mail, Settings } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
 import ListingsPage from './ListingsPage';
 import EmailDashboard from './EmailDashboard';
+import SettingsPage from './SettingsPage';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
 
@@ -17,6 +18,7 @@ const EditStatementModal = lazy(() => import('./EditStatementModal'));
 
 interface User {
   username: string;
+  role?: 'system' | 'admin' | 'editor' | 'viewer';
 }
 
 interface DashboardProps {
@@ -60,7 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -418,7 +420,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         return;
       } else if (action === 'view') {
         const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-        window.open(`${baseUrl}/api/statements/${id}/view`, '_blank');
+        // Get auth token for PDF viewing
+        const authData = localStorage.getItem('luxury-lodging-auth');
+        const token = authData ? JSON.parse(authData).token : '';
+        window.open(`${baseUrl}/api/statements/${id}/view?token=${token}`, '_blank');
       } else if (action === 'download') {
         // Show loading toast
         const toastId = showToast('Preparing PDF download...', 'loading');
@@ -1068,6 +1073,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   }
 
+  // Show settings page if selected
+  if (currentPage === 'settings') {
+    return (
+      <SettingsPage
+        onBack={() => setCurrentPage('dashboard')}
+        currentUserRole={user?.role || 'admin'}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -1197,6 +1212,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               >
                 <Mail className="w-5 h-5" />
               </button>
+
+              {user?.role === 'system' && (
+                <button
+                  onClick={() => setCurrentPage('settings')}
+                  className="flex items-center justify-center w-10 h-10 bg-gray-500/20 border border-gray-300/30 rounded-md hover:bg-gray-500/30 transition-colors"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
 
               <button
                 onClick={() => setCurrentPage('listings')}

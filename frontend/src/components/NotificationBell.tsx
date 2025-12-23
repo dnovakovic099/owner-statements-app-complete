@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Clock, X, ChevronRight } from 'lucide-react';
+import { tagScheduleAPI } from '../services/api';
 
 interface TagNotification {
   id: number;
@@ -27,16 +28,9 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('/api/tag-schedules/notifications', {
-        headers: {
-          'Authorization': `Basic ${btoa('LL:bnb547!')}`
-        }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
-      }
+      const response = await tagScheduleAPI.getNotifications();
+      setNotifications(response.notifications || []);
+      setUnreadCount(response.unreadCount || 0);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     }
@@ -60,12 +54,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const markAsActioned = async (id: number) => {
     try {
-      await fetch(`/api/tag-schedules/notifications/${id}/action`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Basic ${btoa('LL:bnb547!')}`
-        }
-      });
+      await tagScheduleAPI.markNotificationActioned(id);
       fetchNotifications();
     } catch (error) {
       console.error('Failed to mark notification as actioned:', error);
@@ -75,12 +64,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
   const dismissNotification = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/tag-schedules/notifications/${id}/dismiss`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Basic ${btoa('LL:bnb547!')}`
-        }
-      });
+      await tagScheduleAPI.dismissNotification(id);
       fetchNotifications();
     } catch (error) {
       console.error('Failed to dismiss notification:', error);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy } from 'lucide-react';
+import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy, Megaphone, X, Users, Image, Link2 } from 'lucide-react';
 import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
 import { Listing, Statement } from '../types';
 import { useToast } from './ui/toast';
@@ -89,6 +89,25 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
     isDefault: false
   });
 
+  // Announcement state
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementSubject, setAnnouncementSubject] = useState('');
+  const [announcementBody, setAnnouncementBody] = useState('');
+  const [announcementSendToAll, setAnnouncementSendToAll] = useState(true);
+  const [announcementTags, setAnnouncementTags] = useState<Set<string>>(new Set());
+  const [announcementSending, setAnnouncementSending] = useState(false);
+  const [announcementTestSending, setAnnouncementTestSending] = useState(false);
+  const [announcementRecipientCount, setAnnouncementRecipientCount] = useState(0);
+  const [announcementTestEmail, setAnnouncementTestEmail] = useState('');
+  const [showAnnouncementPreview, setShowAnnouncementPreview] = useState(false);
+  const [announcementImages, setAnnouncementImages] = useState<Map<string, string>>(new Map());
+  const [announcementCursorPos, setAnnouncementCursorPos] = useState(0);
+
+  // Track cursor position in body textarea
+  const handleBodyCursorChange = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const target = e.target as HTMLTextAreaElement;
+    setAnnouncementCursorPos(target.selectionStart || 0);
+  };
 
   // Fetch email history
   const fetchEmailHistory = async () => {
@@ -136,6 +155,112 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   useEffect(() => {
     fetchTemplates();
   }, []);
+
+  // Fetch announcement recipient count
+  const fetchAnnouncementRecipientCount = async () => {
+    try {
+      const tags = announcementSendToAll ? [] : Array.from(announcementTags);
+      const result = await emailAPI.getOwners(tags);
+      setAnnouncementRecipientCount(result.count);
+    } catch (error) {
+      console.error('Failed to fetch recipient count:', error);
+      setAnnouncementRecipientCount(0);
+    }
+  };
+
+  // Update recipient count when announcement options change
+  useEffect(() => {
+    if (showAnnouncementModal) {
+      fetchAnnouncementRecipientCount();
+    }
+  }, [showAnnouncementModal, announcementSendToAll, announcementTags]);
+
+  // Send announcement
+  const handleSendAnnouncement = async (isTest: boolean = false) => {
+    if (!announcementSubject.trim() || !announcementBody.trim()) {
+      showToast('Please enter subject and message', 'error');
+      return;
+    }
+
+    if (isTest && !announcementTestEmail.trim()) {
+      showToast('Please enter a test email address', 'error');
+      return;
+    }
+
+    if (!isTest && announcementRecipientCount === 0) {
+      showToast('No recipients found', 'error');
+      return;
+    }
+
+    // Use separate loading states for test vs main send
+    if (isTest) {
+      setAnnouncementTestSending(true);
+    } else {
+      setAnnouncementSending(true);
+    }
+
+    try {
+      // Replace image placeholders with actual base64 images before sending
+      const bodyWithImages = replaceImagePlaceholders(announcementBody);
+
+      const result = await emailAPI.sendAnnouncement({
+        subject: announcementSubject,
+        body: bodyWithImages,
+        sendToAll: announcementSendToAll,
+        tags: announcementSendToAll ? undefined : Array.from(announcementTags),
+        testEmail: isTest ? announcementTestEmail : undefined
+      });
+
+      if (result.success) {
+        if (isTest) {
+          showToast(`Test announcement sent to ${announcementTestEmail}`, 'success');
+        } else {
+          showToast(`Announcement sent to ${result.sent} recipients`, 'success');
+          setShowAnnouncementModal(false);
+          setAnnouncementSubject('');
+          setAnnouncementBody('');
+          setAnnouncementSendToAll(true);
+          setAnnouncementTags(new Set());
+          setAnnouncementTestEmail('');
+          setShowAnnouncementPreview(false);
+          setAnnouncementImages(new Map());
+        }
+      } else {
+        showToast('Failed to send announcement', 'error');
+      }
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || 'Failed to send announcement', 'error');
+    } finally {
+      if (isTest) {
+        setAnnouncementTestSending(false);
+      } else {
+        setAnnouncementSending(false);
+      }
+    }
+  };
+
+  // Toggle announcement tag
+  const toggleAnnouncementTag = (tag: string) => {
+    const newTags = new Set(announcementTags);
+    if (newTags.has(tag)) {
+      newTags.delete(tag);
+    } else {
+      newTags.add(tag);
+    }
+    setAnnouncementTags(newTags);
+  };
+
+  // Replace image placeholders with actual images
+  const replaceImagePlaceholders = (text: string): string => {
+    let result = text;
+    announcementImages.forEach((base64, id) => {
+      result = result.replace(
+        new RegExp(`\\[IMAGE:${id}\\]`, 'g'),
+        `<img src="${base64}" style="max-width:100%;" />`
+      );
+    });
+    return result;
+  };
 
   // Handle template save
   const handleSaveTemplate = async () => {
@@ -994,6 +1119,28 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
           </div>
         )}
 
+        {/* Announcement Section */}
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg shadow-sm border border-purple-200 p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Megaphone className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Send Announcement</h2>
+                <p className="text-sm text-gray-500">Send a custom email to all property owners</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAnnouncementModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <Megaphone className="w-4 h-4" />
+              New Announcement
+            </button>
+          </div>
+        </div>
+
         {/* Email History Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <button
@@ -1612,6 +1759,316 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Announcement Modal */}
+        {showAnnouncementModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+                <div className="flex items-center gap-3">
+                  <Megaphone className="w-6 h-6 text-purple-600" />
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Send Announcement</h2>
+                    <p className="text-sm text-gray-500">Compose and send email to property owners</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAnnouncementPreview(!showAnnouncementPreview)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      showAnnouncementPreview
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4" />
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => setShowAnnouncementModal(false)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {/* Recipients Section */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Recipients</label>
+                    <div className="flex items-center gap-4 mb-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={announcementSendToAll}
+                          onChange={() => setAnnouncementSendToAll(true)}
+                          className="w-4 h-4 text-purple-600"
+                        />
+                        <span className="text-sm text-gray-700">All owners with email</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={!announcementSendToAll}
+                          onChange={() => setAnnouncementSendToAll(false)}
+                          className="w-4 h-4 text-purple-600"
+                        />
+                        <span className="text-sm text-gray-700">Selected tags only</span>
+                      </label>
+                    </div>
+
+                    {!announcementSendToAll && (
+                      <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg">
+                        {availableTags.map(tag => (
+                          <button
+                            key={tag}
+                            onClick={() => toggleAnnouncementTag(tag)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              announcementTags.has(tag)
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:border-purple-300'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+                      <Users className="w-4 h-4" />
+                      <span>{announcementRecipientCount} recipient{announcementRecipientCount !== 1 ? 's' : ''} will receive this email</span>
+                    </div>
+                  </div>
+
+                  {/* Subject */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">Subject</label>
+                      <button
+                        type="button"
+                        onClick={() => setAnnouncementSubject(prev => prev + '{{ownerGreeting}}')}
+                        className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
+                        title="Insert Owner Name variable"
+                      >
+                        + Owner Name
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={announcementSubject}
+                      onChange={(e) => setAnnouncementSubject(e.target.value)}
+                      placeholder="Enter email subject... (use {{ownerGreeting}} for personalization)"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+
+                  {/* Message Body - Simple Editor */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <textarea
+                      id="announcement-body"
+                      value={announcementBody}
+                      onChange={(e) => {
+                        setAnnouncementBody(e.target.value);
+                        setAnnouncementCursorPos(e.target.selectionStart || 0);
+                      }}
+                      onSelect={handleBodyCursorChange}
+                      onClick={handleBodyCursorChange}
+                      onKeyUp={handleBodyCursorChange}
+                      placeholder="Type your message here..."
+                      className="w-full px-4 py-3 min-h-[220px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                    />
+                    {/* Simple toolbar at bottom like Gmail */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <label className="p-2 hover:bg-gray-100 rounded cursor-pointer" title="Attach Image (max 500KB)">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 500000) {
+                                showToast('Image must be under 500KB. Please resize or compress your image.', 'error');
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const base64 = event.target?.result as string;
+                                // Generate unique ID for image
+                                const imageId = Date.now().toString();
+                                // Store image in state
+                                setAnnouncementImages(prev => new Map(prev).set(imageId, base64));
+                                // Insert placeholder at tracked cursor position
+                                const cursorPos = announcementCursorPos;
+                                const before = announcementBody.substring(0, cursorPos);
+                                const after = announcementBody.substring(cursorPos);
+                                const newBody = before + `[IMAGE:${imageId}]` + after;
+                                setAnnouncementBody(newBody);
+                                // Update cursor position after the inserted placeholder
+                                setAnnouncementCursorPos(cursorPos + `[IMAGE:${imageId}]`.length);
+                                showToast('Image inserted at cursor position', 'success');
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                            e.target.value = '';
+                          }}
+                        />
+                        <Image className="w-5 h-5 text-gray-500" />
+                      </label>
+                      <span className="text-xs text-gray-400">max 500KB</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = prompt('Enter link URL:');
+                          if (url) {
+                            setAnnouncementBody(prev => prev + url);
+                          }
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded"
+                        title="Insert Link"
+                      >
+                        <Link2 className="w-5 h-5 text-gray-500" />
+                      </button>
+                      <div className="flex-1" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const textarea = document.getElementById('announcement-body') as HTMLTextAreaElement;
+                          const cursorPos = textarea?.selectionStart ?? announcementBody.length;
+                          const before = announcementBody.substring(0, cursorPos);
+                          const after = announcementBody.substring(cursorPos);
+                          setAnnouncementBody(before + '{{ownerGreeting}}' + after);
+                          // Restore focus to textarea
+                          setTimeout(() => {
+                            textarea?.focus();
+                            const newPos = cursorPos + '{{ownerGreeting}}'.length;
+                            textarea?.setSelectionRange(newPos, newPos);
+                          }, 0);
+                        }}
+                        className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded hover:bg-purple-100"
+                      >
+                        + Owner Name
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Test Email Section */}
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <label className="block text-sm font-medium text-yellow-800 mb-2">
+                      Send Test Email
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        value={announcementTestEmail}
+                        onChange={(e) => setAnnouncementTestEmail(e.target.value)}
+                        placeholder="Enter test email address..."
+                        className="flex-1 px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
+                      />
+                      <button
+                        onClick={() => handleSendAnnouncement(true)}
+                        disabled={announcementTestSending || announcementSending || !announcementTestEmail.trim() || !announcementSubject.trim() || !announcementBody.trim()}
+                        className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {announcementTestSending ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            Send Test
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      Test email will include [TEST] prefix in subject
+                    </p>
+                  </div>
+
+                  {/* Preview Section */}
+                  {showAnnouncementPreview && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+                        Email Preview
+                      </div>
+                      <div className="px-4 py-2 bg-gray-50 border-b text-sm space-y-1">
+                        <div>
+                          <span className="text-gray-500">To: </span>
+                          <span className="text-gray-700">
+                            {announcementRecipientCount} recipient{announcementRecipientCount !== 1 ? 's' : ''}
+                            {!announcementSendToAll && announcementTags.size > 0 && (
+                              <span className="text-purple-600 ml-1">
+                                ({Array.from(announcementTags).join(', ')})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Subject: </span>
+                          <span className="font-medium">
+                            {announcementSubject
+                              ? announcementSubject.replace(/{{ownerGreeting}}/g, 'John')
+                              : '(No subject)'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-white" style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.5', color: '#333' }}>
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: announcementBody
+                              ? replaceImagePlaceholders(announcementBody)
+                                  .replace(/\n/g, '<br/>')
+                                  .replace(/{{ownerGreeting}}/g, '<span style="background:#e9d5ff;padding:0 4px;border-radius:2px;">John</span>')
+                              : '<span style="color:#999;font-style:italic;">Your message will appear here...</span>'
+                          }}
+                        />
+                        <div style={{ marginTop: '30px', borderTop: '1px solid #ccc', paddingTop: '15px' }}>
+                          <p style={{ margin: 0, fontSize: '11px', color: '#666', fontStyle: 'italic' }}>
+                            This is an auto-generated email. If you have any questions or need clarification, feel free to reply directly to this email, and our team will get back to you as soon as possible.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => setShowAnnouncementModal(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleSendAnnouncement(false)}
+                  disabled={announcementSending || announcementTestSending || announcementRecipientCount === 0 || !announcementSubject.trim() || !announcementBody.trim()}
+                  className="flex items-center gap-2 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {announcementSending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Send to {announcementRecipientCount} recipient{announcementRecipientCount !== 1 ? 's' : ''}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

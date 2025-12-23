@@ -3,7 +3,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
-const basicAuth = require('express-basic-auth');
 const fs = require('fs');
 require('dotenv').config();
 
@@ -11,43 +10,61 @@ require('dotenv').config();
 const { syncDatabase } = require('./models');
 const ListingService = require('./services/ListingService');
 
+// Authentication middleware
+const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
+
 const app = express();
 const PORT = process.env.PORT || 3003;
 
-// Load authentication config
-let authConfig;
-try {
-    authConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/auth.json'), 'utf8'));
-} catch (error) {
-    console.warn('Could not load auth config, using defaults');
-    authConfig = {
-        users: { 'LL': 'bnb547!' },
-        realm: 'Luxury Lodging PM - Owner Statements'
-    };
-}
-
-// Middleware
+// Security Headers with Helmet
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for QuickBooks setup
-            scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-            imgSrc: ["'self'", "data:"],
+            imgSrc: ["'self'", "data:", "blob:"],
             fontSrc: ["'self'", "https:", "data:"],
             objectSrc: ["'none'"],
             baseUri: ["'self'"],
             formAction: ["'self'"],
             frameAncestors: ["'self'"],
-            upgradeInsecureRequests: [],
+            upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
         },
     },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "same-site" },
 }));
+
+// Additional Security Headers
+app.use((req, res, next) => {
+    // Prevent clickjacking
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Prevent MIME type sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // XSS Protection
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Referrer Policy
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Permissions Policy
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
+
+// CORS configuration
 app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+        ? process.env.ALLOWED_ORIGINS?.split(',') || true
+        : true,
+    credentials: true,
     exposedHeaders: ['Content-Disposition']
 }));
-app.use(morgan('combined'));
+
+// Request logging
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -59,31 +76,33 @@ if (fs.existsSync(reactBuildPath)) {
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Auth routes (no authentication required for login)
+// ================================
+// PUBLIC ROUTES (No Authentication)
+// ================================
+
+// Auth routes - login, verify, invite acceptance
 app.use('/api/auth', require('./routes/auth'));
 
-// QuickBooks OAuth callback (no authentication required - QuickBooks needs to access this)
+// QuickBooks OAuth callback (external service needs access)
 const QuickBooksService = require('./services/QuickBooksService');
 const quickBooksService = new QuickBooksService();
 
 app.get('/api/quickbooks/auth/callback', async (req, res) => {
     try {
         console.log('QuickBooks callback received:', req.url);
-        
-        // Pass the full req.url like working example
+
         const tokens = await quickBooksService.exchangeCodeForTokens(req.url);
-        
+
         // Save tokens to .env file
         const envPath = path.join(__dirname, '../.env');
         let envContent = '';
-        
+
         try {
             envContent = fs.readFileSync(envPath, 'utf8');
         } catch (error) {
             console.log('Creating new .env file');
         }
 
-        // Update or add QuickBooks tokens
         const updates = {
             'QUICKBOOKS_COMPANY_ID': tokens.realmId,
             'QUICKBOOKS_ACCESS_TOKEN': tokens.accessToken,
@@ -91,32 +110,26 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
         };
 
         let updatedContent = envContent;
-        
+
         Object.entries(updates).forEach(([key, value]) => {
             const regex = new RegExp(`^${key}=.*$`, 'm');
             if (regex.test(updatedContent)) {
-                // Update existing
                 updatedContent = updatedContent.replace(regex, `${key}=${value}`);
             } else {
-                // Add new
                 updatedContent += `\n${key}=${value}`;
             }
         });
 
-        // Write back to .env file
         fs.writeFileSync(envPath, updatedContent);
 
-        // Update environment variables in current process
         process.env.QUICKBOOKS_COMPANY_ID = tokens.realmId;
         process.env.QUICKBOOKS_ACCESS_TOKEN = tokens.accessToken;
         process.env.QUICKBOOKS_REFRESH_TOKEN = tokens.refreshToken;
 
-        // Initialize the QuickBooks client with new tokens
         quickBooksService.initializeClient(tokens.accessToken, tokens.refreshToken, tokens.realmId);
-        
+
         console.log('QuickBooks connected successfully!');
-        
-        // Return success page like working example
+
         res.send(`
             <!DOCTYPE html>
             <html>
@@ -133,7 +146,6 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
                 <p>You can now access QuickBooks data. You can close this window.</p>
                 <a href="http://localhost:3000" class="button">Return to Application</a>
                 <script>
-                    // Auto-close if opened in popup
                     if (window.opener) {
                         window.opener.location.reload();
                         window.close();
@@ -165,30 +177,51 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
     }
 });
 
-// Basic Authentication for protected routes only
-const authMiddleware = basicAuth({
-    users: authConfig.users,
-    challenge: true,
-    realm: authConfig.realm || 'Luxury Lodging PM - Owner Statements'
-});
+// ================================
+// PROTECTED ROUTES (Role-Based Access)
+// ================================
 
-// Protected Routes - File-based (new)
-app.use('/api/dashboard', authMiddleware, require('./routes/dashboard-file'));
-app.use('/api/reservations', authMiddleware, require('./routes/reservations-file'));
-app.use('/api/statements', authMiddleware, require('./routes/statements-file'));
-app.use('/api/properties', authMiddleware, require('./routes/properties-file'));
-app.use('/api/listings', authMiddleware, require('./routes/listings'));
-app.use('/api/expenses', authMiddleware, require('./routes/expenses'));
-app.use('/api/reservations-import', authMiddleware, require('./routes/reservations'));
-app.use('/api/quickbooks', authMiddleware, require('./routes/quickbooks'));
-app.use('/api/email', authMiddleware, require('./routes/email'));
-app.use('/api/email-templates', authMiddleware, require('./routes/email-templates'));
-app.use('/api/tag-schedules', authMiddleware, require('./routes/tag-schedules'));
+// User Management - Admin Only
+app.use('/api/users', authenticate, require('./routes/users'));
 
-// Removed unused database routes
+// Dashboard - Any authenticated user can view
+app.use('/api/dashboard', authenticate, require('./routes/dashboard-file'));
 
-// Serve main page (always serve React build if it exists)
-app.get('/', (req, res) => {
+// Statements - Viewers can read, Editors/Admins can modify
+app.use('/api/statements', authenticate, require('./routes/statements-file'));
+
+// Listings - Viewers can read, Editors/Admins can modify
+app.use('/api/listings', authenticate, require('./routes/listings'));
+
+// Properties - Any authenticated user
+app.use('/api/properties', authenticate, require('./routes/properties-file'));
+
+// Reservations - Editors/Admins can manage
+app.use('/api/reservations', authenticate, require('./routes/reservations-file'));
+app.use('/api/reservations-import', authenticate, require('./routes/reservations'));
+
+// Expenses - Editors/Admins can manage
+app.use('/api/expenses', authenticate, require('./routes/expenses'));
+
+// QuickBooks - Editors/Admins
+app.use('/api/quickbooks', authenticate, require('./routes/quickbooks'));
+
+// Email - Editors/Admins can send, all can view logs
+app.use('/api/email', authenticate, require('./routes/email'));
+app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
+
+// Tag Schedules - Editors/Admins
+app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
+
+// Activity Logs - Admin only
+app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));
+
+// ================================
+// FRONTEND ROUTES
+// ================================
+
+// Accept invite page (public)
+app.get('/accept-invite', (req, res) => {
     const indexPath = path.join(__dirname, '../frontend/build/index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
@@ -197,21 +230,49 @@ app.get('/', (req, res) => {
     }
 });
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+// ================================
+// ERROR HANDLING & CATCH-ALL
+// ================================
+
+// Serve React app for all non-API routes (catch-all middleware)
+app.use((req, res, next) => {
+    // Skip API routes
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'Route not found' });
+    }
+
+    const indexPath = path.join(__dirname, '../frontend/build/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.sendFile(path.join(__dirname, '../public/index.html'));
+    }
 });
 
-// Error handling middleware
+// Global error handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
+    console.error('Unhandled error:', err.stack);
+
+    // Don't leak error details in production
+    const errorResponse = {
+        error: 'Internal server error'
+    };
+
+    if (process.env.NODE_ENV !== 'production') {
+        errorResponse.message = err.message;
+        errorResponse.stack = err.stack;
+    }
+
+    res.status(500).json(errorResponse);
 });
 
+// ================================
+// SERVER STARTUP
+// ================================
 
 async function startServer() {
     try {
-        // Initialize database (PostgreSQL on Railway, SQLite locally)
+        // Initialize database
         console.log('Initializing database...');
         await syncDatabase();
         console.log('Database initialized successfully');
@@ -228,9 +289,13 @@ async function startServer() {
 
         // Start server
         app.listen(PORT, () => {
-            console.log(`Owner Statements Server running on port ${PORT}`);
-            console.log(`Dashboard available at: http://localhost:${PORT}`);
-            console.log(`API documentation: http://localhost:${PORT}/api`);
+            console.log(`\n========================================`);
+            console.log(`Owner Statements Server`);
+            console.log(`========================================`);
+            console.log(`Port: ${PORT}`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`Dashboard: http://localhost:${PORT}`);
+            console.log(`========================================\n`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

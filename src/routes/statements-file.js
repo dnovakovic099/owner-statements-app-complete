@@ -3,6 +3,7 @@ const router = express.Router();
 const FileDataService = require('../services/FileDataService');
 const BackgroundJobService = require('../services/BackgroundJobService');
 const ListingService = require('../services/ListingService');
+const { ActivityLog } = require('../models');
 
 // GET /api/statements/jobs/:jobId - Get background job status
 router.get('/jobs/:jobId', async (req, res) => {
@@ -737,6 +738,14 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
+        // Log activity
+        await ActivityLog.log(req, 'CREATE_STATEMENT', 'statement', statement.id, {
+            ownerName: statement.ownerName,
+            propertyName: statement.propertyName,
+            period: `${statement.weekStartDate} to ${statement.weekEndDate}`,
+            propertyCount,
+            isCombined: true
+        });
 
         res.status(201).json({
             message: `Combined statement generated for ${propertyCount} properties`,
@@ -1240,6 +1249,12 @@ router.post('/generate', async (req, res) => {
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
+        // Log activity
+        await ActivityLog.log(req, 'CREATE_STATEMENT', 'statement', statement.id, {
+            ownerName: statement.ownerName,
+            propertyName: statement.propertyName,
+            period: `${statement.weekStartDate} to ${statement.weekEndDate}`
+        });
 
         res.status(201).json({
             message: 'Statement generated successfully',
@@ -1279,6 +1294,13 @@ router.put('/:id/status', async (req, res) => {
 
         // Save updated statement
         await FileDataService.saveStatement(statement);
+
+        // Log activity
+        await ActivityLog.log(req, 'STATUS_UPDATE', 'statement', id, {
+            newStatus: status,
+            ownerName: statement.ownerName,
+            propertyName: statement.propertyName
+        });
 
         res.json({ message: 'Statement status updated successfully' });
     } catch (error) {
@@ -2107,7 +2129,13 @@ router.delete('/:id', async (req, res) => {
         // Delete the statement
         await FileDataService.deleteStatement(id);
 
-        res.json({ 
+        // Log activity
+        await ActivityLog.log(req, 'DELETE', 'statement', id, {
+            ownerName: statement.ownerName,
+            propertyName: statement.propertyName
+        });
+
+        res.json({
             message: 'Statement deleted successfully',
             id: parseInt(id)
         });
@@ -4658,6 +4686,22 @@ router.get('/:id/view', async (req, res) => {
                 calculationType: '${statement.calculationType || 'checkout'}'
             };
 
+            // Get auth token from URL query parameter
+            function getAuthToken() {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('token') || '';
+            }
+            const authToken = getAuthToken();
+
+            // Helper to get headers with auth
+            function getAuthHeaders() {
+                const headers = { 'Content-Type': 'application/json' };
+                if (authToken) {
+                    headers['Authorization'] = 'Bearer ' + authToken;
+                }
+                return headers;
+            }
+
             // Custom Modal Functions
             function showModal(options) {
                 return new Promise((resolve) => {
@@ -4797,7 +4841,7 @@ router.get('/:id/view', async (req, res) => {
                     const response = await fetch('/api/listings/' + propertyId + '/config', {
                         method: 'PUT',
                         credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ internalNotes: notes })
                     });
 
@@ -4844,7 +4888,7 @@ router.get('/:id/view', async (req, res) => {
                     const response = await fetch('/api/statements/generate', {
                         method: 'POST',
                         credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({
                             propertyId: statementData.propertyId || null,
                             propertyIds: statementData.propertyIds.length > 0 ? statementData.propertyIds : null,
@@ -4857,7 +4901,7 @@ router.get('/:id/view', async (req, res) => {
                     const result = await response.json();
                     if (response.ok && result.statement) {
                         // Redirect to new statement
-                        window.location.href = '/api/statements/' + result.statement.id + '/view';
+                        window.location.href = '/api/statements/' + result.statement.id + '/view?token=' + authToken;
                     } else {
                         throw new Error(result.error || 'Failed to regenerate statement');
                     }
@@ -4877,7 +4921,7 @@ router.get('/:id/view', async (req, res) => {
                     // Step 1: Delete the existing statement
                     const deleteResponse = await fetch('/api/statements/' + statementId, {
                         method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: getAuthHeaders()
                     });
 
                     if (!deleteResponse.ok) {
@@ -4902,7 +4946,7 @@ router.get('/:id/view', async (req, res) => {
 
                     const generateResponse = await fetch('/api/statements/generate', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify(generatePayload)
                     });
 
@@ -4916,7 +4960,7 @@ router.get('/:id/view', async (req, res) => {
                     // Redirect to the new statement's view page
                     const newId = result.statement?.id || result.id;
                     if (newId) {
-                        window.location.href = '/api/statements/' + newId + '/view';
+                        window.location.href = '/api/statements/' + newId + '/view?token=' + authToken;
                     } else {
                         await showAlert('Success', 'Statement regenerated successfully!', 'success');
                         window.location.href = '/';
@@ -4928,7 +4972,7 @@ router.get('/:id/view', async (req, res) => {
             }
 
             function downloadStatement() {
-                window.open('/api/statements/' + statementId + '/download', '_blank');
+                window.open('/api/statements/' + statementId + '/download?token=' + authToken, '_blank');
             }
 
             async function finalizeStatement() {
@@ -4939,7 +4983,7 @@ router.get('/:id/view', async (req, res) => {
                 try {
                     const response = await fetch('/api/statements/' + statementId + '/status', {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ status: 'final' })
                     });
 
@@ -4964,7 +5008,7 @@ router.get('/:id/view', async (req, res) => {
                 try {
                     const response = await fetch('/api/statements/' + statementId + '/status', {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ status: 'draft' })
                     });
 
@@ -4988,7 +5032,7 @@ router.get('/:id/view', async (req, res) => {
                 try {
                     const response = await fetch('/api/statements/' + statementId, {
                         method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: getAuthHeaders()
                     });
 
                     if (!response.ok) {
@@ -5009,6 +5053,15 @@ router.get('/:id/view', async (req, res) => {
 </html>`;
 
         res.setHeader('Content-Type', 'text/html');
+
+        // Log view activity (skip if PDF mode - that's internal use for downloads)
+        if (!isPdf) {
+            await ActivityLog.log(req, 'VIEW_STATEMENT', 'statement', id, {
+                ownerName: statement.ownerName,
+                propertyName: statement.propertyName
+            });
+        }
+
         res.send(statementHTML);
     } catch (error) {
         console.error('Statement view error:', error);
@@ -5241,15 +5294,22 @@ router.get('/:id/download', async (req, res) => {
         const statementPeriod = `${startDate} to ${endDate}`;
 
         const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
-        
+
+        // Log download activity
+        await ActivityLog.log(req, 'DOWNLOAD_STATEMENT', 'statement', id, {
+            ownerName: statement.ownerName,
+            propertyName: statement.propertyName,
+            filename
+        });
+
         // Set response headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdfBuffer.length);
-        
+
         // Send PDF buffer
         res.send(pdfBuffer);
-        
+
     } catch (error) {
         console.error('Statement PDF download error:', error);
         res.status(500).json({ error: 'Failed to download statement PDF' });

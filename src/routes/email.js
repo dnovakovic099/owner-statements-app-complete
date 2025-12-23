@@ -11,7 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const EmailService = require('../services/EmailService');
-const { Statement, Listing, EmailLog, ScheduledEmail } = require('../models');
+const { Statement, Listing, EmailLog, ScheduledEmail, ActivityLog } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -119,6 +119,13 @@ router.post('/send/:statementId', async (req, res) => {
             await statement.update({
                 status: 'sent',
                 sentAt: new Date()
+            });
+
+            // Log activity
+            await ActivityLog.log(req, 'SEND_EMAIL', 'statement', statementId, {
+                recipientEmail,
+                ownerName: statement.ownerName,
+                propertyName: statement.propertyName
             });
 
             res.json({
@@ -1069,6 +1076,251 @@ router.post('/scheduled/process', async (req, res) => {
     } catch (error) {
         console.error('Error processing scheduled emails:', error);
         res.status(500).json({ error: 'Failed to process scheduled emails' });
+    }
+});
+
+/**
+ * GET /api/email/owners
+ * Get all unique owner emails for announcement
+ */
+router.get('/owners', async (req, res) => {
+    try {
+        const { tags } = req.query;
+
+        let whereClause = {
+            ownerEmail: {
+                [Op.and]: [
+                    { [Op.ne]: null },
+                    { [Op.ne]: '' }
+                ]
+            }
+        };
+
+        // Filter by tags if provided
+        if (tags) {
+            const tagList = tags.split(',').map(t => t.trim().toLowerCase());
+            // Get listings that have any of the specified tags
+            const listings = await Listing.findAll({
+                where: whereClause,
+                attributes: ['id', 'nickname', 'ownerEmail', 'ownerGreeting', 'tags']
+            });
+
+            const filtered = listings.filter(l => {
+                const listingTags = (l.tags || []).map(t => t.toLowerCase());
+                return tagList.some(tag => listingTags.includes(tag));
+            });
+
+            // Get unique emails
+            const uniqueEmails = new Map();
+            filtered.forEach(l => {
+                if (l.ownerEmail && !uniqueEmails.has(l.ownerEmail)) {
+                    uniqueEmails.set(l.ownerEmail, {
+                        email: l.ownerEmail,
+                        greeting: l.ownerGreeting || 'Owner',
+                        listings: []
+                    });
+                }
+                if (l.ownerEmail) {
+                    uniqueEmails.get(l.ownerEmail).listings.push(l.nickname);
+                }
+            });
+
+            return res.json({
+                success: true,
+                count: uniqueEmails.size,
+                owners: Array.from(uniqueEmails.values())
+            });
+        }
+
+        // Get all owners with email
+        const listings = await Listing.findAll({
+            where: whereClause,
+            attributes: ['id', 'nickname', 'ownerEmail', 'ownerGreeting', 'tags']
+        });
+
+        // Get unique emails
+        const uniqueEmails = new Map();
+        listings.forEach(l => {
+            if (l.ownerEmail && !uniqueEmails.has(l.ownerEmail)) {
+                uniqueEmails.set(l.ownerEmail, {
+                    email: l.ownerEmail,
+                    greeting: l.ownerGreeting || 'Owner',
+                    listings: []
+                });
+            }
+            if (l.ownerEmail) {
+                uniqueEmails.get(l.ownerEmail).listings.push(l.nickname);
+            }
+        });
+
+        res.json({
+            success: true,
+            count: uniqueEmails.size,
+            owners: Array.from(uniqueEmails.values())
+        });
+    } catch (error) {
+        console.error('Error fetching owners:', error);
+        res.status(500).json({ error: 'Failed to fetch owners' });
+    }
+});
+
+/**
+ * POST /api/email/announcement
+ * Send announcement email to owners
+ */
+router.post('/announcement', async (req, res) => {
+    try {
+        const { subject, body, tags, sendToAll, testEmail } = req.body;
+
+        if (!subject || !body) {
+            return res.status(400).json({ error: 'Subject and body are required' });
+        }
+
+        // If testEmail is provided, send only to test email
+        if (testEmail) {
+            const results = { sent: [], failed: [] };
+            try {
+                // Convert newlines to <br> and personalize
+                const personalizedBody = body.replace(/\n/g, '<br/>').replace(/{{ownerGreeting}}/g, 'Test User');
+                const personalizedSubject = subject.replace(/{{ownerGreeting}}/g, 'Test User');
+                await EmailService.sendAnnouncementEmail(
+                    testEmail,
+                    `[TEST] ${personalizedSubject}`,
+                    personalizedBody,
+                    'Test User'
+                );
+                results.sent.push(testEmail);
+
+                // Log activity
+                await ActivityLog.log(req, 'SEND_TEST_ANNOUNCEMENT', 'email', null, {
+                    testEmail,
+                    subject
+                });
+            } catch (err) {
+                console.error(`Failed to send test announcement to ${testEmail}:`, err.message);
+                results.failed.push({ email: testEmail, error: err.message });
+            }
+
+            return res.json({
+                success: results.sent.length > 0,
+                message: results.sent.length > 0 ? `Test announcement sent to ${testEmail}` : 'Failed to send test',
+                sent: results.sent.length,
+                failed: results.failed.length,
+                results
+            });
+        }
+
+        let whereClause = {
+            ownerEmail: {
+                [Op.and]: [
+                    { [Op.ne]: null },
+                    { [Op.ne]: '' }
+                ]
+            }
+        };
+
+        // Get listings
+        const listings = await Listing.findAll({
+            where: whereClause,
+            attributes: ['id', 'nickname', 'ownerEmail', 'ownerGreeting', 'tags']
+        });
+
+        let targetListings = listings;
+
+        // Filter by tags if not sending to all
+        if (!sendToAll && tags && tags.length > 0) {
+            const tagList = tags.map(t => t.toLowerCase());
+            targetListings = listings.filter(l => {
+                const listingTags = (l.tags || []).map(t => t.toLowerCase());
+                return tagList.some(tag => listingTags.includes(tag));
+            });
+        }
+
+        // Get unique emails
+        const uniqueEmails = new Map();
+        targetListings.forEach(l => {
+            if (l.ownerEmail && !uniqueEmails.has(l.ownerEmail)) {
+                uniqueEmails.set(l.ownerEmail, {
+                    email: l.ownerEmail,
+                    greeting: l.ownerGreeting || 'Owner'
+                });
+            }
+        });
+
+        const recipients = Array.from(uniqueEmails.values());
+
+        if (recipients.length === 0) {
+            return res.status(400).json({ error: 'No recipients found with configured email addresses' });
+        }
+
+        // Send emails
+        const results = {
+            sent: [],
+            failed: []
+        };
+
+        for (const recipient of recipients) {
+            try {
+                // Convert newlines to <br> and personalize
+                const personalizedBody = body.replace(/\n/g, '<br/>').replace(/{{ownerGreeting}}/g, recipient.greeting);
+                const personalizedSubject = subject.replace(/{{ownerGreeting}}/g, recipient.greeting);
+
+                await EmailService.sendAnnouncementEmail(
+                    recipient.email,
+                    personalizedSubject,
+                    personalizedBody,
+                    recipient.greeting
+                );
+
+                results.sent.push(recipient.email);
+
+                // Log to email_logs table
+                await EmailLog.create({
+                    statementId: null,
+                    propertyId: null,
+                    recipientEmail: recipient.email,
+                    recipientName: recipient.greeting,
+                    propertyName: 'Announcement',
+                    frequencyTag: 'Announcement',
+                    subject: personalizedSubject,
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+
+                // Log activity
+                await ActivityLog.log(req, 'SEND_ANNOUNCEMENT', 'email', null, {
+                    recipientEmail: recipient.email,
+                    subject: personalizedSubject
+                });
+            } catch (err) {
+                console.error(`Failed to send announcement to ${recipient.email}:`, err.message);
+                results.failed.push({ email: recipient.email, error: err.message });
+
+                // Log failed email
+                await EmailLog.create({
+                    statementId: null,
+                    propertyId: null,
+                    recipientEmail: recipient.email,
+                    recipientName: recipient.greeting,
+                    propertyName: 'Announcement',
+                    frequencyTag: 'Announcement',
+                    subject: subject,
+                    status: 'failed',
+                    errorMessage: err.message
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Announcement sent to ${results.sent.length} recipients`,
+            sent: results.sent.length,
+            failed: results.failed.length,
+            results
+        });
+    } catch (error) {
+        console.error('Error sending announcement:', error);
+        res.status(500).json({ error: 'Failed to send announcement' });
     }
 });
 

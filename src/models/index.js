@@ -7,6 +7,8 @@ const TagSchedule = require('./TagSchedule');
 const TagNotification = require('./TagNotification');
 const ScheduledEmail = require('./ScheduledEmail');
 const EmailTemplate = require('./EmailTemplate');
+const User = require('./User');
+const ActivityLog = require('./ActivityLog');
 
 // Initialize models
 const models = {
@@ -18,6 +20,8 @@ const models = {
     TagNotification,
     ScheduledEmail,
     EmailTemplate,
+    User,
+    ActivityLog,
     sequelize
 };
 

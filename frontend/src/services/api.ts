@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { DashboardData, Owner, Property, Statement, SyncResponse, QuickBooksTransaction, QuickBooksAccount, QuickBooksDepartment, Listing } from '../types';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api' 
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? '/api'
   : 'http://localhost:3003/api';
 
 const api = axios.create({
@@ -12,8 +12,19 @@ const api = axios.create({
   },
 });
 
+// Set JWT token for all requests
+export const setAuthToken = (token: string | null) => {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+};
+
+// Legacy function for backward compatibility - now uses JWT
 export const setAuthCredentials = (username: string, password: string) => {
-  api.defaults.auth = { username, password };
+  // This function is kept for backward compatibility but doesn't set Basic Auth anymore
+  // JWT token is set separately via setAuthToken
 };
 
 // Initialize auth from localStorage if available
@@ -22,14 +33,31 @@ const initializeAuth = () => {
     const stored = localStorage.getItem('luxury-lodging-auth');
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (parsed.username && parsed.password) {
-        setAuthCredentials(parsed.username, parsed.password);
+      if (parsed.token) {
+        setAuthToken(parsed.token);
       }
     }
   } catch (error) {
-    console.warn('Failed to initialize auth credentials');
+    console.warn('Failed to initialize auth token');
   }
 };
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear stored auth on 401
+      localStorage.removeItem('luxury-lodging-auth');
+      setAuthToken(null);
+      // Optionally redirect to login
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/accept-invite') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 initializeAuth();
 
@@ -577,6 +605,34 @@ export const emailAPI = {
     const response = await api.delete(`/email/scheduled/${id}`);
     return response.data;
   },
+
+  // Announcement functions
+  getOwners: async (tags?: string[]): Promise<{
+    success: boolean;
+    count: number;
+    owners: Array<{ email: string; greeting: string; listings: string[] }>;
+  }> => {
+    const params = tags && tags.length > 0 ? `?tags=${tags.join(',')}` : '';
+    const response = await api.get(`/email/owners${params}`);
+    return response.data;
+  },
+
+  sendAnnouncement: async (data: {
+    subject: string;
+    body: string;
+    sendToAll: boolean;
+    tags?: string[];
+    testEmail?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    sent: number;
+    failed: number;
+    results: { sent: string[]; failed: Array<{ email: string; error: string }> };
+  }> => {
+    const response = await api.post('/email/announcement', data);
+    return response.data;
+  },
 };
 
 // Tag Schedule API
@@ -794,6 +850,159 @@ export const emailTemplatesAPI = {
     textBody?: string;
   }): Promise<{ subject: string; htmlBody: string; textBody: string; sampleData: Record<string, string> }> => {
     const response = await api.post('/email-templates/preview', data);
+    return response.data;
+  },
+};
+
+// User Types
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: 'system' | 'admin' | 'editor' | 'viewer';
+  isActive: boolean;
+  inviteAccepted: boolean;
+  isSystemUser?: boolean;
+  lastLogin: string | null;
+  createdAt: string;
+}
+
+// Users API
+export const usersAPI = {
+  // Get all users (admin only)
+  getUsers: async (): Promise<{ success: boolean; users: User[] }> => {
+    const response = await api.get('/users');
+    return response.data;
+  },
+
+  // Get current user info
+  getCurrentUser: async (): Promise<{ success: boolean; user: User }> => {
+    const response = await api.get('/users/me');
+    return response.data;
+  },
+
+  // Invite a new user (admin only)
+  inviteUser: async (data: {
+    email: string;
+    username: string;
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+    warning?: string;
+  }> => {
+    const response = await api.post('/users/invite', data);
+    return response.data;
+  },
+
+  // Resend invite (admin only)
+  resendInvite: async (userId: number): Promise<{
+    success: boolean;
+    message: string;
+    warning?: string;
+  }> => {
+    const response = await api.post(`/users/${userId}/resend-invite`);
+    return response.data;
+  },
+
+  // Update user (admin only)
+  updateUser: async (userId: number, data: {
+    isActive?: boolean;
+  }): Promise<{ success: boolean; user: User }> => {
+    const response = await api.put(`/users/${userId}`, data);
+    return response.data;
+  },
+
+  // Delete user (admin only)
+  deleteUser: async (userId: number): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/users/${userId}`);
+    return response.data;
+  },
+};
+
+// Activity Log interface
+export interface ActivityLogEntry {
+  id: number;
+  userId: number | null;
+  username: string;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  details: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+// Activity Log API (admin only)
+export const activityLogAPI = {
+  // Get activity logs
+  getLogs: async (params?: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    resource?: string;
+    userId?: number;
+    username?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{
+    success: boolean;
+    logs: ActivityLogEntry[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> => {
+    const response = await api.get('/activity-logs', { params });
+    return response.data;
+  },
+
+  // Get filter options
+  getFilters: async (): Promise<{
+    success: boolean;
+    users: string[];
+    actions: string[];
+  }> => {
+    const response = await api.get('/activity-logs/filters');
+    return response.data;
+  },
+
+  // Get activity stats
+  getStats: async (): Promise<{
+    success: boolean;
+    stats: {
+      today: number;
+      total: number;
+      byAction: { action: string; count: number }[];
+    };
+  }> => {
+    const response = await api.get('/activity-logs/stats');
+    return response.data;
+  },
+};
+
+// Auth API (for invite acceptance - no auth required)
+export const authAPI = {
+  // Validate invite token
+  validateInvite: async (token: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: { username: string; email: string; role: string };
+  }> => {
+    const response = await axios.get(`${API_BASE_URL}/auth/invite/${token}`);
+    return response.data;
+  },
+
+  // Accept invite and set password
+  acceptInvite: async (token: string, password: string): Promise<{
+    success: boolean;
+    message: string;
+    user?: { username: string; email: string; role: string };
+  }> => {
+    const response = await axios.post(`${API_BASE_URL}/auth/accept-invite`, {
+      token,
+      password,
+    });
     return response.data;
   },
 };
