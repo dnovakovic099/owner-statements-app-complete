@@ -173,6 +173,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
     if (showAnnouncementModal) {
       fetchAnnouncementRecipientCount();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAnnouncementModal, announcementSendToAll, announcementTags]);
 
   // Send announcement

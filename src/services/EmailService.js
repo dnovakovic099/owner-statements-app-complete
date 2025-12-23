@@ -1375,44 +1375,30 @@ This is an auto-generated email. If you have any questions or need clarification
             html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">${companyName}</h1>
-        <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Owner Statements Portal</p>
-    </div>
+<body style="font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+<p><strong>You've Been Invited!</strong></p>
 
-    <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
-        <h2 style="color: #1f2937; margin-top: 0;">You've Been Invited!</h2>
+<p>Hello,</p>
 
-        <p>Hello,</p>
+<p>You have been invited to join the ${companyName} Owner Statements portal.</p>
 
-        <p>You have been invited to join the ${companyName} Owner Statements portal with the following account:</p>
+<p><strong>Username:</strong> ${username}<br>
+<strong>Role:</strong> ${role.charAt(0).toUpperCase() + role.slice(1)}</p>
 
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-            <p style="margin: 0 0 10px 0;"><strong>Username:</strong> ${username}</p>
-            <p style="margin: 0 0 10px 0;"><strong>Role:</strong> ${role.charAt(0).toUpperCase() + role.slice(1)}</p>
-            <p style="margin: 0; color: #6b7280; font-size: 14px;">This role allows you to ${roleDescriptions[role] || 'access the portal'}.</p>
-        </div>
+<p>Click here to set your password and activate your account:<br>
+<a href="${inviteUrl}">${inviteUrl}</a></p>
 
-        <p>Click the button below to set your password and activate your account:</p>
+<p>This invitation link will expire in 7 days.</p>
 
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="${inviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 14px 30px; border-radius: 8px; font-weight: bold; font-size: 16px;">Accept Invitation</a>
-        </div>
+<p>If you didn't expect this invitation or have questions, please contact your administrator.</p>
 
-        <p style="color: #6b7280; font-size: 14px;">This invitation link will expire in 7 days.</p>
-
-        <p style="color: #6b7280; font-size: 14px;">If you didn't expect this invitation or have questions, please contact your administrator.</p>
-
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-
-        <p style="color: #9ca3af; font-size: 12px; margin: 0;">If the button doesn't work, copy and paste this link into your browser:</p>
-        <p style="color: #6b7280; font-size: 12px; word-break: break-all;">${inviteUrl}</p>
-    </div>
-
-    <div style="text-align: center; padding: 20px; color: #9ca3af; font-size: 12px;">
-        <p style="margin: 0;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
-    </div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 30px;">
+<tr><td style="border-top: 1px solid #ccc; padding-top: 15px;">
+<p style="margin: 0; font-size: 11px; color: #666; font-style: italic;">
+This is an auto-generated email. If you have any questions, feel free to reply directly to this email.
+</p>
+</td></tr>
+</table>
 </body>
 </html>`,
             text: `You've Been Invited to ${companyName} Owner Statements Portal

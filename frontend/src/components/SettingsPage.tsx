@@ -81,12 +81,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
       loadActivityLogs();
       loadFilterOptions();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'activity') {
       loadActivityLogs();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser, selectedAction, selectedStartDate, selectedEndDate]);
 
   const loadUsers = async () => {
