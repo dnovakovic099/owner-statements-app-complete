@@ -1213,7 +1213,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <Mail className="w-5 h-5" />
               </button>
 
-              {user?.role === 'system' && (
+              {(user?.role === 'system' || user?.role === 'admin') && (
                 <button
                   onClick={() => setCurrentPage('settings')}
                   className="flex items-center justify-center w-10 h-10 bg-gray-500/20 border border-gray-300/30 rounded-md hover:bg-gray-500/30 transition-colors"

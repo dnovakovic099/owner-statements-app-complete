@@ -132,6 +132,23 @@ async function authenticateUser(username, password) {
 
     // Fall back to legacy config users (backward compatibility)
     if (legacyAuthConfig.users[username] && legacyAuthConfig.users[username] === password) {
+        // Check if user exists in database to get their role
+        try {
+            const dbUser = await User.findOne({ where: { username } });
+            if (dbUser) {
+                return {
+                    id: dbUser.id,
+                    username: dbUser.username,
+                    email: dbUser.email,
+                    role: dbUser.role,
+                    isSystemUser: dbUser.isSystemUser,
+                    source: 'legacy-with-db'
+                };
+            }
+        } catch (e) {
+            // Ignore DB errors, use defaults
+        }
+
         return {
             id: 0,
             username,
