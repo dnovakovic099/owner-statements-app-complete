@@ -910,13 +910,14 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // Prepare template data for variable replacement
         const ownerPayout = parseFloat(statement.ownerPayout) || 0;
+        const formattedPayout = Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const templateData = {
-            ownerName: statement.ownerName,
+            ownerName: (statement.ownerName || '').trim(),
             propertyName: statement.propertyName || 'Multiple Properties',
             periodStart: statement.weekStartDate,
             periodEnd: statement.weekEndDate,
             periodDisplay: this.formatPeriodDisplay(statement.weekStartDate, statement.weekEndDate),
-            ownerPayout: ownerPayout,
+            ownerPayout: formattedPayout,
             rawPayout: ownerPayout.toFixed(2),
             totalRevenue: statement.totalRevenue || '0.00',
             totalExpenses: statement.totalExpenses || '0.00',
@@ -1132,6 +1133,22 @@ This is an auto-generated email. If you have any questions or need clarification
                     message: `No email address for owner ${statement.ownerId}`
                 });
                 results.summary.failedCount++;
+
+                // Log failed email attempt due to missing email
+                await this.logEmailAttempt({
+                    statementId: statement.id,
+                    propertyId: statement.propertyId,
+                    recipientEmail: null,
+                    recipientName: statement.ownerName || `Owner ${statement.ownerId}`,
+                    propertyName: statement.propertyName,
+                    frequencyTag: this.getFrequencyFromTags(listingTags[statement.propertyId] || []),
+                    subject: null,
+                    status: 'failed',
+                    errorMessage: 'No email address configured for owner',
+                    errorCode: 'NO_EMAIL',
+                    attemptedAt: new Date()
+                });
+
                 continue;
             }
 

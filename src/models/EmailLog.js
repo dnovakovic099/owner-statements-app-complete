@@ -19,7 +19,7 @@ const EmailLog = sequelize.define('EmailLog', {
     },
     recipientEmail: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         field: 'recipient_email'
     },
     recipientName: {

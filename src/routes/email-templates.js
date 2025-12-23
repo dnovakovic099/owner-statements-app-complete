@@ -215,22 +215,23 @@ router.post('/preview', async (req, res) => {
         const { subject, htmlBody, textBody } = req.body;
 
         // Sample data for preview
+        // Note: Currency values should NOT include $ sign - template adds it
         const sampleData = {
             ownerName: 'John Smith',
             propertyName: 'Oceanview Beach House',
             periodStart: '2025-12-01',
             periodEnd: '2025-12-14',
             periodDisplay: 'Dec 1-14, 2025',
-            ownerPayout: '$2,513.57',
+            ownerPayout: '2,513.57',
             rawPayout: '2513.57',
-            totalRevenue: '$3,500.00',
-            totalExpenses: '$500.00',
-            pmCommission: '$350.00',
+            totalRevenue: '3,500.00',
+            totalExpenses: '500.00',
+            pmCommission: '350.00',
             pmPercentage: '10%',
-            techFees: '$50.00',
-            insuranceFees: '$25.00',
-            adjustments: '$100.00',
-            cleaningFees: '$150.00',
+            techFees: '50.00',
+            insuranceFees: '25.00',
+            adjustments: '100.00',
+            cleaningFees: '150.00',
             balanceSuffix: '',
             isNegativeBalance: 'false',
             companyName: 'Luxury Lodging PM',

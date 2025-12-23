@@ -379,7 +379,7 @@ export const listingsAPI = {
     return response.data;
   },
 
-  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes'>[] }> => {
+  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes' | 'ownerEmail' | 'tags'>[] }> => {
     const response = await api.get('/listings/names');
     return response.data;
   },
@@ -455,7 +455,7 @@ export interface EmailLog {
   id: number;
   statementId: number;
   propertyId: number | null;
-  recipientEmail: string;
+  recipientEmail: string | null;
   recipientName: string | null;
   propertyName: string | null;
   frequencyTag: string | null;
@@ -529,6 +529,11 @@ export const emailAPI = {
       frequencyTag,
       attachPdf: true
     });
+    return response.data;
+  },
+
+  logFailedEmail: async (data: { statementId: number; propertyId?: number | null; propertyName?: string | null; ownerName?: string | null; reason?: string; errorCode?: string }): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/email/logs/failed', data);
     return response.data;
   },
 

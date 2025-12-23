@@ -1158,7 +1158,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                               {log.propertyName || `Statement #${log.statementId}`}
                             </div>
                             <div className="text-xs text-gray-500">
-                              To: {log.recipientEmail}
+                              To: {log.recipientEmail || <span className="text-red-500">No email configured</span>}
                             </div>
                             {log.frequencyTag && (
                               <div className="text-xs text-gray-400 mt-0.5">

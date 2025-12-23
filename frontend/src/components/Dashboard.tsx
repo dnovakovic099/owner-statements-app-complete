@@ -913,21 +913,81 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       for (const statement of selectedStatements) {
         try {
-          // Get listing to find owner email and frequency tag
-          const listing = listings.find(l => l.id === statement.propertyId);
+          let ownerEmail: string | null = null;
+          let frequencyTag = 'MONTHLY';
 
-          if (!listing?.ownerEmail) {
+          // For multi-property statements, check all listings have same email
+          console.log('[SendEmail] Statement:', statement.id, 'propertyId:', statement.propertyId, 'propertyIds:', statement.propertyIds);
+          if (statement.propertyIds && statement.propertyIds.length > 0) {
+            const statementListings = statement.propertyIds
+              .map(pid => listings.find(l => l.id === pid))
+              .filter(Boolean);
+
+            const emails = statementListings
+              .map(l => l?.ownerEmail)
+              .filter(Boolean) as string[];
+
+            const uniqueEmails = Array.from(new Set(emails));
+
+            if (uniqueEmails.length === 0) {
+              // No emails found
+              skipped++;
+              await emailAPI.logFailedEmail({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                propertyName: statement.propertyName,
+                ownerName: statement.ownerName,
+                reason: 'No email address configured for owner',
+                errorCode: 'NO_EMAIL'
+              });
+              continue;
+            } else if (uniqueEmails.length > 1) {
+              // Multiple different emails - flag it
+              skipped++;
+              await emailAPI.logFailedEmail({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                propertyName: statement.propertyName,
+                ownerName: statement.ownerName,
+                reason: `Multiple different owner emails found: ${uniqueEmails.join(', ')}`,
+                errorCode: 'MULTIPLE_EMAILS'
+              });
+              continue;
+            }
+
+            ownerEmail = uniqueEmails[0];
+            // Get frequency tag from first listing (match weekly/monthly pattern)
+            const firstListing = statementListings[0];
+            frequencyTag = firstListing?.tags?.find(t => /weekly|monthly/i.test(t)) || 'MONTHLY';
+          } else {
+            // Single property statement
+            const listing = listings.find(l => l.id === statement.propertyId);
+            console.log('[SendEmail] Single property - Found listing:', listing?.id, 'ownerEmail:', listing?.ownerEmail);
+
+            if (!listing?.ownerEmail) {
+              skipped++;
+              await emailAPI.logFailedEmail({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                propertyName: statement.propertyName,
+                ownerName: statement.ownerName,
+                reason: 'No email address configured for owner',
+                errorCode: 'NO_EMAIL'
+              });
+              continue;
+            }
+
+            ownerEmail = listing.ownerEmail;
+            frequencyTag = listing.tags?.find(t => /weekly|monthly/i.test(t)) || 'MONTHLY';
+          }
+
+          if (!ownerEmail) {
             skipped++;
             continue;
           }
 
-          // Get frequency tag from listing tags
-          const frequencyTag = listing.tags?.find(t =>
-            ['WEEKLY', 'BI-WEEKLY A', 'BI-WEEKLY B', 'MONTHLY'].includes(t)
-          ) || 'MONTHLY';
-
           // Send email via API
-          const response = await emailAPI.sendStatementEmail(statement.id, listing.ownerEmail, frequencyTag);
+          const response = await emailAPI.sendStatementEmail(statement.id, ownerEmail, frequencyTag);
 
           if (response.success) {
             sent++;
@@ -1503,7 +1563,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
-        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onClose={() => {
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+          setBulkProcessing(false);
+        }}
         onConfirm={confirmDialog.onConfirm}
         title={confirmDialog.title}
         message={confirmDialog.message}

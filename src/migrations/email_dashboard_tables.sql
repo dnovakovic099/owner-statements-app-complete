@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS email_logs (
     id SERIAL PRIMARY KEY,
     statement_id INTEGER NOT NULL,
     property_id INTEGER,
-    recipient_email VARCHAR(255) NOT NULL,
+    recipient_email VARCHAR(255),  -- NULL allowed for failed sends with no email configured
     recipient_name VARCHAR(255),
     property_name VARCHAR(255),
     frequency_tag VARCHAR(100),

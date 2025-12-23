@@ -740,6 +740,44 @@ router.post('/logs/:id/retry', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/email/logs/failed
+ * Log a failed email attempt (e.g., no owner email configured)
+ */
+router.post('/logs/failed', async (req, res) => {
+    try {
+        const { statementId, propertyId, propertyName, ownerName, reason, errorCode } = req.body;
+
+        if (!statementId) {
+            return res.status(400).json({ error: 'statementId is required' });
+        }
+
+        // Create failed email log
+        const log = await EmailLog.create({
+            statementId,
+            propertyId: propertyId || null,
+            recipientEmail: null,
+            recipientName: ownerName || null,
+            propertyName: propertyName || null,
+            frequencyTag: null,
+            subject: null,
+            status: 'failed',
+            errorMessage: reason || 'No email address configured for owner',
+            errorCode: errorCode || 'NO_EMAIL',
+            attemptedAt: new Date()
+        });
+
+        res.json({
+            success: true,
+            message: 'Failed email logged',
+            log
+        });
+    } catch (error) {
+        console.error('Error logging failed email:', error);
+        res.status(500).json({ error: 'Failed to log email failure' });
+    }
+});
+
 // ============================================
 // SCHEDULED EMAILS ROUTES
 // ============================================
