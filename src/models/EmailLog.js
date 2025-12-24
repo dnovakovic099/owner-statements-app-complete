@@ -9,7 +9,7 @@ const EmailLog = sequelize.define('EmailLog', {
     },
     statementId: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,  // Allow null for announcements, invites, etc.
         field: 'statement_id'
     },
     propertyId: {

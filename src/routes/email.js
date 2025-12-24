@@ -400,6 +400,21 @@ router.post('/force-send/:statementId', async (req, res) => {
             sentAt: new Date()
         });
 
+        // Log the force-sent email
+        await EmailLog.create({
+            statementId: parseInt(statementId),
+            propertyId: statement.propertyId,
+            recipientEmail: recipientEmail,
+            recipientName: statement.ownerName,
+            propertyName: statement.propertyName,
+            frequencyTag: frequency,
+            subject: template.subject,
+            status: 'sent',
+            messageId: result.messageId,
+            sentAt: new Date(),
+            metadata: JSON.stringify({ forceSent: true, wasNegativeBalance: ownerPayout < 0 })
+        });
+
         res.json({
             success: true,
             message: 'Statement email sent (force)',
@@ -410,6 +425,28 @@ router.post('/force-send/:statementId', async (req, res) => {
         });
     } catch (error) {
         console.error('Error force sending email:', error);
+
+        // Log failed force-send attempt
+        try {
+            const statement = await Statement.findByPk(req.params.statementId);
+            if (statement) {
+                await EmailLog.create({
+                    statementId: parseInt(req.params.statementId),
+                    propertyId: statement.propertyId,
+                    recipientEmail: req.body.recipientEmail,
+                    recipientName: statement.ownerName,
+                    propertyName: statement.propertyName,
+                    frequencyTag: req.body.frequencyTag || 'Monthly',
+                    status: 'failed',
+                    errorMessage: error.message,
+                    attemptedAt: new Date(),
+                    metadata: JSON.stringify({ forceSent: true })
+                });
+            }
+        } catch (logError) {
+            console.error('Error logging failed email:', logError);
+        }
+
         res.status(500).json({ error: 'Failed to force send email' });
     }
 });
@@ -1179,10 +1216,10 @@ router.post('/announcement', async (req, res) => {
         // If testEmail is provided, send only to test email
         if (testEmail) {
             const results = { sent: [], failed: [] };
+            const personalizedSubject = subject.replace(/{{ownerGreeting}}/g, 'Test User');
             try {
                 // Convert newlines to <br> and personalize
                 const personalizedBody = body.replace(/\n/g, '<br/>').replace(/{{ownerGreeting}}/g, 'Test User');
-                const personalizedSubject = subject.replace(/{{ownerGreeting}}/g, 'Test User');
                 await EmailService.sendAnnouncementEmail(
                     testEmail,
                     `[TEST] ${personalizedSubject}`,
@@ -1190,6 +1227,19 @@ router.post('/announcement', async (req, res) => {
                     'Test User'
                 );
                 results.sent.push(testEmail);
+
+                // Log to email_logs table
+                await EmailLog.create({
+                    statementId: null,
+                    propertyId: null,
+                    recipientEmail: testEmail,
+                    recipientName: 'Test User',
+                    propertyName: 'Test Announcement',
+                    frequencyTag: 'Announcement',
+                    subject: `[TEST] ${personalizedSubject}`,
+                    status: 'sent',
+                    sentAt: new Date()
+                });
 
                 // Log activity
                 await ActivityLog.log(req, 'SEND_TEST_ANNOUNCEMENT', 'email', null, {
@@ -1199,6 +1249,19 @@ router.post('/announcement', async (req, res) => {
             } catch (err) {
                 console.error(`Failed to send test announcement to ${testEmail}:`, err.message);
                 results.failed.push({ email: testEmail, error: err.message });
+
+                // Log failed test announcement
+                await EmailLog.create({
+                    statementId: null,
+                    propertyId: null,
+                    recipientEmail: testEmail,
+                    recipientName: 'Test User',
+                    propertyName: 'Test Announcement',
+                    frequencyTag: 'Announcement',
+                    subject: `[TEST] ${personalizedSubject}`,
+                    status: 'failed',
+                    errorMessage: err.message
+                });
             }
 
             return res.json({

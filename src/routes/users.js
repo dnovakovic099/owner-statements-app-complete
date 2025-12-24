@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { User } = require('../models');
+const { User, EmailLog } = require('../models');
 const emailService = require('../services/EmailService');
 const { Op } = require('sequelize');
 
@@ -99,8 +99,35 @@ router.post('/invite', requireAdmin, async (req, res) => {
 
         try {
             await emailService.sendInviteEmail(email, username, role, inviteUrl);
+
+            // Log successful invite email
+            await EmailLog.create({
+                statementId: null,
+                propertyId: null,
+                recipientEmail: email,
+                recipientName: username,
+                propertyName: 'User Invite',
+                frequencyTag: 'User Invite',
+                subject: `You've been invited to Owner Statements`,
+                status: 'sent',
+                sentAt: new Date()
+            });
         } catch (emailError) {
             console.error('Failed to send invite email:', emailError);
+
+            // Log failed invite email
+            await EmailLog.create({
+                statementId: null,
+                propertyId: null,
+                recipientEmail: email,
+                recipientName: username,
+                propertyName: 'User Invite',
+                frequencyTag: 'User Invite',
+                subject: `You've been invited to Owner Statements`,
+                status: 'failed',
+                errorMessage: emailError.message
+            });
+
             // Don't fail the request, but let admin know
             return res.json({
                 success: true,
@@ -156,8 +183,35 @@ router.post('/:id/resend-invite', requireAdmin, async (req, res) => {
 
         try {
             await emailService.sendInviteEmail(user.email, user.username, user.role, inviteUrl);
+
+            // Log successful resend invite email
+            await EmailLog.create({
+                statementId: null,
+                propertyId: null,
+                recipientEmail: user.email,
+                recipientName: user.username,
+                propertyName: 'User Invite',
+                frequencyTag: 'User Invite',
+                subject: `You've been invited to Owner Statements`,
+                status: 'sent',
+                sentAt: new Date()
+            });
         } catch (emailError) {
             console.error('Failed to send invite email:', emailError);
+
+            // Log failed resend invite email
+            await EmailLog.create({
+                statementId: null,
+                propertyId: null,
+                recipientEmail: user.email,
+                recipientName: user.username,
+                propertyName: 'User Invite',
+                frequencyTag: 'User Invite',
+                subject: `You've been invited to Owner Statements`,
+                status: 'failed',
+                errorMessage: emailError.message
+            });
+
             return res.json({
                 success: true,
                 warning: 'Invite email failed to send. Share this link manually: ' + inviteUrl
