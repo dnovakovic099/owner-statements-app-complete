@@ -623,6 +623,8 @@ export const emailAPI = {
     sendToAll: boolean;
     tags?: string[];
     testEmail?: string;
+    delayMs?: number;
+    retryFailedOnly?: boolean;
   }): Promise<{
     success: boolean;
     message: string;

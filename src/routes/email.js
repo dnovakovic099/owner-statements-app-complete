@@ -1207,11 +1207,14 @@ router.get('/owners', async (req, res) => {
  */
 router.post('/announcement', async (req, res) => {
     try {
-        const { subject, body, tags, sendToAll, testEmail } = req.body;
+        const { subject, body, tags, sendToAll, testEmail, delayMs = 0, retryFailedOnly = false } = req.body;
 
         if (!subject || !body) {
             return res.status(400).json({ error: 'Subject and body are required' });
         }
+
+        // Helper function for rate limiting delay
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         // If testEmail is provided, send only to test email
         if (testEmail) {
@@ -1310,19 +1313,44 @@ router.post('/announcement', async (req, res) => {
             }
         });
 
-        const recipients = Array.from(uniqueEmails.values());
+        let recipients = Array.from(uniqueEmails.values());
 
-        if (recipients.length === 0) {
-            return res.status(400).json({ error: 'No recipients found with configured email addresses' });
+        // If retryFailedOnly, filter to only recipients who previously failed
+        if (retryFailedOnly) {
+            const failedLogs = await EmailLog.findAll({
+                where: {
+                    frequencyTag: 'Announcement',
+                    status: 'failed'
+                },
+                attributes: ['recipientEmail'],
+                group: ['recipientEmail']
+            });
+            const failedEmails = new Set(failedLogs.map(log => log.recipientEmail));
+            recipients = recipients.filter(r => failedEmails.has(r.email));
+            console.log(`[Announcement] Retry mode: ${recipients.length} failed recipients found`);
         }
 
-        // Send emails
+        if (recipients.length === 0) {
+            return res.status(400).json({ error: retryFailedOnly ? 'No failed recipients found to retry' : 'No recipients found with configured email addresses' });
+        }
+
+        // Send emails with rate limiting
         const results = {
             sent: [],
             failed: []
         };
 
-        for (const recipient of recipients) {
+        const rateLimit = parseInt(delayMs) || 0;
+        console.log(`[Announcement] Sending to ${recipients.length} recipients with ${rateLimit}ms delay between emails`);
+
+        for (let i = 0; i < recipients.length; i++) {
+            const recipient = recipients[i];
+
+            // Apply rate limiting delay (except for first email)
+            if (rateLimit > 0 && i > 0) {
+                await delay(rateLimit);
+            }
+
             try {
                 // Convert newlines to <br> and personalize
                 const personalizedBody = body.replace(/\n/g, '<br/>').replace(/{{ownerGreeting}}/g, recipient.greeting);
@@ -1336,6 +1364,7 @@ router.post('/announcement', async (req, res) => {
                 );
 
                 results.sent.push(recipient.email);
+                console.log(`[Announcement] ${i + 1}/${recipients.length} - Sent to ${recipient.email}`);
 
                 // Log to email_logs table
                 await EmailLog.create({
@@ -1356,7 +1385,7 @@ router.post('/announcement', async (req, res) => {
                     subject: personalizedSubject
                 });
             } catch (err) {
-                console.error(`Failed to send announcement to ${recipient.email}:`, err.message);
+                console.error(`[Announcement] ${i + 1}/${recipients.length} - Failed to send to ${recipient.email}:`, err.message);
                 results.failed.push({ email: recipient.email, error: err.message });
 
                 // Log failed email

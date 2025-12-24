@@ -102,6 +102,8 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   const [showAnnouncementPreview, setShowAnnouncementPreview] = useState(false);
   const [announcementImages, setAnnouncementImages] = useState<Map<string, string>>(new Map());
   const [announcementCursorPos, setAnnouncementCursorPos] = useState(0);
+  const [announcementRateLimit, setAnnouncementRateLimit] = useState(1000); // 1 second delay
+  const [announcementRetryFailed, setAnnouncementRetryFailed] = useState(false);
 
   // Track cursor position in body textarea
   const handleBodyCursorChange = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
@@ -209,14 +211,16 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
         body: bodyWithImages,
         sendToAll: announcementSendToAll,
         tags: announcementSendToAll ? undefined : Array.from(announcementTags),
-        testEmail: isTest ? announcementTestEmail : undefined
+        testEmail: isTest ? announcementTestEmail : undefined,
+        delayMs: isTest ? 0 : announcementRateLimit,
+        retryFailedOnly: isTest ? false : announcementRetryFailed
       });
 
       if (result.success) {
         if (isTest) {
           showToast(`Test announcement sent to ${announcementTestEmail}`, 'success');
         } else {
-          showToast(`Announcement sent to ${result.sent} recipients`, 'success');
+          showToast(`Announcement sent to ${result.sent} recipients${result.failed > 0 ? `, ${result.failed} failed` : ''}`, 'success');
           setShowAnnouncementModal(false);
           setAnnouncementSubject('');
           setAnnouncementBody('');
@@ -225,6 +229,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
           setAnnouncementTestEmail('');
           setShowAnnouncementPreview(false);
           setAnnouncementImages(new Map());
+          setAnnouncementRetryFailed(false);
         }
       } else {
         showToast('Failed to send announcement', 'error');
@@ -1845,6 +1850,34 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
                     <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
                       <Users className="w-4 h-4" />
                       <span>{announcementRecipientCount} recipient{announcementRecipientCount !== 1 ? 's' : ''} will receive this email</span>
+                    </div>
+
+                    {/* Retry Failed & Rate Limiting Options */}
+                    <div className="flex flex-wrap items-center gap-4 mt-3 p-3 bg-gray-50 rounded-lg">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={announcementRetryFailed}
+                          onChange={(e) => setAnnouncementRetryFailed(e.target.checked)}
+                          className="w-4 h-4 text-purple-600 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Retry failed only</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-700">Rate limit:</label>
+                        <select
+                          value={announcementRateLimit}
+                          onChange={(e) => setAnnouncementRateLimit(Number(e.target.value))}
+                          className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value={0}>No delay</option>
+                          <option value={500}>0.5 sec/email</option>
+                          <option value={1000}>1 sec/email</option>
+                          <option value={2000}>2 sec/email</option>
+                          <option value={3000}>3 sec/email</option>
+                          <option value={5000}>5 sec/email</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
