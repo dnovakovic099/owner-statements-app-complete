@@ -5210,7 +5210,9 @@ router.get('/:id/download', async (req, res) => {
         const http = require('http');
 
         // Fetch HTML from the view route internally (with pdf=true to hide download button)
-        const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true`;
+        // Pass token from query string if present (for token-based auth), or use Authorization header
+        const token = req.query.token;
+        const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true${token ? '&token=' + token : ''}`;
 
         const fetchHTML = () => {
             return new Promise((resolve, reject) => {
