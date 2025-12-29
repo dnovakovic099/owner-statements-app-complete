@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Bell,
   X,
-  User,
 } from 'lucide-react';
 
 type Page = 'dashboard' | 'listings' | 'email' | 'settings';

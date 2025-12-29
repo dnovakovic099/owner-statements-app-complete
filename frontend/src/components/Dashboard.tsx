@@ -79,11 +79,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       return [];
     }
   });
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [showAutoNotification, setShowAutoNotification] = useState(false);
-  const [showAllNotifications, setShowAllNotifications] = useState(false);
-  const notificationRef = useRef<HTMLDivElement>(null);
-
   // Filter out read notifications
   const unreadListings = newListings.filter(l => !readListingIds.includes(l.id));
 
@@ -100,8 +95,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const newReadIds = Array.from(new Set([...readListingIds, ...allIds]));
     setReadListingIds(newReadIds);
     localStorage.setItem('readListingNotifications', JSON.stringify(newReadIds));
-    setIsNotificationOpen(false);
-    setShowAllNotifications(false);
   };
 
   // Pagination state
@@ -155,33 +148,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target as Node)) {
         setIsOwnerDropdownOpen(false);
       }
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setIsNotificationOpen(false);
-        setShowAllNotifications(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch newly added listings, email stats, and show auto notification
+  // Fetch newly added listings and email stats
   useEffect(() => {
     const fetchNewListings = async () => {
       try {
         const response = await listingsAPI.getNewlyAddedListings(7);
         if (response.success && response.listings.length > 0) {
           setNewListings(response.listings);
-          // Check if there are unread listings
-          const storedReadIds = localStorage.getItem('readListingNotifications');
-          const readIds = storedReadIds ? JSON.parse(storedReadIds) : [];
-          const hasUnread = response.listings.some(l => !readIds.includes(l.id));
-          if (hasUnread) {
-            // Show auto notification for 5 seconds
-            setShowAutoNotification(true);
-            setTimeout(() => {
-              setShowAutoNotification(false);
-            }, 5000);
-          }
         }
       } catch (error) {
         console.error('Failed to fetch newly added listings:', error);

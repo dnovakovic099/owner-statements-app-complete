@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
-import { listingsAPI, emailAPI, tagScheduleAPI } from '../services/api';
+import { listingsAPI, tagScheduleAPI } from '../services/api';
 import { Listing } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
@@ -62,53 +62,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [savingOwnerInfo, setSavingOwnerInfo] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const notificationRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
-
-  // Email stats for badge
-  const [emailStats, setEmailStats] = useState<{ totalSent: number; totalFailed: number; successRate: number } | null>(null);
 
   // Tag schedule modal states
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [scheduleTagName, setScheduleTagName] = useState<string>('');
   const [existingSchedule, setExistingSchedule] = useState<any>(null);
   const [tagSchedules, setTagSchedules] = useState<Record<string, any>>({});
-
-  // Filter out read notifications
-  const unreadListings = newListings.filter(l => !readListingIds.includes(l.id));
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setIsNotificationOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Fetch email stats for badge
-  const fetchEmailStats = async () => {
-    try {
-      const statsResponse = await emailAPI.getEmailStats();
-      const total = statsResponse.sent + statsResponse.failed + statsResponse.pending + statsResponse.bounced;
-      const successRate = total > 0 ? Math.round((statsResponse.sent / total) * 100) : 0;
-      setEmailStats({
-        totalSent: statsResponse.sent,
-        totalFailed: statsResponse.failed,
-        successRate
-      });
-    } catch (error) {
-      console.error('Failed to fetch email stats:', error);
-    }
-  };
-
-  // Fetch email stats on mount
-  useEffect(() => {
-    fetchEmailStats();
-  }, []);
 
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
