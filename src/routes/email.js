@@ -121,11 +121,17 @@ router.post('/send/:statementId', async (req, res) => {
                 sentAt: new Date()
             });
 
-            // Log activity
+            // Log activity with detailed information
+            const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${statementId}`;
+            const periodDisplay = statement.weekStartDate && statement.weekEndDate
+                ? `${statement.weekStartDate} to ${statement.weekEndDate}`
+                : '';
             await ActivityLog.log(req, 'SEND_EMAIL', 'statement', statementId, {
                 recipientEmail,
-                ownerName: statement.ownerName,
-                propertyName: statement.propertyName
+                ownerName: statement.ownerName || 'Unknown Owner',
+                propertyName: propertyDisplay,
+                period: periodDisplay,
+                subject: `Owner Statement - ${propertyDisplay}`
             });
 
             res.json({

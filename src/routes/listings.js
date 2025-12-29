@@ -240,10 +240,37 @@ router.put('/:id/config', async (req, res) => {
         // Clear the listings cache so changes are reflected immediately
         FileDataService.clearListingsCache();
 
-        // Log activity
+        // Log activity with detailed changes
+        // Format changes for readability (e.g., "pmFeePercentage" -> "PM Fee %")
+        const fieldLabels = {
+            pmFeePercentage: 'PM Fee %',
+            isCohostOnAirbnb: 'Cohost on Airbnb',
+            airbnbPassThroughTax: 'Pass-through Tax',
+            disregardTax: 'Disregard Tax',
+            cleaningFeePassThrough: 'Cleaning Fee Pass-through',
+            guestPaidDamageCoverage: 'Guest Damage Coverage',
+            includeChildListings: 'Include Child Listings',
+            waiveCommission: 'Waive Commission',
+            waiveCommissionUntil: 'Waive Until',
+            tags: 'Tags',
+            internalNotes: 'Internal Notes',
+            ownerEmail: 'Owner Email',
+            ownerGreeting: 'Owner Greeting',
+            autoSendStatements: 'Auto Send',
+            defaultPetFee: 'Pet Fee'
+        };
+        const changesDetailed = Object.keys(config).map(key => {
+            const label = fieldLabels[key] || key;
+            const value = config[key];
+            if (typeof value === 'boolean') return `${label}: ${value ? 'Yes' : 'No'}`;
+            if (value === null) return `${label}: cleared`;
+            if (key === 'pmFeePercentage') return `${label}: ${value}%`;
+            return `${label}: ${value}`;
+        });
         await ActivityLog.log(req, 'UPDATE_LISTING', 'listing', id, {
-            listingName: listing.nickname || listing.displayName || listing.name,
-            changes: Object.keys(config)
+            listingName: listing.nickname || listing.displayName || listing.name || `Listing #${id}`,
+            changes: Object.keys(config),
+            changesDetailed: changesDetailed
         });
 
         res.json({ success: true, message: 'Listing configuration updated', listing });

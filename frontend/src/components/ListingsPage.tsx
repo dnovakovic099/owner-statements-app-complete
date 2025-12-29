@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Search, Save, RefreshCw, AlertCircle, CheckCircle, Bell, X, Mail, Clock } from 'lucide-react';
+import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { listingsAPI, emailAPI, tagScheduleAPI } from '../services/api';
 import { Listing } from '../types';
 import LoadingSpinner from './LoadingSpinner';
@@ -17,7 +17,7 @@ interface NewListing {
   createdAt: string;
 }
 
-interface ListingsPageProps { 
+interface ListingsPageProps {
   onBack: () => void;
   initialSelectedListingId?: number | null;
   newListings?: NewListing[];
@@ -25,6 +25,7 @@ interface ListingsPageProps {
   onMarkAsRead?: (listingId: number) => void;
   onMarkAllAsRead?: () => void;
   onOpenEmailDashboard?: () => void;
+  hideSidebar?: boolean;
 }
 
 const ListingsPage: React.FC<ListingsPageProps> = ({
@@ -34,7 +35,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   readListingIds = [],
   onMarkAsRead,
   onMarkAllAsRead,
-  onOpenEmailDashboard
+  onOpenEmailDashboard,
+  hideSidebar = false
 }) => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -465,139 +467,24 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white flex-shrink-0">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center">
-              <button
-                onClick={onBack}
-                className="mr-4 p-2 hover:bg-white/10 rounded-md transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold">Manage Listings</h1>
-                <p className="text-white/80 text-sm">
-                  Configure listing names and co-host settings
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              {/* Notification Bell */}
-              <div className="relative" ref={notificationRef}>
-                <button
-                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                  className="relative flex items-center justify-center w-10 h-10 bg-yellow-500/20 border border-yellow-300/30 rounded-md hover:bg-yellow-500/30 transition-colors"
-                  title="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadListings.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
-                      {unreadListings.length > 9 ? '9+' : unreadListings.length}
-                    </span>
-                  )}
-                </button>
-
-                {/* Notification Dropdown */}
-                {isNotificationOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
-                    <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center text-white">
-                        <Bell className="w-4 h-4 mr-2" />
-                        <span className="font-medium">New Listings ({unreadListings.length})</span>
-                      </div>
-                      {unreadListings.length > 0 && onMarkAllAsRead && (
-                        <button
-                          onClick={onMarkAllAsRead}
-                          className="text-white/80 hover:text-white text-xs underline"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="max-h-80 overflow-y-auto">
-                      {unreadListings.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-gray-500">
-                          <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                          <p className="text-sm">No new listings</p>
-                        </div>
-                      ) : (
-                        unreadListings.map((listing) => (
-                          <div
-                            key={listing.id}
-                            className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                            onClick={() => {
-                              setSelectedListingId(listing.id);
-                              onMarkAsRead?.(listing.id);
-                              setIsNotificationOpen(false);
-                            }}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 truncate">
-                                  {listing.displayName || listing.nickname || listing.name}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  {listing.city}{listing.state ? `, ${listing.state}` : ''} • PM: {listing.pmFeePercentage ?? 15}%
-                                </p>
-                                <p className="text-xs text-green-600 mt-1">
-                                  Added {new Date(listing.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onMarkAsRead?.(listing.id);
-                                }}
-                                className="ml-2 text-gray-400 hover:text-gray-600"
-                                title="Mark as read"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Email Dashboard Button */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    if (onOpenEmailDashboard) {
-                      onOpenEmailDashboard();
-                    }
-                  }}
-                  className="relative flex items-center justify-center w-10 h-10 bg-blue-500/20 border border-blue-300/30 rounded-md hover:bg-blue-500/30 transition-colors"
-                  title="Email Dashboard"
-                >
-                  <Mail className="w-5 h-5" />
-                  {emailStats && emailStats.totalFailed > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
-                      {emailStats.totalFailed > 9 ? '9+' : emailStats.totalFailed}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="flex items-center px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync from Hostify'}
-              </button>
-            </div>
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200 px-6 pt-2 pb-0 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Listings</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Configure listing names and co-host settings</p>
           </div>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync from Hostify'}
+          </button>
         </div>
-      </header>
+      </div>
 
       <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col overflow-hidden">
         {/* Error Display */}
@@ -629,9 +516,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
         )}
 
-        <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
           {/* Listings List - Fixed width sidebar */}
-          <div className="w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex flex-col">
+          <div className="w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex flex-col overflow-hidden">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">
               Listings ({filteredListings.length})
             </h2>
@@ -904,16 +791,17 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
 
           {/* Listing Details/Edit Form - Fills remaining space */}
-          <div className="flex-1 bg-white rounded-lg shadow-md p-6 overflow-y-auto">
+          <div className={`flex-1 bg-white rounded-lg shadow-md ${selectedListing ? 'flex flex-col overflow-hidden' : 'overflow-hidden'}`}>
             {!selectedListing ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
                 <Search className="w-16 h-16 mb-4 text-gray-300" />
                 <p className="text-lg font-medium">Select a listing to edit</p>
                 <p className="text-sm mt-2">Choose a listing from the list on the left</p>
               </div>
             ) : (
-              <div>
-                <div className="mb-6 pb-6 border-b border-gray-200">
+              <>
+                {/* Fixed Header */}
+                <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex-shrink-0">
                   <h2 className="text-xl font-bold text-gray-900">Edit Listing</h2>
                   <p className="text-sm text-gray-500 mt-1">
                     Original Name: {selectedListing.name}
@@ -921,6 +809,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   <p className="text-xs text-gray-400 mt-1">ID: {selectedListing.id}</p>
                 </div>
 
+                {/* Scrollable Form Content */}
+                <div className="flex-1 overflow-auto px-6 py-6">
                 <div className="space-y-6">
                   {/* Display Name */}
                   <div>
@@ -1309,7 +1199,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>

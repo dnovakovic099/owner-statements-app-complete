@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
+  ColumnOrderState,
   RowSelectionState,
   SortingState,
   VisibilityState,
@@ -11,7 +12,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -176,6 +177,21 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   onPaginationChange,
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
+  const COLUMN_ORDER_KEY = 'statements-table-column-order';
+
+  // Default column order
+  const defaultColumnOrder = [
+    'select',
+    'ownerName',
+    'propertyName',
+    'week',
+    'calculationType',
+    'totalRevenue',
+    'ownerPayout',
+    'status',
+    'createdAt',
+    'actions',
+  ];
 
   // Load column visibility from localStorage on mount
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
@@ -187,6 +203,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     }
   });
 
+  // Load column order from localStorage on mount
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_ORDER_KEY);
+      return saved ? JSON.parse(saved) : defaultColumnOrder;
+    } catch {
+      return defaultColumnOrder;
+    }
+  });
+
   // Save column visibility to localStorage whenever it changes
   useEffect(() => {
     try {
@@ -195,6 +221,18 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       // localStorage may be unavailable in some environments
     }
   }, [columnVisibility]);
+
+  // Save column order to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(columnOrder));
+    } catch {
+      // localStorage may be unavailable in some environments
+    }
+  }, [columnOrder]);
+
+  // Drag and drop state
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'createdAt', desc: true }
@@ -550,6 +588,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
     enableRowSelection: true,
@@ -560,6 +599,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       sorting,
       columnFilters,
       columnVisibility,
+      columnOrder,
       globalFilter,
       rowSelection,
       pagination: {
@@ -857,6 +897,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                       {columnLabels[column.id] || column.id}
                     </DropdownMenuCheckboxItem>
                   ))}
+                <DropdownMenuSeparator />
+                <button
+                  onClick={() => setColumnOrder(defaultColumnOrder)}
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                >
+                  Reset column order
+                </button>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -915,17 +962,62 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   const meta = header.column.columnDef.meta as { align?: string; width?: string } | undefined;
                   const align = meta?.align || 'left';
                   const width = meta?.width;
+                  const columnId = header.column.id;
+                  const isDraggable = columnId !== 'select' && columnId !== 'actions';
+                  const isDragging = draggedColumn === columnId;
+
                   return (
                     <TableHead
                       key={header.id}
                       style={width ? { width } : undefined}
+                      draggable={isDraggable}
+                      onDragStart={(e) => {
+                        if (!isDraggable) return;
+                        setDraggedColumn(columnId);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', columnId);
+                      }}
+                      onDragOver={(e) => {
+                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDragEnter={(e) => {
+                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        e.preventDefault();
+
+                        const newColumnOrder = [...columnOrder];
+                        const draggedIndex = newColumnOrder.indexOf(draggedColumn);
+                        const targetIndex = newColumnOrder.indexOf(columnId);
+
+                        if (draggedIndex !== -1 && targetIndex !== -1) {
+                          newColumnOrder.splice(draggedIndex, 1);
+                          newColumnOrder.splice(targetIndex, 0, draggedColumn);
+                          setColumnOrder(newColumnOrder);
+                        }
+                        setDraggedColumn(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedColumn(null);
+                      }}
                       className={`text-xs font-semibold text-gray-500 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap ${
                         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-                      }`}
+                      } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                        isDragging ? 'opacity-50 bg-blue-100' : ''
+                      } ${isDraggable && draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
                     >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
+                      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}`}>
+                        {isDraggable && (
+                          <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                        )}
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </div>
                     </TableHead>
                   );
                 })}

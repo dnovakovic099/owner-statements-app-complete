@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Home,
   Users,
   Mail,
   Shield,
@@ -19,7 +18,6 @@ import {
   Send,
   Download,
   Eye,
-  Filter,
   Settings
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, User, ActivityLogEntry } from '../services/api';
@@ -29,9 +27,10 @@ import ConfirmDialog from './ui/confirm-dialog';
 interface SettingsPageProps {
   onBack: () => void;
   currentUserRole: string;
+  hideSidebar?: boolean;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, hideSidebar = false }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users');
   const [users, setUsers] = useState<User[]>([]);
@@ -48,6 +47,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
   const [selectedAction, setSelectedAction] = useState('');
   const [selectedStartDate, setSelectedStartDate] = useState('');
   const [selectedEndDate, setSelectedEndDate] = useState('');
+
+  // Sorting state with localStorage persistence
+  const [sortField, setSortField] = useState<'date' | 'user' | 'event'>(() => {
+    const stored = localStorage.getItem('activityLog_sortField');
+    return (stored as 'date' | 'user' | 'event') || 'date';
+  });
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    const stored = localStorage.getItem('activityLog_sortDirection');
+    return (stored as 'asc' | 'desc') || 'desc';
+  });
 
   // Invite modal state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -150,6 +159,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
     setSelectedEndDate('');
   };
 
+  // Handle sort change
+  const handleSort = (field: 'date' | 'user' | 'event') => {
+    if (sortField === field) {
+      const newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
+      localStorage.setItem('activityLog_sortDirection', newDirection);
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+      localStorage.setItem('activityLog_sortField', field);
+      localStorage.setItem('activityLog_sortDirection', 'desc');
+    }
+  };
+
+  // Sort the activity logs
+  const sortedActivityLogs = [...activityLogs].sort((a, b) => {
+    let comparison = 0;
+    switch (sortField) {
+      case 'date':
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        break;
+      case 'user':
+        comparison = (a.username || '').localeCompare(b.username || '');
+        break;
+      case 'event':
+        comparison = a.action.localeCompare(b.action);
+        break;
+    }
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+
   const getActionIcon = (action: string) => {
     switch (action) {
       case 'LOGIN':
@@ -175,40 +215,39 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
     }
   };
 
-  const getActionBadgeClass = (action: string) => {
-    switch (action) {
-      case 'LOGIN':
-        return 'bg-green-100 text-green-800';
-      case 'LOGIN_FAILED':
-        return 'bg-red-100 text-red-800';
-      case 'DELETE':
-        return 'bg-red-100 text-red-800';
-      case 'SEND_EMAIL':
-        return 'bg-blue-100 text-blue-800';
-      case 'STATUS_UPDATE':
-        return 'bg-purple-100 text-purple-800';
-      case 'CREATE_STATEMENT':
-        return 'bg-green-100 text-green-800';
-      case 'VIEW_STATEMENT':
-        return 'bg-blue-100 text-blue-800';
-      case 'DOWNLOAD_STATEMENT':
-        return 'bg-indigo-100 text-indigo-800';
-      case 'UPDATE_LISTING':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   const formatActivityDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    let relative = '';
+    if (diffMins < 1) relative = 'Just now';
+    else if (diffMins < 60) relative = `${diffMins}m ago`;
+    else if (diffHours < 24) relative = `${diffHours}h ago`;
+    else if (diffDays < 7) relative = `${diffDays}d ago`;
+    else relative = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    return relative;
+  };
+
+  const getReadableAction = (action: string) => {
+    const actionMap: Record<string, string> = {
+      'LOGIN': 'Signed in',
+      'LOGIN_FAILED': 'Failed sign in',
+      'DELETE': 'Deleted',
+      'SEND_EMAIL': 'Sent email',
+      'STATUS_UPDATE': 'Status changed',
+      'CREATE_STATEMENT': 'Created',
+      'VIEW_STATEMENT': 'Viewed',
+      'DOWNLOAD_STATEMENT': 'Downloaded',
+      'UPDATE_LISTING': 'Updated listing',
+      'SEND_TEST_ANNOUNCEMENT': 'Test email',
+      'SEND_ANNOUNCEMENT': 'Announcement',
+    };
+    return actionMap[action] || action.replace(/_/g, ' ').toLowerCase();
   };
 
   const parseDetails = (details: string | null) => {
@@ -308,24 +347,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
   // Only system and admin users can access this page
   if (currentUserRole !== 'admin' && currentUserRole !== 'system') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-            <div className="flex items-center">
-              <button
-                onClick={onBack}
-                className="mr-4 p-2 hover:bg-white/10 rounded-md transition-colors"
-              >
-                <Home className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold">Settings</h1>
-                <p className="text-white/80 text-sm mt-1">Access Denied</p>
-              </div>
+      <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+              <p className="text-gray-500 text-sm mt-0.5">Access Denied</p>
             </div>
           </div>
-        </header>
-        <div className="w-full px-4 py-8">
+        </div>
+        <div className="p-6">
           <div className="max-w-2xl mx-auto">
             <div className="bg-white rounded-lg shadow-md p-6 text-center">
               <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -339,29 +370,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <button
-                onClick={onBack}
-                className="mr-4 p-2 hover:bg-white/10 rounded-md transition-colors"
-              >
-                <Home className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold">Settings</h1>
-                <p className="text-white/80 text-sm mt-1">User Management</p>
-              </div>
-            </div>
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Settings</h1>
+            <p className="text-gray-500 text-sm mt-0.5">User management and activity logs</p>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="w-full px-4 py-8">
-        <div className="w-full px-2">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
           {/* Tabs */}
           <div className="mb-4 flex space-x-2">
             <button
@@ -527,33 +548,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
 
           {/* Activity Log Section */}
           {activeTab === 'activity' && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center">
-                <Activity className="w-5 h-5 text-gray-600 mr-2" />
-                <h2 className="text-lg font-semibold text-gray-900">Activity Log</h2>
-                <span className="ml-2 text-sm text-gray-500">({activityTotal} total)</span>
-              </div>
-              <button
-                onClick={loadActivityLogs}
-                className="flex items-center px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-md transition-colors text-sm"
-              >
-                <RefreshCw className={`w-4 h-4 mr-1 ${activityLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
-
-            {/* Filters */}
-            <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="space-y-4">
+            {/* Filters Card */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex flex-wrap gap-3 items-center">
-                <div className="flex items-center">
-                  <Filter className="w-4 h-4 text-gray-400 mr-2" />
-                  <span className="text-sm text-gray-500">Filters:</span>
-                </div>
                 <select
                   value={selectedUser}
                   onChange={(e) => setSelectedUser(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">All Users</option>
                   {filterUsers.map(user => (
@@ -563,112 +565,195 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole }) 
                 <select
                   value={selectedAction}
                   onChange={(e) => setSelectedAction(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">All Events</option>
                   {filterActions.map(action => (
                     <option key={action} value={action}>{action.replace(/_/g, ' ')}</option>
                   ))}
                 </select>
-                <input
-                  type="date"
-                  value={selectedStartDate}
-                  onChange={(e) => setSelectedStartDate(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="From"
-                />
-                <input
-                  type="date"
-                  value={selectedEndDate}
-                  onChange={(e) => setSelectedEndDate(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="To"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={selectedStartDate}
+                    onChange={(e) => setSelectedStartDate(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <span className="text-gray-400">to</span>
+                  <input
+                    type="date"
+                    value={selectedEndDate}
+                    onChange={(e) => setSelectedEndDate(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
                 {(selectedUser || selectedAction || selectedStartDate || selectedEndDate) && (
                   <button
                     onClick={clearFilters}
-                    className="text-sm text-blue-600 hover:text-blue-800"
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                   >
-                    Clear
+                    Clear filters
                   </button>
                 )}
+                <div className="ml-auto flex items-center gap-3">
+                  <span className="text-sm text-gray-500">{activityTotal} activities</span>
+                  <button
+                    onClick={loadActivityLogs}
+                    disabled={activityLoading}
+                    className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${activityLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+              {/* Sort Options */}
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                <span className="text-xs text-gray-500 uppercase tracking-wider">Sort by:</span>
+                <div className="flex gap-1">
+                  {[
+                    { field: 'date' as const, label: 'Date' },
+                    { field: 'user' as const, label: 'User' },
+                    { field: 'event' as const, label: 'Event' },
+                  ].map(({ field, label }) => (
+                    <button
+                      key={field}
+                      onClick={() => handleSort(field)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                        sortField === field
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {label}
+                      {sortField === field && (
+                        <span className="text-blue-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {activityLoading ? (
-              <div className="p-8 text-center">
-                <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-2" />
-                <p className="text-gray-500">Loading activity logs...</p>
-              </div>
-            ) : activityLogs.length === 0 ? (
-              <div className="p-8 text-center">
-                <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No activity logs found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">User</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Event</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">IP</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-44">Date/Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
-                    {activityLogs.map((log) => {
-                      const details = parseDetails(log.details);
-                      const getDetails = () => {
-                        switch(log.action) {
-                          case 'LOGIN': return 'Successfully logged in';
-                          case 'LOGIN_FAILED': return 'Failed login attempt';
-                          case 'DELETE': return `Deleted: ${details?.propertyName || 'unknown'}`;
-                          case 'SEND_EMAIL': return `Email to ${details?.recipientEmail} - ${details?.propertyName || ''}`;
-                          case 'STATUS_UPDATE': return `Status → "${details?.newStatus}" - ${details?.propertyName || ''}`;
-                          case 'CREATE_STATEMENT': return `Created: ${details?.propertyName || ''} (${details?.period || ''})`;
-                          case 'VIEW_STATEMENT': return `Viewed: ${details?.propertyName || ''}`;
-                          case 'DOWNLOAD_STATEMENT': return `Downloaded: ${details?.filename || details?.propertyName || ''}`;
-                          case 'UPDATE_LISTING': return `${details?.listingName || ''} (${details?.changes?.join(', ') || 'settings'})`;
-                          default: return `${log.resource} ${log.resourceId ? '#' + log.resourceId : ''}`;
+            {/* Activity List */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              {activityLoading ? (
+                <div className="p-12 text-center">
+                  <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">Loading activity logs...</p>
+                </div>
+              ) : sortedActivityLogs.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No activity logs found</p>
+                  <p className="text-gray-400 text-sm mt-1">Try adjusting your filters</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {sortedActivityLogs.map((log) => {
+                    const details = parseDetails(log.details);
+                    const getDetails = () => {
+                      switch(log.action) {
+                        case 'LOGIN': return 'Successfully logged in';
+                        case 'LOGIN_FAILED': return 'Failed login attempt';
+                        case 'DELETE': {
+                          const name = details?.propertyName || `Statement #${log.resourceId}`;
+                          const period = details?.period ? ` (${details.period})` : '';
+                          return `Deleted: ${name}${period}`;
                         }
-                      };
-                      return (
-                        <tr key={log.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-medium text-gray-900">{log.username || 'Unknown'}</span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
-                              {getActionIcon(log.action)}
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getActionBadgeClass(log.action)}`}>
-                                {log.action.replace(/_/g, ' ')}
+                        case 'SEND_EMAIL': {
+                          const name = details?.propertyName || `Statement #${log.resourceId}`;
+                          const period = details?.period ? ` (${details.period})` : '';
+                          return `Sent to ${details?.recipientEmail || 'unknown'} - ${name}${period}`;
+                        }
+                        case 'STATUS_UPDATE': {
+                          const name = details?.propertyName || `Statement #${log.resourceId}`;
+                          const oldStatus = details?.oldStatus ? `${details.oldStatus} → ` : '';
+                          return `${oldStatus}${details?.newStatus || 'unknown'} - ${name}`;
+                        }
+                        case 'CREATE_STATEMENT': {
+                          const name = details?.propertyName || `Statement #${log.resourceId}`;
+                          const period = details?.period ? ` (${details.period})` : '';
+                          return `Created: ${name}${period}`;
+                        }
+                        case 'VIEW_STATEMENT': {
+                          const name = details?.propertyName || `Statement #${log.resourceId}`;
+                          const period = details?.period ? ` (${details.period})` : '';
+                          return `Viewed: ${name}${period}`;
+                        }
+                        case 'DOWNLOAD_STATEMENT': {
+                          const name = details?.filename || details?.propertyName || `Statement #${log.resourceId}`;
+                          return `Downloaded: ${name}`;
+                        }
+                        case 'UPDATE_LISTING': {
+                          const name = details?.listingName || `Listing #${log.resourceId}`;
+                          const changes = details?.changesDetailed?.join(', ') || details?.changes?.join(', ') || 'settings';
+                          return `${name} - ${changes}`;
+                        }
+                        case 'SEND_TEST_ANNOUNCEMENT': {
+                          return `Test sent to ${details?.recipientEmail || 'unknown'}: "${details?.subject || 'Announcement'}"`;
+                        }
+                        case 'SEND_ANNOUNCEMENT': {
+                          return `Sent to ${details?.recipientCount || 0} recipients: "${details?.subject || 'Announcement'}"`;
+                        }
+                        default: return `${log.resource} ${log.resourceId ? '#' + log.resourceId : ''}`;
+                      }
+                    };
+                    return (
+                      <div key={log.id} className="px-5 py-3.5 hover:bg-blue-50/50 transition-colors border-l-4 border-transparent hover:border-blue-400">
+                        <div className="flex items-center gap-4">
+                          {/* Action Icon */}
+                          <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                            log.action === 'LOGIN' ? 'bg-green-100' :
+                            log.action === 'LOGIN_FAILED' ? 'bg-red-100' :
+                            log.action === 'DELETE' ? 'bg-red-100' :
+                            log.action === 'CREATE_STATEMENT' ? 'bg-emerald-100' :
+                            log.action === 'SEND_EMAIL' || log.action === 'SEND_ANNOUNCEMENT' || log.action === 'SEND_TEST_ANNOUNCEMENT' ? 'bg-blue-100' :
+                            log.action === 'VIEW_STATEMENT' ? 'bg-slate-100' :
+                            log.action === 'DOWNLOAD_STATEMENT' ? 'bg-indigo-100' :
+                            log.action === 'UPDATE_LISTING' ? 'bg-amber-100' :
+                            log.action === 'STATUS_UPDATE' ? 'bg-purple-100' :
+                            'bg-gray-100'
+                          }`}>
+                            {getActionIcon(log.action)}
+                          </div>
+                          {/* Content */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900">{log.username || 'System'}</span>
+                              <span className="text-gray-400">•</span>
+                              <span className={`text-sm font-medium ${
+                                log.action === 'LOGIN' ? 'text-green-700' :
+                                log.action === 'LOGIN_FAILED' ? 'text-red-600' :
+                                log.action === 'DELETE' ? 'text-red-600' :
+                                log.action === 'CREATE_STATEMENT' ? 'text-emerald-700' :
+                                log.action.includes('SEND') ? 'text-blue-700' :
+                                log.action === 'DOWNLOAD_STATEMENT' ? 'text-indigo-700' :
+                                log.action === 'UPDATE_LISTING' ? 'text-amber-700' :
+                                log.action === 'STATUS_UPDATE' ? 'text-purple-700' :
+                                'text-gray-700'
+                              }`}>
+                                {getReadableAction(log.action)}
                               </span>
                             </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            <span className={log.action === 'LOGIN_FAILED' ? 'text-red-600' : ''}>
+                            <p className={`text-sm ${log.action === 'LOGIN_FAILED' ? 'text-red-500' : 'text-gray-500'} truncate max-w-2xl`}>
                               {getDetails()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400">
-                            {log.ipAddress || '-'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatActivityDate(log.createdAt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </p>
+                          </div>
+                          {/* Timestamp */}
+                          <div className="flex-shrink-0 text-right">
+                            <p className="text-sm font-medium text-gray-400">{formatActivityDate(log.createdAt)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
           )}
         </div>
-      </div>
 
       {/* Invite User Modal */}
       {isInviteModalOpen && (

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy, Megaphone, X, Users, Image, Link2 } from 'lucide-react';
+import { Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy, Megaphone, X, Users, Image, Link2 } from 'lucide-react';
 import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
 import { Listing, Statement } from '../types';
 import { useToast } from './ui/toast';
 
 interface EmailDashboardProps {
   onBack: () => void;
+  hideSidebar?: boolean;
 }
 
 interface ScheduledBatch {
@@ -32,7 +33,7 @@ const getDefaultDaysForTag = (tag: string): number => {
   return 14; // Default to 14 days
 };
 
-const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
+const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = false }) => {
   const { showToast } = useToast();
   const [listings, setListings] = useState<Listing[]>([]);
   const [statements, setStatements] = useState<Statement[]>([]);
@@ -840,27 +841,19 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Email Dashboard</h1>
-              <p className="text-sm text-gray-500">Manage email automation</p>
-            </div>
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Email</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Manage email automation and templates</p>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Content */}
-      <div className="p-6 space-y-6">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-6">
         {/* Global Progress Bar - Shows during any send operation */}
         {sendingBatchId && sendProgress && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

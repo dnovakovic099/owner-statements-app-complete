@@ -738,11 +738,15 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
-        // Log activity
+        // Log activity with proper fallbacks
+        const propertyDisplay = statement.propertyName || statement.propertyNames || `${propertyCount} properties`;
+        const periodDisplay = statement.weekStartDate && statement.weekEndDate
+            ? `${statement.weekStartDate} to ${statement.weekEndDate}`
+            : 'Unknown period';
         await ActivityLog.log(req, 'CREATE_STATEMENT', 'statement', statement.id, {
-            ownerName: statement.ownerName,
-            propertyName: statement.propertyName,
-            period: `${statement.weekStartDate} to ${statement.weekEndDate}`,
+            ownerName: statement.ownerName || 'Unknown Owner',
+            propertyName: propertyDisplay,
+            period: periodDisplay,
             propertyCount,
             isCombined: true
         });
@@ -1249,11 +1253,15 @@ router.post('/generate', async (req, res) => {
         // Save statement to file
         await FileDataService.saveStatement(statement);
 
-        // Log activity
+        // Log activity with proper fallbacks
+        const propertyDisplay = statement.propertyName || `Property ${statement.propertyId || 'Unknown'}`;
+        const periodDisplay = statement.weekStartDate && statement.weekEndDate
+            ? `${statement.weekStartDate} to ${statement.weekEndDate}`
+            : 'Unknown period';
         await ActivityLog.log(req, 'CREATE_STATEMENT', 'statement', statement.id, {
-            ownerName: statement.ownerName,
-            propertyName: statement.propertyName,
-            period: `${statement.weekStartDate} to ${statement.weekEndDate}`
+            ownerName: statement.ownerName || 'Unknown Owner',
+            propertyName: propertyDisplay,
+            period: periodDisplay
         });
 
         res.status(201).json({
@@ -1281,10 +1289,18 @@ router.put('/:id/status', async (req, res) => {
         const { id } = req.params;
         const { status } = req.body;
 
+        // Validate status
+        const validStatuses = ['draft', 'final', 'sent', 'paid'];
+        if (!status || !validStatuses.includes(status)) {
+            return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        }
+
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
+
+        const oldStatus = statement.status;
 
         // Update status
         statement.status = status;
@@ -1295,11 +1311,13 @@ router.put('/:id/status', async (req, res) => {
         // Save updated statement
         await FileDataService.saveStatement(statement);
 
-        // Log activity
+        // Log activity with proper fallbacks
+        const propertyName = statement.propertyName || statement.propertyNames || `Statement #${id}`;
         await ActivityLog.log(req, 'STATUS_UPDATE', 'statement', id, {
+            oldStatus: oldStatus || 'unknown',
             newStatus: status,
-            ownerName: statement.ownerName,
-            propertyName: statement.propertyName
+            ownerName: statement.ownerName || 'Unknown Owner',
+            propertyName: propertyName
         });
 
         res.json({ message: 'Statement status updated successfully' });
@@ -2129,10 +2147,15 @@ router.delete('/:id', async (req, res) => {
         // Delete the statement
         await FileDataService.deleteStatement(id);
 
-        // Log activity
+        // Log activity with proper fallbacks
+        const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${id}`;
+        const periodDisplay = statement.weekStartDate && statement.weekEndDate
+            ? `${statement.weekStartDate} to ${statement.weekEndDate}`
+            : '';
         await ActivityLog.log(req, 'DELETE', 'statement', id, {
-            ownerName: statement.ownerName,
-            propertyName: statement.propertyName
+            ownerName: statement.ownerName || 'Unknown Owner',
+            propertyName: propertyDisplay,
+            period: periodDisplay
         });
 
         res.json({
@@ -5056,9 +5079,14 @@ router.get('/:id/view', async (req, res) => {
 
         // Log view activity (skip if PDF mode - that's internal use for downloads)
         if (!isPdf) {
+            const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${id}`;
+            const periodDisplay = statement.weekStartDate && statement.weekEndDate
+                ? `${statement.weekStartDate} to ${statement.weekEndDate}`
+                : '';
             await ActivityLog.log(req, 'VIEW_STATEMENT', 'statement', id, {
-                ownerName: statement.ownerName,
-                propertyName: statement.propertyName
+                ownerName: statement.ownerName || 'Unknown Owner',
+                propertyName: propertyDisplay,
+                period: periodDisplay
             });
         }
 
@@ -5297,10 +5325,12 @@ router.get('/:id/download', async (req, res) => {
 
         const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
 
-        // Log download activity
+        // Log download activity with proper details
+        const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${id}`;
         await ActivityLog.log(req, 'DOWNLOAD_STATEMENT', 'statement', id, {
-            ownerName: statement.ownerName,
-            propertyName: statement.propertyName,
+            ownerName: statement.ownerName || 'Unknown Owner',
+            propertyName: propertyDisplay,
+            period: statementPeriod,
             filename
         });
 

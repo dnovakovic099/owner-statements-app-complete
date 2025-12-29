@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { Plus, AlertCircle, LogOut, Home, Search, Check, ChevronDown, Bell, X, Mail, Settings } from 'lucide-react';
+import { Plus, AlertCircle, Search, Check, ChevronDown } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -9,6 +9,7 @@ import EmailDashboard from './EmailDashboard';
 import SettingsPage from './SettingsPage';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
+import { Layout } from './Layout';
 
 // Lazy load modals for better initial bundle size
 const GenerateModal = lazy(() => import('./GenerateModal'));
@@ -1046,277 +1047,74 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   }
 
-  // Show listings page if selected
-  if (currentPage === 'listings') {
-    return (
-      <ListingsPage
-        onBack={() => {
-          setCurrentPage('dashboard');
-          setSelectedListingId(null);
-        }}
-        initialSelectedListingId={selectedListingId}
-        newListings={newListings}
-        readListingIds={readListingIds}
-        onMarkAsRead={markAsRead}
-        onMarkAllAsRead={markAllAsRead}
-        onOpenEmailDashboard={() => setCurrentPage('email')}
-      />
-    );
-  }
+  // Handle notification click from sidebar
+  const handleNotificationClick = (listing: NewListing) => {
+    setSelectedListingId(listing.id);
+    setCurrentPage('listings');
+    markAsRead(listing.id);
+  };
 
-  // Show email dashboard if selected
-  if (currentPage === 'email') {
-    return (
-      <EmailDashboard
-        onBack={() => setCurrentPage('dashboard')}
-      />
-    );
-  }
+  // Render content based on current page
+  const renderContent = () => {
+    if (currentPage === 'listings') {
+      return (
+        <ListingsPage
+          onBack={() => {
+            setCurrentPage('dashboard');
+            setSelectedListingId(null);
+          }}
+          initialSelectedListingId={selectedListingId}
+          newListings={newListings}
+          readListingIds={readListingIds}
+          onMarkAsRead={markAsRead}
+          onMarkAllAsRead={markAllAsRead}
+          onOpenEmailDashboard={() => setCurrentPage('email')}
+          hideSidebar={true}
+        />
+      );
+    }
 
-  // Show settings page if selected
-  if (currentPage === 'settings') {
-    return (
-      <SettingsPage
-        onBack={() => setCurrentPage('dashboard')}
-        currentUserRole={user?.role || 'admin'}
-      />
-    );
-  }
+    if (currentPage === 'email') {
+      return (
+        <EmailDashboard
+          onBack={() => setCurrentPage('dashboard')}
+          hideSidebar={true}
+        />
+      );
+    }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+    if (currentPage === 'settings') {
+      return (
+        <SettingsPage
+          onBack={() => setCurrentPage('dashboard')}
+          currentUserRole={user?.role || 'admin'}
+          hideSidebar={true}
+        />
+      );
+    }
+
+    // Dashboard content
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Page Header */}
+        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Owner Statements</h1>
-              {user && (
-                <p className="text-white/80 text-sm mt-1">Welcome, {user.username}</p>
-              )}
+              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+              <p className="text-gray-500 text-sm mt-0.5">Manage owner statements and view activity</p>
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              {/* Notification Bell */}
-              <div className="relative" ref={notificationRef}>
-                <button
-                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                  className="relative flex items-center justify-center w-10 h-10 bg-yellow-500/20 border border-yellow-300/30 rounded-md hover:bg-yellow-500/30 transition-colors"
-                  title="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadListings.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
-                      {unreadListings.length > 9 ? '9+' : unreadListings.length}
-                    </span>
-                  )}
-                </button>
-
-                {/* Notification Dropdown */}
-                {isNotificationOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900">New Listings</h3>
-                        <span className="text-xs text-gray-500">{unreadListings.length} unread of {newListings.length}</span>
-                      </div>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {newListings.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-gray-500">
-                          No new listings
-                        </div>
-                      ) : (
-                        (showAllNotifications ? newListings : newListings.slice(0, 5)).map((listing) => {
-                          const isRead = readListingIds.includes(listing.id);
-                          return (
-                            <div
-                              key={listing.id}
-                              className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${isRead ? 'bg-gray-50/50' : 'bg-white'}`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div
-                                  className="flex-1 min-w-0 cursor-pointer"
-                                  onClick={() => {
-                                    setSelectedListingId(listing.id);
-                                    setCurrentPage('listings');
-                                    setIsNotificationOpen(false);
-                                    setShowAllNotifications(false);
-                                    if (!isRead) markAsRead(listing.id);
-                                  }}
-                                >
-                                  <p className={`font-medium truncate ${isRead ? 'text-gray-500' : 'text-gray-900'}`}>
-                                    {listing.displayName}
-                                  </p>
-                                  <p className={`text-sm truncate ${isRead ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    {listing.city}{listing.state ? `, ${listing.state}` : ''}
-                                  </p>
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    Added {new Date(listing.createdAt).toLocaleDateString()}
-                                  </p>
-                                </div>
-                                <div className="ml-2 flex flex-col items-end gap-1">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${isRead ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-800'}`}>
-                                    {listing.pmFeePercentage || 15}% PM
-                                  </span>
-                                  {!isRead && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        markAsRead(listing.id);
-                                      }}
-                                      className="text-xs text-gray-400 hover:text-blue-600"
-                                    >
-                                      Mark read
-                                    </button>
-                                  )}
-                                  {isRead && (
-                                    <span className="text-xs text-gray-400">Read</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    {newListings.length > 0 && (
-                      <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-                        {unreadListings.length > 0 ? (
-                          <button
-                            onClick={markAllAsRead}
-                            className="text-sm text-gray-500 hover:text-gray-700 font-medium"
-                          >
-                            Mark all read
-                          </button>
-                        ) : (
-                          <span className="text-sm text-gray-400">All read</span>
-                        )}
-                        {newListings.length > 5 && (
-                          <button
-                            onClick={() => setShowAllNotifications(!showAllNotifications)}
-                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            {showAllNotifications ? 'Show Less' : `View All (${newListings.length})`}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setCurrentPage('email')}
-                className="flex items-center justify-center w-10 h-10 bg-blue-500/20 border border-blue-300/30 rounded-md hover:bg-blue-500/30 transition-colors"
-                title="Email Dashboard"
-              >
-                <Mail className="w-5 h-5" />
-              </button>
-
-              {(user?.role === 'system' || user?.role === 'admin') && (
-                <button
-                  onClick={() => setCurrentPage('settings')}
-                  className="flex items-center justify-center w-10 h-10 bg-gray-500/20 border border-gray-300/30 rounded-md hover:bg-gray-500/30 transition-colors"
-                  title="Settings"
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-              )}
-
-              <button
-                onClick={() => setCurrentPage('listings')}
-                className="flex items-center px-3 sm:px-4 py-2 bg-green-500/20 border border-green-300/30 rounded-md hover:bg-green-500/30 transition-colors text-sm"
-                title="Manage Listings"
-              >
-                <Home className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Listings</span>
-              </button>
-              <button
-                onClick={onLogout}
-                className="flex items-center px-3 sm:px-4 py-2 bg-red-500/20 border border-red-300/30 rounded-md hover:bg-red-500/30 transition-colors text-sm"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Auto-show notification for most recent listing (appears for 5 seconds) */}
-      {showAutoNotification && unreadListings.length > 0 && (
-        <div className="fixed top-20 right-4 z-50 notification-slide-in">
-          <div className="bg-white rounded-lg shadow-xl border border-gray-200 w-80 overflow-hidden">
-            <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center text-white">
-                <Bell className="w-4 h-4 mr-2" />
-                <span className="font-medium text-sm">New Listing Added</span>
-              </div>
-              <button
-                onClick={() => setShowAutoNotification(false)}
-                className="text-white/80 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="px-4 py-3">
-              <p className="font-medium text-gray-900">{unreadListings[0].displayName}</p>
-              <p className="text-sm text-gray-500">
-                {unreadListings[0].city}{unreadListings[0].state ? `, ${unreadListings[0].state}` : ''}
-              </p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-gray-400">
-                  Added {new Date(unreadListings[0].createdAt).toLocaleDateString()}
-                </span>
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                  {unreadListings[0].pmFeePercentage || 15}% PM Fee
-                </span>
-              </div>
-              <div className="flex items-center mt-2">
-                <button
-                  onClick={() => {
-                    setSelectedListingId(unreadListings[0].id);
-                    setCurrentPage('listings');
-                    setShowAutoNotification(false);
-                    markAsRead(unreadListings[0].id);
-                  }}
-                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  View Property
-                </button>
-                {unreadListings.length > 1 && (
-                  <button
-                    onClick={() => {
-                      setShowAutoNotification(false);
-                      setIsNotificationOpen(true);
-                    }}
-                    className="ml-3 text-sm text-gray-500 hover:text-gray-700 font-medium"
-                  >
-                    +{unreadListings.length - 1} more
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="w-full px-4 py-8">
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
             <button
               onClick={() => setIsGenerateModalOpen(true)}
-              className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm w-full sm:w-auto"
+              className="flex items-center px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm whitespace-nowrap"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Generate Statement
+              <Plus className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Generate Statement</span>
             </button>
           </div>
         </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto p-4 sm:p-6">
 
         {/* File Uploads */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1549,7 +1347,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           pagination={pagination}
           onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
         />
+        </div>
       </div>
+    );
+  };
+
+  // Main render with Layout wrapper
+  return (
+    <Layout
+      currentPage={currentPage}
+      onPageChange={setCurrentPage}
+      user={user}
+      onLogout={onLogout}
+      newListings={newListings}
+      unreadCount={unreadListings.length}
+      onMarkAsRead={markAsRead}
+      onMarkAllAsRead={markAllAsRead}
+      onNotificationClick={handleNotificationClick}
+      readListingIds={readListingIds}
+    >
+      {renderContent()}
 
       {/* Modals - Lazy loaded for better initial bundle size */}
       <Suspense fallback={null}>
@@ -1598,7 +1415,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         type={confirmDialog.type}
         confirmText={confirmDialog.type === 'danger' ? 'Delete' : 'Confirm'}
       />
-    </div>
+    </Layout>
   );
 };
 
