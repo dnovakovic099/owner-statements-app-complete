@@ -61,14 +61,21 @@ router.post('/send/:statementId', async (req, res) => {
         let frequency = frequencyTag;
         let listingNickname = null;
         let ownerGreeting = null;
-        if (statement.propertyId) {
-            const listing = await Listing.findByPk(statement.propertyId);
+
+        // For multilisting/combined statements, propertyId is null but propertyIds contains the array
+        const propertyIdToLookup = statement.propertyId ||
+            (statement.propertyIds && statement.propertyIds.length > 0 ? statement.propertyIds[0] : null);
+
+        if (propertyIdToLookup) {
+            const listing = await Listing.findByPk(propertyIdToLookup);
             if (listing) {
                 if (!frequency) {
                     frequency = EmailService.getFrequencyFromTags(listing.tags);
                 }
-                // Get listing nickname for property name
-                listingNickname = listing.nickname;
+                // Get listing nickname for property name (only for single-listing statements)
+                if (statement.propertyId) {
+                    listingNickname = listing.nickname;
+                }
                 // Get owner greeting for email personalization (e.g., "Ellen", "Scott")
                 ownerGreeting = listing.ownerGreeting;
             }
@@ -340,12 +347,22 @@ router.post('/force-send/:statementId', async (req, res) => {
             });
         }
 
-        // Get frequency tag
+        // Get frequency tag and owner greeting
         let frequency = frequencyTag || 'Monthly';
-        if (!frequencyTag && statement.propertyId) {
-            const listing = await Listing.findByPk(statement.propertyId);
+        let ownerGreeting = null;
+
+        // For multilisting/combined statements, propertyId is null but propertyIds contains the array
+        const propertyIdToLookup = statement.propertyId ||
+            (statement.propertyIds && statement.propertyIds.length > 0 ? statement.propertyIds[0] : null);
+
+        if (propertyIdToLookup) {
+            const listing = await Listing.findByPk(propertyIdToLookup);
             if (listing) {
-                frequency = EmailService.getFrequencyFromTags(listing.tags);
+                if (!frequencyTag) {
+                    frequency = EmailService.getFrequencyFromTags(listing.tags);
+                }
+                // Get owner greeting for email personalization
+                ownerGreeting = listing.ownerGreeting;
             }
         }
 
@@ -358,7 +375,7 @@ router.post('/force-send/:statementId', async (req, res) => {
         }
 
         const templateData = {
-            ownerName: statement.ownerName,
+            ownerName: ownerGreeting || statement.ownerName,
             propertyName: statement.propertyName || 'Multiple Properties',
             periodStart: statement.weekStartDate,
             periodEnd: statement.weekEndDate,
