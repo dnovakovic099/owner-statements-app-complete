@@ -59,11 +59,29 @@ router.get('/', async (req, res) => {
         }
 
         // Support both single propertyId and multiple propertyIds
+        // Also include combined statements that contain the selected property in their propertyIds array
         if (propertyIds) {
             const ids = propertyIds.split(',').map(id => parseInt(id.trim()));
-            statements = statements.filter(s => ids.includes(s.propertyId));
+            statements = statements.filter(s => {
+                // Check single propertyId
+                if (ids.includes(s.propertyId)) return true;
+                // Check combined statement propertyIds array
+                if (s.propertyIds && Array.isArray(s.propertyIds)) {
+                    return s.propertyIds.some(pid => ids.includes(parseInt(pid)));
+                }
+                return false;
+            });
         } else if (propertyId) {
-            statements = statements.filter(s => s.propertyId === parseInt(propertyId));
+            const pid = parseInt(propertyId);
+            statements = statements.filter(s => {
+                // Check single propertyId
+                if (s.propertyId === pid) return true;
+                // Check combined statement propertyIds array
+                if (s.propertyIds && Array.isArray(s.propertyIds)) {
+                    return s.propertyIds.some(id => parseInt(id) === pid);
+                }
+                return false;
+            });
         }
         
         if (status) {

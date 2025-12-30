@@ -998,9 +998,6 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-white border-b-2 border-gray-300">
                 {headerGroup.headers.map((header) => {
-                  const meta = header.column.columnDef.meta as { align?: string; width?: string } | undefined;
-                  const align = meta?.align || 'left';
-                  const width = meta?.width;
                   const columnId = header.column.id;
                   const isDraggable = columnId !== 'select' && columnId !== 'actions';
                   const isDragging = draggedColumn === columnId;
