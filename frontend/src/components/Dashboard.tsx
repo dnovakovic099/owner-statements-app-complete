@@ -100,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Pagination state
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 10,
+    pageSize: 15,
     total: 0,
   });
 

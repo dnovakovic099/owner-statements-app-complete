@@ -3,6 +3,7 @@ import {
   ColumnDef,
   ColumnFiltersState,
   ColumnOrderState,
+  ColumnSizingState,
   RowSelectionState,
   SortingState,
   VisibilityState,
@@ -178,6 +179,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
   const COLUMN_ORDER_KEY = 'statements-table-column-order';
+  const COLUMN_SIZING_KEY = 'statements-table-column-sizing';
 
   // Default column order
   const defaultColumnOrder = [
@@ -213,6 +215,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     }
   });
 
+  // Load column sizing from localStorage on mount
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_SIZING_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   // Save column visibility to localStorage whenever it changes
   useEffect(() => {
     try {
@@ -230,6 +242,15 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       // localStorage may be unavailable in some environments
     }
   }, [columnOrder]);
+
+  // Save column sizing to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_SIZING_KEY, JSON.stringify(columnSizing));
+    } catch {
+      // localStorage may be unavailable in some environments
+    }
+  }, [columnSizing]);
 
   // Drag and drop state
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
@@ -278,58 +299,66 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const columns: ColumnDef<Statement>[] = [
     {
       id: 'select',
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
+      enableResizing: false,
       header: ({ table }) => (
-        <button
-          onClick={() => table.toggleAllPageRowsSelected(!table.getIsAllPageRowsSelected())}
-          className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
-        >
-          {table.getIsAllPageRowsSelected() ? (
-            <CheckSquare className="w-4 h-4 text-blue-600" />
-          ) : table.getIsSomePageRowsSelected() ? (
-            <div className="w-2.5 h-2.5 bg-blue-600 rounded-sm" />
-          ) : (
-            <Square className="w-4 h-4 text-gray-400" />
-          )}
-        </button>
+        <div className="flex justify-center">
+          <button
+            onClick={() => table.toggleAllPageRowsSelected(!table.getIsAllPageRowsSelected())}
+            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+          >
+            {table.getIsAllPageRowsSelected() ? (
+              <CheckSquare className="w-4 h-4 text-blue-600" />
+            ) : table.getIsSomePageRowsSelected() ? (
+              <div className="w-2.5 h-2.5 bg-blue-600 rounded-sm" />
+            ) : (
+              <Square className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+        </div>
       ),
       cell: ({ row }) => (
-        <button
-          onClick={() => row.toggleSelected(!row.getIsSelected())}
-          className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
-        >
-          {row.getIsSelected() ? (
-            <CheckSquare className="w-4 h-4 text-blue-600" />
-          ) : (
-            <Square className="w-4 h-4 text-gray-400" />
-          )}
-        </button>
+        <div className="flex justify-center">
+          <button
+            onClick={() => row.toggleSelected(!row.getIsSelected())}
+            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+          >
+            {row.getIsSelected() ? (
+              <CheckSquare className="w-4 h-4 text-blue-600" />
+            ) : (
+              <Square className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+        </div>
       ),
       enableSorting: false,
       enableHiding: false,
-      meta: { align: 'center', width: '40px' },
     },
     {
       accessorKey: 'ownerName',
+      size: 150,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Owner
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
-        <span className="font-medium text-gray-900 truncate block">{row.getValue('ownerName')}</span>
+        <span className="font-medium text-gray-900 truncate block text-center">{row.getValue('ownerName')}</span>
       ),
-      meta: { align: 'left' },
     },
     {
       accessorKey: 'propertyName',
+      size: 450,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Property
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -343,7 +372,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const needsReview = row.original.needsReview;
         const reviewDetails = row.original.reviewDetails;
         return (
-          <span className="cursor-default inline-flex items-center gap-1.5 group/cell relative">
+          <span className="cursor-default inline-flex items-center justify-center gap-1.5 group/cell relative w-full">
             <span className="text-gray-700 truncate">
               {displayName}
             </span>
@@ -381,15 +410,15 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'left' },
     },
     {
       id: 'week',
+      size: 150,
       accessorFn: (row) => row.weekStartDate,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Period
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -401,10 +430,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         </span>
       ),
       sortingFn: 'datetime',
-      meta: { align: 'left' },
     },
     {
       accessorKey: 'calculationType',
+      size: 100,
       header: () => <span className="font-semibold text-gray-600">Type</span>,
       cell: ({ row }) => {
         const type = row.getValue('calculationType') as string;
@@ -421,14 +450,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center' },
     },
     {
       accessorKey: 'totalRevenue',
+      size: 120,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Revenue
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -439,14 +468,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           {formatCurrency(row.getValue('totalRevenue'))}
         </span>
       ),
-      meta: { align: 'right' },
     },
     {
       accessorKey: 'ownerPayout',
+      size: 120,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 justify-end w-full font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Payout
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -460,23 +489,23 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </span>
         );
       },
-      meta: { align: 'right' },
     },
     {
       accessorKey: 'status',
+      size: 100,
       header: () => <span className="font-semibold text-gray-600">Status</span>,
       cell: ({ row }) => getStatusBadge(row.getValue('status')),
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
-      meta: { align: 'center' },
     },
     {
       accessorKey: 'createdAt',
+      size: 180,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 text-left font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
           Created
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -488,10 +517,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         </span>
       ),
       sortingFn: 'datetime',
-      meta: { align: 'left' },
     },
     {
       id: 'actions',
+      size: 250,
+      enableResizing: false,
       header: () => <span className="font-semibold text-gray-600">Actions</span>,
       cell: ({ row }) => {
         const statement = row.original;
@@ -507,7 +537,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         }
 
         return (
-          <div className="flex items-center">
+          <div className="flex items-center justify-center">
             <ActionButton
               href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view?token=${getAuthToken() || ''}`}
               tooltip="View Statement"
@@ -558,7 +588,6 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         );
       },
       enableHiding: false,
-      meta: { align: 'left', width: '220px' },
     },
   ];
 
@@ -589,9 +618,12 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
+    onColumnSizingChange: setColumnSizing,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
     enableRowSelection: true,
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
     globalFilterFn: 'includesString',
     manualPagination: true, // Server-side pagination
     pageCount,
@@ -600,6 +632,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       columnFilters,
       columnVisibility,
       columnOrder,
+      columnSizing,
       globalFilter,
       rowSelection,
       pagination: {
@@ -904,6 +937,12 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 >
                   Reset column order
                 </button>
+                <button
+                  onClick={() => setColumnSizing({})}
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                >
+                  Reset column widths
+                </button>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -954,10 +993,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
       {/* Table */}
       <div className="w-full overflow-x-auto">
-        <Table className="w-full min-w-[900px]">
+        <Table className="w-full min-w-[900px]" style={{ tableLayout: 'fixed' }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="bg-gray-50 border-b border-gray-200">
+              <TableRow key={headerGroup.id} className="bg-white border-b-2 border-gray-300">
                 {headerGroup.headers.map((header) => {
                   const meta = header.column.columnDef.meta as { align?: string; width?: string } | undefined;
                   const align = meta?.align || 'left';
@@ -969,25 +1008,18 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   return (
                     <TableHead
                       key={header.id}
-                      style={width ? { width } : undefined}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        if (!isDraggable) return;
-                        setDraggedColumn(columnId);
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', columnId);
-                      }}
+                      style={{ width: header.getSize() }}
                       onDragOver={(e) => {
-                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        if (!draggedColumn || draggedColumn === columnId) return;
                         e.preventDefault();
                         e.dataTransfer.dropEffect = 'move';
                       }}
                       onDragEnter={(e) => {
-                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        if (!draggedColumn || draggedColumn === columnId) return;
                         e.preventDefault();
                       }}
                       onDrop={(e) => {
-                        if (!isDraggable || !draggedColumn || draggedColumn === columnId) return;
+                        if (!draggedColumn || draggedColumn === columnId) return;
                         e.preventDefault();
 
                         const newColumnOrder = [...columnOrder];
@@ -1001,23 +1033,54 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                         }
                         setDraggedColumn(null);
                       }}
-                      onDragEnd={() => {
-                        setDraggedColumn(null);
-                      }}
-                      className={`text-xs font-semibold text-gray-500 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap ${
-                        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-                      } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                      className={`text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 last:border-r-0 ${
                         isDragging ? 'opacity-50 bg-blue-100' : ''
-                      } ${isDraggable && draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
+                      } ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
                     >
-                      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}`}>
+                      <div className="flex items-center gap-1 justify-center">
                         {isDraggable && (
-                          <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggedColumn(columnId);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', columnId);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedColumn(null);
+                            }}
+                            className="cursor-grab active:cursor-grabbing"
+                          >
+                            <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 hover:text-gray-500" />
+                          </span>
                         )}
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
                       </div>
+                      {/* Resize handle */}
+                      {header.column.getCanResize() && (
+                        <div
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            header.getResizeHandler()(e);
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            header.getResizeHandler()(e);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onDragStart={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          draggable={false}
+                          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group-hover:bg-gray-300 hover:!bg-blue-500 ${
+                            header.column.getIsResizing() ? 'bg-blue-500 w-1' : 'bg-gray-200'
+                          }`}
+                        />
+                      )}
                     </TableHead>
                   );
                 })}
@@ -1033,16 +1096,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                 >
                   {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta as { align?: string; width?: string } | undefined;
-                    const align = meta?.align || 'left';
-                    const width = meta?.width;
                     return (
                       <TableCell
                         key={cell.id}
-                        style={width ? { width } : undefined}
-                        className={`py-2.5 px-2 ${
-                          align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-                        }`}
+                        style={{ width: cell.column.getSize() }}
+                        className="py-2.5 px-2 text-center align-middle"
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
@@ -1099,7 +1157,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 </button>
                 {isRowsDropdownOpen && (
                   <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
-                    {[10, 25, 50, 100].map((size) => (
+                    {[15, 25, 50, 100].map((size) => (
                       <button
                         key={size}
                         onClick={() => {
