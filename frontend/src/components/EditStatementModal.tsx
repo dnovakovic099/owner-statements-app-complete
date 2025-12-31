@@ -94,6 +94,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [cleaningFeeEdits, setCleaningFeeEdits] = useState<{ [reservationId: string]: string }>({});
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
+  const [cancelledReservations, setCancelledReservations] = useState<any[]>([]);
+  const [loadingCancelled, setLoadingCancelled] = useState(false);
+  const [showCancelledSection, setShowCancelledSection] = useState(false);
+  const [selectedCancelledIdsToAdd, setSelectedCancelledIdsToAdd] = useState<string[]>([]);
   const [showCustomReservationForm, setShowCustomReservationForm] = useState(false);
   const [customReservation, setCustomReservation] = useState({
     guestName: '',
@@ -147,6 +151,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
       setShowAvailableSection(false);
+      setCancelledReservations([]);
+      setShowCancelledSection(false);
+      setSelectedCancelledIdsToAdd([]);
       setCleaningFeeEdits({});
       setInternalNotes(response.internalNotes || '');
       setNotesModified(false);
@@ -183,6 +190,31 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     } finally {
       setLoadingAvailable(false);
     }
+  };
+
+  const loadCancelledReservations = async () => {
+    if (!statementId) return;
+
+    try {
+      setLoadingCancelled(true);
+      setError(null);
+      const response = await statementsAPI.getCancelledReservations(statementId);
+      setCancelledReservations(response.cancelledReservations);
+      setShowCancelledSection(true);
+    } catch (err) {
+      setError('Failed to load cancelled reservations');
+      console.error('Failed to load cancelled reservations:', err);
+    } finally {
+      setLoadingCancelled(false);
+    }
+  };
+
+  const handleCancelledReservationToggle = (hostifyId: string) => {
+    setSelectedCancelledIdsToAdd(prev =>
+      prev.includes(hostifyId)
+        ? prev.filter(id => id !== hostifyId)
+        : [...prev, hostifyId]
+    );
   };
 
   // Quick select date helpers
@@ -387,7 +419,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleSaveChanges = () => {
-    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0)) {
+    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0 && selectedCancelledIdsToAdd.length === 0)) {
       return;
     }
 
@@ -403,6 +435,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     }
     if (selectedReservationIdsToAdd.length > 0) {
       actions.push(`add ${selectedReservationIdsToAdd.length} reservation(s)`);
+    }
+    if (selectedCancelledIdsToAdd.length > 0) {
+      actions.push(`add ${selectedCancelledIdsToAdd.length} cancelled reservation(s) with $0 revenue`);
     }
 
     const confirmMessage = `Are you sure you want to ${actions.join(' and ')}? This will recalculate the statement totals.`;
@@ -447,7 +482,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           await statementsAPI.editStatement(statement.id, {
             expenseIdsToRemove: globalIndicesToRemove.length > 0 ? globalIndicesToRemove : undefined,
             reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
-            reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined
+            reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined,
+            cancelledReservationIdsToAdd: selectedCancelledIdsToAdd.length > 0 ? selectedCancelledIdsToAdd : undefined
           });
 
           onStatementUpdated();
@@ -470,6 +506,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
     setShowAvailableSection(false);
+    setCancelledReservations([]);
+    setShowCancelledSection(false);
+    setSelectedCancelledIdsToAdd([]);
     setCleaningFeeEdits({});
     setInternalNotes('');
     setNotesModified(false);
@@ -738,7 +777,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               </div>
 
               {/* Selection Info */}
-              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0) && (
+              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0 || selectedCancelledIdsToAdd.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -780,6 +819,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             </h4>
                             <p className="text-sm text-amber-700">
                               Revenue increase: ${selectedReservationsToAddTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedCancelledIdsToAdd.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-sky-800">
+                              {selectedCancelledIdsToAdd.length} cancelled reservation(s) to add
+                            </h4>
+                            <p className="text-sm text-sky-700">
+                              Revenue: $0.00 (informational only)
                             </p>
                           </>
                         )}
@@ -1014,6 +1063,124 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+
+              {/* Cancelled Reservations Section */}
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-100">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                    </span>
+                    Cancelled Reservations
+                  </h3>
+                  {!showCancelledSection ? (
+                    <button
+                      onClick={loadCancelledReservations}
+                      disabled={loadingCancelled}
+                      className="flex items-center px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 disabled:opacity-50 transition-colors"
+                    >
+                      {loadingCancelled ? 'Loading...' : 'View Cancelled'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowCancelledSection(false)}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Hide
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Cancelled reservations that overlapped with this statement period. These are shown for reference only and don&apos;t affect calculations unless manually added.
+                </p>
+
+                {showCancelledSection && (
+                  <div>
+                    {cancelledReservations.length === 0 ? (
+                      <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+                        No cancelled reservations found for this period
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {cancelledReservations.map((reservation) => {
+                          const resId = reservation.hostifyId || reservation.id;
+                          const isAlreadyAdded = reservation.alreadyInStatement;
+                          const isSelected = selectedCancelledIdsToAdd.includes(resId);
+                          return (
+                            <div
+                              key={resId}
+                              className={`border rounded-lg p-4 transition-colors ${
+                                isAlreadyAdded
+                                  ? 'bg-gray-50 border-gray-200 opacity-60'
+                                  : isSelected
+                                  ? 'bg-sky-50 border-sky-200 cursor-pointer'
+                                  : 'bg-white border-gray-200 hover:bg-gray-50 cursor-pointer'
+                              }`}
+                              onClick={() => !isAlreadyAdded && handleCancelledReservationToggle(resId)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-3">
+                                    {!isAlreadyAdded && (
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => handleCancelledReservationToggle(resId)}
+                                        className="w-4 h-4 text-sky-600 rounded focus:ring-sky-500"
+                                      />
+                                    )}
+                                    <div>
+                                      <h4 className="font-medium flex items-center gap-2">
+                                        {reservation.guestName}
+                                        <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-800">
+                                          CANCELLED
+                                        </span>
+                                        {isAlreadyAdded && (
+                                          <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800">
+                                            Already in statement
+                                          </span>
+                                        )}
+                                      </h4>
+                                      <div className="text-sm text-gray-500">
+                                        <div className="flex items-center space-x-4">
+                                          <span className="flex items-center">
+                                            <Calendar className="w-3 h-3 mr-1" />
+                                            {reservation.checkInDate} to {reservation.checkOutDate}
+                                          </span>
+                                          <span className="text-gray-400">
+                                            {reservation.source}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center text-gray-500 font-semibold">
+                                  <DollarSign className="w-4 h-4 mr-1" />
+                                  {(reservation.clientRevenue || reservation.grossAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  <span className="text-xs text-gray-400 ml-1">(original)</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {selectedCancelledIdsToAdd.length > 0 && (
+                      <div className="mt-4 p-3 bg-sky-50 rounded-lg border border-sky-200">
+                        <p className="text-sm text-sky-800">
+                          <strong>{selectedCancelledIdsToAdd.length}</strong> cancelled reservation{selectedCancelledIdsToAdd.length > 1 ? 's' : ''} selected to add.
+                          These will be added with $0 revenue when you save.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

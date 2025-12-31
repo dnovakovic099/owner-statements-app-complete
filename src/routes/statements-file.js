@@ -341,6 +341,79 @@ router.get('/', async (req, res) => {
     }
 });
 
+// POST /api/statements-file/cancelled-counts - Get cancelled reservation counts for multiple statements (batch)
+router.post('/cancelled-counts', async (req, res) => {
+    try {
+        const { statementIds } = req.body;
+
+        if (!statementIds || !Array.isArray(statementIds) || statementIds.length === 0) {
+            return res.json({ counts: {} });
+        }
+
+        const hostifyService = require('../services/HostifyService');
+
+        // Find the date range that covers all statements
+        const statements = await Promise.all(
+            statementIds.map(id => FileDataService.getStatementById(id))
+        );
+
+        const validStatements = statements.filter(s => s != null);
+
+        if (validStatements.length === 0) {
+            return res.json({ counts: {} });
+        }
+
+        // Find min start date and max end date across all statements
+        const minStartDate = validStatements.reduce((min, s) =>
+            s.weekStartDate < min ? s.weekStartDate : min, validStatements[0].weekStartDate);
+        const maxEndDate = validStatements.reduce((max, s) =>
+            s.weekEndDate > max ? s.weekEndDate : max, validStatements[0].weekEndDate);
+
+        // Fetch all reservations for the entire date range at once
+        const apiResponse = await hostifyService.getAllReservations(
+            minStartDate,
+            maxEndDate,
+            null,
+            'checkIn'
+        );
+
+        const allReservations = apiResponse.result || [];
+
+        // Filter for all cancelled reservations
+        const allCancelledReservations = allReservations.filter(res => res.status === 'cancelled');
+
+        // Calculate count for each statement
+        const counts = {};
+
+        for (const statement of validStatements) {
+            const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
+            const propertyIdSet = new Set(propertyIds.map(p => parseInt(p)));
+
+            const stmtStart = new Date(statement.weekStartDate);
+            const stmtEnd = new Date(statement.weekEndDate);
+
+            const cancelledCount = allCancelledReservations.filter(res => {
+                // Check property match
+                const resPropertyId = parseInt(res.propertyId);
+                if (!propertyIdSet.has(resPropertyId)) return false;
+
+                // Check date overlap
+                const resCheckIn = new Date(res.checkInDate);
+                const resCheckOut = new Date(res.checkOutDate);
+
+                return resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
+            }).length;
+
+            counts[statement.id] = cancelledCount;
+        }
+
+        res.json({ counts });
+    } catch (error) {
+        console.error('Get cancelled counts error:', error);
+        res.status(500).json({ error: 'Failed to get cancelled counts' });
+    }
+});
+
 // GET /api/statements-file/:id - Get specific statement
 router.get('/:id', async (req, res) => {
     try {
@@ -423,6 +496,50 @@ router.get('/:id', async (req, res) => {
             if (notesArray.length > 0) {
                 statement.internalNotes = notesArray.join('\n\n');
             }
+        }
+
+        // Fetch cancelled reservation count for this statement period
+        try {
+            const hostifyService = require('../services/HostifyService');
+            const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
+
+            if (propertyIds.length > 0) {
+                // Get all reservations for this period (including cancelled ones)
+                const allReservationsResponse = await hostifyService.getAllReservations(
+                    statement.weekStartDate,
+                    statement.weekEndDate,
+                    null, // Get all, filter by property below
+                    'checkIn'
+                );
+
+                const allReservations = allReservationsResponse.result || [];
+
+                // Filter for cancelled reservations that overlap with the statement period
+                const cancelledReservations = allReservations.filter(res => {
+                    // Check if cancelled
+                    if (res.status !== 'cancelled') return false;
+
+                    // Check if property matches
+                    const resPropertyId = parseInt(res.propertyId);
+                    if (!propertyIds.map(p => parseInt(p)).includes(resPropertyId)) return false;
+
+                    // Check date overlap - any part of reservation overlaps with statement period
+                    const resCheckIn = new Date(res.checkInDate);
+                    const resCheckOut = new Date(res.checkOutDate);
+                    const stmtStart = new Date(statement.weekStartDate);
+                    const stmtEnd = new Date(statement.weekEndDate);
+
+                    // Overlap: reservation starts before/on period end AND ends after/on period start
+                    return resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
+                });
+
+                statement.cancelledReservationCount = cancelledReservations.length;
+            } else {
+                statement.cancelledReservationCount = 0;
+            }
+        } catch (cancelledError) {
+            console.log(`[Statement ${id}] Failed to get cancelled reservation count:`, cancelledError.message);
+            statement.cancelledReservationCount = 0;
         }
 
         res.json(statement);
@@ -1350,45 +1467,61 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
     try {
         const { id } = req.params;
         const statement = await FileDataService.getStatementById(id);
-        
+
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        // Make direct API call to Hostaway to get all reservations for this period and property
-        const hostawayService = require('../services/HostawayService');
+        // Use Hostify service for consistency with the rest of the app
+        const hostifyService = require('../services/HostifyService');
+        const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
 
-        // Get all reservations for this property and period from Hostaway
-        const apiResponse = await hostawayService.getAllReservations(
+        // Get all reservations for this period
+        const apiResponse = await hostifyService.getAllReservations(
             statement.weekStartDate,
             statement.weekEndDate,
-            statement.propertyId
+            null, // Get all, filter by property below
+            'checkIn'
         );
-        
+
         const allReservations = apiResponse.result || [];
 
-        // Filter for ALL cancelled reservations (including those already in statement)
+        // Filter for ALL cancelled reservations that overlap with statement period
         const cancelledReservations = allReservations.filter(res => {
             // Only cancelled reservations
-            const isCancelled = res.status === 'cancelled';
-            if (!isCancelled) {
-                return false;
-            }
+            if (res.status !== 'cancelled') return false;
+
+            // Check if property matches
+            const resPropertyId = parseInt(res.propertyId);
+            if (!propertyIds.map(p => parseInt(p)).includes(resPropertyId)) return false;
+
+            // Check date overlap - any part of reservation overlaps with statement period
+            const resCheckIn = new Date(res.checkInDate);
+            const resCheckOut = new Date(res.checkOutDate);
+            const stmtStart = new Date(statement.weekStartDate);
+            const stmtEnd = new Date(statement.weekEndDate);
+
+            // Overlap: reservation starts before/on period end AND ends after/on period start
+            const overlaps = resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
+            if (!overlaps) return false;
 
             // Check if already in statement (for informational purposes)
-            const alreadyIncluded = statement.reservations?.some(existing => existing.hostawayId === res.hostawayId) || false;
+            const alreadyIncluded = statement.reservations?.some(existing =>
+                existing.hostifyId === res.hostifyId || existing.hostawayId === res.hostifyId
+            ) || false;
             res.alreadyInStatement = alreadyIncluded;
 
             return true;
         });
 
-        res.json({ 
+        res.json({
             cancelledReservations,
             count: cancelledReservations.length,
             statementPeriod: {
                 start: statement.weekStartDate,
                 end: statement.weekEndDate,
-                propertyId: statement.propertyId
+                propertyId: statement.propertyId,
+                propertyIds: statement.propertyIds
             }
         });
     } catch (error) {

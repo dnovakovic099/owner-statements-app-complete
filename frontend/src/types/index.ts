@@ -96,6 +96,7 @@ export interface Statement {
     additionalPayoutCount: number;
   } | null;
   shouldConvertToCalendar?: boolean;
+  cancelledReservationCount?: number;
   status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
   sentAt: string | null;
   createdAt: string;

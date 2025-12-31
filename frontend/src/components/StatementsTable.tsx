@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -371,6 +371,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const shouldConvertToCalendar = row.original.shouldConvertToCalendar;
         const needsReview = row.original.needsReview;
         const reviewDetails = row.original.reviewDetails;
+        const cancelledCount = row.original.cancelledReservationCount || 0;
         return (
           <span className="cursor-default inline-flex items-center justify-center gap-1.5 group/cell relative w-full">
             <span className="text-gray-700 truncate">
@@ -400,6 +401,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   {reviewDetails?.expenseCount && reviewDetails?.additionalPayoutCount ? ', ' : ''}
                   {reviewDetails?.additionalPayoutCount ? `${reviewDetails.additionalPayoutCount} additional payout${reviewDetails.additionalPayoutCount > 1 ? 's' : ''}` : ''}
                   {!reviewDetails?.expenseCount && !reviewDetails?.additionalPayoutCount && 'Has expenses or additional payouts'}
+                </span>
+              </span>
+            )}
+            {cancelledCount > 0 && (
+              <span className="relative group/cancelled flex-shrink-0">
+                <Info className="h-4 w-4 text-sky-500" />
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/cancelled:inline-flex items-center bg-sky-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                  {cancelledCount} cancelled reservation{cancelledCount > 1 ? 's' : ''} in period
                 </span>
               </span>
             )}

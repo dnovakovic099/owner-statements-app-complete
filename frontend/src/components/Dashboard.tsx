@@ -250,6 +250,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
       setStatements(response.statements);
       setPagination(prev => ({ ...prev, total: response.total }));
+
+      // Fetch cancelled reservation counts in background (non-blocking)
+      if (response.statements.length > 0) {
+        const statementIds = response.statements.map((s: Statement) => s.id);
+        statementsAPI.getCancelledCounts(statementIds).then(({ counts }) => {
+          setStatements(prev => prev.map(stmt => ({
+            ...stmt,
+            cancelledReservationCount: counts[stmt.id] || 0
+          })));
+        }).catch(() => {
+          // Silently fail - cancelled counts are optional
+        });
+      }
     } catch (err) {
       // Statement loading errors are handled silently - data will be stale
     }

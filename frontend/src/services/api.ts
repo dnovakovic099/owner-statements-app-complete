@@ -210,7 +210,7 @@ export const statementsAPI = {
 
   editStatement: async (id: number, data: {
     expenseIdsToRemove?: number[];
-    cancelledReservationIdsToAdd?: number[];
+    cancelledReservationIdsToAdd?: string[];
     reservationIdsToAdd?: number[];
     reservationIdsToRemove?: number[];
     customReservationToAdd?: {
@@ -260,6 +260,11 @@ export const statementsAPI = {
     calculationType: 'checkout' | 'calendar';
   }): Promise<{ message: string; statement: Statement }> => {
     const response = await api.put(`/statements/${id}/reconfigure`, data);
+    return response.data;
+  },
+
+  getCancelledCounts: async (statementIds: number[]): Promise<{ counts: Record<number, number> }> => {
+    const response = await api.post('/statements/cancelled-counts', { statementIds });
     return response.data;
   },
 };
