@@ -2072,27 +2072,27 @@ router.put('/:id', async (req, res) => {
 
         // Add custom reservation
         if (customReservationToAdd && typeof customReservationToAdd === 'object') {
-            // Validate required fields
-            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'amount'];
+            // Validate required fields - now requires baseRate and grossPayout instead of amount
+            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'baseRate', 'grossPayout'];
             const missingFields = requiredFields.filter(field => !customReservationToAdd[field]);
-            
+
             if (missingFields.length > 0) {
-                return res.status(400).json({ 
-                    error: `Missing required fields for custom reservation: ${missingFields.join(', ')}` 
+                return res.status(400).json({
+                    error: `Missing required fields for custom reservation: ${missingFields.join(', ')}`
                 });
             }
 
-            // Check for duplicate custom reservation (same guest, dates, and amount)
-            const isDuplicate = (statement.reservations || []).some(res => 
+            // Check for duplicate custom reservation (same guest, dates, and grossPayout)
+            const isDuplicate = (statement.reservations || []).some(res =>
                 res.guestName === customReservationToAdd.guestName &&
                 res.checkInDate === customReservationToAdd.checkInDate &&
                 res.checkOutDate === customReservationToAdd.checkOutDate &&
-                res.grossAmount === parseFloat(customReservationToAdd.amount)
+                res.grossAmount === parseFloat(customReservationToAdd.grossPayout)
             );
 
             if (isDuplicate) {
-                return res.status(400).json({ 
-                    error: `Duplicate reservation: ${customReservationToAdd.guestName} (${customReservationToAdd.checkInDate} - ${customReservationToAdd.checkOutDate}) already exists in this statement` 
+                return res.status(400).json({
+                    error: `Duplicate reservation: ${customReservationToAdd.guestName} (${customReservationToAdd.checkInDate} - ${customReservationToAdd.checkOutDate}) already exists in this statement`
                 });
             }
 
@@ -2101,10 +2101,23 @@ router.put('/:id', async (req, res) => {
                 statement.reservations = [];
             }
 
+            // Parse all financial fields
+            const baseRate = parseFloat(customReservationToAdd.baseRate) || 0;
+            const guestFees = parseFloat(customReservationToAdd.guestFees) || 0;
+            const platformFees = parseFloat(customReservationToAdd.platformFees) || 0;
+            const tax = parseFloat(customReservationToAdd.tax) || 0;
+            const pmCommission = parseFloat(customReservationToAdd.pmCommission) || 0;
+            const grossPayout = parseFloat(customReservationToAdd.grossPayout) || 0;
+            const resortFee = parseFloat(customReservationToAdd.guestPaidDamageCoverage) || 0; // stored as resortFee
+            const platform = customReservationToAdd.platform || 'custom';
+
             // Create custom reservation object
-            const nights = parseInt(customReservationToAdd.nights) || 
+            const nights = parseInt(customReservationToAdd.nights) ||
                 Math.ceil((new Date(customReservationToAdd.checkOutDate) - new Date(customReservationToAdd.checkInDate)) / (1000 * 60 * 60 * 24));
-            
+
+            // Calculate clientRevenue (revenue before PM commission)
+            const clientRevenue = grossPayout + pmCommission;
+
             const customReservation = {
                 id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 guestName: customReservationToAdd.guestName,
@@ -2112,22 +2125,25 @@ router.put('/:id', async (req, res) => {
                 checkInDate: customReservationToAdd.checkInDate,
                 checkOutDate: customReservationToAdd.checkOutDate,
                 nights: nights,
-                grossAmount: parseFloat(customReservationToAdd.amount),
-                clientRevenue: parseFloat(customReservationToAdd.amount),
-                baseRate: parseFloat(customReservationToAdd.amount),
-                cleaningAndOtherFees: 0,
-                platformFees: 0,
-                luxuryLodgingFee: 0,
-                clientTaxResponsibility: 0,
-                clientPayout: parseFloat(customReservationToAdd.amount),
-                hostPayoutAmount: parseFloat(customReservationToAdd.amount),
+                // Financial fields
+                baseRate: baseRate,
+                cleaningAndOtherFees: guestFees,
+                platformFees: platformFees,
+                clientTaxResponsibility: tax,
+                luxuryLodgingFee: pmCommission,
+                grossAmount: grossPayout,
+                clientRevenue: clientRevenue,
+                clientPayout: grossPayout,
+                hostPayoutAmount: grossPayout,
+                resortFee: resortFee, // Guest Paid Damage Coverage amount
+                // Status and metadata
                 status: 'confirmed',
-                source: 'custom',
+                source: platform,
                 description: customReservationToAdd.description || null,
                 isCustom: true,
                 isProrated: false,
                 weeklyPayoutDate: null,
-                hasDetailedFinance: false
+                hasDetailedFinance: true
             };
 
             statement.reservations.push(customReservation);

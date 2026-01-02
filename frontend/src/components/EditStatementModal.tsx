@@ -103,9 +103,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     guestName: '',
     checkInDate: '',
     checkOutDate: '',
-    amount: '',
     nights: '',
-    description: ''
+    description: '',
+    // Financial fields
+    baseRate: '',
+    guestFees: '',
+    platformFees: '',
+    tax: '',
+    pmCommission: '',
+    grossPayout: '',
+    // Additional fields
+    platform: 'direct' as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other',
+    guestPaidDamageCoverage: ''
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -359,22 +368,34 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     if (!statement) return;
 
     // Validate required fields
-    if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.amount) {
-      setError('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, and Amount');
+    if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.baseRate || !customReservation.grossPayout) {
+      setError('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, Base Rate, and Gross Payout');
       return;
     }
 
-    const amount = parseFloat(customReservation.amount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Please enter a valid amount');
+    const baseRate = parseFloat(customReservation.baseRate);
+    const grossPayout = parseFloat(customReservation.grossPayout);
+    if (isNaN(baseRate) || baseRate <= 0) {
+      setError('Please enter a valid base rate');
       return;
     }
+    if (isNaN(grossPayout) || grossPayout <= 0) {
+      setError('Please enter a valid gross payout');
+      return;
+    }
+
+    // Parse optional numeric fields
+    const guestFees = parseFloat(customReservation.guestFees) || 0;
+    const platformFees = parseFloat(customReservation.platformFees) || 0;
+    const tax = parseFloat(customReservation.tax) || 0;
+    const pmCommission = parseFloat(customReservation.pmCommission) || 0;
+    const guestPaidDamageCoverage = parseFloat(customReservation.guestPaidDamageCoverage) || 0;
 
     // Show custom confirm dialog
     setConfirmDialog({
       isOpen: true,
       title: 'Add Custom Reservation',
-      message: `Add custom reservation for ${customReservation.guestName} with amount $${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
+      message: `Add custom reservation for ${customReservation.guestName} with gross payout $${grossPayout.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
       confirmText: 'Add Reservation',
       variant: 'success',
       onConfirm: async () => {
@@ -389,9 +410,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               guestName: customReservation.guestName,
               checkInDate: customReservation.checkInDate,
               checkOutDate: customReservation.checkOutDate,
-              amount: amount,
               nights: customReservation.nights ? parseInt(customReservation.nights) : undefined,
-              description: customReservation.description || undefined
+              description: customReservation.description || undefined,
+              // Financial fields
+              baseRate: baseRate,
+              guestFees: guestFees,
+              platformFees: platformFees,
+              tax: tax,
+              pmCommission: pmCommission,
+              grossPayout: grossPayout,
+              // Additional fields
+              platform: customReservation.platform,
+              guestPaidDamageCoverage: guestPaidDamageCoverage
             }
           });
 
@@ -400,9 +430,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
             guestName: '',
             checkInDate: '',
             checkOutDate: '',
-            amount: '',
             nights: '',
-            description: ''
+            description: '',
+            baseRate: '',
+            guestFees: '',
+            platformFees: '',
+            tax: '',
+            pmCommission: '',
+            grossPayout: '',
+            platform: 'direct',
+            guestPaidDamageCoverage: ''
           });
           setShowCustomReservationForm(false);
 
@@ -1298,9 +1335,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           guestName: '',
                           checkInDate: '',
                           checkOutDate: '',
-                          amount: '',
                           nights: '',
-                          description: ''
+                          description: '',
+                          baseRate: '',
+                          guestFees: '',
+                          platformFees: '',
+                          tax: '',
+                          pmCommission: '',
+                          grossPayout: '',
+                          platform: 'direct',
+                          guestPaidDamageCoverage: ''
                         });
                       }}
                       className="text-gray-600 hover:text-gray-800"
@@ -1312,7 +1356,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                 {showCustomReservationForm && (
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Basic Info Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Guest Name <span className="text-red-500">*</span>
@@ -1328,18 +1374,38 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Amount ($) <span className="text-red-500">*</span>
+                          Platform <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={customReservation.amount}
-                          onChange={(e) => setCustomReservation({...customReservation, amount: e.target.value})}
+                        <select
+                          value={customReservation.platform}
+                          onChange={(e) => setCustomReservation({...customReservation, platform: e.target.value as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other'})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="500.00"
-                        />
+                        >
+                          <option value="direct">Direct</option>
+                          <option value="airbnb">Airbnb</option>
+                          <option value="vrbo">Vrbo</option>
+                          <option value="booking">Booking.com</option>
+                          <option value="other">Other</option>
+                        </select>
                       </div>
 
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={customReservation.description}
+                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="Direct booking"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dates Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Dates</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Check-in Date <span className="text-red-500">*</span>
@@ -1366,27 +1432,120 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nights (optional)
+                          Nights (auto-calculated)
                         </label>
                         <input
                           type="number"
                           value={customReservation.nights}
                           onChange={(e) => setCustomReservation({...customReservation, nights: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="3"
+                          placeholder="Auto"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Financial Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Financial Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Base Rate ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.baseRate}
+                          onChange={(e) => setCustomReservation({...customReservation, baseRate: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="500.00"
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Description (optional)
+                          Guest Fees ($)
                         </label>
                         <input
-                          type="text"
-                          value={customReservation.description}
-                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          type="number"
+                          step="0.01"
+                          value={customReservation.guestFees}
+                          onChange={(e) => setCustomReservation({...customReservation, guestFees: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="Direct booking"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Platform Fees ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.platformFees}
+                          onChange={(e) => setCustomReservation({...customReservation, platformFees: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Tax ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.tax}
+                          onChange={(e) => setCustomReservation({...customReservation, tax: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          PM Commission ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.pmCommission}
+                          onChange={(e) => setCustomReservation({...customReservation, pmCommission: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Gross Payout ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.grossPayout}
+                          onChange={(e) => setCustomReservation({...customReservation, grossPayout: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="500.00"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Additional Options */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Additional Options</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Guest Paid Damage Coverage ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.guestPaidDamageCoverage}
+                          onChange={(e) => setCustomReservation({...customReservation, guestPaidDamageCoverage: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
                         />
                       </div>
                     </div>
