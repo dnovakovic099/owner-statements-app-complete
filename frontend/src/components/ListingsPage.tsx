@@ -58,6 +58,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [ownerEmailFilter, setOwnerEmailFilter] = useState<'all' | 'has-email' | 'no-email'>('all');
   const [autoSendFilter, setAutoSendFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
 
+  // Settings flags filters
+  const [passThroughTaxFilter, setPassThroughTaxFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [disregardTaxFilter, setDisregardTaxFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [cleaningFeeFilter, setCleaningFeeFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [guestPaidDamageFilter, setGuestPaidDamageFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [waiveCommissionFilter, setWaiveCommissionFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+
   const [saving, setSaving] = useState(false);
   const [savingOwnerInfo, setSavingOwnerInfo] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -372,6 +379,22 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     if (autoSendFilter === 'enabled' && listing.autoSendStatements === false) return false;
     if (autoSendFilter === 'disabled' && listing.autoSendStatements !== false) return false;
 
+    // Settings flags filters
+    if (passThroughTaxFilter === 'enabled' && !listing.airbnbPassThroughTax) return false;
+    if (passThroughTaxFilter === 'disabled' && listing.airbnbPassThroughTax) return false;
+
+    if (disregardTaxFilter === 'enabled' && !listing.disregardTax) return false;
+    if (disregardTaxFilter === 'disabled' && listing.disregardTax) return false;
+
+    if (cleaningFeeFilter === 'enabled' && !listing.cleaningFeePassThrough) return false;
+    if (cleaningFeeFilter === 'disabled' && listing.cleaningFeePassThrough) return false;
+
+    if (guestPaidDamageFilter === 'enabled' && !listing.guestPaidDamageCoverage) return false;
+    if (guestPaidDamageFilter === 'disabled' && listing.guestPaidDamageCoverage) return false;
+
+    if (waiveCommissionFilter === 'enabled' && !listing.waiveCommission) return false;
+    if (waiveCommissionFilter === 'disabled' && listing.waiveCommission) return false;
+
     return true;
   });
 
@@ -403,7 +426,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     selectedCities.length +
     (cohostFilter !== 'all' ? 1 : 0) +
     (ownerEmailFilter !== 'all' ? 1 : 0) +
-    (autoSendFilter !== 'all' ? 1 : 0);
+    (autoSendFilter !== 'all' ? 1 : 0) +
+    (passThroughTaxFilter !== 'all' ? 1 : 0) +
+    (disregardTaxFilter !== 'all' ? 1 : 0) +
+    (cleaningFeeFilter !== 'all' ? 1 : 0) +
+    (guestPaidDamageFilter !== 'all' ? 1 : 0) +
+    (waiveCommissionFilter !== 'all' ? 1 : 0);
 
   // Clear all filters
   const clearAllFilters = () => {
@@ -415,6 +443,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setCohostFilter('all');
     setOwnerEmailFilter('all');
     setAutoSendFilter('all');
+    setPassThroughTaxFilter('all');
+    setDisregardTaxFilter('all');
+    setCleaningFeeFilter('all');
+    setGuestPaidDamageFilter('all');
+    setWaiveCommissionFilter('all');
   };
 
   const selectedListing = listings.find(l => l.id === selectedListingId);
@@ -687,6 +720,129 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           {opt.label}
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Settings Filters - 2 per row */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Pass-Through Tax Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Pass-Through Tax</label>
+                      <div className="flex gap-1">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'enabled', label: 'On' },
+                          { value: 'disabled', label: 'Off' }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setPassThroughTaxFilter(opt.value as typeof passThroughTaxFilter)}
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+                              passThroughTaxFilter === opt.value
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Disregard Tax Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Disregard Tax</label>
+                      <div className="flex gap-1">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'enabled', label: 'On' },
+                          { value: 'disabled', label: 'Off' }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setDisregardTaxFilter(opt.value as typeof disregardTaxFilter)}
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+                              disregardTaxFilter === opt.value
+                                ? 'bg-red-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Cleaning Fee Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Cleaning Pass-Thru</label>
+                      <div className="flex gap-1">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'enabled', label: 'On' },
+                          { value: 'disabled', label: 'Off' }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setCleaningFeeFilter(opt.value as typeof cleaningFeeFilter)}
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+                              cleaningFeeFilter === opt.value
+                                ? 'bg-green-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Guest Paid Damage Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Guest Damage</label>
+                      <div className="flex gap-1">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'enabled', label: 'On' },
+                          { value: 'disabled', label: 'Off' }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setGuestPaidDamageFilter(opt.value as typeof guestPaidDamageFilter)}
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+                              guestPaidDamageFilter === opt.value
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Waive Commission Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Waive Commission</label>
+                      <div className="flex gap-1">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'enabled', label: 'On' },
+                          { value: 'disabled', label: 'Off' }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setWaiveCommissionFilter(opt.value as typeof waiveCommissionFilter)}
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+                              waiveCommissionFilter === opt.value
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
