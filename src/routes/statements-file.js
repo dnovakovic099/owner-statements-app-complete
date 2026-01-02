@@ -219,8 +219,12 @@ router.get('/', async (req, res) => {
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const luxuryFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + pmPercentage / 100)) - 50) * 100) / 100)
+                            : 0;
 
                         // Check if PM commission waiver is active
                         const waiveCommission = listing?.waiveCommission || false;
@@ -775,8 +779,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || resListingInfo.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+            const guestPaidCleaningFee = res.cleaningFee || resListingInfo.cleaningFee || 0;
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + resPmPercentage / 100)) - 50) * 100) / 100)
+                : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -1291,8 +1299,12 @@ router.post('/generate', async (req, res) => {
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+            const guestPaidCleaningFee = res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + resPmPercentage / 100)) - 50) * 100) / 100)
+                : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -1846,7 +1858,12 @@ router.put('/:id/reconfigure', async (req, res) => {
             const luxuryFee = clientRevenue * (pmPercentage / 100);
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+            const guestPaidCleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + pmPercentage / 100)) - 50) * 100) / 100)
+                : 0;
             const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
             let grossPayout;
@@ -2538,8 +2555,12 @@ router.get('/:id/view', async (req, res) => {
             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) - 50) * 100) / 100)
+                : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
@@ -4277,8 +4298,12 @@ router.get('/:id/view', async (req, res) => {
                                 let grossPayout;
                                 const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+                                // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                                // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+                                const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                                    ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) - 50) * 100) / 100)
+                                    : 0;
 
                                 // Check if PM commission waiver is active for this property
                                 const resWaiveCommission = propSettings.waiveCommission || false;
@@ -4375,8 +4400,12 @@ router.get('/:id/view', async (req, res) => {
 
                                     const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                    // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+                                    // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                                    // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+                                    const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                                        ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) - 50) * 100) / 100)
+                                        : 0;
 
                                     // Check if PM commission waiver is active for this property
                                     const resWaiveCommission = propSettings.waiveCommission || false;
@@ -4620,8 +4649,12 @@ router.get('/:id/view', async (req, res) => {
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-            // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) - 50) * 100) / 100)
+                : 0;
 
             // Check if PM commission waiver is active for this property
             const resWaiveCommission = propSettings.waiveCommission || false;
@@ -5781,8 +5814,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + pmPercentage / 100)) - 50) * 100) / 100)
+                            : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -6170,9 +6207,12 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        // property.cleaningFee comes from Hostify API via FileDataService.getListings()
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || property.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%)) - 50
+                        const guestPaidCleaningFee = res.cleaningFee || property.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.max(0, Math.round(((guestPaidCleaningFee / (1 + pmPercentage / 100)) - 50) * 100) / 100)
+                            : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
