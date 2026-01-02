@@ -16,9 +16,11 @@ const GenerateModal = lazy(() => import('./GenerateModal'));
 const UploadModal = lazy(() => import('./UploadModal'));
 const ExpenseUpload = lazy(() => import('./ExpenseUpload'));
 const EditStatementModal = lazy(() => import('./EditStatementModal'));
+const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 
 interface User {
   username: string;
+  email?: string;
   role?: 'system' | 'admin' | 'editor' | 'viewer';
 }
 
@@ -63,7 +65,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings' | 'financials'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -1079,8 +1081,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <SettingsPage
           onBack={() => setCurrentPage('dashboard')}
           currentUserRole={user?.role || 'admin'}
+          currentUserEmail={user?.email || ''}
           hideSidebar={true}
         />
+      );
+    }
+
+    if (currentPage === 'financials') {
+      return (
+        <Suspense fallback={<LoadingSpinner />}>
+          <FinancialDashboard
+            onBack={() => setCurrentPage('dashboard')}
+          />
+        </Suspense>
       );
     }
 

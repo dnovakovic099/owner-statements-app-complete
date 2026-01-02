@@ -336,9 +336,12 @@ router.post('/save-tokens', async (req, res) => {
         process.env.QUICKBOOKS_ACCESS_TOKEN = accessToken;
         process.env.QUICKBOOKS_REFRESH_TOKEN = refreshToken;
 
+        // Reinitialize the QuickBooks client with new tokens
+        quickBooksService.initializeClient(accessToken, refreshToken, companyId);
+
         res.json({
             success: true,
-            message: 'Tokens saved successfully'
+            message: 'Tokens saved and service reinitialized successfully'
         });
 
     } catch (error) {

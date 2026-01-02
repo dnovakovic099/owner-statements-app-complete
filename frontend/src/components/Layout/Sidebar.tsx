@@ -9,14 +9,23 @@ import {
   ChevronRight,
   Bell,
   X,
+  DollarSign,
 } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'email' | 'settings';
+type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials';
 
 interface UserInfo {
   username: string;
+  email?: string;
   role?: 'system' | 'admin' | 'editor' | 'viewer';
 }
+
+// Allowed emails for Settings access
+const SETTINGS_ALLOWED_EMAILS = [
+  'ferdinand@luxurylodgingpm.com',
+  'admin@luxurylodgingpm.com',
+  'devendravariya73@gmail.com'
+];
 
 interface NewListing {
   id: number;
@@ -48,6 +57,7 @@ interface SidebarProps {
 const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'listings', label: 'Listings', icon: <Home className="w-5 h-5" /> },
+  { id: 'financials', label: 'Financials', icon: <DollarSign className="w-5 h-5" />, adminOnly: true },
   { id: 'email', label: 'Email', icon: <Mail className="w-5 h-5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },
 ];
@@ -89,7 +99,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isAdmin = user?.role === 'system' || user?.role === 'admin';
+  // Check if user email is in the allowed list for Settings access
+  const hasSettingsAccess = user?.email && SETTINGS_ALLOWED_EMAILS.includes(user.email.toLowerCase());
 
   return (
     <aside
@@ -114,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="flex-1 py-4 px-2 space-y-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
       >
         {navItems.map((item) => {
-          if (item.adminOnly && !isAdmin) return null;
+          if (item.adminOnly && !hasSettingsAccess) return null;
           const isActive = currentPage === item.id;
           return (
             <button

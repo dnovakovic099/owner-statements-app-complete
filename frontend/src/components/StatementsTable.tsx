@@ -581,10 +581,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'revert-to-draft')}
-              tooltip={statement.status === 'draft' ? 'Already Draft' : 'Return to Draft'}
+              tooltip={statement.status === 'draft' ? 'Already Draft' : statement.status === 'sent' ? 'Cannot revert sent statement' : 'Return to Draft'}
               icon={<RotateCcw className="w-[18px] h-[18px]" />}
               color="text-orange-600"
-              disabled={statement.status === 'draft'}
+              disabled={statement.status === 'draft' || statement.status === 'sent'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}

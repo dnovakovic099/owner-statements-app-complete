@@ -206,6 +206,9 @@ app.use('/api/expenses', authenticate, require('./routes/expenses'));
 // QuickBooks - Editors/Admins
 app.use('/api/quickbooks', authenticate, require('./routes/quickbooks'));
 
+// Financials - QuickBooks financial reports and transaction queries
+app.use('/api/financials', authenticate, require('./routes/financials'));
+
 // Email - Editors/Admins can send, all can view logs
 app.use('/api/email', authenticate, require('./routes/email'));
 app.use('/api/email-templates', authenticate, require('./routes/email-templates'));

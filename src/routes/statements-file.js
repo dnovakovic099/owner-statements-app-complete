@@ -341,6 +341,10 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Simple in-memory cache for cancelled counts
+const cancelledCountsCache = new Map();
+const CANCELLED_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // POST /api/statements-file/cancelled-counts - Get cancelled reservation counts for multiple statements (batch)
 router.post('/cancelled-counts', async (req, res) => {
     try {
@@ -350,61 +354,86 @@ router.post('/cancelled-counts', async (req, res) => {
             return res.json({ counts: {} });
         }
 
-        const hostifyService = require('../services/HostifyService');
+        // First, try to get counts from stored statement data (fast path)
+        const counts = {};
+        const missingIds = [];
 
-        // Find the date range that covers all statements
         const statements = await Promise.all(
             statementIds.map(id => FileDataService.getStatementById(id))
         );
 
-        const validStatements = statements.filter(s => s != null);
+        for (let i = 0; i < statementIds.length; i++) {
+            const id = statementIds[i];
+            const statement = statements[i];
 
-        if (validStatements.length === 0) {
-            return res.json({ counts: {} });
+            if (!statement) continue;
+
+            // Check cache first
+            const cacheKey = `${id}-${statement.weekStartDate}-${statement.weekEndDate}`;
+            const cached = cancelledCountsCache.get(cacheKey);
+            if (cached && Date.now() - cached.time < CANCELLED_CACHE_TTL) {
+                counts[id] = cached.count;
+                continue;
+            }
+
+            // Check if statement has cancelledReservationCount stored
+            if (typeof statement.cancelledReservationCount === 'number') {
+                counts[id] = statement.cancelledReservationCount;
+                cancelledCountsCache.set(cacheKey, { count: statement.cancelledReservationCount, time: Date.now() });
+            } else {
+                missingIds.push({ id, statement, cacheKey });
+            }
         }
 
-        // Find min start date and max end date across all statements
-        const minStartDate = validStatements.reduce((min, s) =>
-            s.weekStartDate < min ? s.weekStartDate : min, validStatements[0].weekStartDate);
-        const maxEndDate = validStatements.reduce((max, s) =>
-            s.weekEndDate > max ? s.weekEndDate : max, validStatements[0].weekEndDate);
+        // If all counts found, return immediately (fast path)
+        if (missingIds.length === 0) {
+            return res.json({ counts });
+        }
 
-        // Fetch all reservations for the entire date range at once
-        const apiResponse = await hostifyService.getAllReservations(
-            minStartDate,
-            maxEndDate,
-            null,
-            'checkIn'
-        );
+        // Only fetch from Hostify for statements without stored counts
+        const hostifyService = require('../services/HostifyService');
 
-        const allReservations = apiResponse.result || [];
+        const minStartDate = missingIds.reduce((min, { statement }) =>
+            statement.weekStartDate < min ? statement.weekStartDate : min, missingIds[0].statement.weekStartDate);
+        const maxEndDate = missingIds.reduce((max, { statement }) =>
+            statement.weekEndDate > max ? statement.weekEndDate : max, missingIds[0].statement.weekEndDate);
 
-        // Filter for all cancelled reservations
-        const allCancelledReservations = allReservations.filter(res => res.status === 'cancelled');
+        // Fetch reservations with a timeout
+        let allCancelledReservations = [];
+        try {
+            const apiResponse = await Promise.race([
+                hostifyService.getAllReservations(minStartDate, maxEndDate, null, 'checkIn'),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Hostify timeout')), 30000))
+            ]);
+            const allReservations = apiResponse.result || [];
+            allCancelledReservations = allReservations.filter(r => r.status === 'cancelled');
+        } catch (fetchError) {
+            console.warn('Cancelled counts fetch timeout, returning partial data');
+            // Return what we have, set missing to 0
+            for (const { id, cacheKey } of missingIds) {
+                counts[id] = 0;
+                cancelledCountsCache.set(cacheKey, { count: 0, time: Date.now() });
+            }
+            return res.json({ counts });
+        }
 
-        // Calculate count for each statement
-        const counts = {};
-
-        for (const statement of validStatements) {
+        // Calculate counts for missing statements
+        for (const { id, statement, cacheKey } of missingIds) {
             const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
             const propertyIdSet = new Set(propertyIds.map(p => parseInt(p)));
-
             const stmtStart = new Date(statement.weekStartDate);
             const stmtEnd = new Date(statement.weekEndDate);
 
-            const cancelledCount = allCancelledReservations.filter(res => {
-                // Check property match
-                const resPropertyId = parseInt(res.propertyId);
+            const cancelledCount = allCancelledReservations.filter(r => {
+                const resPropertyId = parseInt(r.propertyId);
                 if (!propertyIdSet.has(resPropertyId)) return false;
-
-                // Check date overlap
-                const resCheckIn = new Date(res.checkInDate);
-                const resCheckOut = new Date(res.checkOutDate);
-
+                const resCheckIn = new Date(r.checkInDate);
+                const resCheckOut = new Date(r.checkOutDate);
                 return resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
             }).length;
 
-            counts[statement.id] = cancelledCount;
+            counts[id] = cancelledCount;
+            cancelledCountsCache.set(cacheKey, { count: cancelledCount, time: Date.now() });
         }
 
         res.json({ counts });

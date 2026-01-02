@@ -70,7 +70,7 @@ class HostifyService {
         this._childListingsCache.clear();
     }
 
-    async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 6) {
+    async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 3) {
         if (!this.apiKey) {
             throw new Error('Hostify API Key is required.');
         }
@@ -80,7 +80,7 @@ class HostifyService {
                 'x-api-key': this.apiKey,
                 'Content-Type': 'application/json'
             },
-            timeout: 30000 // 30 second timeout
+            timeout: 15000 // 15 second timeout (reduced from 30s for faster responses)
         };
 
         let lastError = null;

@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'email' | 'settings';
+type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials';
 
 interface UserInfo {
   username: string;
+  email?: string;
   role?: 'system' | 'admin' | 'editor' | 'viewer';
 }
 

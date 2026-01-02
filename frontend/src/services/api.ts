@@ -1014,4 +1014,68 @@ export const authAPI = {
   },
 };
 
+// Financials API
+export const financialsAPI = {
+  getSummary: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/summary', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getTimeSeries: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/time-series', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getByCategory: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/by-category', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getByHomeCategory: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/by-home-category', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getTransactions: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/transactions', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getMetrics: async (startDate: string, endDate: string): Promise<any> => {
+    const response = await api.get('/financials/metrics', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  getComparison: async (
+    currentStart: string,
+    currentEnd: string,
+    compareStart?: string,
+    compareEnd?: string,
+    preset?: 'mom' | 'yoy' | 'qoq'
+  ): Promise<any> => {
+    const params: Record<string, string> = {
+      currentStartDate: currentStart,
+      currentEndDate: currentEnd,
+    };
+    if (compareStart) params.compareStartDate = compareStart;
+    if (compareEnd) params.compareEndDate = compareEnd;
+    if (preset) params.preset = preset;
+
+    const response = await api.get('/financials/comparison', { params });
+    return response.data;
+  },
+};
+
 export default api;
