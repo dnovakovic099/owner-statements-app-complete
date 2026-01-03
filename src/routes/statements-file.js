@@ -474,32 +474,37 @@ router.get('/:id', async (req, res) => {
             }
         }
 
-        // Add listing's internal notes to the response
-        const listings = await FileDataService.getListings();
+        // Use statement's own internalNotes if available (snapshotted at creation/finalization)
+        // Only fall back to listing notes for backward compatibility with old statements
+        if (!statement.internalNotes) {
+            const listings = await FileDataService.getListings();
 
-        console.log(`[Statement ${id}] propertyId: ${statement.propertyId}, propertyIds: ${JSON.stringify(statement.propertyIds)}`);
+            console.log(`[Statement ${id}] No stored internalNotes, fetching from listing. propertyId: ${statement.propertyId}, propertyIds: ${JSON.stringify(statement.propertyIds)}`);
 
-        if (statement.propertyId) {
-            // Single property statement
-            const listing = listings.find(l => l.id === parseInt(statement.propertyId));
-            console.log(`[Statement ${id}] Found listing: ${listing ? listing.displayName || listing.nickname || listing.name : 'NOT FOUND'}, internalNotes: ${listing?.internalNotes ? 'YES' : 'NO'}`);
-            if (listing && listing.internalNotes) {
-                statement.internalNotes = listing.internalNotes;
-                console.log(`[Statement ${id}] Added internal notes: ${listing.internalNotes.substring(0, 50)}...`);
-            }
-        } else if (statement.propertyIds && Array.isArray(statement.propertyIds)) {
-            // Combined statement - collect notes from all properties
-            const notesArray = [];
-            for (const propId of statement.propertyIds) {
-                const listing = listings.find(l => l.id === parseInt(propId));
+            if (statement.propertyId) {
+                // Single property statement
+                const listing = listings.find(l => l.id === parseInt(statement.propertyId));
+                console.log(`[Statement ${id}] Found listing: ${listing ? listing.displayName || listing.nickname || listing.name : 'NOT FOUND'}, internalNotes: ${listing?.internalNotes ? 'YES' : 'NO'}`);
                 if (listing && listing.internalNotes) {
-                    const displayName = listing.displayName || listing.nickname || listing.name;
-                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    statement.internalNotes = listing.internalNotes;
+                    console.log(`[Statement ${id}] Added internal notes from listing: ${listing.internalNotes.substring(0, 50)}...`);
+                }
+            } else if (statement.propertyIds && Array.isArray(statement.propertyIds)) {
+                // Combined statement - collect notes from all properties
+                const notesArray = [];
+                for (const propId of statement.propertyIds) {
+                    const listing = listings.find(l => l.id === parseInt(propId));
+                    if (listing && listing.internalNotes) {
+                        const displayName = listing.displayName || listing.nickname || listing.name;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
+                }
+                if (notesArray.length > 0) {
+                    statement.internalNotes = notesArray.join('\n\n');
                 }
             }
-            if (notesArray.length > 0) {
-                statement.internalNotes = notesArray.join('\n\n');
-            }
+        } else {
+            console.log(`[Statement ${id}] Using stored internalNotes (snapshotted at creation)`);
         }
 
         // Fetch cancelled reservation count for this statement period
@@ -836,6 +841,17 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
+            // Snapshot internal notes from all listings at time of statement creation
+            internalNotes: (() => {
+                const notesArray = [];
+                for (const listing of targetListings) {
+                    if (listing.internalNotes) {
+                        const displayName = listing.nickname || listing.displayName || listing.name;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
+                }
+                return notesArray.length > 0 ? notesArray.join('\n\n') : null;
+            })(),
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
             duplicateWarnings: allDuplicateWarnings,
@@ -1374,6 +1390,8 @@ router.post('/generate', async (req, res) => {
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
+            // Snapshot internal notes from listing at time of statement creation
+            internalNotes: listingInfo?.internalNotes || null,
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
             duplicateWarnings: duplicateWarnings,
@@ -1972,7 +1990,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, expenseItemUpdates, upsellItemUpdates } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -1994,6 +2012,64 @@ router.put('/:id', async (req, res) => {
             });
 
             if (statement.items.length < originalItemsCount) {
+                modified = true;
+            }
+        }
+
+        // Update expense items (edit date, description, category, amount)
+        if (expenseItemUpdates && Array.isArray(expenseItemUpdates) && expenseItemUpdates.length > 0) {
+            for (const update of expenseItemUpdates) {
+                const { globalIndex, date, description, category, amount } = update;
+
+                // Validate globalIndex is within bounds
+                if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
+                    console.warn(`Invalid globalIndex ${globalIndex} for expense update, skipping`);
+                    continue;
+                }
+
+                const item = statement.items[globalIndex];
+
+                // Verify the item is an expense type
+                if (item.type !== 'expense') {
+                    console.warn(`Item at globalIndex ${globalIndex} is not an expense (type: ${item.type}), skipping`);
+                    continue;
+                }
+
+                // Update the fields that were provided
+                if (date !== undefined) item.date = date;
+                if (description !== undefined) item.description = description;
+                if (category !== undefined) item.category = category;
+                if (amount !== undefined) item.amount = parseFloat(amount) || 0;
+
+                modified = true;
+            }
+        }
+
+        // Update upsell items (edit date, description, category, amount)
+        if (upsellItemUpdates && Array.isArray(upsellItemUpdates) && upsellItemUpdates.length > 0) {
+            for (const update of upsellItemUpdates) {
+                const { globalIndex, date, description, category, amount } = update;
+
+                // Validate globalIndex is within bounds
+                if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
+                    console.warn(`Invalid globalIndex ${globalIndex} for upsell update, skipping`);
+                    continue;
+                }
+
+                const item = statement.items[globalIndex];
+
+                // Verify the item is an upsell type
+                if (item.type !== 'upsell') {
+                    console.warn(`Item at globalIndex ${globalIndex} is not an upsell (type: ${item.type}), skipping`);
+                    continue;
+                }
+
+                // Update the fields that were provided
+                if (date !== undefined) item.date = date;
+                if (description !== undefined) item.description = description;
+                if (category !== undefined) item.category = category;
+                if (amount !== undefined) item.amount = parseFloat(amount) || 0;
+
                 modified = true;
             }
         }
@@ -2661,27 +2737,30 @@ router.get('/:id/view', async (req, res) => {
             }
         }
 
-        // Fetch internal notes from listing(s)
-        if (statement.propertyIds && statement.propertyIds.length > 1) {
-            // Combined statement - aggregate notes from all properties
-            const notesArray = [];
-            for (const propId of statement.propertyIds) {
-                const listing = allListings.find(l => parseInt(l.id) === parseInt(propId));
-                if (listing && listing.internalNotes) {
-                    const displayName = listing.nickname || listing.displayName || listing.name || `Property ${propId}`;
-                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+        // Use statement's own internalNotes if available (snapshotted at creation)
+        // Only fall back to listing notes for backward compatibility with old statements
+        if (!statement.internalNotes) {
+            if (statement.propertyIds && statement.propertyIds.length > 1) {
+                // Combined statement - aggregate notes from all properties
+                const notesArray = [];
+                for (const propId of statement.propertyIds) {
+                    const listing = allListings.find(l => parseInt(l.id) === parseInt(propId));
+                    if (listing && listing.internalNotes) {
+                        const displayName = listing.nickname || listing.displayName || listing.name || `Property ${propId}`;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
                 }
-            }
-            if (notesArray.length > 0) {
-                statement.internalNotes = notesArray.join('\n\n');
-            }
-        } else {
-            // Single property statement
-            const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-            if (propertyIdForNotes) {
-                const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
-                if (listingForNotes && listingForNotes.internalNotes) {
-                    statement.internalNotes = listingForNotes.internalNotes;
+                if (notesArray.length > 0) {
+                    statement.internalNotes = notesArray.join('\n\n');
+                }
+            } else {
+                // Single property statement
+                const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+                if (propertyIdForNotes) {
+                    const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
+                    if (listingForNotes && listingForNotes.internalNotes) {
+                        statement.internalNotes = listingForNotes.internalNotes;
+                    }
                 }
             }
         }
@@ -4261,7 +4340,7 @@ router.get('/:id/view', async (req, res) => {
     ${(statement.internalNotes && !isPdf) ? `
     <div class="internal-notes-banner">
         <div class="internal-notes-header">
-            <span class="internal-notes-title">Internal Notes</span>
+            <span class="internal-notes-title">INTERNAL NOTES - PM ${statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15}%</span>
         </div>
         <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
     </div>

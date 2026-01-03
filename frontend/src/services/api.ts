@@ -231,6 +231,20 @@ export const statementsAPI = {
       guestPaidDamageCoverage?: number;
     };
     reservationCleaningFeeUpdates?: { [reservationId: string]: number };
+    expenseItemUpdates?: Array<{
+      globalIndex: number;
+      date?: string;
+      description?: string;
+      category?: string;
+      amount?: number;
+    }>;
+    upsellItemUpdates?: Array<{
+      globalIndex: number;
+      date?: string;
+      description?: string;
+      category?: string;
+      amount?: number;
+    }>;
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;
