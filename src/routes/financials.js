@@ -368,18 +368,139 @@ router.get('/time-series', async (req, res) => {
 /**
  * GET /api/financials/by-category
  * Get financials grouped by QuickBooks category (account)
+ *
+ * Categories include:
+ * - Darko Distribution, Louis Distribution, Owner Payout
+ * - Rent, Mortgage, Utility, Cleaning, Maintenance
+ * - Review refund, Chargeback
+ * - Employee base pay, Employee commission, Photography pay
+ * - Legal, Tax, Software subscription
+ * - Arbitrage acquisition, Home owner acquisition
  */
 router.get('/by-category', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
 
-        // Use StatementsFinancialService for database queries
-        const { income, expenses } = await statementsFinancialService.getByCategory(startDate, endDate);
+        // Check cache first
+        const cacheKey = `by-category-${startDate}-${endDate}`;
+        const cached = getCached(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        // Try to fetch from QuickBooks for actual account categories
+        let income = [];
+        let expenses = [];
+        let usingQuickBooks = false;
+
+        // Check if QuickBooks is connected
+        const isConnected = await quickBooksService.isConnectedAsync();
+
+        if (isConnected) {
+            try {
+                // Fetch from QuickBooks with timeout
+                const results = await Promise.race([
+                    Promise.all([
+                        quickBooksService.getAllIncome(startDate, endDate),
+                        quickBooksService.getAllExpenses(startDate, endDate)
+                    ]),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 15000))
+                ]);
+                income = results[0] || [];
+                expenses = results[1] || [];
+                usingQuickBooks = true;
+                console.log(`[by-category] Fetched ${income.length} income and ${expenses.length} expense transactions from QuickBooks`);
+            } catch (qbError) {
+                console.warn('[by-category] QuickBooks fetch failed, falling back to statements:', qbError.message);
+            }
+        }
+
+        // If QuickBooks data available, group by actual QB account/category
+        if (usingQuickBooks && (income.length > 0 || expenses.length > 0)) {
+            // Group income by QuickBooks account/category
+            const incomeByCategory = {};
+            income.forEach(t => {
+                // Use AccountName or CategoryName from QuickBooks
+                const category = t.AccountName || t.CategoryName || t.CustomerName || 'Other Income';
+                if (!incomeByCategory[category]) {
+                    incomeByCategory[category] = {
+                        name: category,
+                        total: 0,
+                        count: 0,
+                        transactions: []
+                    };
+                }
+                incomeByCategory[category].total += t.Amount || 0;
+                incomeByCategory[category].count++;
+                incomeByCategory[category].transactions.push({
+                    id: t.Id,
+                    type: t.Type,
+                    date: t.TxnDate,
+                    amount: t.Amount,
+                    description: t.Description,
+                    customer: t.CustomerName
+                });
+            });
+
+            // Group expenses by QuickBooks account/category
+            const expensesByCategory = {};
+            expenses.forEach(t => {
+                // Use AccountName or CategoryName from QuickBooks
+                // This will show categories like: Darko Distribution, Owner Payout, Rent, etc.
+                const category = t.AccountName || t.CategoryName || t.VendorName || 'Other Expenses';
+                if (!expensesByCategory[category]) {
+                    expensesByCategory[category] = {
+                        name: category,
+                        total: 0,
+                        count: 0,
+                        transactions: []
+                    };
+                }
+                expensesByCategory[category].total += t.Amount || 0;
+                expensesByCategory[category].count++;
+                expensesByCategory[category].transactions.push({
+                    id: t.Id,
+                    type: t.Type,
+                    date: t.TxnDate,
+                    amount: t.Amount,
+                    description: t.Description,
+                    vendor: t.VendorName
+                });
+            });
+
+            // Convert to arrays and sort by total
+            const incomeCategories = Object.values(incomeByCategory)
+                .sort((a, b) => b.total - a.total);
+            const expenseCategories = Object.values(expensesByCategory)
+                .sort((a, b) => b.total - a.total);
+
+            const response = {
+                success: true,
+                data: {
+                    period: { startDate, endDate },
+                    source: 'quickbooks',
+                    income: {
+                        categories: incomeCategories,
+                        total: incomeCategories.reduce((sum, c) => sum + c.total, 0)
+                    },
+                    expenses: {
+                        categories: expenseCategories,
+                        total: expenseCategories.reduce((sum, c) => sum + c.total, 0)
+                    }
+                }
+            };
+            setCache(cacheKey, response);
+            return res.json(response);
+        }
+
+        // Fallback: Use statements data grouped by property (legacy behavior)
+        console.log('[by-category] Using statements fallback (QuickBooks not available)');
+        const { income: stmtIncome, expenses: stmtExpenses } = await statementsFinancialService.getByCategory(startDate, endDate);
 
         // Group income by category
         const incomeByCategory = {};
-        income.forEach(t => {
-            const category = t.CategoryName || t.CustomerName || 'Uncategorized';
+        stmtIncome.forEach(t => {
+            const category = t.CategoryName || 'Revenue';
             if (!incomeByCategory[category]) {
                 incomeByCategory[category] = {
                     name: category,
@@ -390,19 +511,12 @@ router.get('/by-category', async (req, res) => {
             }
             incomeByCategory[category].total += t.Amount || 0;
             incomeByCategory[category].count++;
-            incomeByCategory[category].transactions.push({
-                id: t.Id,
-                type: t.Type,
-                date: t.TxnDate,
-                amount: t.Amount,
-                description: t.Description
-            });
         });
 
         // Group expenses by category
         const expensesByCategory = {};
-        expenses.forEach(t => {
-            const category = t.CategoryName || t.VendorName || 'Uncategorized';
+        stmtExpenses.forEach(t => {
+            const category = t.CategoryName || 'Expenses';
             if (!expensesByCategory[category]) {
                 expensesByCategory[category] = {
                     name: category,
@@ -413,14 +527,6 @@ router.get('/by-category', async (req, res) => {
             }
             expensesByCategory[category].total += t.Amount || 0;
             expensesByCategory[category].count++;
-            expensesByCategory[category].transactions.push({
-                id: t.Id,
-                type: t.Type,
-                date: t.TxnDate,
-                amount: t.Amount,
-                description: t.Description,
-                vendor: t.VendorName
-            });
         });
 
         // Convert to arrays and sort by total
@@ -429,10 +535,11 @@ router.get('/by-category', async (req, res) => {
         const expenseCategories = Object.values(expensesByCategory)
             .sort((a, b) => b.total - a.total);
 
-        res.json({
+        const response = {
             success: true,
             data: {
                 period: { startDate, endDate },
+                source: 'statements',
                 income: {
                     categories: incomeCategories,
                     total: incomeCategories.reduce((sum, c) => sum + c.total, 0)
@@ -441,8 +548,11 @@ router.get('/by-category', async (req, res) => {
                     categories: expenseCategories,
                     total: expenseCategories.reduce((sum, c) => sum + c.total, 0)
                 }
-            }
-        });
+            },
+            message: 'Using statement data. Connect QuickBooks for detailed account categories.'
+        };
+        setCache(cacheKey, response);
+        res.json(response);
     } catch (error) {
         console.error('Error fetching financials by category:', error);
 

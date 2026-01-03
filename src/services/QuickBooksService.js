@@ -796,6 +796,10 @@ class QuickBooksService {
      * Helper: Normalize a Bill transaction to common format
      */
     _normalizeBill(bill) {
+        // For Bills, account is in line items (AccountBasedExpenseLineDetail)
+        const categoryRef = this._getCategoryFromLines(bill.Line);
+        const categoryName = this._getCategoryNameFromLines(bill.Line);
+
         return {
             Id: bill.Id,
             Type: 'Bill',
@@ -805,12 +809,12 @@ class QuickBooksService {
             Amount: bill.TotalAmt || 0,
             Balance: bill.Balance || 0,
             Description: bill.PrivateNote || this._getLineDescription(bill.Line),
-            AccountRef: null,
-            AccountName: null,
+            AccountRef: categoryRef,
+            AccountName: categoryName, // Use category from line items as account
             VendorRef: bill.VendorRef,
             VendorName: bill.VendorRef?.name || null,
-            CategoryRef: this._getCategoryFromLines(bill.Line),
-            CategoryName: this._getCategoryNameFromLines(bill.Line),
+            CategoryRef: categoryRef,
+            CategoryName: categoryName,
             DocNumber: bill.DocNumber || null,
             Line: bill.Line || [],
             raw: bill
@@ -821,6 +825,10 @@ class QuickBooksService {
      * Helper: Normalize an Invoice to common format
      */
     _normalizeInvoice(invoice) {
+        // For Invoices, account comes from line items (SalesItemLineDetail or ItemRef)
+        const categoryRef = this._getCategoryFromLines(invoice.Line);
+        const categoryName = this._getCategoryNameFromLines(invoice.Line);
+
         return {
             Id: invoice.Id,
             Type: 'Invoice',
@@ -832,8 +840,10 @@ class QuickBooksService {
             Description: invoice.PrivateNote || this._getLineDescription(invoice.Line),
             CustomerRef: invoice.CustomerRef,
             CustomerName: invoice.CustomerRef?.name || null,
-            CategoryRef: this._getCategoryFromLines(invoice.Line),
-            CategoryName: this._getCategoryNameFromLines(invoice.Line),
+            AccountRef: categoryRef,
+            AccountName: categoryName, // Income account from line items
+            CategoryRef: categoryRef,
+            CategoryName: categoryName,
             DocNumber: invoice.DocNumber || null,
             Line: invoice.Line || [],
             raw: invoice
@@ -844,6 +854,11 @@ class QuickBooksService {
      * Helper: Normalize a SalesReceipt to common format
      */
     _normalizeSalesReceipt(salesReceipt) {
+        // For SalesReceipts, use DepositToAccount or line items
+        const categoryRef = this._getCategoryFromLines(salesReceipt.Line);
+        const categoryName = this._getCategoryNameFromLines(salesReceipt.Line);
+        const depositAccountName = salesReceipt.DepositToAccountRef?.name || null;
+
         return {
             Id: salesReceipt.Id,
             Type: 'SalesReceipt',
@@ -854,8 +869,10 @@ class QuickBooksService {
             CustomerRef: salesReceipt.CustomerRef,
             CustomerName: salesReceipt.CustomerRef?.name || null,
             DepositToAccountRef: salesReceipt.DepositToAccountRef,
-            CategoryRef: this._getCategoryFromLines(salesReceipt.Line),
-            CategoryName: this._getCategoryNameFromLines(salesReceipt.Line),
+            AccountRef: salesReceipt.DepositToAccountRef || categoryRef,
+            AccountName: depositAccountName || categoryName, // Use deposit account or category from lines
+            CategoryRef: categoryRef,
+            CategoryName: categoryName,
             DocNumber: salesReceipt.DocNumber || null,
             Line: salesReceipt.Line || [],
             raw: salesReceipt

@@ -462,19 +462,19 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-6 pt-2 pb-0 flex-shrink-0">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Listings</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Configure listing names and co-host settings</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Listings</h1>
+            <p className="text-gray-500 text-xs sm:text-sm mt-0.5">Configure listing names and co-host settings</p>
           </div>
           <button
             onClick={handleSync}
             disabled={syncing}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing...' : 'Sync from Hostify'}
+            <RefreshCw className={`w-4 h-4 sm:mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync from Hostify'}</span>
           </button>
         </div>
       </div>
@@ -509,9 +509,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
         )}
 
-        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
-          {/* Listings List - Fixed width sidebar */}
-          <div className="w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex flex-col overflow-hidden">
+        <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden">
+          {/* Listings List - Responsive sidebar */}
+          <div className={`${selectedListingId ? 'hidden lg:flex' : 'flex'} w-full lg:w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex-col overflow-hidden`}>
             <h2 className="text-lg font-semibold text-gray-900 mb-3">
               Listings ({filteredListings.length})
             </h2>
@@ -907,7 +907,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
 
           {/* Listing Details/Edit Form - Fills remaining space */}
-          <div className={`flex-1 bg-white rounded-lg shadow-md ${selectedListing ? 'flex flex-col overflow-hidden' : 'overflow-hidden'}`}>
+          <div className={`${selectedListingId ? 'flex' : 'hidden lg:flex'} flex-1 bg-white rounded-lg shadow-md ${selectedListing ? 'flex-col overflow-hidden' : 'overflow-hidden'}`}>
             {!selectedListing ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
                 <Search className="w-16 h-16 mb-4 text-gray-300" />
@@ -917,17 +917,30 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
             ) : (
               <>
                 {/* Fixed Header */}
-                <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex-shrink-0">
-                  <h2 className="text-xl font-bold text-gray-900">Edit Listing</h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Original Name: {selectedListing.name}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">ID: {selectedListing.id}</p>
+                <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-gray-200 flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    {/* Back button for mobile */}
+                    <button
+                      onClick={() => setSelectedListingId(null)}
+                      className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Edit Listing</h2>
+                      <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[250px] sm:max-w-none">
+                        {selectedListing.name}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">ID: {selectedListing.id}</p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Scrollable Form Content */}
-                <div className="flex-1 overflow-auto px-6 py-6">
-                <div className="space-y-6">
+                <div className="flex-1 overflow-auto px-4 sm:px-6 py-4 sm:py-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Display Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
