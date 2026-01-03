@@ -1,129 +1,143 @@
-import React from 'react';
-import { BarChart3, Download, RefreshCw, Calendar, Filter } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Settings, Bell, FileText, Download, RefreshCw } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { cn } from '../../../lib/utils';
+import { DateRange } from '../DateRangeFilter';
 
-interface DashboardHeaderProps {
-  title?: string;
-  subtitle?: string;
+export interface DashboardHeaderProps {
+  // New props
+  onGenerateStatement?: () => void;
+  onExportData?: () => void;
+  onSettings?: () => void;
+  onNotifications?: () => void;
+  notificationCount?: number;
+  className?: string;
+  // Legacy props for backwards compatibility
+  dateRange?: DateRange;
   onExport?: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
-  dateRange?: {
-    startDate: string;
-    endDate: string;
-  };
-  className?: string;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
-  title = 'Financial Dashboard',
-  subtitle = 'Comprehensive financial analytics and insights',
+  onGenerateStatement,
+  onExportData,
+  onSettings,
+  onNotifications,
+  notificationCount = 0,
+  className,
+  // Legacy props
+  dateRange,
   onExport,
   onRefresh,
   isRefreshing = false,
-  dateRange,
-  className,
 }) => {
-  const formatDateRange = () => {
-    if (!dateRange?.startDate || !dateRange?.endDate) {
-      return 'Select date range';
-    }
-
-    const start = new Date(dateRange.startDate);
-    const end = new Date(dateRange.endDate);
-
-    const formatDate = (date: Date) => {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    };
-
-    return `${formatDate(start)} - ${formatDate(end)}`;
-  };
+  // Use onExport as fallback for onExportData
+  const handleExport = onExportData || onExport;
+  // Get time-based greeting
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning!';
+    if (hour < 18) return 'Good afternoon!';
+    return 'Good evening!';
+  }, []);
 
   return (
     <div className={cn(
-      'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600',
-      'border-b border-blue-700/20 shadow-xl',
-      'px-6 pt-6 pb-8',
+      'bg-white border-b border-gray-200',
+      'px-6 py-4',
       className
     )}>
-      {/* Background pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(255,255,255,0.2),transparent)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(255,255,255,0.1),transparent)]" />
-      </div>
-
-      <div className="relative">
-        {/* Main header content */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            {/* Icon */}
-            <div className="bg-white/20 backdrop-blur-sm p-3 rounded-2xl shadow-lg">
-              <BarChart3 className="w-8 h-8 text-white" />
-            </div>
-
-            {/* Title and subtitle */}
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-1 tracking-tight">
-                {title}
-              </h1>
-              <p className="text-blue-100 text-sm font-medium">
-                {subtitle}
-              </p>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-3">
-            {onRefresh && (
-              <Button
-                onClick={onRefresh}
-                disabled={isRefreshing}
-                variant="outline"
-                size="sm"
-                className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20 hover:border-white/30 transition-all"
-              >
-                <RefreshCw className={cn(
-                  'w-4 h-4 mr-2',
-                  isRefreshing && 'animate-spin'
-                )} />
-                Refresh
-              </Button>
-            )}
-
-            {onExport && (
-              <Button
-                onClick={onExport}
-                variant="outline"
-                size="sm"
-                className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20 hover:border-white/30 transition-all"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-            )}
-          </div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Left: Greeting */}
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+            {greeting}
+          </h1>
+          <p className="text-sm text-gray-600">
+            Here's your business overview
+          </p>
         </div>
 
-        {/* Date range indicator */}
-        {dateRange && (
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-            <Calendar className="w-4 h-4 text-blue-100" />
-            <span className="text-sm font-semibold text-white">
-              {formatDateRange()}
-            </span>
-          </div>
-        )}
+        {/* Right: Action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Primary: Generate Statement */}
+          {onGenerateStatement && (
+            <Button
+              onClick={onGenerateStatement}
+              variant="default"
+              size="default"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generate Statement
+            </Button>
+          )}
+
+          {/* Secondary: Export Data */}
+          {handleExport && (
+            <Button
+              onClick={handleExport}
+              variant="outline"
+              size="default"
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export Data
+            </Button>
+          )}
+
+          {/* Refresh button (legacy support) */}
+          {onRefresh && (
+            <Button
+              onClick={onRefresh}
+              variant="ghost"
+              size="icon"
+              className="text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              disabled={isRefreshing}
+              aria-label="Refresh data"
+            >
+              <RefreshCw className={cn('w-5 h-5', isRefreshing && 'animate-spin')} />
+            </Button>
+          )}
+
+          {/* Icon button: Settings */}
+          {onSettings && (
+            <Button
+              onClick={onSettings}
+              variant="ghost"
+              size="icon"
+              className="text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              aria-label="Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </Button>
+          )}
+
+          {/* Icon button: Notifications with badge */}
+          {onNotifications && (
+            <Button
+              onClick={onNotifications}
+              variant="ghost"
+              size="icon"
+              className="text-gray-600 hover:bg-gray-100 hover:text-gray-900 relative"
+              aria-label={`Notifications${notificationCount > 0 ? ` (${notificationCount})` : ''}`}
+            >
+              <Bell className="w-5 h-5" />
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold rounded-full h-5 w-5 flex items-center justify-center">
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </span>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
-// Secondary header for sections
+// Secondary header for sections (keeping for backwards compatibility)
 interface SectionHeaderProps {
   title: string;
   subtitle?: string;
