@@ -869,8 +869,8 @@ router.get('/transactions', async (req, res) => {
         const { startDate, endDate } = parseDateRange(req.query);
         const { type, category, minAmount, maxAmount, search } = req.query;
 
-        // Check if QuickBooks is connected before attempting to fetch
-        const isConnected = quickBooksService.isConnected();
+        // Check if QuickBooks is connected before attempting to fetch (async for multi-worker support)
+        const isConnected = await quickBooksService.isConnectedAsync();
         if (!isConnected) {
             // Return empty data instead of trying to fetch from disconnected QB
             return res.json({

@@ -339,6 +339,14 @@ router.post('/save-tokens', async (req, res) => {
         // Reinitialize the QuickBooks client with new tokens
         quickBooksService.initializeClient(accessToken, refreshToken, companyId);
 
+        // Also save to database for multi-worker support
+        try {
+            await quickBooksService.saveTokensToDatabase(accessToken, refreshToken, companyId);
+            console.log('QuickBooks tokens saved to database for multi-worker support');
+        } catch (dbErr) {
+            console.error('Failed to save tokens to database:', dbErr.message);
+        }
+
         res.json({
             success: true,
             message: 'Tokens saved and service reinitialized successfully'
@@ -404,7 +412,15 @@ router.get('/auth/callback', async (req, res) => {
 
         // Initialize the QuickBooks client with new tokens
         quickBooksService.initializeClient(tokens.accessToken, tokens.refreshToken, tokens.realmId);
-        
+
+        // Also save directly to database for multi-worker support
+        try {
+            await quickBooksService.saveTokensToDatabase(tokens.accessToken, tokens.refreshToken, tokens.realmId);
+            console.log('QuickBooks tokens saved to database for multi-worker support');
+        } catch (dbErr) {
+            console.error('Failed to save tokens to database:', dbErr.message);
+        }
+
         console.log('QuickBooks connected successfully!');
         
         // Return success page like working example

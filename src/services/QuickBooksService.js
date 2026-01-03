@@ -3,6 +3,14 @@ const QuickBooks = require('node-quickbooks');
 const fs = require('fs');
 const path = require('path');
 
+// Import database model for multi-worker token sharing
+let QuickBooksToken = null;
+try {
+    QuickBooksToken = require('../models/QuickBooksToken');
+} catch (e) {
+    console.log('[QuickBooks] Token model not available, using memory-only storage');
+}
+
 class QuickBooksService {
     constructor() {
         this.companyId = process.env.QUICKBOOKS_COMPANY_ID;
@@ -131,12 +139,91 @@ class QuickBooksService {
         this.oauthClient.setToken(this.tokenSet);
 
         console.log('QuickBooks client initialized with company ID:', companyId);
+
+        // Also save to database for multi-worker sharing
+        this.saveTokensToDatabase(accessToken, refreshToken, companyId).catch(err => {
+            console.error('[QuickBooks] Failed to save tokens to database:', err.message);
+        });
+    }
+
+    /**
+     * Save tokens to database for multi-worker support
+     */
+    async saveTokensToDatabase(accessToken, refreshToken, companyId) {
+        if (!QuickBooksToken) {
+            console.log('[QuickBooks] Database model not available, skipping DB save');
+            return;
+        }
+
+        try {
+            const [token, created] = await QuickBooksToken.upsert({
+                companyId: companyId,
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                tokenExpiresAt: new Date(Date.now() + 3600 * 1000), // 1 hour from now
+                isActive: true
+            }, {
+                returning: true
+            });
+            console.log(`[QuickBooks] Tokens ${created ? 'created' : 'updated'} in database for company ${companyId}`);
+        } catch (error) {
+            console.error('[QuickBooks] Database save error:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Load tokens from database (for multi-worker support)
+     * Called before each API request to ensure we have the latest tokens
+     */
+    async loadTokensFromDatabase() {
+        if (!QuickBooksToken) {
+            return false;
+        }
+
+        try {
+            const token = await QuickBooksToken.findOne({
+                where: { isActive: true },
+                order: [['updated_at', 'DESC']]
+            });
+
+            if (token) {
+                // Only update if tokens are different (avoid unnecessary reinit)
+                if (this.accessToken !== token.accessToken ||
+                    this.refreshToken !== token.refreshToken ||
+                    this.companyId !== token.companyId) {
+
+                    console.log('[QuickBooks] Loading tokens from database for company:', token.companyId);
+                    this.accessToken = token.accessToken;
+                    this.refreshToken = token.refreshToken;
+                    this.companyId = token.companyId;
+                    this.realmId = token.companyId;
+
+                    this.tokenSet = {
+                        access_token: token.accessToken,
+                        refresh_token: token.refreshToken,
+                        expires_in: 3600,
+                        token_type: 'Bearer'
+                    };
+
+                    this.oauthClient.setToken(this.tokenSet);
+                }
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('[QuickBooks] Database load error:', error.message);
+            return false;
+        }
     }
 
     /**
      * Helper: ensure valid access token (refresh if needed) - like working example
      */
     async ensureFreshToken() {
+        // First, try to load latest tokens from database (multi-worker support)
+        await this.loadTokensFromDatabase();
+
         if (!this.tokenSet) {
             throw new Error('Not connected yet. Complete OAuth flow first.');
         }
@@ -151,7 +238,15 @@ class QuickBooksService {
         try {
             const refreshResponse = await this.oauthClient.refresh();
             this.tokenSet = refreshResponse.getJson();
+            this.accessToken = this.tokenSet.access_token;
+            this.refreshToken = this.tokenSet.refresh_token;
             console.log('Token refreshed successfully');
+
+            // Save refreshed tokens to database for other workers
+            this.saveTokensToDatabase(this.accessToken, this.refreshToken, this.companyId).catch(err => {
+                console.error('[QuickBooks] Failed to save refreshed tokens:', err.message);
+            });
+
             return this.oauthClient.getToken().access_token;
         } catch (refreshError) {
             console.error('Token refresh failed:', refreshError.message);
@@ -362,6 +457,20 @@ class QuickBooksService {
      */
     isConnected() {
         return !!(this.tokenSet && this.realmId);
+    }
+
+    /**
+     * Check if QuickBooks is connected (async version that checks database)
+     * @returns {Promise<boolean>} Connection status
+     */
+    async isConnectedAsync() {
+        // First check memory
+        if (this.tokenSet && this.realmId) {
+            return true;
+        }
+        // Then check database
+        const loaded = await this.loadTokensFromDatabase();
+        return loaded && !!(this.tokenSet && this.realmId);
     }
 
     /**
