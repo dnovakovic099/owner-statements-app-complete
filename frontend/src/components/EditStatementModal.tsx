@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save } from 'lucide-react';
+import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check } from 'lucide-react';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 
@@ -103,9 +103,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     guestName: '',
     checkInDate: '',
     checkOutDate: '',
-    amount: '',
     nights: '',
-    description: ''
+    description: '',
+    // Financial fields
+    baseRate: '',
+    guestFees: '',
+    platformFees: '',
+    tax: '',
+    pmCommission: '',
+    grossPayout: '',
+    // Additional fields
+    platform: 'direct' as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other',
+    guestPaidDamageCoverage: ''
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -113,6 +122,24 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [internalNotes, setInternalNotes] = useState('');
   const [notesModified, setNotesModified] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+
+  // Expense editing state
+  const [editingExpenseIndex, setEditingExpenseIndex] = useState<number | null>(null);
+  const [editedExpense, setEditedExpense] = useState<{
+    date: string;
+    description: string;
+    category: string;
+    amount: string;
+  } | null>(null);
+
+  // Upsell editing state
+  const [editingUpsellIndex, setEditingUpsellIndex] = useState<number | null>(null);
+  const [editedUpsell, setEditedUpsell] = useState<{
+    date: string;
+    description: string;
+    category: string;
+    amount: string;
+  } | null>(null);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -157,6 +184,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setCleaningFeeEdits({});
       setInternalNotes(response.internalNotes || '');
       setNotesModified(false);
+      setEditingExpenseIndex(null);
+      setEditedExpense(null);
+      setEditingUpsellIndex(null);
+      setEditedUpsell(null);
       // Initialize statement period & settings
       setEditStartDate(response.weekStartDate || '');
       setEditEndDate(response.weekEndDate || '');
@@ -274,19 +305,179 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleExpenseToggle = (index: number) => {
-    setSelectedExpenseIndices(prev => 
-      prev.includes(index) 
+    // Don't toggle if we're editing
+    if (editingExpenseIndex !== null) return;
+
+    setSelectedExpenseIndices(prev =>
+      prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index]
     );
   };
 
+  const handleStartEditExpense = (index: number, expense: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Deselect any selected expenses when entering edit mode
+    setSelectedExpenseIndices([]);
+    setEditingExpenseIndex(index);
+    setEditedExpense({
+      date: expense.date || '',
+      description: expense.description || '',
+      category: expense.category || '',
+      amount: String(expense.amount || 0)
+    });
+  };
+
+  const handleCancelEditExpense = () => {
+    setEditingExpenseIndex(null);
+    setEditedExpense(null);
+  };
+
+  const handleSaveEditedExpense = async () => {
+    if (!statement || editingExpenseIndex === null || !editedExpense) return;
+
+    // Validate
+    if (!editedExpense.description.trim()) {
+      setError('Description is required');
+      return;
+    }
+    const amount = parseFloat(editedExpense.amount);
+    if (isNaN(amount) || amount < 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+
+    // Find the global index of this expense in statement.items
+    let globalIndex = -1;
+    let expenseCount = 0;
+    for (let i = 0; i < (statement.items?.length || 0); i++) {
+      if (statement.items![i].type === 'expense') {
+        if (expenseCount === editingExpenseIndex) {
+          globalIndex = i;
+          break;
+        }
+        expenseCount++;
+      }
+    }
+
+    if (globalIndex === -1) {
+      setError('Could not find expense to update');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await statementsAPI.editStatement(statement.id, {
+        expenseItemUpdates: [{
+          globalIndex,
+          date: editedExpense.date,
+          description: editedExpense.description.trim(),
+          category: editedExpense.category,
+          amount: amount
+        }]
+      });
+
+      setEditingExpenseIndex(null);
+      setEditedExpense(null);
+      onStatementUpdated();
+      // Reload the statement to show updated data
+      loadStatement();
+    } catch (err) {
+      setError('Failed to update expense');
+      console.error('Failed to update expense:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleUpsellToggle = (index: number) => {
-    setSelectedUpsellIndices(prev => 
-      prev.includes(index) 
+    // Don't toggle if we're editing
+    if (editingUpsellIndex !== null) return;
+
+    setSelectedUpsellIndices(prev =>
+      prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index]
     );
+  };
+
+  const handleStartEditUpsell = (index: number, upsell: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Deselect any selected upsells when entering edit mode
+    setSelectedUpsellIndices([]);
+    setEditingUpsellIndex(index);
+    setEditedUpsell({
+      date: upsell.date || '',
+      description: upsell.description || '',
+      category: upsell.category || '',
+      amount: String(upsell.amount || 0)
+    });
+  };
+
+  const handleCancelEditUpsell = () => {
+    setEditingUpsellIndex(null);
+    setEditedUpsell(null);
+  };
+
+  const handleSaveEditedUpsell = async () => {
+    if (!statement || editingUpsellIndex === null || !editedUpsell) return;
+
+    // Validate
+    if (!editedUpsell.description.trim()) {
+      setError('Description is required');
+      return;
+    }
+    const amount = parseFloat(editedUpsell.amount);
+    if (isNaN(amount) || amount < 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+
+    // Find the global index of this upsell in statement.items
+    let globalIndex = -1;
+    let upsellCount = 0;
+    for (let i = 0; i < (statement.items?.length || 0); i++) {
+      if (statement.items![i].type === 'upsell') {
+        if (upsellCount === editingUpsellIndex) {
+          globalIndex = i;
+          break;
+        }
+        upsellCount++;
+      }
+    }
+
+    if (globalIndex === -1) {
+      setError('Could not find upsell to update');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await statementsAPI.editStatement(statement.id, {
+        upsellItemUpdates: [{
+          globalIndex,
+          date: editedUpsell.date,
+          description: editedUpsell.description.trim(),
+          category: editedUpsell.category,
+          amount: amount
+        }]
+      });
+
+      setEditingUpsellIndex(null);
+      setEditedUpsell(null);
+      onStatementUpdated();
+      // Reload the statement to show updated data
+      loadStatement();
+    } catch (err) {
+      setError('Failed to update upsell');
+      console.error('Failed to update upsell:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReservationRemoveToggle = (reservationId: number) => {
@@ -359,22 +550,34 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     if (!statement) return;
 
     // Validate required fields
-    if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.amount) {
-      setError('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, and Amount');
+    if (!customReservation.guestName || !customReservation.checkInDate || !customReservation.checkOutDate || !customReservation.baseRate || !customReservation.grossPayout) {
+      setError('Please fill in all required fields: Guest Name, Check-in Date, Check-out Date, Base Rate, and Gross Payout');
       return;
     }
 
-    const amount = parseFloat(customReservation.amount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Please enter a valid amount');
+    const baseRate = parseFloat(customReservation.baseRate);
+    const grossPayout = parseFloat(customReservation.grossPayout);
+    if (isNaN(baseRate) || baseRate <= 0) {
+      setError('Please enter a valid base rate');
       return;
     }
+    if (isNaN(grossPayout) || grossPayout <= 0) {
+      setError('Please enter a valid gross payout');
+      return;
+    }
+
+    // Parse optional numeric fields
+    const guestFees = parseFloat(customReservation.guestFees) || 0;
+    const platformFees = parseFloat(customReservation.platformFees) || 0;
+    const tax = parseFloat(customReservation.tax) || 0;
+    const pmCommission = parseFloat(customReservation.pmCommission) || 0;
+    const guestPaidDamageCoverage = parseFloat(customReservation.guestPaidDamageCoverage) || 0;
 
     // Show custom confirm dialog
     setConfirmDialog({
       isOpen: true,
       title: 'Add Custom Reservation',
-      message: `Add custom reservation for ${customReservation.guestName} with amount $${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
+      message: `Add custom reservation for ${customReservation.guestName} with gross payout $${grossPayout.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
       confirmText: 'Add Reservation',
       variant: 'success',
       onConfirm: async () => {
@@ -389,9 +592,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               guestName: customReservation.guestName,
               checkInDate: customReservation.checkInDate,
               checkOutDate: customReservation.checkOutDate,
-              amount: amount,
               nights: customReservation.nights ? parseInt(customReservation.nights) : undefined,
-              description: customReservation.description || undefined
+              description: customReservation.description || undefined,
+              // Financial fields
+              baseRate: baseRate,
+              guestFees: guestFees,
+              platformFees: platformFees,
+              tax: tax,
+              pmCommission: pmCommission,
+              grossPayout: grossPayout,
+              // Additional fields
+              platform: customReservation.platform,
+              guestPaidDamageCoverage: guestPaidDamageCoverage
             }
           });
 
@@ -400,9 +612,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
             guestName: '',
             checkInDate: '',
             checkOutDate: '',
-            amount: '',
             nights: '',
-            description: ''
+            description: '',
+            baseRate: '',
+            guestFees: '',
+            platformFees: '',
+            tax: '',
+            pmCommission: '',
+            grossPayout: '',
+            platform: 'direct',
+            guestPaidDamageCoverage: ''
           });
           setShowCustomReservationForm(false);
 
@@ -512,6 +731,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setCleaningFeeEdits({});
     setInternalNotes('');
     setNotesModified(false);
+    setEditingExpenseIndex(null);
+    setEditedExpense(null);
+    setEditingUpsellIndex(null);
+    setEditedUpsell(null);
     setError(null);
     onClose();
   };
@@ -747,7 +970,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center">
                       <FileText className="w-4 h-4 text-amber-600 mr-2" />
-                      <p className="text-sm font-medium text-amber-800">Internal Notes</p>
+                      <p className="text-sm font-medium text-amber-800">
+                        Internal Notes
+                        {statement?.pmPercentage !== undefined && (
+                          <span className="text-blue-600"> - PM {statement.pmPercentage}%</span>
+                        )}
+                      </p>
                     </div>
                     {notesModified && (
                       <button
@@ -863,12 +1091,89 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   <div className="space-y-2">
                     {expenses.map((expense, index) => {
                       const isSelected = selectedExpenseIndices.includes(index);
+                      const isEditing = editingExpenseIndex === index;
+
+                      // Editing mode - show form
+                      if (isEditing && editedExpense) {
+                        return (
+                          <div
+                            key={index}
+                            className="border rounded-lg p-4 bg-blue-50 border-blue-300"
+                          >
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                                  <input
+                                    type="text"
+                                    value={editedExpense.description}
+                                    onChange={(e) => setEditedExpense({ ...editedExpense, description: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Description"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                                  <input
+                                    type="text"
+                                    value={editedExpense.category}
+                                    onChange={(e) => setEditedExpense({ ...editedExpense, category: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Category"
+                                  />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                                  <input
+                                    type="date"
+                                    value={editedExpense.date}
+                                    onChange={(e) => setEditedExpense({ ...editedExpense, date: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Amount ($)</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editedExpense.amount}
+                                    onChange={(e) => setEditedExpense({ ...editedExpense, amount: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-end space-x-2 pt-2">
+                                <button
+                                  onClick={handleCancelEditExpense}
+                                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                                  disabled={saving}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={handleSaveEditedExpense}
+                                  disabled={saving}
+                                  className="flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  <Check className="w-4 h-4 mr-1" />
+                                  {saving ? 'Saving...' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Display mode
                       return (
                         <div
                           key={index}
                           className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                            isSelected 
-                              ? 'bg-red-50 border-red-200' 
+                            isSelected
+                              ? 'bg-red-50 border-red-200'
                               : 'bg-white border-gray-200 hover:bg-gray-50'
                           }`}
                           onClick={() => handleExpenseToggle(index)}
@@ -890,9 +1195,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center text-red-600 font-semibold">
-                              <DollarSign className="w-4 h-4 mr-1" />
-                              {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={(e) => handleStartEditExpense(index, expense, e)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Edit expense"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <div className="flex items-center text-red-600 font-semibold">
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -916,12 +1230,89 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   <div className="space-y-2">
                     {upsells.map((upsell, index) => {
                       const isSelected = selectedUpsellIndices.includes(index);
+                      const isEditing = editingUpsellIndex === index;
+
+                      // Editing mode - show form
+                      if (isEditing && editedUpsell) {
+                        return (
+                          <div
+                            key={index}
+                            className="border rounded-lg p-4 bg-green-50 border-green-300"
+                          >
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                                  <input
+                                    type="text"
+                                    value={editedUpsell.description}
+                                    onChange={(e) => setEditedUpsell({ ...editedUpsell, description: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                    placeholder="Description"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                                  <input
+                                    type="text"
+                                    value={editedUpsell.category}
+                                    onChange={(e) => setEditedUpsell({ ...editedUpsell, category: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                    placeholder="Category"
+                                  />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                                  <input
+                                    type="date"
+                                    value={editedUpsell.date}
+                                    onChange={(e) => setEditedUpsell({ ...editedUpsell, date: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Amount ($)</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editedUpsell.amount}
+                                    onChange={(e) => setEditedUpsell({ ...editedUpsell, amount: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-end space-x-2 pt-2">
+                                <button
+                                  onClick={handleCancelEditUpsell}
+                                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                                  disabled={saving}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={handleSaveEditedUpsell}
+                                  disabled={saving}
+                                  className="flex items-center px-3 py-1.5 text-sm text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
+                                >
+                                  <Check className="w-4 h-4 mr-1" />
+                                  {saving ? 'Saving...' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Display mode
                       return (
                         <div
                           key={index}
                           className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                            isSelected 
-                              ? 'bg-red-50 border-red-200' 
+                            isSelected
+                              ? 'bg-red-50 border-red-200'
                               : 'bg-white border-gray-200 hover:bg-gray-50'
                           }`}
                           onClick={() => handleUpsellToggle(index)}
@@ -944,9 +1335,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center text-green-600 font-semibold">
-                              <Plus className="w-4 h-4 mr-1" />
-                              {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={(e) => handleStartEditUpsell(index, upsell, e)}
+                                className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                title="Edit upsell"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <div className="flex items-center text-green-600 font-semibold">
+                                <Plus className="w-4 h-4 mr-1" />
+                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1298,9 +1698,16 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           guestName: '',
                           checkInDate: '',
                           checkOutDate: '',
-                          amount: '',
                           nights: '',
-                          description: ''
+                          description: '',
+                          baseRate: '',
+                          guestFees: '',
+                          platformFees: '',
+                          tax: '',
+                          pmCommission: '',
+                          grossPayout: '',
+                          platform: 'direct',
+                          guestPaidDamageCoverage: ''
                         });
                       }}
                       className="text-gray-600 hover:text-gray-800"
@@ -1312,7 +1719,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                 {showCustomReservationForm && (
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Basic Info Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Guest Name <span className="text-red-500">*</span>
@@ -1328,18 +1737,38 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Amount ($) <span className="text-red-500">*</span>
+                          Platform <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={customReservation.amount}
-                          onChange={(e) => setCustomReservation({...customReservation, amount: e.target.value})}
+                        <select
+                          value={customReservation.platform}
+                          onChange={(e) => setCustomReservation({...customReservation, platform: e.target.value as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other'})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="500.00"
-                        />
+                        >
+                          <option value="direct">Direct</option>
+                          <option value="airbnb">Airbnb</option>
+                          <option value="vrbo">Vrbo</option>
+                          <option value="booking">Booking.com</option>
+                          <option value="other">Other</option>
+                        </select>
                       </div>
 
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={customReservation.description}
+                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="Direct booking"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dates Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Dates</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Check-in Date <span className="text-red-500">*</span>
@@ -1366,27 +1795,120 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nights (optional)
+                          Nights (auto-calculated)
                         </label>
                         <input
                           type="number"
                           value={customReservation.nights}
                           onChange={(e) => setCustomReservation({...customReservation, nights: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="3"
+                          placeholder="Auto"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Financial Section */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Financial Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Base Rate ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.baseRate}
+                          onChange={(e) => setCustomReservation({...customReservation, baseRate: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="500.00"
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Description (optional)
+                          Guest Fees ($)
                         </label>
                         <input
-                          type="text"
-                          value={customReservation.description}
-                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          type="number"
+                          step="0.01"
+                          value={customReservation.guestFees}
+                          onChange={(e) => setCustomReservation({...customReservation, guestFees: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="Direct booking"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Platform Fees ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.platformFees}
+                          onChange={(e) => setCustomReservation({...customReservation, platformFees: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Tax ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.tax}
+                          onChange={(e) => setCustomReservation({...customReservation, tax: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          PM Commission ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.pmCommission}
+                          onChange={(e) => setCustomReservation({...customReservation, pmCommission: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Gross Payout ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.grossPayout}
+                          onChange={(e) => setCustomReservation({...customReservation, grossPayout: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="500.00"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Additional Options */}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Additional Options</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Guest Paid Damage Coverage ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={customReservation.guestPaidDamageCoverage}
+                          onChange={(e) => setCustomReservation({...customReservation, guestPaidDamageCoverage: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                          placeholder="0.00"
                         />
                       </div>
                     </div>

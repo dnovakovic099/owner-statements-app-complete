@@ -217,11 +217,34 @@ export const statementsAPI = {
       guestName: string;
       checkInDate: string;
       checkOutDate: string;
-      amount: number;
       nights?: number;
       description?: string;
+      // Financial fields
+      baseRate: number;
+      guestFees?: number;
+      platformFees?: number;
+      tax?: number;
+      pmCommission?: number;
+      grossPayout: number;
+      // Additional fields
+      platform?: 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other';
+      guestPaidDamageCoverage?: number;
     };
     reservationCleaningFeeUpdates?: { [reservationId: string]: number };
+    expenseItemUpdates?: Array<{
+      globalIndex: number;
+      date?: string;
+      description?: string;
+      category?: string;
+      amount?: number;
+    }>;
+    upsellItemUpdates?: Array<{
+      globalIndex: number;
+      date?: string;
+      description?: string;
+      category?: string;
+      amount?: number;
+    }>;
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;

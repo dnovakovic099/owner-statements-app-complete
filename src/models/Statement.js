@@ -169,6 +169,13 @@ const Statement = sequelize.define('Statement', {
         allowNull: false,
         defaultValue: false,
         field: 'should_convert_to_calendar'
+    },
+    internalNotes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        defaultValue: null,
+        field: 'internal_notes',
+        comment: 'Snapshot of internal notes at time of statement creation/finalization'
     }
 }, {
     tableName: 'statements',

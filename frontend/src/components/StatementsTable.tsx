@@ -555,16 +555,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'edit')}
-              tooltip={statement.status === 'final' ? 'Cannot Edit Final Statement' : 'Edit Statement'}
+              tooltip={statement.status === 'sent' ? 'Cannot Edit Sent Statement' : statement.status === 'final' ? 'Cannot Edit Final Statement' : 'Edit Statement'}
               icon={<Edit className="w-[18px] h-[18px]" />}
               color="text-amber-600"
-              disabled={statement.status === 'final'}
+              disabled={statement.status === 'final' || statement.status === 'sent'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'refresh')}
-              tooltip="Regenerate"
+              tooltip={statement.status === 'sent' ? 'Cannot Regenerate Sent Statement' : statement.status === 'final' ? 'Cannot Regenerate Final Statement' : 'Regenerate'}
               icon={<RefreshCw className="w-[18px] h-[18px]" />}
               color="text-indigo-600"
+              disabled={statement.status === 'final' || statement.status === 'sent'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'download')}
@@ -574,21 +575,21 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'finalize')}
-              tooltip={statement.status === 'final' ? 'Already Final' : 'Mark as Final'}
+              tooltip={statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'final' ? 'Already Final' : 'Mark as Final'}
               icon={<CheckCircle className="w-[18px] h-[18px]" />}
               color="text-emerald-600"
-              disabled={statement.status === 'final'}
+              disabled={statement.status === 'final' || statement.status === 'sent'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'revert-to-draft')}
-              tooltip={statement.status === 'draft' ? 'Already Draft' : statement.status === 'sent' ? 'Cannot revert sent statement' : 'Return to Draft'}
+              tooltip={statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'draft' ? 'Already Draft' : 'Return to Draft'}
               icon={<RotateCcw className="w-[18px] h-[18px]" />}
               color="text-orange-600"
               disabled={statement.status === 'draft' || statement.status === 'sent'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
-              tooltip={statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
+              tooltip={statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
               icon={<Trash2 className="w-[18px] h-[18px]" />}
               color="text-red-500"
               disabled={statement.status !== 'draft'}

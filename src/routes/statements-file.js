@@ -219,8 +219,12 @@ router.get('/', async (req, res) => {
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const luxuryFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                            : 0;
 
                         // Check if PM commission waiver is active
                         const waiveCommission = listing?.waiveCommission || false;
@@ -499,32 +503,37 @@ router.get('/:id', async (req, res) => {
             }
         }
 
-        // Add listing's internal notes to the response
-        const listings = await FileDataService.getListings();
+        // Use statement's own internalNotes if available (snapshotted at creation/finalization)
+        // Only fall back to listing notes for backward compatibility with old statements
+        if (!statement.internalNotes) {
+            const listings = await FileDataService.getListings();
 
-        console.log(`[Statement ${id}] propertyId: ${statement.propertyId}, propertyIds: ${JSON.stringify(statement.propertyIds)}`);
+            console.log(`[Statement ${id}] No stored internalNotes, fetching from listing. propertyId: ${statement.propertyId}, propertyIds: ${JSON.stringify(statement.propertyIds)}`);
 
-        if (statement.propertyId) {
-            // Single property statement
-            const listing = listings.find(l => l.id === parseInt(statement.propertyId));
-            console.log(`[Statement ${id}] Found listing: ${listing ? listing.displayName || listing.nickname || listing.name : 'NOT FOUND'}, internalNotes: ${listing?.internalNotes ? 'YES' : 'NO'}`);
-            if (listing && listing.internalNotes) {
-                statement.internalNotes = listing.internalNotes;
-                console.log(`[Statement ${id}] Added internal notes: ${listing.internalNotes.substring(0, 50)}...`);
-            }
-        } else if (statement.propertyIds && Array.isArray(statement.propertyIds)) {
-            // Combined statement - collect notes from all properties
-            const notesArray = [];
-            for (const propId of statement.propertyIds) {
-                const listing = listings.find(l => l.id === parseInt(propId));
+            if (statement.propertyId) {
+                // Single property statement
+                const listing = listings.find(l => l.id === parseInt(statement.propertyId));
+                console.log(`[Statement ${id}] Found listing: ${listing ? listing.displayName || listing.nickname || listing.name : 'NOT FOUND'}, internalNotes: ${listing?.internalNotes ? 'YES' : 'NO'}`);
                 if (listing && listing.internalNotes) {
-                    const displayName = listing.displayName || listing.nickname || listing.name;
-                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    statement.internalNotes = listing.internalNotes;
+                    console.log(`[Statement ${id}] Added internal notes from listing: ${listing.internalNotes.substring(0, 50)}...`);
+                }
+            } else if (statement.propertyIds && Array.isArray(statement.propertyIds)) {
+                // Combined statement - collect notes from all properties
+                const notesArray = [];
+                for (const propId of statement.propertyIds) {
+                    const listing = listings.find(l => l.id === parseInt(propId));
+                    if (listing && listing.internalNotes) {
+                        const displayName = listing.displayName || listing.nickname || listing.name;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
+                }
+                if (notesArray.length > 0) {
+                    statement.internalNotes = notesArray.join('\n\n');
                 }
             }
-            if (notesArray.length > 0) {
-                statement.internalNotes = notesArray.join('\n\n');
-            }
+        } else {
+            console.log(`[Statement ${id}] Using stored internalNotes (snapshotted at creation)`);
         }
 
         // Fetch cancelled reservation count for this statement period
@@ -804,8 +813,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough ? (res.cleaningFee || resListingInfo.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            const guestPaidCleaningFee = res.cleaningFee || resListingInfo.cleaningFee || 0;
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
+                : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -857,6 +870,17 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
+            // Snapshot internal notes from all listings at time of statement creation
+            internalNotes: (() => {
+                const notesArray = [];
+                for (const listing of targetListings) {
+                    if (listing.internalNotes) {
+                        const displayName = listing.nickname || listing.displayName || listing.name;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
+                }
+                return notesArray.length > 0 ? notesArray.join('\n\n') : null;
+            })(),
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
             duplicateWarnings: allDuplicateWarnings,
@@ -1189,10 +1213,16 @@ router.post('/generate', async (req, res) => {
         }, 0);
         
         // Calculate total cleaning fee from reservations (for pass-through feature)
+        // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
         let totalCleaningFeeFromReservations = 0;
         if (cleaningFeePassThrough) {
+            const pmPct = listingInfo?.pmFeePercentage || 15;
             totalCleaningFeeFromReservations = periodReservations.reduce((sum, res) => {
-                return sum + (res.cleaningFee || 0);
+                const guestPaidCleaningFee = res.cleaningFee || 0;
+                const calculatedFee = guestPaidCleaningFee > 0
+                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPct / 100)) / 5) * 5
+                    : 0;
+                return sum + calculatedFee;
             }, 0);
         }
 
@@ -1208,17 +1238,22 @@ router.post('/generate', async (req, res) => {
             : periodExpenses;
 
         // Generate cleaning fee expenses from reservations when pass-through is enabled
+        // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
         const cleaningFeeExpenses = [];
         if (cleaningFeePassThrough && periodReservations.length > 0) {
+            const pmPctForExpenses = listingInfo?.pmFeePercentage || 15;
             for (const res of periodReservations) {
-                const cleaningFee = res.cleaningFee || listingInfo?.cleaningFee || 0;
-                if (cleaningFee > 0) {
+                const guestPaidCleaningFee = res.cleaningFee || listingInfo?.cleaningFee || 0;
+                const calculatedCleaningFee = guestPaidCleaningFee > 0
+                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPctForExpenses / 100)) / 5) * 5
+                    : 0;
+                if (calculatedCleaningFee > 0) {
                     cleaningFeeExpenses.push({
                         id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
                         propertyId: res.propertyId,
                         date: res.checkOutDate,
                         description: `Cleaning - ${res.guestName}`,
-                        amount: -Math.abs(cleaningFee),
+                        amount: -Math.abs(calculatedCleaningFee),
                         category: 'Cleaning',
                         type: 'cleaning',
                         vendor: 'Cleaning Service',
@@ -1320,8 +1355,12 @@ router.post('/generate', async (req, res) => {
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            const guestPaidCleaningFee = res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
+                : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
 
@@ -1380,6 +1419,8 @@ router.post('/generate', async (req, res) => {
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
+            // Snapshot internal notes from listing at time of statement creation
+            internalNotes: listingInfo?.internalNotes || null,
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
             duplicateWarnings: duplicateWarnings,
@@ -1807,7 +1848,12 @@ router.put('/:id/reconfigure', async (req, res) => {
             const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             totalRevenue += revenue;
             if (cleaningFeePassThrough) {
-                totalCleaningFeeFromReservations += res.cleaningFee || listing.cleaningFee || 0;
+                // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
+                const guestPaidCleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+                const calculatedFee = guestPaidCleaningFee > 0
+                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                    : 0;
+                totalCleaningFeeFromReservations += calculatedFee;
             }
         }
 
@@ -1875,7 +1921,12 @@ router.put('/:id/reconfigure', async (req, res) => {
             const luxuryFee = clientRevenue * (pmPercentage / 100);
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            const guestPaidCleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                : 0;
             const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
             let grossPayout;
@@ -1968,7 +2019,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, expenseItemUpdates, upsellItemUpdates } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -1990,6 +2041,64 @@ router.put('/:id', async (req, res) => {
             });
 
             if (statement.items.length < originalItemsCount) {
+                modified = true;
+            }
+        }
+
+        // Update expense items (edit date, description, category, amount)
+        if (expenseItemUpdates && Array.isArray(expenseItemUpdates) && expenseItemUpdates.length > 0) {
+            for (const update of expenseItemUpdates) {
+                const { globalIndex, date, description, category, amount } = update;
+
+                // Validate globalIndex is within bounds
+                if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
+                    console.warn(`Invalid globalIndex ${globalIndex} for expense update, skipping`);
+                    continue;
+                }
+
+                const item = statement.items[globalIndex];
+
+                // Verify the item is an expense type
+                if (item.type !== 'expense') {
+                    console.warn(`Item at globalIndex ${globalIndex} is not an expense (type: ${item.type}), skipping`);
+                    continue;
+                }
+
+                // Update the fields that were provided
+                if (date !== undefined) item.date = date;
+                if (description !== undefined) item.description = description;
+                if (category !== undefined) item.category = category;
+                if (amount !== undefined) item.amount = parseFloat(amount) || 0;
+
+                modified = true;
+            }
+        }
+
+        // Update upsell items (edit date, description, category, amount)
+        if (upsellItemUpdates && Array.isArray(upsellItemUpdates) && upsellItemUpdates.length > 0) {
+            for (const update of upsellItemUpdates) {
+                const { globalIndex, date, description, category, amount } = update;
+
+                // Validate globalIndex is within bounds
+                if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
+                    console.warn(`Invalid globalIndex ${globalIndex} for upsell update, skipping`);
+                    continue;
+                }
+
+                const item = statement.items[globalIndex];
+
+                // Verify the item is an upsell type
+                if (item.type !== 'upsell') {
+                    console.warn(`Item at globalIndex ${globalIndex} is not an upsell (type: ${item.type}), skipping`);
+                    continue;
+                }
+
+                // Update the fields that were provided
+                if (date !== undefined) item.date = date;
+                if (description !== undefined) item.description = description;
+                if (category !== undefined) item.category = category;
+                if (amount !== undefined) item.amount = parseFloat(amount) || 0;
+
                 modified = true;
             }
         }
@@ -2084,27 +2193,27 @@ router.put('/:id', async (req, res) => {
 
         // Add custom reservation
         if (customReservationToAdd && typeof customReservationToAdd === 'object') {
-            // Validate required fields
-            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'amount'];
+            // Validate required fields - now requires baseRate and grossPayout instead of amount
+            const requiredFields = ['guestName', 'checkInDate', 'checkOutDate', 'baseRate', 'grossPayout'];
             const missingFields = requiredFields.filter(field => !customReservationToAdd[field]);
-            
+
             if (missingFields.length > 0) {
-                return res.status(400).json({ 
-                    error: `Missing required fields for custom reservation: ${missingFields.join(', ')}` 
+                return res.status(400).json({
+                    error: `Missing required fields for custom reservation: ${missingFields.join(', ')}`
                 });
             }
 
-            // Check for duplicate custom reservation (same guest, dates, and amount)
-            const isDuplicate = (statement.reservations || []).some(res => 
+            // Check for duplicate custom reservation (same guest, dates, and grossPayout)
+            const isDuplicate = (statement.reservations || []).some(res =>
                 res.guestName === customReservationToAdd.guestName &&
                 res.checkInDate === customReservationToAdd.checkInDate &&
                 res.checkOutDate === customReservationToAdd.checkOutDate &&
-                res.grossAmount === parseFloat(customReservationToAdd.amount)
+                res.grossAmount === parseFloat(customReservationToAdd.grossPayout)
             );
 
             if (isDuplicate) {
-                return res.status(400).json({ 
-                    error: `Duplicate reservation: ${customReservationToAdd.guestName} (${customReservationToAdd.checkInDate} - ${customReservationToAdd.checkOutDate}) already exists in this statement` 
+                return res.status(400).json({
+                    error: `Duplicate reservation: ${customReservationToAdd.guestName} (${customReservationToAdd.checkInDate} - ${customReservationToAdd.checkOutDate}) already exists in this statement`
                 });
             }
 
@@ -2113,10 +2222,23 @@ router.put('/:id', async (req, res) => {
                 statement.reservations = [];
             }
 
+            // Parse all financial fields
+            const baseRate = parseFloat(customReservationToAdd.baseRate) || 0;
+            const guestFees = parseFloat(customReservationToAdd.guestFees) || 0;
+            const platformFees = parseFloat(customReservationToAdd.platformFees) || 0;
+            const tax = parseFloat(customReservationToAdd.tax) || 0;
+            const pmCommission = parseFloat(customReservationToAdd.pmCommission) || 0;
+            const grossPayout = parseFloat(customReservationToAdd.grossPayout) || 0;
+            const resortFee = parseFloat(customReservationToAdd.guestPaidDamageCoverage) || 0; // stored as resortFee
+            const platform = customReservationToAdd.platform || 'custom';
+
             // Create custom reservation object
-            const nights = parseInt(customReservationToAdd.nights) || 
+            const nights = parseInt(customReservationToAdd.nights) ||
                 Math.ceil((new Date(customReservationToAdd.checkOutDate) - new Date(customReservationToAdd.checkInDate)) / (1000 * 60 * 60 * 24));
-            
+
+            // Calculate clientRevenue (revenue before PM commission)
+            const clientRevenue = grossPayout + pmCommission;
+
             const customReservation = {
                 id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 guestName: customReservationToAdd.guestName,
@@ -2124,22 +2246,25 @@ router.put('/:id', async (req, res) => {
                 checkInDate: customReservationToAdd.checkInDate,
                 checkOutDate: customReservationToAdd.checkOutDate,
                 nights: nights,
-                grossAmount: parseFloat(customReservationToAdd.amount),
-                clientRevenue: parseFloat(customReservationToAdd.amount),
-                baseRate: parseFloat(customReservationToAdd.amount),
-                cleaningAndOtherFees: 0,
-                platformFees: 0,
-                luxuryLodgingFee: 0,
-                clientTaxResponsibility: 0,
-                clientPayout: parseFloat(customReservationToAdd.amount),
-                hostPayoutAmount: parseFloat(customReservationToAdd.amount),
+                // Financial fields
+                baseRate: baseRate,
+                cleaningAndOtherFees: guestFees,
+                platformFees: platformFees,
+                clientTaxResponsibility: tax,
+                luxuryLodgingFee: pmCommission,
+                grossAmount: grossPayout,
+                clientRevenue: clientRevenue,
+                clientPayout: grossPayout,
+                hostPayoutAmount: grossPayout,
+                resortFee: resortFee, // Guest Paid Damage Coverage amount
+                // Status and metadata
                 status: 'confirmed',
-                source: 'custom',
+                source: platform,
                 description: customReservationToAdd.description || null,
                 isCustom: true,
                 isProrated: false,
                 weeklyPayoutDate: null,
-                hasDetailedFinance: false
+                hasDetailedFinance: true
             };
 
             statement.reservations.push(customReservation);
@@ -2567,8 +2692,12 @@ router.get('/:id/view', async (req, res) => {
             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
-            // Use listing's default cleaning fee if reservation cleaning fee is 0
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
@@ -2637,27 +2766,30 @@ router.get('/:id/view', async (req, res) => {
             }
         }
 
-        // Fetch internal notes from listing(s)
-        if (statement.propertyIds && statement.propertyIds.length > 1) {
-            // Combined statement - aggregate notes from all properties
-            const notesArray = [];
-            for (const propId of statement.propertyIds) {
-                const listing = allListings.find(l => parseInt(l.id) === parseInt(propId));
-                if (listing && listing.internalNotes) {
-                    const displayName = listing.nickname || listing.displayName || listing.name || `Property ${propId}`;
-                    notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+        // Use statement's own internalNotes if available (snapshotted at creation)
+        // Only fall back to listing notes for backward compatibility with old statements
+        if (!statement.internalNotes) {
+            if (statement.propertyIds && statement.propertyIds.length > 1) {
+                // Combined statement - aggregate notes from all properties
+                const notesArray = [];
+                for (const propId of statement.propertyIds) {
+                    const listing = allListings.find(l => parseInt(l.id) === parseInt(propId));
+                    if (listing && listing.internalNotes) {
+                        const displayName = listing.nickname || listing.displayName || listing.name || `Property ${propId}`;
+                        notesArray.push(`[${displayName}]: ${listing.internalNotes}`);
+                    }
                 }
-            }
-            if (notesArray.length > 0) {
-                statement.internalNotes = notesArray.join('\n\n');
-            }
-        } else {
-            // Single property statement
-            const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-            if (propertyIdForNotes) {
-                const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
-                if (listingForNotes && listingForNotes.internalNotes) {
-                    statement.internalNotes = listingForNotes.internalNotes;
+                if (notesArray.length > 0) {
+                    statement.internalNotes = notesArray.join('\n\n');
+                }
+            } else {
+                // Single property statement
+                const propertyIdForNotes = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+                if (propertyIdForNotes) {
+                    const listingForNotes = allListings.find(l => parseInt(l.id) === parseInt(propertyIdForNotes));
+                    if (listingForNotes && listingForNotes.internalNotes) {
+                        statement.internalNotes = listingForNotes.internalNotes;
+                    }
                 }
             }
         }
@@ -4237,7 +4369,7 @@ router.get('/:id/view', async (req, res) => {
     ${(statement.internalNotes && !isPdf) ? `
     <div class="internal-notes-banner">
         <div class="internal-notes-header">
-            <span class="internal-notes-title">Internal Notes</span>
+            <span class="internal-notes-title">INTERNAL NOTES - PM ${statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15}%</span>
         </div>
         <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
     </div>
@@ -4306,8 +4438,12 @@ router.get('/:id/view', async (req, res) => {
                                 let grossPayout;
                                 const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+                                // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                                // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                                const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                                    ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                                    : 0;
 
                                 // Check if PM commission waiver is active for this property
                                 const resWaiveCommission = propSettings.waiveCommission || false;
@@ -4404,8 +4540,12 @@ router.get('/:id/view', async (req, res) => {
 
                                     const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                    // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+                                    // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                                    // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                                    const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                                        : 0;
 
                                     // Check if PM commission waiver is active for this property
                                     const resWaiveCommission = propSettings.waiveCommission || false;
@@ -4649,8 +4789,12 @@ router.get('/:id/view', async (req, res) => {
             const luxuryFee = clientRevenue * (propSettings.pmFeePercentage / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-            // Get cleaning fee for pass-through (use per-property setting, fallback to listing default)
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough ? (reservation.cleaningFee || propSettings.cleaningFee || 0) : 0;
+            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                : 0;
 
             // Check if PM commission waiver is active for this property
             const resWaiveCommission = propSettings.waiveCommission || false;
@@ -5810,8 +5954,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || listing?.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                            : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -6199,9 +6347,12 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                         const pmFee = clientRevenue * (pmPercentage / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
-                        // Use listing's default cleaning fee if reservation cleaning fee is 0
-                        // property.cleaningFee comes from Hostify API via FileDataService.getListings()
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough ? (res.cleaningFee || property.cleaningFee || 0) : 0;
+                        // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                        // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                        const guestPaidCleaningFee = res.cleaningFee || property.cleaningFee || 0;
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                            : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
