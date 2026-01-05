@@ -72,6 +72,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['by-category']));
   const [tabLoading, setTabLoading] = useState<string | null>(null);
 
+  // QuickBooks connection state
+  const [qbConnectionError, setQbConnectionError] = useState<string | null>(null);
+
   // Home categories data for HomeCategoriesRow
   const [homeCategories, setHomeCategories] = useState<{
     pm: HomeCategoryData;
@@ -384,8 +387,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       }
 
       setInsights(newInsights);
-    } catch (error) {
+      setQbConnectionError(null); // Clear any previous error
+    } catch (error: any) {
       console.error('Failed to fetch financial data:', error);
+      // Check if this is a QuickBooks connection error
+      if (error?.response?.status === 503 || error?.message?.includes('QuickBooks')) {
+        setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
+      }
     } finally {
       setLoading(false);
     }
@@ -549,6 +557,32 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       <div className="p-4 space-y-3 pb-20">
         {/* Date Range Filter */}
         <DateRangeFilter dateRange={dateRange} onDateRangeChange={setDateRange} />
+
+        {/* QuickBooks Connection Error */}
+        {qbConnectionError && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+            <div className="flex-shrink-0 w-5 h-5 text-amber-500 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-amber-800">QuickBooks Connection Required</h3>
+              <p className="text-sm text-amber-700 mt-1">{qbConnectionError}</p>
+              <a
+                href="/api/quickbooks/auth-url"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-amber-800 hover:text-amber-900 underline"
+              >
+                Connect to QuickBooks
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Summary Cards Row */}
         <SummaryCardsRow

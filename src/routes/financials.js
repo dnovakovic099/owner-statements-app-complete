@@ -492,22 +492,22 @@ router.get('/summary', async (req, res) => {
                 dataSource = 'quickbooks';
                 console.log(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
             } catch (qbError) {
-                console.error('QuickBooks P&L fetch failed, falling back to statements:', qbError.message);
-                // Fall back to statements data
-                const summary = await statementsFinancialService.getSummary(startDate, endDate);
-                totalIncome = summary.totalIncome;
-                totalExpenses = summary.totalExpenses;
-                incomeBreakdown = { 'Statements': summary.totalIncome };
-                expenseBreakdown = { 'Statements': summary.totalExpenses };
-                dataSource = 'statements';
+                console.error('QuickBooks P&L fetch failed:', qbError.message);
+                return res.status(503).json({
+                    success: false,
+                    error: 'QuickBooks connection failed',
+                    message: 'Unable to fetch data from QuickBooks. Please re-authenticate.',
+                    authUrl: '/api/quickbooks/auth-url'
+                });
             }
         } else {
-            // Not connected to QuickBooks, use statements
-            const summary = await statementsFinancialService.getSummary(startDate, endDate);
-            totalIncome = summary.totalIncome;
-            totalExpenses = summary.totalExpenses;
-            incomeBreakdown = { 'Statements': summary.totalIncome };
-            expenseBreakdown = { 'Statements': summary.totalExpenses };
+            // Not connected to QuickBooks - return error instead of fallback
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks not connected',
+                message: 'Please connect to QuickBooks to view financial data.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
         }
 
         const netIncome = totalIncome - totalExpenses;
@@ -835,72 +835,18 @@ router.get('/by-category', async (req, res) => {
             return res.json(response);
         }
 
-        // Fallback: Use statements data grouped by property (legacy behavior)
-        console.log('[by-category] Using statements fallback (QuickBooks not available)');
-        const { income: stmtIncome, expenses: stmtExpenses } = await statementsFinancialService.getByCategory(startDate, endDate);
-
-        // Group income by category
-        const incomeByCategory = {};
-        stmtIncome.forEach(t => {
-            const category = t.CategoryName || 'Revenue';
-            if (!incomeByCategory[category]) {
-                incomeByCategory[category] = {
-                    name: category,
-                    total: 0,
-                    count: 0,
-                    transactions: []
-                };
-            }
-            incomeByCategory[category].total += t.Amount || 0;
-            incomeByCategory[category].count++;
+        // QuickBooks not available - return error instead of fallback
+        console.log('[by-category] QuickBooks not available, returning error');
+        return res.status(503).json({
+            success: false,
+            error: 'QuickBooks not connected',
+            message: 'Please connect to QuickBooks to view financial data by category.',
+            authUrl: '/api/quickbooks/auth-url'
         });
-
-        // Group expenses by category
-        const expensesByCategory = {};
-        stmtExpenses.forEach(t => {
-            const category = t.CategoryName || 'Expenses';
-            if (!expensesByCategory[category]) {
-                expensesByCategory[category] = {
-                    name: category,
-                    total: 0,
-                    count: 0,
-                    transactions: []
-                };
-            }
-            expensesByCategory[category].total += t.Amount || 0;
-            expensesByCategory[category].count++;
-        });
-
-        // Convert to arrays and sort by total
-        const incomeCategories = Object.values(incomeByCategory)
-            .sort((a, b) => b.total - a.total);
-        const expenseCategories = Object.values(expensesByCategory)
-            .sort((a, b) => b.total - a.total);
-
-        const response = {
-            success: true,
-            data: {
-                period: { startDate, endDate },
-                source: 'statements',
-                categoryMapping: false,
-                standardCategories: ALL_CATEGORIES,
-                income: {
-                    categories: incomeCategories,
-                    total: incomeCategories.reduce((sum, c) => sum + c.total, 0)
-                },
-                expenses: {
-                    categories: expenseCategories,
-                    total: expenseCategories.reduce((sum, c) => sum + c.total, 0)
-                }
-            },
-            message: 'Using statement data. Connect QuickBooks for detailed account categories.'
-        };
-        setCache(cacheKey, response);
-        res.json(response);
     } catch (error) {
         console.error('Error fetching financials by category:', error);
 
-        // Return empty data if QuickBooks not connected or any QB error
+        // Return proper error for QuickBooks issues
         const isQBError = error.message && (
             error.message.includes('Not connected') ||
             error.message.includes('qbo') ||
@@ -911,15 +857,11 @@ router.get('/by-category', async (req, res) => {
         );
 
         if (isQBError) {
-            return res.json({
-                success: true,
-                data: {
-                    period: parseDateRange(req.query),
-                    standardCategories: ALL_CATEGORIES,
-                    income: { categories: [], total: 0 },
-                    expenses: { categories: [], total: 0 }
-                },
-                message: 'QuickBooks connection expired. Please reconnect in Settings.'
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'QuickBooks connection expired. Please re-authenticate.',
+                authUrl: '/api/quickbooks/auth-url'
             });
         }
 
