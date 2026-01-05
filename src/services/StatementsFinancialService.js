@@ -153,8 +153,9 @@ class StatementsFinancialService {
     }
 
     /**
-     * Get by-category breakdown (property-level grouping)
-     * Used for category pie charts
+     * Get by-category breakdown parsing actual expense categories from JSON
+     * Uses efficient SQL aggregation with jsonb_array_elements
+     * Shows real expense categories like Cleaning, Maintenance, Pet Fee, Photography, etc.
      *
      * @param {string} startDate - Start date (YYYY-MM-DD)
      * @param {string} endDate - End date (YYYY-MM-DD)
@@ -162,11 +163,11 @@ class StatementsFinancialService {
      * @returns {Promise<Object>} {income: [], expenses: []} category breakdowns
      */
     async getByCategory(startDate, endDate, limit = 20) {
-        const results = await Statement.findAll({
+        // Get income by property using existing SQL
+        const incomeResults = await Statement.findAll({
             attributes: [
                 ['property_name', 'name'],
-                [fn('COALESCE', fn('SUM', col('total_revenue')), 0), 'total_income'],
-                [fn('COALESCE', fn('SUM', col('total_expenses')), 0), 'total_expenses']
+                [fn('COALESCE', fn('SUM', col('total_revenue')), 0), 'total_income']
             ],
             where: {
                 weekEndDate: { [Op.gte]: startDate },
@@ -178,13 +179,30 @@ class StatementsFinancialService {
             raw: true
         });
 
+        // Use efficient SQL to aggregate expense categories directly
+        // This extracts category from JSON and sums in a single query
+        const expenseResults = await sequelize.query(`
+            SELECT
+                COALESCE(expense->>'category', expense->>'type', 'Other') as category,
+                SUM(ABS((expense->>'amount')::numeric)) as total,
+                COUNT(*) as count
+            FROM statements,
+                 jsonb_array_elements(expenses::jsonb) as expense
+            WHERE week_end_date >= :startDate
+              AND week_start_date <= :endDate
+              AND jsonb_array_length(expenses::jsonb) > 0
+            GROUP BY COALESCE(expense->>'category', expense->>'type', 'Other')
+            ORDER BY total DESC
+            LIMIT :limit
+        `, {
+            replacements: { startDate, endDate, limit },
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        // Convert income results
         const income = [];
-        const expenses = [];
-
-        results.forEach(row => {
+        incomeResults.forEach(row => {
             const totalIncome = parseFloat(row.total_income) || 0;
-            const totalExpenses = parseFloat(row.total_expenses) || 0;
-
             if (totalIncome > 0) {
                 income.push({
                     CategoryName: row.name,
@@ -192,14 +210,15 @@ class StatementsFinancialService {
                     Type: 'Revenue'
                 });
             }
-            if (totalExpenses > 0) {
-                expenses.push({
-                    CategoryName: row.name,
-                    Amount: totalExpenses,
-                    Type: 'Expense'
-                });
-            }
         });
+
+        // Convert expense results
+        const expenses = expenseResults.map(row => ({
+            CategoryName: row.category,
+            Amount: parseFloat(row.total) || 0,
+            Type: 'Expense',
+            TransactionCount: parseInt(row.count) || 0
+        }));
 
         return { income, expenses };
     }

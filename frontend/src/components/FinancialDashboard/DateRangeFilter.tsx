@@ -48,9 +48,17 @@ const PRESET_OPTIONS: { key: Preset; label: string; shortLabel?: string }[] = [
 const QUICK_PRESETS: Preset[] = ['this-month', 'last-month', 'last-3-months', 'last-6-months', 'this-year'];
 
 const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRangeChange }) => {
-  const [activePreset, setActivePreset] = React.useState<Preset>('this-month');
+  const [activePreset, setActivePreset] = React.useState<Preset>('last-month');
   const [isCustomOpen, setIsCustomOpen] = React.useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
+
+  // Format date as YYYY-MM-DD in local timezone (not UTC)
+  const formatLocalDate = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
   const getPresetDates = (preset: Preset): DateRange => {
     const today = new Date();
@@ -63,50 +71,50 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRang
         const thirtyDaysAgo = new Date(today);
         thirtyDaysAgo.setDate(today.getDate() - 30);
         return {
-          startDate: thirtyDaysAgo.toISOString().split('T')[0],
-          endDate: today.toISOString().split('T')[0],
+          startDate: formatLocalDate(thirtyDaysAgo),
+          endDate: formatLocalDate(today),
         };
       case 'this-month':
         return {
-          startDate: new Date(year, month, 1).toISOString().split('T')[0],
-          endDate: new Date(year, month + 1, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, month, 1)),
+          endDate: formatLocalDate(new Date(year, month + 1, 0)),
         };
       case 'last-month':
         return {
-          startDate: new Date(year, month - 1, 1).toISOString().split('T')[0],
-          endDate: new Date(year, month, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, month - 1, 1)),
+          endDate: formatLocalDate(new Date(year, month, 0)),
         };
       case 'this-quarter':
         return {
-          startDate: new Date(year, quarter * 3, 1).toISOString().split('T')[0],
-          endDate: new Date(year, (quarter + 1) * 3, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, quarter * 3, 1)),
+          endDate: formatLocalDate(new Date(year, (quarter + 1) * 3, 0)),
         };
       case 'last-quarter':
         const lastQuarter = quarter === 0 ? 3 : quarter - 1;
         const lastQuarterYear = quarter === 0 ? year - 1 : year;
         return {
-          startDate: new Date(lastQuarterYear, lastQuarter * 3, 1).toISOString().split('T')[0],
-          endDate: new Date(lastQuarterYear, (lastQuarter + 1) * 3, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(lastQuarterYear, lastQuarter * 3, 1)),
+          endDate: formatLocalDate(new Date(lastQuarterYear, (lastQuarter + 1) * 3, 0)),
         };
       case 'last-3-months':
         return {
-          startDate: new Date(year, month - 2, 1).toISOString().split('T')[0],
-          endDate: new Date(year, month + 1, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, month - 2, 1)),
+          endDate: formatLocalDate(new Date(year, month + 1, 0)),
         };
       case 'last-6-months':
         return {
-          startDate: new Date(year, month - 5, 1).toISOString().split('T')[0],
-          endDate: new Date(year, month + 1, 0).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, month - 5, 1)),
+          endDate: formatLocalDate(new Date(year, month + 1, 0)),
         };
       case 'this-year':
         return {
-          startDate: new Date(year, 0, 1).toISOString().split('T')[0],
-          endDate: new Date(year, 11, 31).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year, 0, 1)),
+          endDate: formatLocalDate(new Date(year, 11, 31)),
         };
       case 'last-year':
         return {
-          startDate: new Date(year - 1, 0, 1).toISOString().split('T')[0],
-          endDate: new Date(year - 1, 11, 31).toISOString().split('T')[0],
+          startDate: formatLocalDate(new Date(year - 1, 0, 1)),
+          endDate: formatLocalDate(new Date(year - 1, 11, 31)),
         };
       default:
         return dateRange;
@@ -142,8 +150,8 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRang
   };
 
   React.useEffect(() => {
-    // Set default to this month on mount
-    const defaultRange = getPresetDates('this-month');
+    // Set default to last month on mount (most likely to have complete data)
+    const defaultRange = getPresetDates('last-month');
     onDateRangeChange(defaultRange);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -68,10 +68,20 @@ function parseDateRange(query) {
  * Categories: arbitrage, pm (property management), owned, shared
  */
 function getHomeCategory(listing) {
-    if (!listing || !listing.tags) return 'uncategorized';
+    if (!listing) return 'uncategorized';
 
+    // First check explicit homeCategory field
+    if (listing.homeCategory) {
+        const cat = listing.homeCategory.toLowerCase();
+        if (cat.includes('arb')) return 'arbitrage';
+        if (cat.includes('pm') || cat.includes('manage')) return 'pm';
+        if (cat.includes('own')) return 'owned';
+        if (cat.includes('share') || cat.includes('partner')) return 'shared';
+    }
+
+    // Then check tags
     const tags = Array.isArray(listing.tags) ? listing.tags : [];
-    const tagsLower = tags.map(t => t.toLowerCase());
+    const tagsLower = tags.map(t => (t || '').toLowerCase());
 
     if (tagsLower.includes('arbitrage') || tagsLower.includes('arb')) {
         return 'arbitrage';
@@ -84,6 +94,17 @@ function getHomeCategory(listing) {
     }
     if (tagsLower.includes('shared') || tagsLower.includes('partner') || tagsLower.includes('partnership')) {
         return 'shared';
+    }
+
+    // Heuristic: If pmFeePercentage > 0, likely a PM property
+    const pmFee = parseFloat(listing.pmFeePercentage) || 0;
+    if (pmFee > 0) {
+        return 'pm';
+    }
+
+    // Heuristic: If has ownerEmail, likely PM (managing for someone else)
+    if (listing.ownerEmail && listing.ownerEmail.length > 0) {
+        return 'pm';
     }
 
     return 'uncategorized';
@@ -393,18 +414,26 @@ router.get('/by-category', async (req, res) => {
         let expenses = [];
         let usingQuickBooks = false;
 
-        // Check if QuickBooks is connected
-        const isConnected = await quickBooksService.isConnectedAsync();
+        // Check if QuickBooks is connected (with fast timeout)
+        let isConnected = false;
+        try {
+            isConnected = await Promise.race([
+                quickBooksService.isConnectedAsync(),
+                new Promise(resolve => setTimeout(() => resolve(false), 2000)) // 2 second timeout
+            ]);
+        } catch (e) {
+            isConnected = false;
+        }
 
         if (isConnected) {
             try {
-                // Fetch from QuickBooks with timeout
+                // Fetch from QuickBooks with fast timeout (3 seconds)
                 const results = await Promise.race([
                     Promise.all([
                         quickBooksService.getAllIncome(startDate, endDate),
                         quickBooksService.getAllExpenses(startDate, endDate)
                     ]),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 15000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 3000))
                 ]);
                 income = results[0] || [];
                 expenses = results[1] || [];
@@ -600,13 +629,13 @@ router.get('/by-home-category', async (req, res) => {
             return res.json(cached);
         }
 
-        // Fetch listings to determine home categories
-        const listings = await FileDataService.getListings();
-        const listingMap = new Map(listings.map(l => [l.id, l]));
-
-        // SKIP P&L report - it's slow and we use DB data now
-        // P&L can be fetched separately via /api/financials/summary endpoint
-        let plReport = null;
+        // Fetch listings from DATABASE (not FileDataService) to get pmFeePercentage, ownerEmail, tags
+        const Listing = require('../models/Listing');
+        const dbListings = await Listing.findAll({
+            attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage', 'ownerEmail', 'tags', 'isActive']
+        });
+        const listings = dbListings.map(l => l.toJSON());
+        console.log(`[by-home-category] Found ${listings.length} listings from database`);
 
         // Initialize categories
         const categories = {
@@ -617,17 +646,19 @@ router.get('/by-home-category', async (req, res) => {
             uncategorized: { name: 'Uncategorized', income: 0, expenses: 0, properties: [], propertyCount: 0 }
         };
 
-        // Categorize listings
+        // Categorize listings using database fields (pmFeePercentage, ownerEmail, tags)
         listings.forEach(listing => {
             const category = getHomeCategory(listing);
             if (categories[category]) {
                 categories[category].properties.push({
                     id: listing.id,
-                    name: listing.displayName || listing.name
+                    name: listing.displayName || listing.nickname || listing.name
                 });
                 categories[category].propertyCount++;
             }
         });
+
+        console.log(`[by-home-category] Categorized: PM=${categories.pm.propertyCount}, Arb=${categories.arbitrage.propertyCount}, Owned=${categories.owned.propertyCount}, Shared=${categories.shared.propertyCount}, Uncategorized=${categories.uncategorized.propertyCount}`);
 
         // Use StatementsFinancialService to get property financials
         const { byProperty: financialsByProperty } = await statementsFinancialService.getByHomeCategory(startDate, endDate);
@@ -678,11 +709,7 @@ router.get('/by-home-category', async (req, res) => {
                     netIncome: totals.income - totals.expenses,
                     profitMargin: totals.income > 0 ? (((totals.income - totals.expenses) / totals.income) * 100).toFixed(2) : 0
                 },
-                plReport: plReport ? {
-                    available: true,
-                    header: plReport.Header,
-                    summary: plReport.Rows?.Row?.[0] || null
-                } : { available: false }
+                plReport: { available: false } // P&L report skipped for performance
             }
         };
         setCache(cacheKey, response);
@@ -979,8 +1006,17 @@ router.get('/transactions', async (req, res) => {
         const { startDate, endDate } = parseDateRange(req.query);
         const { type, category, minAmount, maxAmount, search } = req.query;
 
-        // Check if QuickBooks is connected before attempting to fetch (async for multi-worker support)
-        const isConnected = await quickBooksService.isConnectedAsync();
+        // Fast check if QuickBooks is connected (2 second timeout)
+        let isConnected = false;
+        try {
+            isConnected = await Promise.race([
+                quickBooksService.isConnectedAsync(),
+                new Promise(resolve => setTimeout(() => resolve(false), 2000))
+            ]);
+        } catch (e) {
+            isConnected = false;
+        }
+
         if (!isConnected) {
             // Return empty data instead of trying to fetch from disconnected QB
             return res.json({
@@ -1004,7 +1040,7 @@ router.get('/transactions', async (req, res) => {
                     quickBooksService.getAllIncome(startDate, endDate),
                     quickBooksService.getAllExpenses(startDate, endDate)
                 ]),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 15000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 8000))
             ]);
             income = results[0] || [];
             expenses = results[1] || [];

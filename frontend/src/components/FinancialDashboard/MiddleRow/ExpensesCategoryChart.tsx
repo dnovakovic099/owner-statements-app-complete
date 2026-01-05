@@ -137,10 +137,44 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
     setActiveIndex(null);
   };
 
+  // Empty state - compact version
+  if (categories.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Expenses by Category
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Total: {formatCurrency(total)}
+          </p>
+        </div>
+        <div className="text-center py-8">
+          <div className="text-gray-400 mb-2">
+            <svg
+              className="mx-auto h-10 w-10"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-500">No expense data available</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           Expenses by Category
         </h3>
@@ -150,15 +184,15 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
       </div>
 
       {/* Chart */}
-      <div className="relative mb-6">
-        <ResponsiveContainer width="100%" height={280}>
+      <div className="relative mb-4">
+        <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius={70}
-              outerRadius={100}
+              innerRadius={55}
+              outerRadius={80}
               paddingAngle={2}
               dataKey="amount"
               onClick={handlePieClick}
@@ -188,91 +222,65 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
         {/* Center Total */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
-            <p className="text-2xl font-bold text-gray-900">
+            <p className="text-xl font-bold text-gray-900">
               {formatCurrency(total)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Total</p>
+            <p className="text-xs text-gray-500">Total</p>
           </div>
         </div>
       </div>
 
       {/* Top Categories List */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-gray-700 mb-3">
+      <div>
+        <h4 className="text-sm font-medium text-gray-700 mb-2">
           Top Categories
         </h4>
-        {topCategories.map((category, index) => (
-          <div
-            key={category.name}
-            onClick={() => handleListItemClick(category.name)}
-            onMouseEnter={() => {
-              const chartIndex = chartData.findIndex(
-                (c) => c.name === category.name
-              );
-              handleMouseEnter(chartIndex);
-            }}
-            onMouseLeave={handleMouseLeave}
-            className={`
-              flex items-center justify-between p-3 rounded-lg
-              transition-all duration-200
-              ${onCategoryClick ? 'cursor-pointer hover:bg-gray-50' : ''}
-              ${
-                activeIndex !== null &&
-                chartData[activeIndex]?.name === category.name
-                  ? 'bg-gray-50 ring-2 ring-gray-200'
-                  : ''
-              }
-            `}
-          >
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {/* Color Dot */}
-              <div
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ backgroundColor: category.color }}
-              />
-
-              {/* Category Name */}
-              <span className="text-sm font-medium text-gray-900 truncate">
-                {category.name}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-4 flex-shrink-0">
-              {/* Amount */}
-              <span className="text-sm font-semibold text-gray-900">
-                {formatCurrency(category.amount)}
-              </span>
-
-              {/* Percentage */}
-              <span className="text-sm text-gray-500 min-w-[3rem] text-right">
-                {formatPercentage(category.percentage)}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Empty State */}
-      {categories.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-gray-400 mb-2">
-            <svg
-              className="mx-auto h-12 w-12"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+        <div className="space-y-1">
+          {topCategories.map((category, index) => (
+            <div
+              key={category.name}
+              onClick={() => handleListItemClick(category.name)}
+              onMouseEnter={() => {
+                const chartIndex = chartData.findIndex(
+                  (c) => c.name === category.name
+                );
+                handleMouseEnter(chartIndex);
+              }}
+              onMouseLeave={handleMouseLeave}
+              className={`
+                flex items-center justify-between py-2 px-2 rounded-lg
+                transition-all duration-200
+                ${onCategoryClick ? 'cursor-pointer hover:bg-gray-50' : ''}
+                ${
+                  activeIndex !== null &&
+                  chartData[activeIndex]?.name === category.name
+                    ? 'bg-gray-50'
+                    : ''
+                }
+              `}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
-          </div>
-          <p className="text-sm text-gray-500">No expense data available</p>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: category.color }}
+                />
+                <span className="text-sm text-gray-900 truncate">
+                  {category.name}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatCurrency(category.amount)}
+                </span>
+                <span className="text-xs text-gray-500 w-10 text-right">
+                  {formatPercentage(category.percentage)}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 };

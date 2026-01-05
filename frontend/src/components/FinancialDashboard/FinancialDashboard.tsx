@@ -8,6 +8,8 @@ import { generateSampleSparklineData } from './components/SummaryCardsRow';
 import ProfitLossWidget from './MiddleRow/ProfitLossWidget';
 import ExpensesCategoryChart, { ExpenseCategory } from './MiddleRow/ExpensesCategoryChart';
 import InsightsFeed, { Insight } from './MiddleRow/InsightsFeed';
+import TopPropertiesWidget from './MiddleRow/TopPropertiesWidget';
+import QuickStatsWidget from './MiddleRow/QuickStatsWidget';
 import { HomeCategoriesRow, CategoryData as HomeCategoryData } from './components/HomeCategoriesRow';
 import TransactionModal, { Transaction } from './TransactionModal';
 import ByCategoryTab from './tabs/ByCategoryTab';
@@ -91,6 +93,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         financialsAPI.getComparison(dateRange.startDate, dateRange.endDate, undefined, undefined, 'mom'),
       ]);
       console.log('[FinancialDashboard] All API calls completed');
+      console.log('[FinancialDashboard] homeCategoryResponseData:', JSON.stringify(homeCategoryResponseData, null, 2));
 
       // Extract comparison percentages and previous period data
       let incomeChange = 0;
@@ -165,18 +168,23 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
         homeCategoryResponseData.data.categories.forEach((c: any) => {
           const key = c.category.toLowerCase().replace(/\s+/g, '-');
-          let mappedKey: 'pm' | 'arbitrage' | 'owned' | 'shared';
+          let mappedKey: 'pm' | 'arbitrage' | 'owned' | 'shared' | null = null;
 
           if (key.includes('property-management') || key.includes('pm')) {
             mappedKey = 'pm';
           } else if (key.includes('arbitrage')) {
             mappedKey = 'arbitrage';
-          } else if (key.includes('owned') || key.includes('home-owned')) {
+          } else if (key.includes('owned')) {
             mappedKey = 'owned';
-          } else if (key.includes('shared')) {
+          } else if (key.includes('shared') || key.includes('partnership')) {
             mappedKey = 'shared';
-          } else {
-            return; // Skip unknown categories
+          }
+
+          console.log(`[FinancialDashboard] Mapping category "${c.category}" (key="${key}") -> "${mappedKey}", income=${c.income}, properties=${c.propertyCount}`);
+
+          if (!mappedKey) {
+            console.log(`[FinancialDashboard] Skipping unknown category: ${c.category}`);
+            return;
           }
 
           categoryMap[mappedKey] = {
@@ -190,6 +198,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           };
         });
 
+        console.log('[FinancialDashboard] Final categoryMap:', categoryMap);
         setHomeCategories(categoryMap as {
           pm: HomeCategoryData;
           arbitrage: HomeCategoryData;
@@ -237,10 +246,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     }
   }, [dateRange]);
 
-  // Fetch financial data when date range changes
+  // Fetch financial data when date range changes (with debounce)
   useEffect(() => {
     if (dateRange.startDate && dateRange.endDate) {
-      fetchFinancialData();
+      // Debounce to avoid rapid API calls when clicking filter buttons
+      const timeoutId = setTimeout(() => {
+        fetchFinancialData();
+      }, 150);
+      return () => clearTimeout(timeoutId);
     }
   }, [dateRange, fetchFinancialData]);
 
@@ -307,15 +320,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-full bg-gray-50 overflow-y-auto flex flex-col">
       {/* Dashboard Header */}
       <DashboardHeader
         onExportData={handleExportData}
         notificationCount={insights.length}
       />
 
-      {/* Main Content */}
-      <div className="p-6 space-y-6">
+      {/* Main Content - scrollable with tighter spacing */}
+      <div className="p-4 space-y-4 pb-20">
         {/* Date Range Filter */}
         <DateRangeFilter dateRange={dateRange} onDateRangeChange={setDateRange} />
 
@@ -333,28 +346,51 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           onCardClick={handleSummaryCardClick}
         />
 
-        {/* Middle Row: 3-column grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Profit & Loss Widget */}
-          <ProfitLossWidget
-            income={summary.totalIncome}
-            expenses={summary.totalExpenses}
-            previousIncome={previousPeriodData.income}
-            previousExpenses={previousPeriodData.expenses}
-          />
+        {/* Middle Row: 3-column grid with stacked widgets */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+          {/* Column 1: Profit & Loss + Top Properties */}
+          <div className="space-y-4">
+            <ProfitLossWidget
+              income={summary.totalIncome}
+              expenses={summary.totalExpenses}
+              previousIncome={previousPeriodData.income}
+              previousExpenses={previousPeriodData.expenses}
+            />
+            <TopPropertiesWidget
+              properties={homeCategories.pm.propertyCount > 0
+                ? transactions.slice(0, 5).map((t, i) => ({
+                    id: i,
+                    name: t.description || `Property ${i + 1}`,
+                    income: t.amount > 0 ? t.amount : 0,
+                  }))
+                : []
+              }
+            />
+          </div>
 
-          {/* Expenses Category Chart */}
+          {/* Column 2: Expenses Category Chart */}
           <ExpensesCategoryChart
             categories={expenseCategories}
             total={summary.totalExpenses}
             onCategoryClick={handleCategoryClick}
           />
 
-          {/* Insights Feed */}
-          <InsightsFeed
-            insights={insights}
-            onInsightClick={handleInsightClick}
-          />
+          {/* Column 3: Insights + Quick Stats */}
+          <div className="space-y-4">
+            <InsightsFeed
+              insights={insights}
+              onInsightClick={handleInsightClick}
+            />
+            <QuickStatsWidget
+              propertyCount={homeCategories.pm.propertyCount + homeCategories.arbitrage.propertyCount + homeCategories.owned.propertyCount}
+              avgIncomePerProperty={
+                homeCategories.pm.propertyCount > 0
+                  ? summary.totalIncome / homeCategories.pm.propertyCount
+                  : 0
+              }
+              periodLabel={`${new Date(dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(dateRange.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+            />
+          </div>
         </div>
 
         {/* Home Categories Row */}
@@ -365,7 +401,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
         {/* Tabs Section */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-6">
+          <TabsList className="grid w-full grid-cols-5 mb-4">
             <TabsTrigger value="by-category">
               <PieChart className="w-4 h-4 mr-2" />
               By Category

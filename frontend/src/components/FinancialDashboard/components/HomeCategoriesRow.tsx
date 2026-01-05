@@ -193,15 +193,19 @@ export const HomeCategoriesRow: React.FC<HomeCategoriesRowProps> = ({
   onCategoryClick,
 }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {categoryConfigs.map((config) => (
-        <CategoryCard
-          key={config.key}
-          config={config}
-          data={categories[config.key]}
-          onClick={() => onCategoryClick(config.key)}
-        />
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {categoryConfigs.map((config) => {
+        const data = categories[config.key];
+        console.log(`[HomeCategoriesRow] Rendering ${config.key}:`, data);
+        return (
+          <CategoryCard
+            key={config.key}
+            config={config}
+            data={data}
+            onClick={() => onCategoryClick(config.key)}
+          />
+        );
+      })}
     </div>
   );
 };

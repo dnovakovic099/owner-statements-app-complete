@@ -117,18 +117,18 @@ const InsightsFeed: React.FC<InsightsFeedProps> = ({
       className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+      <div className="px-5 py-3 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900">Insights & Alerts</h3>
       </div>
 
       {/* Scrollable Insights List */}
-      <div className="max-h-[400px] overflow-y-auto">
+      <div className="max-h-[280px] overflow-y-auto">
         {insights.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-              <Info className="w-8 h-8 text-gray-400" />
+          <div className="px-5 py-6 text-center">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 mb-2">
+              <Info className="w-5 h-5 text-gray-400" />
             </div>
-            <p className="text-gray-500 text-sm">No insights available at the moment</p>
+            <p className="text-gray-500 text-sm">No insights available</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -144,15 +144,15 @@ const InsightsFeed: React.FC<InsightsFeedProps> = ({
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                   onClick={() => handleInsightClick(insight)}
                   className={`
-                    px-6 py-4 transition-all duration-200
+                    px-5 py-3 transition-all duration-200
                     ${isClickable ? `${colors.hoverBg} cursor-pointer` : ''}
                     group
                   `}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3">
                     {/* Icon */}
                     <div className={`
-                      flex-shrink-0 p-2.5 rounded-lg
+                      flex-shrink-0 p-2 rounded-lg
                       ${colors.iconBg} ${colors.iconColor}
                       transition-transform duration-200
                       ${isClickable ? 'group-hover:scale-110' : ''}
@@ -162,10 +162,10 @@ const InsightsFeed: React.FC<InsightsFeedProps> = ({
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 leading-relaxed mb-1">
+                      <p className="text-sm text-gray-900 leading-snug">
                         {insight.message}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 mt-0.5">
                         {insight.timestamp}
                       </p>
                     </div>
