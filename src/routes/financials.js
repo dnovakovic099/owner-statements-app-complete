@@ -311,34 +311,219 @@ router.get('/comparison', async (req, res) => {
 
 /**
  * GET /api/financials/summary
- * Get total income/expenses for date range
+ * Get total income/expenses for date range from QuickBooks
  */
 router.get('/summary', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
 
-        // Use StatementsFinancialService for database queries
-        const summary = await statementsFinancialService.getSummary(startDate, endDate);
+        // Check if QuickBooks is connected
+        const isConnected = quickBooksService.isConnected();
+
+        let totalIncome = 0;
+        let totalExpenses = 0;
+        let incomeBreakdown = {};
+        let expenseBreakdown = {};
+        let dataSource = 'statements';
+
+        if (isConnected) {
+            try {
+                // Get P&L report from QuickBooks for accurate totals
+                const plReport = await quickBooksService.getProfitAndLoss(startDate, endDate);
+
+                // Debug: Log the full P&L report structure (first 5000 chars to avoid log overflow)
+                const reportJson = JSON.stringify(plReport, null, 2);
+                console.log('[Financials] P&L Report Structure (truncated):', reportJson.substring(0, 5000));
+                console.log('[Financials] P&L Report total length:', reportJson.length);
+
+                // Parse the P&L report to extract totals
+                // QuickBooks P&L report structure has these main sections (group values):
+                // - Income: All revenue accounts
+                // - CostOfGoodsSold: COGS accounts (counts as expense)
+                // - GrossProfit: Income - COGS (computed, skip)
+                // - Expenses: Operating expenses
+                // - NetOperatingIncome: Gross Profit - Expenses (computed, skip)
+                // - OtherIncome: Non-operating income
+                // - OtherExpenses: Non-operating expenses
+                // - NetOtherIncome: OtherIncome - OtherExpenses (computed, skip)
+                // - NetIncome: Final net income (use for validation)
+                if (plReport && plReport.Rows && plReport.Rows.Row) {
+                    // Helper function to recursively extract amounts from rows
+                    const extractRowAmounts = (rows, breakdown, prefix = '') => {
+                        if (!rows || !Array.isArray(rows)) return;
+                        for (const row of rows) {
+                            // Handle rows with ColData (actual data rows)
+                            if (row.ColData && row.ColData.length >= 2) {
+                                const name = row.ColData[0]?.value || 'Other';
+                                const amount = parseFloat(row.ColData[1]?.value) || 0;
+                                // Skip total/subtotal rows and zero amounts
+                                if (amount !== 0 && name && !name.toLowerCase().startsWith('total')) {
+                                    const fullName = prefix ? `${prefix}: ${name}` : name;
+                                    breakdown[fullName] = (breakdown[fullName] || 0) + amount;
+                                }
+                            }
+                            // Handle nested rows (sub-sections within a category)
+                            if (row.Rows && row.Rows.Row) {
+                                // Get header name for nested section if available
+                                const nestedPrefix = row.Header?.ColData?.[0]?.value || prefix;
+                                extractRowAmounts(row.Rows.Row, breakdown, nestedPrefix);
+                            }
+                        }
+                    };
+
+                    // Helper function to get total from Summary.ColData
+                    const getSummaryTotal = (section) => {
+                        if (!section.Summary || !section.Summary.ColData) return 0;
+                        // Find the numeric value column (usually the last one or second one)
+                        for (const col of section.Summary.ColData) {
+                            const val = parseFloat(col.value);
+                            if (!isNaN(val)) {
+                                return val;
+                            }
+                        }
+                        return 0;
+                    };
+
+                    // Track what we find for validation
+                    let qbNetIncome = null;
+                    let cogsTotal = 0;
+                    let expensesTotal = 0;
+                    let otherExpensesTotal = 0;
+                    let otherIncomeTotal = 0;
+
+                    // Log all sections found
+                    console.log('[Financials] P&L Sections found:');
+                    for (const section of plReport.Rows.Row) {
+                        const groupName = (section.group || '').toLowerCase();
+                        const headerValue = section.Header?.ColData?.[0]?.value || '';
+                        const summaryValue = getSummaryTotal(section);
+                        console.log(`  - group="${section.group}", header="${headerValue}", summary=${summaryValue}`);
+                    }
+
+                    for (const section of plReport.Rows.Row) {
+                        const groupName = (section.group || '').toLowerCase();
+                        const headerName = section.Header?.ColData?.[0]?.value?.toLowerCase() || '';
+
+                        // Income section
+                        if (groupName === 'income') {
+                            totalIncome = getSummaryTotal(section);
+                            console.log(`[Financials] Income section total: ${totalIncome}`);
+                            if (section.Rows && section.Rows.Row) {
+                                extractRowAmounts(section.Rows.Row, incomeBreakdown);
+                            }
+                        }
+
+                        // Cost of Goods Sold section (QuickBooks uses CostOfGoodsSold as group name)
+                        if (groupName === 'costofgoodssold' || groupName === 'cogs') {
+                            cogsTotal = getSummaryTotal(section);
+                            console.log(`[Financials] COGS section total: ${cogsTotal}`);
+                            expenseBreakdown['Cost of Goods Sold'] = cogsTotal;
+                            if (section.Rows && section.Rows.Row) {
+                                extractRowAmounts(section.Rows.Row, expenseBreakdown, 'COGS');
+                            }
+                        }
+
+                        // Expenses section (operating expenses)
+                        if (groupName === 'expenses') {
+                            expensesTotal = getSummaryTotal(section);
+                            console.log(`[Financials] Expenses section total: ${expensesTotal}`);
+                            if (section.Rows && section.Rows.Row) {
+                                extractRowAmounts(section.Rows.Row, expenseBreakdown);
+                            }
+                        }
+
+                        // Other Income section (non-operating income)
+                        if (groupName === 'otherincome') {
+                            otherIncomeTotal = getSummaryTotal(section);
+                            console.log(`[Financials] Other Income section total: ${otherIncomeTotal}`);
+                            if (section.Rows && section.Rows.Row) {
+                                extractRowAmounts(section.Rows.Row, incomeBreakdown, 'Other Income');
+                            }
+                        }
+
+                        // Other Expenses section (non-operating expenses)
+                        if (groupName === 'otherexpenses') {
+                            otherExpensesTotal = getSummaryTotal(section);
+                            console.log(`[Financials] Other Expenses section total: ${otherExpensesTotal}`);
+                            expenseBreakdown['Other Expenses'] = otherExpensesTotal;
+                            if (section.Rows && section.Rows.Row) {
+                                extractRowAmounts(section.Rows.Row, expenseBreakdown, 'Other');
+                            }
+                        }
+
+                        // Net Income section - use for validation
+                        if (groupName === 'netincome') {
+                            qbNetIncome = getSummaryTotal(section);
+                            console.log(`[Financials] QuickBooks Net Income from report: ${qbNetIncome}`);
+                        }
+                    }
+
+                    // Calculate totals
+                    // Total Income = Income + Other Income
+                    totalIncome = totalIncome + otherIncomeTotal;
+                    // Total Expenses = COGS + Expenses + Other Expenses
+                    totalExpenses = cogsTotal + expensesTotal + otherExpensesTotal;
+
+                    console.log(`[Financials] Calculated totals:`);
+                    console.log(`  Income: ${totalIncome} (base + other: ${totalIncome - otherIncomeTotal} + ${otherIncomeTotal})`);
+                    console.log(`  Expenses: ${totalExpenses} (COGS + Expenses + Other: ${cogsTotal} + ${expensesTotal} + ${otherExpensesTotal})`);
+                    console.log(`  Net Income: ${totalIncome - totalExpenses}`);
+
+                    // Validate against QuickBooks Net Income
+                    if (qbNetIncome !== null) {
+                        const calculatedNet = totalIncome - totalExpenses;
+                        const diff = Math.abs(calculatedNet - qbNetIncome);
+                        if (diff > 1) {
+                            console.log(`[Financials] WARNING: Calculated Net (${calculatedNet}) differs from QB Net (${qbNetIncome}) by ${diff}`);
+                            console.log(`[Financials] This may indicate missing sections in parsing`);
+                        } else {
+                            console.log(`[Financials] SUCCESS: Calculated Net matches QB Net Income`);
+                        }
+                    }
+                }
+
+                dataSource = 'quickbooks';
+                console.log(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
+            } catch (qbError) {
+                console.error('QuickBooks P&L fetch failed, falling back to statements:', qbError.message);
+                // Fall back to statements data
+                const summary = await statementsFinancialService.getSummary(startDate, endDate);
+                totalIncome = summary.totalIncome;
+                totalExpenses = summary.totalExpenses;
+                incomeBreakdown = { 'Statements': summary.totalIncome };
+                expenseBreakdown = { 'Statements': summary.totalExpenses };
+                dataSource = 'statements';
+            }
+        } else {
+            // Not connected to QuickBooks, use statements
+            const summary = await statementsFinancialService.getSummary(startDate, endDate);
+            totalIncome = summary.totalIncome;
+            totalExpenses = summary.totalExpenses;
+            incomeBreakdown = { 'Statements': summary.totalIncome };
+            expenseBreakdown = { 'Statements': summary.totalExpenses };
+        }
+
+        const netIncome = totalIncome - totalExpenses;
+        const profitMargin = totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0;
 
         res.json({
             success: true,
             data: {
                 period: { startDate, endDate },
+                dataSource,
                 summary: {
-                    totalIncome: summary.totalIncome,
-                    totalExpenses: summary.totalExpenses,
-                    netIncome: summary.netIncome,
-                    profitMargin: summary.profitMargin
+                    totalIncome,
+                    totalExpenses,
+                    netIncome,
+                    profitMargin
                 },
                 incomeBreakdown: {
-                    total: summary.totalIncome,
-                    count: summary.statementCount,
-                    byType: { 'Statements': summary.totalIncome }
+                    total: totalIncome,
+                    byType: incomeBreakdown
                 },
                 expenseBreakdown: {
-                    total: summary.totalExpenses,
-                    count: summary.statementCount,
-                    byType: { 'Statements': summary.totalExpenses }
+                    total: totalExpenses,
+                    byType: expenseBreakdown
                 }
             }
         });
@@ -348,6 +533,87 @@ router.get('/summary', async (req, res) => {
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch financial summary'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/debug-pl
+ * Debug endpoint to see raw QuickBooks P&L report structure
+ */
+router.get('/debug-pl', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+
+        // Check if QuickBooks is connected
+        const isConnected = quickBooksService.isConnected();
+
+        if (!isConnected) {
+            return res.json({
+                success: false,
+                error: 'QuickBooks not connected',
+                message: 'Connect to QuickBooks first to see P&L debug data'
+            });
+        }
+
+        // Get P&L report from QuickBooks
+        const plReport = await quickBooksService.getProfitAndLoss(startDate, endDate);
+
+        // Extract section info for debugging
+        const sections = [];
+        if (plReport && plReport.Rows && plReport.Rows.Row) {
+            for (const section of plReport.Rows.Row) {
+                const sectionInfo = {
+                    group: section.group || null,
+                    type: section.type || null,
+                    header: section.Header?.ColData?.[0]?.value || null,
+                    summary: null,
+                    rowCount: 0,
+                    hasNestedRows: false
+                };
+
+                // Get summary value
+                if (section.Summary && section.Summary.ColData) {
+                    for (const col of section.Summary.ColData) {
+                        const val = parseFloat(col.value);
+                        if (!isNaN(val)) {
+                            sectionInfo.summary = val;
+                            break;
+                        }
+                    }
+                }
+
+                // Count rows
+                if (section.Rows && section.Rows.Row) {
+                    sectionInfo.rowCount = section.Rows.Row.length;
+                    // Check for nested rows
+                    for (const row of section.Rows.Row) {
+                        if (row.Rows && row.Rows.Row) {
+                            sectionInfo.hasNestedRows = true;
+                            break;
+                        }
+                    }
+                }
+
+                sections.push(sectionInfo);
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                period: { startDate, endDate },
+                reportHeader: plReport?.Header || null,
+                columns: plReport?.Columns?.Column?.map(c => c.ColTitle || c.ColType) || [],
+                sectionSummary: sections,
+                rawReport: plReport
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching P&L debug:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch P&L debug data'
         });
     }
 });

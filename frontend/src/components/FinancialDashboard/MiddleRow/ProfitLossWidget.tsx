@@ -48,14 +48,14 @@ const ProfitLossWidget: React.FC<ProfitLossWidgetProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow duration-300">
+    <div className="h-full flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow duration-300">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-3">
         <h3 className="text-lg font-semibold text-gray-900">Profit & Loss</h3>
       </div>
 
       {/* Horizontal Stacked Bar */}
-      <div className="mb-4">
+      <div className="mb-3">
         <div className="flex h-6 rounded-lg overflow-hidden border border-gray-200">
           {/* Income Bar */}
           <div
@@ -73,7 +73,7 @@ const ProfitLossWidget: React.FC<ProfitLossWidgetProps> = ({
       </div>
 
       {/* Income and Expenses Breakdown */}
-      <div className="space-y-2 mb-4">
+      <div className="space-y-2 mb-3">
         {/* Income Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -98,10 +98,10 @@ const ProfitLossWidget: React.FC<ProfitLossWidgetProps> = ({
       </div>
 
       {/* Divider */}
-      <div className="border-t border-gray-200 my-3" />
+      <div className="border-t border-gray-200 my-2" />
 
       {/* Net Profit Section */}
-      <div>
+      <div className="flex-1 flex flex-col justify-end">
         <div className="flex items-baseline justify-between mb-1">
           <span className="text-sm font-medium text-gray-600">Net</span>
           <h2
@@ -140,7 +140,7 @@ const ProfitLossWidget: React.FC<ProfitLossWidgetProps> = ({
       {onViewReport && (
         <button
           onClick={onViewReport}
-          className="w-full flex items-center justify-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-2 px-4 rounded-lg transition-colors duration-200 group mt-3"
+          className="w-full flex items-center justify-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-2 px-4 rounded-lg transition-colors duration-200 group mt-2"
         >
           <span>View full report</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />

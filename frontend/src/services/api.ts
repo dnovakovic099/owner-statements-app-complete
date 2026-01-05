@@ -1099,6 +1099,14 @@ export const financialsAPI = {
     const response = await api.get('/financials/comparison', { params });
     return response.data;
   },
+
+  getByProperty: async (months?: number): Promise<any> => {
+    const params: Record<string, string> = {};
+    if (months) params.months = months.toString();
+
+    const response = await api.get('/financials/by-property', { params });
+    return response.data;
+  },
 };
 
 export default api;

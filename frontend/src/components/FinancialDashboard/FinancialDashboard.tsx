@@ -53,12 +53,18 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   });
 
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [incomeCategories, setIncomeCategories] = useState<Array<{ name: string; amount: number; transactionCount: number }>>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [propertyFinancials, setPropertyFinancials] = useState<any[]>([]);
   const [previousPeriodData, setPreviousPeriodData] = useState({
     income: 0,
     expenses: 0,
   });
+
+  // Lazy loading states - track what data has been fetched
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['by-category']));
+  const [tabLoading, setTabLoading] = useState<string | null>(null);
 
   // Home categories data for HomeCategoriesRow
   const [homeCategories, setHomeCategories] = useState<{
@@ -73,26 +79,53 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     shared: { income: 0, expenses: 0, net: 0, propertyCount: 0, perProperty: 0 },
   });
 
+  // Store top properties data separately
+  const [topProperties, setTopProperties] = useState<Array<{ id: number; name: string; income: number }>>([]);
+
+  // Store By Home Type tab data
+  const [byHomeTypeData, setByHomeTypeData] = useState<any>({
+    pm: {
+      income: [],
+      expenses: [],
+      churn: { count: 0, rate: 0 },
+      monthlyTrend: [],
+    },
+    arbitrage: {
+      income: [],
+      expenses: [],
+      monthlyTrend: [],
+    },
+    owned: {
+      income: [],
+      expenses: [],
+      monthlyTrend: [],
+    },
+    shared: {
+      employeeCosts: [],
+      refunds: 0,
+      chargebacks: 0,
+      monthlyTrend: [],
+    },
+  });
+
   const fetchFinancialData = useCallback(async () => {
     console.log('[FinancialDashboard] Fetching financial data for date range:', dateRange);
     setLoading(true);
     try {
-      // Fetch all data in parallel using the financials API
+      // Fetch only essential data on initial load (lazy load heavy data when tabs are selected)
       const [
         summaryData,
         categoryResponseData,
         homeCategoryResponseData,
-        transactionsData,
         comparisonData,
       ] = await Promise.all([
         financialsAPI.getSummary(dateRange.startDate, dateRange.endDate),
         financialsAPI.getByCategory(dateRange.startDate, dateRange.endDate),
         financialsAPI.getByHomeCategory(dateRange.startDate, dateRange.endDate),
-        financialsAPI.getTransactions(dateRange.startDate, dateRange.endDate),
         // Fetch month-over-month comparison for summary badges
         financialsAPI.getComparison(dateRange.startDate, dateRange.endDate, undefined, undefined, 'mom'),
       ]);
-      console.log('[FinancialDashboard] All API calls completed');
+      console.log('[FinancialDashboard] Essential API calls completed');
       console.log('[FinancialDashboard] homeCategoryResponseData:', JSON.stringify(homeCategoryResponseData, null, 2));
 
       // Extract comparison percentages and previous period data
@@ -155,6 +188,18 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         setExpenseCategories(cats);
       }
 
+      // Extract income categories from API response
+      if (categoryResponseData.success && categoryResponseData.data?.income?.categories) {
+        const incomeCats = categoryResponseData.data.income.categories.map(
+          (c: { name: string; total: number; count?: number }) => ({
+            name: c.name,
+            amount: c.total || 0,
+            transactionCount: c.count || 0,
+          })
+        );
+        setIncomeCategories(incomeCats);
+      }
+
       if (homeCategoryResponseData.success && homeCategoryResponseData.data?.categories) {
         // Map to home categories format
         console.log('[FinancialDashboard] Home category API response:', homeCategoryResponseData.data.categories);
@@ -165,6 +210,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           owned: { income: 0, expenses: 0, net: 0, propertyCount: 0 },
           shared: { income: 0, expenses: 0, net: 0, propertyCount: 0, perProperty: 0 },
         };
+
+        // Collect all properties from all categories for Top Properties widget
+        const allPropertiesData: Array<{ id: number; name: string; income: number }> = [];
 
         homeCategoryResponseData.data.categories.forEach((c: any) => {
           const key = c.category.toLowerCase().replace(/\s+/g, '-');
@@ -196,19 +244,103 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               perProperty: c.propertyCount > 0 ? (c.netIncome || 0) / c.propertyCount : 0,
             }),
           };
+
+          // Extract properties array from this category if available
+          if (c.properties && Array.isArray(c.properties)) {
+            c.properties.forEach((prop: any) => {
+              if (prop.income > 0) { // Only include properties with income
+                allPropertiesData.push({
+                  id: prop.id,
+                  name: prop.name,
+                  income: prop.income,
+                });
+              }
+            });
+          }
         });
 
         console.log('[FinancialDashboard] Final categoryMap:', categoryMap);
+        console.log('[FinancialDashboard] All properties data:', allPropertiesData);
+
         setHomeCategories(categoryMap as {
           pm: HomeCategoryData;
           arbitrage: HomeCategoryData;
           owned: HomeCategoryData;
           shared: HomeCategoryData;
         });
-      }
 
-      if (transactionsData.success && transactionsData.data?.transactions) {
-        setTransactions(transactionsData.data.transactions || []);
+        // Sort properties by income and set top 5
+        const sortedProperties = allPropertiesData.sort((a, b) => b.income - a.income).slice(0, 5);
+        setTopProperties(sortedProperties);
+        console.log('[FinancialDashboard] Top 5 properties:', sortedProperties);
+
+        // Transform data for ByHomeTypeTab
+        const byHomeTypeTransformed: any = {
+          pm: { income: [], expenses: [], churn: { count: 0, rate: 0 }, monthlyTrend: [] },
+          arbitrage: { income: [], expenses: [], monthlyTrend: [] },
+          owned: { income: [], expenses: [], monthlyTrend: [] },
+          shared: { employeeCosts: [], refunds: 0, chargebacks: 0, monthlyTrend: [] },
+        };
+
+        homeCategoryResponseData.data.categories.forEach((c: any) => {
+          const key = c.category.toLowerCase().replace(/\s+/g, '-');
+          let mappedKey: 'pm' | 'arbitrage' | 'owned' | 'shared' | null = null;
+
+          if (key.includes('property-management') || key.includes('pm')) {
+            mappedKey = 'pm';
+          } else if (key.includes('arbitrage')) {
+            mappedKey = 'arbitrage';
+          } else if (key.includes('owned')) {
+            mappedKey = 'owned';
+          } else if (key.includes('shared') || key.includes('partnership')) {
+            mappedKey = 'shared';
+          }
+
+          if (!mappedKey || !c.properties || c.properties.length === 0) {
+            return;
+          }
+
+          // Calculate totals for percentage calculations
+          const totalIncome = c.income || 0;
+          const totalExpenses = c.expenses || 0;
+
+          // Create income items from properties
+          const incomeItems = c.properties
+            .filter((p: any) => p.income > 0)
+            .map((p: any) => ({
+              label: p.name,
+              amount: p.income,
+              percentage: totalIncome > 0 ? (p.income / totalIncome) * 100 : 0,
+            }))
+            .sort((a: any, b: any) => b.amount - a.amount);
+
+          // Create expense items from properties
+          const expenseItems = c.properties
+            .filter((p: any) => p.expenses > 0)
+            .map((p: any) => ({
+              label: p.name,
+              amount: p.expenses,
+              percentage: totalExpenses > 0 ? (p.expenses / totalExpenses) * 100 : 0,
+            }))
+            .sort((a: any, b: any) => b.amount - a.amount);
+
+          if (mappedKey === 'pm') {
+            byHomeTypeTransformed.pm.income = incomeItems;
+            byHomeTypeTransformed.pm.expenses = expenseItems;
+          } else if (mappedKey === 'arbitrage') {
+            byHomeTypeTransformed.arbitrage.income = incomeItems;
+            byHomeTypeTransformed.arbitrage.expenses = expenseItems;
+          } else if (mappedKey === 'owned') {
+            byHomeTypeTransformed.owned.income = incomeItems;
+            byHomeTypeTransformed.owned.expenses = expenseItems;
+          } else if (mappedKey === 'shared') {
+            // For shared, map expenses to employeeCosts
+            byHomeTypeTransformed.shared.employeeCosts = expenseItems;
+          }
+        });
+
+        console.log('[FinancialDashboard] Transformed By Home Type data:', byHomeTypeTransformed);
+        setByHomeTypeData(byHomeTypeTransformed);
       }
 
       // Generate sample insights based on data
@@ -246,9 +378,82 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     }
   }, [dateRange]);
 
+  // Lazy load data for specific tabs when they are selected
+  const loadTabData = useCallback(async (tab: string) => {
+    if (loadedTabs.has(tab) || !dateRange.startDate || !dateRange.endDate) {
+      return; // Already loaded or no date range
+    }
+
+    setTabLoading(tab);
+    console.log(`[FinancialDashboard] Lazy loading data for tab: ${tab}`);
+
+    try {
+      if (tab === 'by-property') {
+        // Load property financials data
+        const propertyData = await financialsAPI.getByProperty(6);
+
+        if (propertyData?.success && propertyData.data?.properties) {
+          console.log('[FinancialDashboard] Property data received:', propertyData.data.properties.length, 'properties');
+
+          const transformedProperties = propertyData.data.properties.map((prop: any) => {
+            let homeCategory: 'PM' | 'Arbitrage' | 'Owned' = 'PM';
+            if (prop.homeCategory) {
+              const cat = prop.homeCategory.toLowerCase();
+              if (cat === 'pm' || cat.includes('property') || cat.includes('manage')) {
+                homeCategory = 'PM';
+              } else if (cat === 'arbitrage' || cat.includes('arb')) {
+                homeCategory = 'Arbitrage';
+              } else if (cat === 'owned' || cat.includes('own')) {
+                homeCategory = 'Owned';
+              }
+            }
+
+            return {
+              propertyId: prop.id,
+              propertyName: prop.name,
+              homeCategory,
+              bankAccount: undefined,
+              monthlyData: (prop.monthlyData || []).map((m: any) => ({
+                month: m.month,
+                netIncome: m.net || 0,
+                grossRevenue: m.income || 0,
+                totalExpenses: m.expenses || 0,
+                sharedExpenses: 0,
+              })),
+              lifetimeTotal: {
+                netIncome: prop.summary?.netIncome || 0,
+                grossRevenue: prop.summary?.totalIncome || 0,
+                totalExpenses: prop.summary?.totalExpenses || 0,
+              },
+            };
+          });
+
+          setPropertyFinancials(transformedProperties);
+        }
+      }
+
+      // Mark tab as loaded
+      setLoadedTabs(prev => new Set([...Array.from(prev), tab]));
+    } catch (error) {
+      console.error(`Failed to load data for tab ${tab}:`, error);
+    } finally {
+      setTabLoading(null);
+    }
+  }, [dateRange, loadedTabs]);
+
+  // Handle tab change - trigger lazy loading
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    loadTabData(tab);
+  }, [loadTabData]);
+
   // Fetch financial data when date range changes (with debounce)
   useEffect(() => {
     if (dateRange.startDate && dateRange.endDate) {
+      // Reset loaded tabs when date range changes
+      setLoadedTabs(new Set(['by-category']));
+      setPropertyFinancials([]);
+
       // Debounce to avoid rapid API calls when clicking filter buttons
       const timeoutId = setTimeout(() => {
         fetchFinancialData();
@@ -328,7 +533,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       />
 
       {/* Main Content - scrollable with tighter spacing */}
-      <div className="p-4 space-y-4 pb-20">
+      <div className="p-4 space-y-3 pb-20">
         {/* Date Range Filter */}
         <DateRangeFilter dateRange={dateRange} onDateRangeChange={setDateRange} />
 
@@ -347,9 +552,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         />
 
         {/* Middle Row: 3-column grid with stacked widgets */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 auto-rows-fr">
           {/* Column 1: Profit & Loss + Top Properties */}
-          <div className="space-y-4">
+          <div className="flex flex-col gap-3 min-h-[400px]">
             <ProfitLossWidget
               income={summary.totalIncome}
               expenses={summary.totalExpenses}
@@ -357,26 +562,21 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               previousExpenses={previousPeriodData.expenses}
             />
             <TopPropertiesWidget
-              properties={homeCategories.pm.propertyCount > 0
-                ? transactions.slice(0, 5).map((t, i) => ({
-                    id: i,
-                    name: t.description || `Property ${i + 1}`,
-                    income: t.amount > 0 ? t.amount : 0,
-                  }))
-                : []
-              }
+              properties={topProperties}
             />
           </div>
 
           {/* Column 2: Expenses Category Chart */}
-          <ExpensesCategoryChart
-            categories={expenseCategories}
-            total={summary.totalExpenses}
-            onCategoryClick={handleCategoryClick}
-          />
+          <div className="min-h-[400px]">
+            <ExpensesCategoryChart
+              categories={expenseCategories}
+              total={summary.totalExpenses}
+              onCategoryClick={handleCategoryClick}
+            />
+          </div>
 
           {/* Column 3: Insights + Quick Stats */}
-          <div className="space-y-4">
+          <div className="flex flex-col gap-3 min-h-[400px]">
             <InsightsFeed
               insights={insights}
               onInsightClick={handleInsightClick}
@@ -400,7 +600,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         />
 
         {/* Tabs Section */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-5 mb-4">
             <TabsTrigger value="by-category">
               <PieChart className="w-4 h-4 mr-2" />
@@ -427,13 +627,22 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           {/* By Category Tab */}
           <TabsContent value="by-category">
             <ByCategoryTab
-              categories={expenseCategories.map(cat => ({
-                category: cat.name as any,
-                amount: cat.amount,
-                transactionCount: 0,
-                type: 'expense' as const,
-                percentage: summary.totalExpenses > 0 ? (cat.amount / summary.totalExpenses) * 100 : 0,
-              }))}
+              categories={[
+                // Income categories
+                ...incomeCategories.map(cat => ({
+                  category: cat.name as any,
+                  amount: cat.amount,
+                  transactionCount: cat.transactionCount,
+                  type: 'income' as const,
+                })),
+                // Expense categories
+                ...expenseCategories.map(cat => ({
+                  category: cat.name as any,
+                  amount: cat.amount,
+                  transactionCount: 0,
+                  type: 'expense' as const,
+                })),
+              ]}
               dateRange={dateRange}
               isLoading={loading}
             />
@@ -442,11 +651,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           {/* By Property Tab */}
           <TabsContent value="by-property">
             <ByPropertyTab
-              properties={[]}
+              properties={propertyFinancials}
               dateRange={dateRange}
               onCellClick={(propertyId, month) => console.log('Cell clicked:', propertyId, month)}
               onPropertyClick={(propertyId) => console.log('Property clicked:', propertyId)}
-              isLoading={loading}
+              isLoading={tabLoading === 'by-property'}
             />
           </TabsContent>
 
@@ -454,30 +663,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           <TabsContent value="by-home-type">
             <ByHomeTypeTab
               dateRange={dateRange}
-              data={{
-                pm: {
-                  income: [],
-                  expenses: [],
-                  churn: { count: 0, rate: 0 },
-                  monthlyTrend: [],
-                },
-                arbitrage: {
-                  income: [],
-                  expenses: [],
-                  monthlyTrend: [],
-                },
-                owned: {
-                  income: [],
-                  expenses: [],
-                  monthlyTrend: [],
-                },
-                shared: {
-                  employeeCosts: [],
-                  refunds: 0,
-                  chargebacks: 0,
-                  monthlyTrend: [],
-                },
-              }}
+              data={byHomeTypeData}
             />
           </TabsContent>
 

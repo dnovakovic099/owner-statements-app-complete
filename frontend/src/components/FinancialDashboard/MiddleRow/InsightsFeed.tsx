@@ -114,21 +114,23 @@ const InsightsFeed: React.FC<InsightsFeedProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+      className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
     >
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-200 flex-shrink-0">
         <h3 className="text-lg font-semibold text-gray-900">Insights & Alerts</h3>
       </div>
 
       {/* Scrollable Insights List */}
-      <div className="max-h-[280px] overflow-y-auto">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {insights.length === 0 ? (
-          <div className="px-5 py-6 text-center">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 mb-2">
-              <Info className="w-5 h-5 text-gray-400" />
+          <div className="flex-1 flex items-center justify-center px-4">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 mb-2">
+                <Info className="w-5 h-5 text-gray-400" />
+              </div>
+              <p className="text-gray-500 text-sm">No insights available</p>
             </div>
-            <p className="text-gray-500 text-sm">No insights available</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -144,7 +146,7 @@ const InsightsFeed: React.FC<InsightsFeedProps> = ({
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                   onClick={() => handleInsightClick(insight)}
                   className={`
-                    px-5 py-3 transition-all duration-200
+                    px-4 py-2.5 transition-all duration-200
                     ${isClickable ? `${colors.hoverBg} cursor-pointer` : ''}
                     group
                   `}

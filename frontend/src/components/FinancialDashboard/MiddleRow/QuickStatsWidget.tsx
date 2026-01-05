@@ -58,10 +58,10 @@ const QuickStatsWidget: React.FC<QuickStatsWidgetProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <h3 className="text-base font-semibold text-gray-900 mb-4">Quick Stats</h3>
+    <div className="h-full flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <h3 className="text-base font-semibold text-gray-900 mb-3">Quick Stats</h3>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5 flex-1 flex flex-col justify-center">
         {stats.slice(0, 3).map((stat, index) => (
           <div key={index} className="flex items-center gap-3">
             <div className={`p-2 rounded-lg ${stat.bgColor}`}>

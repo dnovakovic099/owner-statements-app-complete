@@ -32,20 +32,18 @@ type Preset =
   | 'last-year'
   | 'custom';
 
-const PRESET_OPTIONS: { key: Preset; label: string; shortLabel?: string }[] = [
-  { key: 'last-30-days', label: 'Last 30 days', shortLabel: 'L30D' },
-  { key: 'this-month', label: 'This month' },
-  { key: 'last-month', label: 'Last month' },
-  { key: 'this-quarter', label: 'This quarter', shortLabel: 'This Q' },
-  { key: 'last-quarter', label: 'Last quarter', shortLabel: 'Last Q' },
-  { key: 'last-3-months', label: 'Last 3 months', shortLabel: 'L3M' },
-  { key: 'last-6-months', label: 'Last 6 months', shortLabel: 'L6M' },
-  { key: 'this-year', label: 'This year' },
-  { key: 'last-year', label: 'Last year' },
+// QuickBooks-style preset options - grouped by "This" and "Last"
+const PRESET_OPTIONS: { key: Preset; label: string; shortLabel?: string; group?: 'this' | 'last' | 'other' }[] = [
+  { key: 'last-30-days', label: 'Last 30 days', shortLabel: 'L30D', group: 'other' },
+  { key: 'this-month', label: 'This month', group: 'this' },
+  { key: 'this-quarter', label: 'This quarter', shortLabel: 'This Q', group: 'this' },
+  { key: 'this-year', label: 'This year', group: 'this' },
+  { key: 'last-month', label: 'Last month', group: 'last' },
+  { key: 'last-quarter', label: 'Last quarter', shortLabel: 'Last Q', group: 'last' },
+  { key: 'last-year', label: 'Last year', group: 'last' },
+  { key: 'last-3-months', label: 'Last 3 months', shortLabel: 'L3M', group: 'other' },
+  { key: 'last-6-months', label: 'Last 6 months', shortLabel: 'L6M', group: 'other' },
 ];
-
-// Quick access buttons shown in the pill bar
-const QUICK_PRESETS: Preset[] = ['this-month', 'last-month', 'last-3-months', 'last-6-months', 'this-year'];
 
 const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRangeChange }) => {
   const [activePreset, setActivePreset] = React.useState<Preset>('last-month');
@@ -157,61 +155,119 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRang
 
   return (
     <div className="flex items-center gap-2 max-w-full">
-      {/* Compact pill buttons for quick presets */}
-      <div className="hidden sm:flex items-center gap-1.5">
-        {QUICK_PRESETS.map((presetKey) => {
-          const preset = PRESET_OPTIONS.find(p => p.key === presetKey);
-          if (!preset) return null;
-          return (
-            <button
+      {/* QuickBooks-style dropdown */}
+      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="
+              px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap
+              inline-flex items-center gap-2 border bg-white text-gray-700
+              border-gray-300 hover:bg-gray-50 hover:border-gray-400 shadow-sm
+            "
+          >
+            {getActiveLabel()}
+            <ChevronDown className="w-4 h-4 text-gray-500" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48 py-1">
+          {/* Last 30 days - top option */}
+          <DropdownMenuItem
+            onClick={() => handlePresetClick('last-30-days')}
+            className="flex items-center gap-2 py-2.5 px-3 cursor-pointer"
+          >
+            {activePreset === 'last-30-days' ? (
+              <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+            ) : (
+              <span className="w-4" />
+            )}
+            <span className={activePreset === 'last-30-days' ? 'font-medium' : ''}>
+              Last 30 days
+            </span>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="my-1" />
+
+          {/* "This" period options */}
+          {PRESET_OPTIONS.filter(p => p.group === 'this').map((preset) => (
+            <DropdownMenuItem
               key={preset.key}
               onClick={() => handlePresetClick(preset.key)}
-              className={`
-                px-3 py-1.5 text-xs font-medium rounded-full transition-all whitespace-nowrap
-                border
-                ${activePreset === preset.key
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                }
-              `}
+              className="flex items-center gap-2 py-2.5 px-3 cursor-pointer"
             >
-              {preset.shortLabel || preset.label}
-            </button>
-          );
-        })}
+              {activePreset === preset.key ? (
+                <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+              ) : (
+                <span className="w-4" />
+              )}
+              <span className={activePreset === preset.key ? 'font-medium' : ''}>
+                {preset.label}
+              </span>
+            </DropdownMenuItem>
+          ))}
 
-        {/* Custom dropdown with date pickers */}
-        <DropdownMenu open={isCustomOpen} onOpenChange={setIsCustomOpen}>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={`
-                px-3 py-1.5 text-xs font-medium rounded-full transition-all whitespace-nowrap
-                inline-flex items-center gap-1.5 border
-                ${activePreset === 'custom'
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                }
-              `}
+          <DropdownMenuSeparator className="my-1" />
+
+          {/* "Last" period options */}
+          {PRESET_OPTIONS.filter(p => p.group === 'last').map((preset) => (
+            <DropdownMenuItem
+              key={preset.key}
+              onClick={() => handlePresetClick(preset.key)}
+              className="flex items-center gap-2 py-2.5 px-3 cursor-pointer"
             >
-              <Calendar className="w-3.5 h-3.5" />
-              Custom
-              <ChevronDown className="w-3 h-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-80 p-4"
-            onInteractOutside={(e) => {
-              const target = e.target as HTMLElement;
-              if (target.closest('input[type="date"]')) {
-                e.preventDefault();
-              }
+              {activePreset === preset.key ? (
+                <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+              ) : (
+                <span className="w-4" />
+              )}
+              <span className={activePreset === preset.key ? 'font-medium' : ''}>
+                {preset.label}
+              </span>
+            </DropdownMenuItem>
+          ))}
+
+          <DropdownMenuSeparator className="my-1" />
+
+          {/* Custom option */}
+          <DropdownMenuItem
+            onClick={() => {
+              setIsDropdownOpen(false);
+              setIsCustomOpen(true);
+              setActivePreset('custom');
             }}
+            className="flex items-center gap-2 py-2.5 px-3 cursor-pointer"
           >
+            {activePreset === 'custom' ? (
+              <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+            ) : (
+              <span className="w-4" />
+            )}
+            <span className={activePreset === 'custom' ? 'font-medium' : ''}>
+              Custom range
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Custom date range popover */}
+      {isCustomOpen && (
+        <div className="relative">
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsCustomOpen(false)}
+          />
+          <div className="absolute top-0 left-0 z-50 w-80 p-4 bg-white rounded-lg shadow-lg border border-gray-200">
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                <Calendar className="w-4 h-4 text-blue-500" />
-                Custom Date Range
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                  <Calendar className="w-4 h-4 text-blue-500" />
+                  Custom Date Range
+                </div>
+                <button
+                  onClick={() => setIsCustomOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -239,31 +295,6 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRang
                 </div>
               </div>
 
-              <DropdownMenuSeparator />
-
-              {/* Quick select options */}
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 mb-2">Quick Select</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {PRESET_OPTIONS.filter(p => !QUICK_PRESETS.includes(p.key)).map((preset) => (
-                    <button
-                      key={preset.key}
-                      onClick={() => handlePresetClick(preset.key)}
-                      className={`
-                        flex items-center gap-2 px-3 py-2 text-xs rounded-md transition-colors text-left
-                        ${activePreset === preset.key
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-100'
-                        }
-                      `}
-                    >
-                      {activePreset === preset.key && <Check className="w-3 h-3" />}
-                      <span className={activePreset === preset.key ? '' : 'ml-5'}>{preset.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="flex justify-end pt-2">
                 <Button
                   size="sm"
@@ -274,55 +305,18 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ dateRange, onDateRang
                 </Button>
               </div>
             </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          </div>
+        </div>
+      )}
 
-      {/* Mobile: Single dropdown with all options */}
-      <div className="sm:hidden">
-        <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="
-                px-3 py-1.5 text-xs font-medium rounded-full transition-all whitespace-nowrap
-                inline-flex items-center gap-1.5 border bg-white text-gray-700
-                border-gray-200 hover:bg-gray-50 hover:border-gray-300
-              "
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              {getActiveLabel()}
-              <ChevronDown className="w-3 h-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {PRESET_OPTIONS.map((preset) => (
-              <DropdownMenuItem
-                key={preset.key}
-                onClick={() => handlePresetClick(preset.key)}
-                className="flex items-center gap-2"
-              >
-                {activePreset === preset.key && <Check className="w-4 h-4 text-green-600" />}
-                <span className={activePreset === preset.key ? 'font-medium' : 'ml-6'}>
-                  {preset.label}
-                </span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                setIsDropdownOpen(false);
-                setIsCustomOpen(true);
-              }}
-              className="flex items-center gap-2"
-            >
-              {activePreset === 'custom' && <Check className="w-4 h-4 text-green-600" />}
-              <span className={activePreset === 'custom' ? 'font-medium' : 'ml-6'}>
-                Custom range...
-              </span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {/* Show date range text */}
+      {dateRange.startDate && dateRange.endDate && (
+        <span className="text-sm text-gray-500 hidden sm:inline">
+          {new Date(dateRange.startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          {' - '}
+          {new Date(dateRange.endDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        </span>
+      )}
     </div>
   );
 };

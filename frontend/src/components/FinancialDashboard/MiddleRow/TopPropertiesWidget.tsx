@@ -31,8 +31,8 @@ const TopPropertiesWidget: React.FC<TopPropertiesWidgetProps> = ({
   // Compact empty state
   if (topProperties.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <div className="flex items-center gap-2">
+      <div className="h-full flex items-center justify-center bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex items-center gap-2 text-center">
           <Building2 className="w-4 h-4 text-gray-400" />
           <span className="text-sm text-gray-500">No property data for this period</span>
         </div>
@@ -41,7 +41,7 @@ const TopPropertiesWidget: React.FC<TopPropertiesWidgetProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <div className="h-full flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4">
       <div className="flex items-center gap-2 mb-3">
         <Building2 className="w-5 h-5 text-blue-600" />
         <h3 className="text-base font-semibold text-gray-900">Top Properties</h3>
@@ -50,7 +50,7 @@ const TopPropertiesWidget: React.FC<TopPropertiesWidgetProps> = ({
       {topProperties.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-2">No property data</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5 flex-1">
           {topProperties.map((property, index) => (
             <div
               key={property.id}

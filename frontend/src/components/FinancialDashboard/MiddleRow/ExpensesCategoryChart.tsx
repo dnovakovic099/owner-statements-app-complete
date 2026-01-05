@@ -139,8 +139,8 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
   // Empty state - compact version
   if (categories.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <div className="mb-4">
+      <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div className="mb-3">
           <h3 className="text-lg font-semibold text-gray-900">
             Expenses by Category
           </h3>
@@ -148,32 +148,34 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
             Total: {formatCurrency(total)}
           </p>
         </div>
-        <div className="text-center py-8">
-          <div className="text-gray-400 mb-2">
-            <svg
-              className="mx-auto h-10 w-10"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-gray-400 mb-2">
+              <svg
+                className="mx-auto h-8 w-8"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-500">No expense data available</p>
           </div>
-          <p className="text-sm text-gray-500">No expense data available</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-3">
         <h3 className="text-lg font-semibold text-gray-900">
           Expenses by Category
         </h3>
@@ -183,7 +185,7 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
       </div>
 
       {/* Chart */}
-      <div className="relative mb-4">
+      <div className="relative mb-3">
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
@@ -230,11 +232,11 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
       </div>
 
       {/* Top Categories List */}
-      <div>
+      <div className="flex-1 flex flex-col">
         <h4 className="text-sm font-medium text-gray-700 mb-2">
           Top Categories
         </h4>
-        <div className="space-y-1">
+        <div className="space-y-0.5 flex-1">
           {topCategories.map((category, index) => (
             <div
               key={category.name}
