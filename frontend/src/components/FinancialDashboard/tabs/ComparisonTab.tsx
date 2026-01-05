@@ -109,7 +109,6 @@ const ChangeIndicator: React.FC<ChangeIndicatorProps> = ({
 }) => {
   const isPositive = change > 0;
   const isNegative = change < 0;
-  const isNeutral = change === 0;
 
   const colorClass = isPositive
     ? 'text-green-600 bg-green-50'

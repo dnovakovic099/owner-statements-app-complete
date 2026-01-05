@@ -3,7 +3,6 @@ import {
   BarChart3,
   Calendar,
   FileText,
-  TrendingUp,
   AlertCircle,
   Filter,
   Database

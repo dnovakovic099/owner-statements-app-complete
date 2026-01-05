@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -336,22 +336,6 @@ const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({ data, height = 35
 
 const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemClick }) => {
   const [selectedCategory, setSelectedCategory] = useState<HomeCategory>('Property Management');
-
-  // Memoize current category data
-  const currentData = useMemo(() => {
-    switch (selectedCategory) {
-      case 'Property Management':
-        return data.pm;
-      case 'Arbitrage':
-        return data.arbitrage;
-      case 'Home Owned':
-        return data.owned;
-      case 'Shared':
-        return data.shared;
-      default:
-        return data.pm;
-    }
-  }, [selectedCategory, data]);
 
   const handleItemClick = (type: 'income' | 'expense', item: string) => {
     onItemClick?.(selectedCategory, type, item);

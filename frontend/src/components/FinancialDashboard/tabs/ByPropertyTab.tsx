@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
+import { Search, ArrowUpDown } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from '../../ui/select';
 import { Input } from '../../ui/input';
-import { PropertyFinancialData, Transaction } from '../types';
+import { PropertyFinancialData } from '../types';
 import { DateRange } from '../DateRangeFilter';
 
 interface ByPropertyTabProps {
