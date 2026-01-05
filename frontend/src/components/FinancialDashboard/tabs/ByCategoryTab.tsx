@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import {
@@ -22,7 +22,7 @@ import {
 import { ChartSkeleton, InlineEmptyState } from '../components/LoadingStates';
 import { NoResultsEmptyState } from '../components/EmptyStates';
 
-// QuickBooks categories
+// Standard QuickBooks expense categories (mapped from various account names)
 const QUICKBOOKS_CATEGORIES = [
   'Darko Distribution',
   'Louis Distribution',
@@ -44,7 +44,7 @@ const QUICKBOOKS_CATEGORIES = [
   'Home owner acquisition',
 ] as const;
 
-export type QuickBooksCategory = typeof QUICKBOOKS_CATEGORIES[number];
+export type QuickBooksCategory = typeof QUICKBOOKS_CATEGORIES[number] | string;
 
 export interface CategoryData {
   category: QuickBooksCategory;
@@ -52,6 +52,8 @@ export interface CategoryData {
   transactionCount: number;
   type: 'income' | 'expense';
   percentage?: number;
+  // Original QuickBooks accounts that were mapped to this category
+  originalAccounts?: string[];
 }
 
 export interface ByCategoryTabProps {
@@ -62,6 +64,12 @@ export interface ByCategoryTabProps {
     endDate: string;
   };
   isLoading?: boolean;
+  // Data source indicator
+  dataSource?: 'quickbooks' | 'statements';
+  // Whether category mapping is active
+  categoryMapping?: boolean;
+  // List of unmapped accounts (for debugging/improvement)
+  unmappedAccounts?: string[];
 }
 
 type SortField = 'category' | 'amount' | 'percentage';
@@ -82,7 +90,7 @@ const formatPercentage = (value: number): string => {
 };
 
 // Category color mapping for consistent visual representation
-const getCategoryColor = (category: QuickBooksCategory, index: number): string => {
+const getCategoryColor = (_category: QuickBooksCategory, index: number): string => {
   const colors = [
     '#3b82f6', // blue-500
     '#10b981', // emerald-500
@@ -101,8 +109,11 @@ const getCategoryColor = (category: QuickBooksCategory, index: number): string =
 const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
   categories,
   onCategorySelect,
-  dateRange,
+  dateRange: _dateRange,
   isLoading = false,
+  dataSource = 'statements',
+  categoryMapping = false,
+  unmappedAccounts = [],
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [transactionType, setTransactionType] = useState<TransactionType>('all');
@@ -219,6 +230,42 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
     <div className="space-y-6">
       {/* Filter Bar */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        {/* Data Source Badge */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+              dataSource === 'quickbooks'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {dataSource === 'quickbooks' ? 'QuickBooks Data' : 'Statement Data'}
+            </span>
+            {categoryMapping && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Categories Mapped
+              </span>
+            )}
+          </div>
+          {unmappedAccounts && unmappedAccounts.length > 0 && (
+            <div className="relative group/unmapped">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 cursor-help">
+                {unmappedAccounts.length} Unmapped Account{unmappedAccounts.length !== 1 ? 's' : ''}
+              </span>
+              <div className="absolute right-0 top-full mt-2 hidden group-hover/unmapped:block z-20">
+                <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-lg max-w-xs">
+                  <div className="font-medium mb-1">Accounts without mapping:</div>
+                  {unmappedAccounts.slice(0, 10).map((acc, i) => (
+                    <div key={i} className="text-gray-300 truncate">{acc}</div>
+                  ))}
+                  {unmappedAccounts.length > 10 && (
+                    <div className="text-gray-400 mt-1">...and {unmappedAccounts.length - 10} more</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Category Filter */}
           <div className="flex-1 min-w-[200px]">
@@ -231,11 +278,25 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
+                {/* Show standard categories first, then any additional from data */}
                 {QUICKBOOKS_CATEGORIES.map((cat) => (
                   <SelectItem key={cat} value={cat}>
                     {cat}
                   </SelectItem>
                 ))}
+                {/* Add any categories from data that aren't in the standard list */}
+                {categories
+                  .map(c => c.category)
+                  .filter((cat, idx, arr) =>
+                    arr.indexOf(cat) === idx &&
+                    !QUICKBOOKS_CATEGORIES.includes(cat as typeof QUICKBOOKS_CATEGORIES[number])
+                  )
+                  .map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))
+                }
               </SelectContent>
             </Select>
           </div>
@@ -414,7 +475,7 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
                     <tr
                       key={item.category}
                       onClick={() => handleRowClick(item.category)}
-                      className="hover:bg-blue-50 cursor-pointer transition-colors"
+                      className="hover:bg-blue-50 cursor-pointer transition-colors group"
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -424,9 +485,25 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
                               backgroundColor: getCategoryColor(item.category, index),
                             }}
                           />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {item.category}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {item.category}
+                              </span>
+                              {/* Show info icon if this category has mapped original accounts */}
+                              {item.originalAccounts && item.originalAccounts.length > 0 && (
+                                <div className="relative group/tooltip">
+                                  <Info className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+                                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block z-20">
+                                    <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap shadow-lg">
+                                      <div className="font-medium mb-1">Mapped from:</div>
+                                      {item.originalAccounts.map((acc, i) => (
+                                        <div key={i} className="text-gray-300">{acc}</div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <div className="text-xs text-gray-500">
                               {item.transactionCount}{' '}

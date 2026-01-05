@@ -2,6 +2,13 @@ const express = require('express');
 const QuickBooksService = require('../services/QuickBooksService');
 const FileDataService = require('../services/FileDataService');
 const statementsFinancialService = require('../services/StatementsFinancialService');
+const {
+    mapToCategory,
+    groupByCategory,
+    getCategorySummary,
+    ALL_CATEGORIES,
+    getUnmappedAccounts,
+} = require('../utils/categoryMapping');
 
 const router = express.Router();
 const quickBooksService = new QuickBooksService();
@@ -656,20 +663,26 @@ router.get('/time-series', async (req, res) => {
  * GET /api/financials/by-category
  * Get financials grouped by QuickBooks category (account)
  *
- * Categories include:
+ * Standard expense categories (mapped from QuickBooks accounts):
  * - Darko Distribution, Louis Distribution, Owner Payout
  * - Rent, Mortgage, Utility, Cleaning, Maintenance
  * - Review refund, Chargeback
  * - Employee base pay, Employee commission, Photography pay
  * - Legal, Tax, Software subscription
  * - Arbitrage acquisition, Home owner acquisition
+ *
+ * Query params:
+ * - startDate: Start date (YYYY-MM-DD)
+ * - endDate: End date (YYYY-MM-DD)
+ * - mapped: If 'true', use category mapping to standardize categories (default: true)
  */
 router.get('/by-category', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
+        const useMappedCategories = req.query.mapped !== 'false'; // Default to true
 
         // Check cache first
-        const cacheKey = `by-category-${startDate}-${endDate}`;
+        const cacheKey = `by-category-${startDate}-${endDate}-mapped-${useMappedCategories}`;
         const cached = getCached(cacheKey);
         if (cached) {
             return res.json(cached);
@@ -693,13 +706,13 @@ router.get('/by-category', async (req, res) => {
 
         if (isConnected) {
             try {
-                // Fetch from QuickBooks with fast timeout (3 seconds)
+                // Fetch from QuickBooks with fast timeout (5 seconds for more data)
                 const results = await Promise.race([
                     Promise.all([
                         quickBooksService.getAllIncome(startDate, endDate),
                         quickBooksService.getAllExpenses(startDate, endDate)
                     ]),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 3000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 5000))
                 ]);
                 income = results[0] || [];
                 expenses = results[1] || [];
@@ -710,70 +723,104 @@ router.get('/by-category', async (req, res) => {
             }
         }
 
-        // If QuickBooks data available, group by actual QB account/category
+        // If QuickBooks data available, group by mapped or raw categories
         if (usingQuickBooks && (income.length > 0 || expenses.length > 0)) {
-            // Group income by QuickBooks account/category
-            const incomeByCategory = {};
-            income.forEach(t => {
-                // Use AccountName or CategoryName from QuickBooks
-                const category = t.AccountName || t.CategoryName || t.CustomerName || 'Other Income';
-                if (!incomeByCategory[category]) {
-                    incomeByCategory[category] = {
-                        name: category,
-                        total: 0,
-                        count: 0,
-                        transactions: []
-                    };
-                }
-                incomeByCategory[category].total += t.Amount || 0;
-                incomeByCategory[category].count++;
-                incomeByCategory[category].transactions.push({
-                    id: t.Id,
-                    type: t.Type,
-                    date: t.TxnDate,
-                    amount: t.Amount,
-                    description: t.Description,
-                    customer: t.CustomerName
-                });
-            });
+            let incomeCategories, expenseCategories;
+            let unmappedAccounts = [];
 
-            // Group expenses by QuickBooks account/category
-            const expensesByCategory = {};
-            expenses.forEach(t => {
-                // Use AccountName or CategoryName from QuickBooks
-                // This will show categories like: Darko Distribution, Owner Payout, Rent, etc.
-                const category = t.AccountName || t.CategoryName || t.VendorName || 'Other Expenses';
-                if (!expensesByCategory[category]) {
-                    expensesByCategory[category] = {
-                        name: category,
-                        total: 0,
-                        count: 0,
-                        transactions: []
-                    };
-                }
-                expensesByCategory[category].total += t.Amount || 0;
-                expensesByCategory[category].count++;
-                expensesByCategory[category].transactions.push({
-                    id: t.Id,
-                    type: t.Type,
-                    date: t.TxnDate,
-                    amount: t.Amount,
-                    description: t.Description,
-                    vendor: t.VendorName
-                });
-            });
+            if (useMappedCategories) {
+                // Use category mapping to standardize QuickBooks account names
+                console.log('[by-category] Using category mapping to standardize accounts');
 
-            // Convert to arrays and sort by total
-            const incomeCategories = Object.values(incomeByCategory)
-                .sort((a, b) => b.total - a.total);
-            const expenseCategories = Object.values(expensesByCategory)
-                .sort((a, b) => b.total - a.total);
+                // Get expense summary with mapped categories
+                const expenseSummary = getCategorySummary(expenses, 'expense');
+                expenseCategories = expenseSummary.map(cat => ({
+                    name: cat.name,
+                    total: cat.total,
+                    count: cat.count,
+                    originalAccounts: cat.originalAccounts,
+                    transactions: cat.recentTransactions
+                }));
+
+                // Get income summary with mapped categories
+                const incomeSummary = getCategorySummary(income, 'income');
+                incomeCategories = incomeSummary.map(cat => ({
+                    name: cat.name,
+                    total: cat.total,
+                    count: cat.count,
+                    originalAccounts: cat.originalAccounts,
+                    transactions: cat.recentTransactions
+                }));
+
+                // Track unmapped accounts for debugging/improvement
+                unmappedAccounts = [
+                    ...getUnmappedAccounts(expenses),
+                    ...getUnmappedAccounts(income)
+                ].filter((v, i, a) => a.indexOf(v) === i); // dedupe
+
+                if (unmappedAccounts.length > 0) {
+                    console.log('[by-category] Unmapped QuickBooks accounts:', unmappedAccounts);
+                }
+            } else {
+                // Group by raw QuickBooks account/category names (original behavior)
+                const incomeByCategory = {};
+                income.forEach(t => {
+                    const category = t.AccountName || t.CategoryName || t.CustomerName || 'Other Income';
+                    if (!incomeByCategory[category]) {
+                        incomeByCategory[category] = {
+                            name: category,
+                            total: 0,
+                            count: 0,
+                            transactions: []
+                        };
+                    }
+                    incomeByCategory[category].total += t.Amount || 0;
+                    incomeByCategory[category].count++;
+                    incomeByCategory[category].transactions.push({
+                        id: t.Id,
+                        type: t.Type,
+                        date: t.TxnDate,
+                        amount: t.Amount,
+                        description: t.Description,
+                        customer: t.CustomerName
+                    });
+                });
+
+                const expensesByCategory = {};
+                expenses.forEach(t => {
+                    const category = t.AccountName || t.CategoryName || t.VendorName || 'Other Expenses';
+                    if (!expensesByCategory[category]) {
+                        expensesByCategory[category] = {
+                            name: category,
+                            total: 0,
+                            count: 0,
+                            transactions: []
+                        };
+                    }
+                    expensesByCategory[category].total += t.Amount || 0;
+                    expensesByCategory[category].count++;
+                    expensesByCategory[category].transactions.push({
+                        id: t.Id,
+                        type: t.Type,
+                        date: t.TxnDate,
+                        amount: t.Amount,
+                        description: t.Description,
+                        vendor: t.VendorName
+                    });
+                });
+
+                incomeCategories = Object.values(incomeByCategory).sort((a, b) => b.total - a.total);
+                expenseCategories = Object.values(expensesByCategory).sort((a, b) => b.total - a.total);
+            }
 
             const response = {
                 success: true,
                 data: {
                     period: { startDate, endDate },
                     source: 'quickbooks',
+                    categoryMapping: useMappedCategories,
+                    standardCategories: useMappedCategories ? ALL_CATEGORIES : null,
+                    unmappedAccounts: useMappedCategories ? unmappedAccounts : null,
                     income: {
                         categories: incomeCategories,
                         total: incomeCategories.reduce((sum, c) => sum + c.total, 0)
@@ -835,6 +882,8 @@ router.get('/by-category', async (req, res) => {
             data: {
                 period: { startDate, endDate },
                 source: 'statements',
+                categoryMapping: false,
+                standardCategories: ALL_CATEGORIES,
                 income: {
                     categories: incomeCategories,
                     total: incomeCategories.reduce((sum, c) => sum + c.total, 0)
@@ -866,6 +915,7 @@ router.get('/by-category', async (req, res) => {
                 success: true,
                 data: {
                     period: parseDateRange(req.query),
+                    standardCategories: ALL_CATEGORIES,
                     income: { categories: [], total: 0 },
                     expenses: { categories: [], total: 0 }
                 },
@@ -878,6 +928,24 @@ router.get('/by-category', async (req, res) => {
             error: error.message || 'Failed to fetch financials by category'
         });
     }
+});
+
+/**
+ * GET /api/financials/category-mapping
+ * Get information about category mapping configuration
+ */
+router.get('/category-mapping', (req, res) => {
+    const { validateCategoryMapping } = require('../utils/categoryMapping');
+    const validation = validateCategoryMapping();
+
+    res.json({
+        success: true,
+        data: {
+            standardCategories: ALL_CATEGORIES,
+            validation,
+            description: 'These are the standard expense categories that QuickBooks account names are mapped to.'
+        }
+    });
 });
 
 /**

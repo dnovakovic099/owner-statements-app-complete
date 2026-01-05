@@ -53,7 +53,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   });
 
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
-  const [incomeCategories, setIncomeCategories] = useState<Array<{ name: string; amount: number; transactionCount: number }>>([]);
+  const [incomeCategories, setIncomeCategories] = useState<Array<{ name: string; amount: number; transactionCount: number; originalAccounts?: string[] }>>([]);
+
+  // Category data metadata from API
+  const [categoryDataSource, setCategoryDataSource] = useState<'quickbooks' | 'statements'>('statements');
+  const [categoryMappingEnabled, setCategoryMappingEnabled] = useState(false);
+  const [unmappedAccounts, setUnmappedAccounts] = useState<string[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -180,22 +185,29 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         ];
 
         const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories.map(
-          (c: { name: string; total: number }, index: number) => ({
+          (c: { name: string; total: number; originalAccounts?: string[] }, index: number) => ({
             name: c.name,
             amount: c.total || 0,
             color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+            originalAccounts: c.originalAccounts || [],
           })
         );
         setExpenseCategories(cats);
+
+        // Store category metadata
+        setCategoryDataSource(categoryResponseData.data.source || 'statements');
+        setCategoryMappingEnabled(categoryResponseData.data.categoryMapping || false);
+        setUnmappedAccounts(categoryResponseData.data.unmappedAccounts || []);
       }
 
       // Extract income categories from API response
       if (categoryResponseData.success && categoryResponseData.data?.income?.categories) {
         const incomeCats = categoryResponseData.data.income.categories.map(
-          (c: { name: string; total: number; count?: number }) => ({
+          (c: { name: string; total: number; count?: number; originalAccounts?: string[] }) => ({
             name: c.name,
             amount: c.total || 0,
             transactionCount: c.count || 0,
+            originalAccounts: c.originalAccounts || [],
           })
         );
         setIncomeCategories(incomeCats);
@@ -635,6 +647,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                   amount: cat.amount,
                   transactionCount: cat.transactionCount,
                   type: 'income' as const,
+                  originalAccounts: cat.originalAccounts,
                 })),
                 // Expense categories
                 ...expenseCategories.map(cat => ({
@@ -642,10 +655,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                   amount: cat.amount,
                   transactionCount: 0,
                   type: 'expense' as const,
+                  originalAccounts: (cat as any).originalAccounts,
                 })),
               ]}
               dateRange={dateRange}
               isLoading={loading}
+              dataSource={categoryDataSource}
+              categoryMapping={categoryMappingEnabled}
+              unmappedAccounts={unmappedAccounts}
             />
           </TabsContent>
 
