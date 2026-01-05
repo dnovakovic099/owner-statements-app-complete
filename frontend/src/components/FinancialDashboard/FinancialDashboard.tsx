@@ -54,6 +54,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [incomeCategories, setIncomeCategories] = useState<Array<{ name: string; amount: number; transactionCount: number }>>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [propertyFinancials, setPropertyFinancials] = useState<any[]>([]);
