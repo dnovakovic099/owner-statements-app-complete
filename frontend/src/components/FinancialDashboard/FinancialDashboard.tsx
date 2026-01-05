@@ -123,6 +123,25 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     setQbConnectionError(null); // Reset error state
 
     try {
+      // Check QuickBooks connection status first
+      try {
+        const qbCheckResponse = await fetch('/api/quickbooks/accounts', {
+          headers: { 'Authorization': 'Basic ' + btoa('LL:bnb547!') }
+        });
+        const qbCheckData = await qbCheckResponse.json();
+        if (!qbCheckData.success) {
+          setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
+        }
+      } catch {
+        setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
+      }
+
+      // Helper to extract error from axios error response
+      const extractError = (e: any) => ({
+        success: false,
+        error: e.response?.data?.error || e.response?.data?.message || e.message
+      });
+
       // Fetch only essential data on initial load (lazy load heavy data when tabs are selected)
       const [
         summaryData,
@@ -130,16 +149,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         homeCategoryResponseData,
         comparisonData,
       ] = await Promise.all([
-        financialsAPI.getSummary(dateRange.startDate, dateRange.endDate).catch(e => ({ success: false, error: e.message })),
-        financialsAPI.getByCategory(dateRange.startDate, dateRange.endDate).catch(e => ({ success: false, error: e.message })),
-        financialsAPI.getByHomeCategory(dateRange.startDate, dateRange.endDate).catch(e => ({ success: false, error: e.message })),
+        financialsAPI.getSummary(dateRange.startDate, dateRange.endDate).catch(extractError),
+        financialsAPI.getByCategory(dateRange.startDate, dateRange.endDate).catch(extractError),
+        financialsAPI.getByHomeCategory(dateRange.startDate, dateRange.endDate).catch(extractError),
         // Fetch month-over-month comparison for summary badges
-        financialsAPI.getComparison(dateRange.startDate, dateRange.endDate, undefined, undefined, 'mom').catch(e => ({ success: false, error: e.message })),
+        financialsAPI.getComparison(dateRange.startDate, dateRange.endDate, undefined, undefined, 'mom').catch(extractError),
       ]);
       console.log('[FinancialDashboard] Essential API calls completed');
       console.log('[FinancialDashboard] homeCategoryResponseData:', JSON.stringify(homeCategoryResponseData, null, 2));
 
-      // Check if QuickBooks connection is required
+      // Also check if API responses indicate QuickBooks error (backup check)
       const qbError = [summaryData, categoryResponseData].find(
         r => r?.success === false && (r?.error?.includes('QuickBooks') || r?.error?.includes('not connected'))
       );
