@@ -972,7 +972,16 @@ class HostifyService {
             const periodStart = new Date(fromDate);
             const periodEnd = new Date(toDate);
 
+            // Only include confirmed/accepted reservations - filter out expired, cancelled, inquiry, etc.
+            const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+
             reservationsList.forEach(res => {
+                // Skip reservations with non-allowed statuses (expired, cancelled, inquiry, etc.)
+                if (!allowedStatuses.includes(res.status)) {
+                    console.log(`[OVERLAP-SKIP] Reservation ${res.hostifyId} (${res.guestName}): status "${res.status}" not allowed`);
+                    return;
+                }
+
                 // If this is a child listing, attribute to parent
                 if (childToParentMap.has(res.propertyId)) {
                     const originalChildId = res.propertyId;
@@ -1109,6 +1118,16 @@ class HostifyService {
         // Fetch reservations for each listing in PARALLEL (much faster than fetching all and filtering)
         let allReservations = [];
         allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
+
+        // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
+        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+        allReservations = allReservations.filter(res => {
+            if (!allowedStatuses.includes(res.status)) {
+                console.log(`[FINANCE-SKIP] Reservation ${res.hostifyId} (${res.guestName}): status "${res.status}" not allowed`);
+                return false;
+            }
+            return true;
+        });
 
         // Attribute child reservations to parent
         allReservations = allReservations.map(res => {
