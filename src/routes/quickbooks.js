@@ -61,12 +61,13 @@ router.get('/accounts', async (req, res) => {
     } catch (error) {
         console.error('Error fetching QuickBooks accounts:', error);
         
-        // If QuickBooks is not configured, return empty array instead of error
+        // If QuickBooks is not configured, return error (consistent with financials API)
         if (error.message && error.message.includes('QuickBooks access token not configured')) {
-            res.json({
-                success: true,
-                data: [],
-                message: 'QuickBooks not connected'
+            res.status(503).json({
+                success: false,
+                error: 'QuickBooks not connected',
+                message: 'Please connect to QuickBooks in Settings.',
+                authUrl: '/api/quickbooks/auth-url'
             });
         } else {
             res.status(500).json({
