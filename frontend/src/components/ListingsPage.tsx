@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download } from 'lucide-react';
 import { listingsAPI, tagScheduleAPI } from '../services/api';
 import { Listing } from '../types';
 import LoadingSpinner from './LoadingSpinner';
@@ -450,6 +450,124 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setWaiveCommissionFilter('all');
   };
 
+  // Export listings to CSV
+  const handleExportCSV = () => {
+    const dataToExport = filteredListings.length > 0 ? filteredListings : listings;
+
+    // Define CSV headers - ALL listing fields
+    const headers = [
+      'ID',
+      'Name',
+      'Display Name',
+      'Nickname',
+      'Street',
+      'City',
+      'State',
+      'Country',
+      'Full Address',
+      'Person Capacity',
+      'Bedrooms',
+      'Bathrooms',
+      'Currency',
+      'Price',
+      'Cleaning Fee',
+      'Check-In Start',
+      'Check-In End',
+      'Check-Out Time',
+      'Min Nights',
+      'Max Nights',
+      'PM Fee %',
+      'Is Co-host on Airbnb',
+      'Airbnb Pass-Through Tax',
+      'Disregard Tax',
+      'Cleaning Fee Pass-Through',
+      'Guest Paid Damage Coverage',
+      'Include Child Listings',
+      'Waive Commission',
+      'Waive Commission Until',
+      'Default Pet Fee',
+      'Tags',
+      'Owner Email',
+      'Owner Greeting',
+      'Auto-Send Statements',
+      'Internal Notes',
+      'Is Active',
+      'Last Synced At',
+      'Created At',
+      'Updated At'
+    ];
+
+    // Helper to escape CSV values
+    const escapeCSV = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Convert listings to CSV rows - ALL fields
+    const rows = dataToExport.map(listing => [
+      listing.id,
+      escapeCSV(listing.name),
+      escapeCSV(listing.displayName || ''),
+      escapeCSV(listing.nickname || ''),
+      escapeCSV(listing.street || ''),
+      escapeCSV(listing.city || ''),
+      escapeCSV(listing.state || ''),
+      escapeCSV(listing.country || ''),
+      escapeCSV(listing.address || ''),
+      listing.personCapacity || '',
+      listing.bedroomsNumber || '',
+      listing.bathroomsNumber || '',
+      listing.currency || '',
+      listing.price || '',
+      listing.cleaningFee || '',
+      listing.checkInTimeStart || '',
+      listing.checkInTimeEnd || '',
+      listing.checkOutTime || '',
+      listing.minNights || '',
+      listing.maxNights || '',
+      listing.pmFeePercentage ?? '',
+      listing.isCohostOnAirbnb ? 'Yes' : 'No',
+      listing.airbnbPassThroughTax ? 'Yes' : 'No',
+      listing.disregardTax ? 'Yes' : 'No',
+      listing.cleaningFeePassThrough ? 'Yes' : 'No',
+      listing.guestPaidDamageCoverage ? 'Yes' : 'No',
+      listing.includeChildListings ? 'Yes' : 'No',
+      listing.waiveCommission ? 'Yes' : 'No',
+      listing.waiveCommissionUntil || '',
+      listing.defaultPetFee ?? '',
+      escapeCSV((listing.tags || []).join(', ')),
+      escapeCSV(listing.ownerEmail || ''),
+      escapeCSV(listing.ownerGreeting || ''),
+      listing.autoSendStatements !== false ? 'Yes' : 'No',
+      escapeCSV(listing.internalNotes || ''),
+      listing.isActive ? 'Yes' : 'No',
+      listing.lastSyncedAt || listing.syncedAt || '',
+      listing.createdAt || '',
+      listing.updatedAt || ''
+    ].join(','));
+
+    // Combine headers and rows
+    const csvContent = [headers.join(','), ...rows].join('\n');
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `listings_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast(`Exported ${dataToExport.length} listings to CSV`, 'success');
+  };
+
   const selectedListing = listings.find(l => l.id === selectedListingId);
   const getListingDisplayName = (listing: Listing) => {
     return listing.displayName || listing.nickname || listing.name;
@@ -468,14 +586,23 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Listings</h1>
             <p className="text-gray-500 text-xs sm:text-sm mt-0.5">Configure listing names and co-host settings</p>
           </div>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-4 h-4 sm:mr-2 ${syncing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync from Hostify'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-xs sm:text-sm"
+            >
+              <Download className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 sm:mr-2 ${syncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync from Hostify'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
