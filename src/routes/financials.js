@@ -250,11 +250,71 @@ router.get('/comparison', async (req, res) => {
             return res.json(cached);
         }
 
-        // Fetch summary data for both periods in parallel
-        const [currentSummary, previousSummary] = await Promise.all([
-            statementsFinancialService.getSummary(currentStart, currentEnd),
-            statementsFinancialService.getSummary(compareStart, compareEnd)
-        ]);
+        // Helper to extract totals from QuickBooks P&L report
+        const extractPLTotals = (plReport) => {
+            let totalIncome = 0;
+            let totalExpenses = 0;
+            let qbNetIncome = null;
+
+            if (plReport && plReport.Rows && plReport.Rows.Row) {
+                const getSummaryTotal = (section) => {
+                    if (!section.Summary || !section.Summary.ColData) return 0;
+                    for (const col of section.Summary.ColData) {
+                        const val = parseFloat(col.value);
+                        if (!isNaN(val)) return val;
+                    }
+                    return 0;
+                };
+
+                for (const section of plReport.Rows.Row) {
+                    const groupName = (section.group || '').toLowerCase();
+                    if (groupName === 'income') {
+                        totalIncome += getSummaryTotal(section);
+                    } else if (groupName === 'otherincome') {
+                        totalIncome += getSummaryTotal(section);
+                    } else if (groupName === 'costofgoodssold' || groupName === 'cogs') {
+                        totalExpenses += getSummaryTotal(section);
+                    } else if (groupName === 'expenses') {
+                        totalExpenses += getSummaryTotal(section);
+                    } else if (groupName === 'otherexpenses') {
+                        totalExpenses += getSummaryTotal(section);
+                    } else if (groupName === 'netincome') {
+                        qbNetIncome = getSummaryTotal(section);
+                    }
+                }
+
+                // ENFORCE QuickBooks Net Income - adjust expenses if parsing missed something
+                if (qbNetIncome !== null) {
+                    const calculatedNet = totalIncome - totalExpenses;
+                    if (Math.abs(calculatedNet - qbNetIncome) > 1) {
+                        totalExpenses = totalIncome - qbNetIncome;
+                    }
+                }
+            }
+
+            const netIncome = totalIncome - totalExpenses;
+            const profitMargin = totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0;
+            return { totalIncome, totalExpenses, netIncome, profitMargin };
+        };
+
+        // Fetch P&L from QuickBooks for both periods
+        let currentSummary, previousSummary;
+        try {
+            const [currentPL, previousPL] = await Promise.all([
+                quickBooksService.getProfitAndLoss(currentStart, currentEnd),
+                quickBooksService.getProfitAndLoss(compareStart, compareEnd)
+            ]);
+            currentSummary = extractPLTotals(currentPL);
+            previousSummary = extractPLTotals(previousPL);
+        } catch (qbError) {
+            console.error('QuickBooks P&L fetch failed for comparison:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch comparison data from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
 
         // Calculate changes
         const incomeChange = currentSummary.totalIncome - previousSummary.totalIncome;
@@ -298,9 +358,20 @@ router.get('/comparison', async (req, res) => {
                     netIncome: {
                         amount: netIncomeChange,
                         percent: calculatePercentChange(currentSummary.netIncome, previousSummary.netIncome)
+                    },
+                    profitMargin: {
+                        percent: calculatePercentChange(currentSummary.profitMargin, previousSummary.profitMargin)
                     }
                 },
-                preset: preset || null
+                // Add previousPeriod format for frontend compatibility
+                previousPeriod: {
+                    totalIncome: previousSummary.totalIncome,
+                    totalExpenses: previousSummary.totalExpenses,
+                    netIncome: previousSummary.netIncome,
+                    profitMargin: previousSummary.profitMargin
+                },
+                preset: preset || null,
+                dataSource: 'quickbooks'
             }
         };
 
@@ -324,17 +395,14 @@ router.get('/summary', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
 
-        // Check if QuickBooks is connected
-        const isConnected = quickBooksService.isConnected();
-
         let totalIncome = 0;
         let totalExpenses = 0;
         let incomeBreakdown = {};
         let expenseBreakdown = {};
-        let dataSource = 'statements';
+        let dataSource = 'quickbooks';
 
-        if (isConnected) {
-            try {
+        // Try to get P&L from QuickBooks - ensureFreshToken() handles token refresh automatically
+        try {
                 // Get P&L report from QuickBooks for accurate totals
                 const plReport = await quickBooksService.getProfitAndLoss(startDate, endDate);
 
@@ -476,36 +544,35 @@ router.get('/summary', async (req, res) => {
                     console.log(`  Expenses: ${totalExpenses} (COGS + Expenses + Other: ${cogsTotal} + ${expensesTotal} + ${otherExpensesTotal})`);
                     console.log(`  Net Income: ${totalIncome - totalExpenses}`);
 
-                    // Validate against QuickBooks Net Income
+                    // ENFORCE QuickBooks Net Income - adjust expenses if needed
                     if (qbNetIncome !== null) {
                         const calculatedNet = totalIncome - totalExpenses;
                         const diff = Math.abs(calculatedNet - qbNetIncome);
                         if (diff > 1) {
                             console.log(`[Financials] WARNING: Calculated Net (${calculatedNet}) differs from QB Net (${qbNetIncome}) by ${diff}`);
-                            console.log(`[Financials] This may indicate missing sections in parsing`);
+                            console.log(`[Financials] ADJUSTING: Using QB Net Income and back-calculating expenses`);
+                            // Back-calculate expenses to match QB Net Income exactly
+                            totalExpenses = totalIncome - qbNetIncome;
+                            console.log(`[Financials] Adjusted expenses to: ${totalExpenses}`);
                         } else {
                             console.log(`[Financials] SUCCESS: Calculated Net matches QB Net Income`);
                         }
                     }
                 }
 
-                dataSource = 'quickbooks';
-                console.log(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
-            } catch (qbError) {
-                console.error('QuickBooks P&L fetch failed:', qbError.message);
-                return res.status(503).json({
-                    success: false,
-                    error: 'QuickBooks connection failed',
-                    message: 'Unable to fetch data from QuickBooks. Please re-authenticate.',
-                    authUrl: '/api/quickbooks/auth-url'
-                });
-            }
-        } else {
-            // Not connected to QuickBooks - return error instead of fallback
+            console.log(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
+        } catch (qbError) {
+            console.error('QuickBooks P&L fetch failed:', qbError.message);
+            // Check if it's a token/auth issue
+            const errorMsg = qbError.message || '';
+            const isAuthError = errorMsg.includes('refresh') || errorMsg.includes('token') ||
+                               errorMsg.includes('OAuth') || errorMsg.includes('Not connected');
             return res.status(503).json({
                 success: false,
-                error: 'QuickBooks not connected',
-                message: 'Please connect to QuickBooks to view financial data.',
+                error: isAuthError ? 'QuickBooks not connected' : 'QuickBooks connection failed',
+                message: isAuthError
+                    ? 'Please connect to QuickBooks to view financial data.'
+                    : 'Unable to fetch data from QuickBooks. Please try again.',
                 authUrl: '/api/quickbooks/auth-url'
             });
         }

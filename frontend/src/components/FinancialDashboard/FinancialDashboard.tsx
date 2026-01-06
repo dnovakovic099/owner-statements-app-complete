@@ -123,14 +123,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     setQbConnectionError(null); // Reset error state
 
     try {
-      // Check QuickBooks connection status first
+      // Check QuickBooks connection status first (with auto-refresh)
       try {
-        const qbCheckResponse = await fetch('/api/quickbooks/accounts', {
+        const qbStatusResponse = await fetch('/api/quickbooks/status', {
           headers: { 'Authorization': 'Basic ' + btoa('LL:bnb547!') }
         });
-        const qbCheckData = await qbCheckResponse.json();
-        if (!qbCheckData.success) {
-          setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
+        const qbStatus = await qbStatusResponse.json();
+        if (!qbStatus.connected) {
+          setQbConnectionError(qbStatus.message || 'QuickBooks connection required. Please connect to QuickBooks to view financial data.');
         }
       } catch {
         setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');

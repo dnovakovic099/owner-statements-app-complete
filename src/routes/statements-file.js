@@ -667,8 +667,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 if (!dateMatch) return false;
             }
 
-            // Only include confirmed, modified, new and accepted status reservations
-            const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+            // Only include confirmed and accepted status reservations (exclude expired, cancelled, etc.)
+            const allowedStatuses = ['confirmed'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
@@ -1110,7 +1110,7 @@ router.post('/generate', async (req, res) => {
         }
 
         // Filter reservations - optimized with reduced logging
-        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+        const allowedStatuses = ['confirmed'];
         const periodReservations = reservations.filter(res => {
             // Use parseInt on both sides to ensure proper type comparison
             if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
@@ -5794,7 +5794,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     // Filter reservations for this property from the pre-fetched pool
                     // Filter reservations based on calculation type
-                    const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+                    const allowedStatuses = ['confirmed'];
 
                     const periodReservations = allReservations.filter(res => {
                         const propMatch = parseInt(res.propertyId) === parseInt(property.id);
@@ -6257,7 +6257,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                             dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                         }
 
-                        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+                        const allowedStatuses = ['confirmed'];
                         const statusMatch = allowedStatuses.includes(res.status);
 
                         return dateMatch && statusMatch;

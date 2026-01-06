@@ -47,6 +47,51 @@ router.get('/transactions', async (req, res) => {
 });
 
 /**
+ * GET /api/quickbooks/status
+ * Quick check if QuickBooks is connected (with auto-refresh)
+ */
+router.get('/status', async (req, res) => {
+    try {
+        // This will try to load from DB and refresh token if needed
+        const isConnected = await quickBooksService.isConnectedAsync();
+
+        if (isConnected) {
+            // Try to verify by refreshing token
+            try {
+                await quickBooksService.ensureFreshToken();
+                res.json({
+                    success: true,
+                    connected: true,
+                    message: 'QuickBooks is connected and ready'
+                });
+            } catch (refreshError) {
+                res.json({
+                    success: true,
+                    connected: false,
+                    message: 'QuickBooks token expired. Please reconnect.',
+                    authUrl: '/api/quickbooks/auth-url'
+                });
+            }
+        } else {
+            res.json({
+                success: true,
+                connected: false,
+                message: 'QuickBooks not connected',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error checking QuickBooks status:', error);
+        res.json({
+            success: true,
+            connected: false,
+            message: error.message || 'Unable to check QuickBooks status',
+            authUrl: '/api/quickbooks/auth-url'
+        });
+    }
+});
+
+/**
  * GET /api/quickbooks/accounts
  * Fetch accounts from QuickBooks
  */

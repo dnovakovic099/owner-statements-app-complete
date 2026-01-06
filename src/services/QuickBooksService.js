@@ -199,11 +199,19 @@ class QuickBooksService {
                     this.companyId = token.companyId;
                     this.realmId = token.companyId;
 
+                    // Calculate actual seconds until expiry from DB timestamp
+                    const expiresAt = token.tokenExpiresAt ? new Date(token.tokenExpiresAt) : null;
+                    const now = new Date();
+                    const expiresInSeconds = expiresAt ? Math.max(0, Math.floor((expiresAt - now) / 1000)) : 0;
+
+                    console.log(`[QuickBooks] Token expires in ${expiresInSeconds} seconds (at ${expiresAt})`);
+
                     this.tokenSet = {
                         access_token: token.accessToken,
                         refresh_token: token.refreshToken,
-                        expires_in: 3600,
-                        token_type: 'Bearer'
+                        expires_in: expiresInSeconds, // Use actual expiry, not hardcoded!
+                        token_type: 'Bearer',
+                        createdAt: now.getTime() // Track when we loaded it
                     };
 
                     this.oauthClient.setToken(this.tokenSet);
@@ -218,39 +226,79 @@ class QuickBooksService {
     }
 
     /**
-     * Helper: ensure valid access token (refresh if needed) - like working example
+     * Helper: ensure valid access token (refresh if needed) - bulletproof version
      */
     async ensureFreshToken() {
         // First, try to load latest tokens from database (multi-worker support)
         await this.loadTokensFromDatabase();
 
         if (!this.tokenSet) {
-            throw new Error('Not connected yet. Complete OAuth flow first.');
+            throw new Error('QuickBooks not connected. Please connect in Settings.');
         }
 
-        // intuit-oauth tracks expiry for you:
-        if (this.oauthClient.isAccessTokenValid()) {
-            return this.oauthClient.getToken().access_token;
+        if (!this.tokenSet.refresh_token) {
+            throw new Error('QuickBooks refresh token missing. Please reconnect in Settings.');
         }
 
-        // Token expired - try to refresh
-        console.log('Access token expired, refreshing...');
-        try {
-            const refreshResponse = await this.oauthClient.refresh();
-            this.tokenSet = refreshResponse.getJson();
-            this.accessToken = this.tokenSet.access_token;
-            this.refreshToken = this.tokenSet.refresh_token;
-            console.log('Token refreshed successfully');
+        // Check if token is valid AND has more than 5 minutes remaining (proactive refresh)
+        const token = this.oauthClient.getToken();
+        const isValid = this.oauthClient.isAccessTokenValid();
+        const expiresIn = this.tokenSet.expires_in || 0;
+        const needsProactiveRefresh = expiresIn < 300; // Less than 5 minutes
 
-            // Save refreshed tokens to database for other workers
-            this.saveTokensToDatabase(this.accessToken, this.refreshToken, this.companyId).catch(err => {
-                console.error('[QuickBooks] Failed to save refreshed tokens:', err.message);
-            });
+        if (isValid && !needsProactiveRefresh) {
+            console.log(`[QuickBooks] Token valid, expires in ${expiresIn}s`);
+            return token.access_token;
+        }
 
-            return this.oauthClient.getToken().access_token;
-        } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError.message);
-            throw new Error('Token refresh failed. Please reconnect to QuickBooks.');
+        // Token expired or expiring soon - refresh it
+        const reason = !isValid ? 'expired' : 'expiring soon';
+        console.log(`[QuickBooks] Token ${reason}, refreshing...`);
+
+        return await this._refreshTokenWithRetry();
+    }
+
+    /**
+     * Refresh token with retry logic for transient failures
+     */
+    async _refreshTokenWithRetry(retries = 2) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                console.log(`[QuickBooks] Refresh attempt ${attempt}/${retries}`);
+                const refreshResponse = await this.oauthClient.refresh();
+                this.tokenSet = refreshResponse.getJson();
+                this.accessToken = this.tokenSet.access_token;
+                this.refreshToken = this.tokenSet.refresh_token;
+
+                console.log('[QuickBooks] Token refreshed successfully');
+
+                // Save refreshed tokens to database for other workers
+                await this.saveTokensToDatabase(this.accessToken, this.refreshToken, this.companyId).catch(err => {
+                    console.error('[QuickBooks] Failed to save refreshed tokens:', err.message);
+                });
+
+                return this.tokenSet.access_token;
+            } catch (refreshError) {
+                const errorMsg = refreshError.message || '';
+                console.error(`[QuickBooks] Refresh attempt ${attempt} failed:`, errorMsg);
+
+                // Check for specific error types
+                if (errorMsg.includes('invalid_grant') || errorMsg.includes('Token has been revoked')) {
+                    // Refresh token expired (100 days) or revoked - must reconnect
+                    throw new Error('QuickBooks authorization expired (100+ days inactive). Please reconnect in Settings.');
+                }
+
+                if (attempt === retries) {
+                    // All retries failed
+                    if (errorMsg.includes('network') || errorMsg.includes('ECONNREFUSED')) {
+                        throw new Error('Cannot reach QuickBooks servers. Please check your internet connection.');
+                    }
+                    throw new Error('QuickBooks token refresh failed. Please reconnect in Settings.');
+                }
+
+                // Wait before retry (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+            }
         }
     }
 
@@ -485,14 +533,20 @@ class QuickBooksService {
      * Helper method to create a configured QuickBooks client instance
      * @returns {Promise<QuickBooks>} Configured QBO client
      */
-    async _getQboClient() {
-        const accessToken = await this.ensureFreshToken();
+    async _getQboClient(forceRefresh = false) {
+        if (forceRefresh) {
+            console.log('[QuickBooks] Force refreshing token before API call');
+            await this._refreshTokenWithRetry();
+        } else {
+            await this.ensureFreshToken();
+        }
+
         if (!this.realmId) throw new Error('Missing realmId from OAuth callback.');
 
         return new QuickBooks(
             this.clientId,
             this.clientSecret,
-            accessToken,
+            this.tokenSet.access_token,
             false,
             this.realmId,
             this.useSandbox,
@@ -504,31 +558,59 @@ class QuickBooksService {
     }
 
     /**
-     * Get Profit and Loss report from QuickBooks
+     * Check if error is an auth/token error that should trigger retry
+     */
+    _isAuthError(err) {
+        if (!err) return false;
+        const msg = (err.message || JSON.stringify(err)).toLowerCase();
+        return msg.includes('401') ||
+               msg.includes('403') ||
+               msg.includes('unauthorized') ||
+               msg.includes('token') ||
+               msg.includes('authentication') ||
+               msg.includes('authenticationfailed') ||
+               msg.includes('expired');
+    }
+
+    /**
+     * Get Profit and Loss report from QuickBooks (with auth retry)
      * @param {string} startDate - Start date (YYYY-MM-DD)
      * @param {string} endDate - End date (YYYY-MM-DD)
      * @returns {Promise<Object>} P&L report data
      */
     async getProfitAndLoss(startDate, endDate) {
-        try {
-            const qbo = await this._getQboClient();
+        // Try up to 2 times - first with current token, then with forced refresh
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const forceRefresh = attempt > 1;
+                const qbo = await this._getQboClient(forceRefresh);
 
-            return new Promise((resolve, reject) => {
-                qbo.reportProfitAndLoss({
-                    start_date: startDate,
-                    end_date: endDate
-                }, (err, data) => {
-                    if (err) {
-                        console.error('QBO P&L Report error:', err);
-                        reject(new Error(`QBO API error: ${err.message || JSON.stringify(err)}`));
-                        return;
-                    }
-                    resolve(data);
+                const result = await new Promise((resolve, reject) => {
+                    qbo.reportProfitAndLoss({
+                        start_date: startDate,
+                        end_date: endDate
+                    }, (err, data) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        resolve(data);
+                    });
                 });
-            });
-        } catch (error) {
-            console.error('P&L report fetch error:', error);
-            throw new Error(`Failed to fetch P&L report: ${error.message}`);
+
+                return result;
+            } catch (err) {
+                console.error(`[QuickBooks] P&L attempt ${attempt} failed:`, err.message || err);
+
+                // If auth error and first attempt, retry with force refresh
+                if (attempt === 1 && this._isAuthError(err)) {
+                    console.log('[QuickBooks] Auth error detected, will retry with fresh token');
+                    continue;
+                }
+
+                // Final attempt failed or non-auth error
+                throw new Error(`Failed to fetch P&L report: ${err.message || JSON.stringify(err)}`);
+            }
         }
     }
 

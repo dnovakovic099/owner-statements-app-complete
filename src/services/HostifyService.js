@@ -972,8 +972,8 @@ class HostifyService {
             const periodStart = new Date(fromDate);
             const periodEnd = new Date(toDate);
 
-            // Only include confirmed/accepted reservations - filter out expired, cancelled, inquiry, etc.
-            const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+            // Only include confirmed reservations - filter out expired, cancelled, new, etc.
+            const allowedStatuses = ['confirmed'];
 
             reservationsList.forEach(res => {
                 // Skip reservations with non-allowed statuses (expired, cancelled, inquiry, etc.)
@@ -1119,8 +1119,8 @@ class HostifyService {
         let allReservations = [];
         allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
 
-        // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
-        const allowedStatuses = ['confirmed', 'modified', 'new', 'accepted'];
+        // Filter out expired, cancelled, inquiry reservations - only keep confirmed
+        const allowedStatuses = ['confirmed'];
         allReservations = allReservations.filter(res => {
             if (!allowedStatuses.includes(res.status)) {
                 console.log(`[FINANCE-SKIP] Reservation ${res.hostifyId} (${res.guestName}): status "${res.status}" not allowed`);
