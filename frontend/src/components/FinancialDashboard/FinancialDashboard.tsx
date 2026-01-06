@@ -510,16 +510,26 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       const response = await financialsAPI.getTransactions(dateRange.startDate, dateRange.endDate);
       if (response.success && response.data?.transactions) {
         // Map API transactions to modal format and filter by category
+        // Check multiple fields since transactions can have category in different places
+        const categoryLower = category.name.toLowerCase();
         const mappedTransactions: Transaction[] = response.data.transactions
-          .filter((t: any) => t.category === category.name || t.AccountRef?.name === category.name)
+          .filter((t: any) => {
+            const accountName = (t.AccountName || t.AccountRef?.name || '').toLowerCase();
+            const categoryName = (t.CategoryName || t.category || '').toLowerCase();
+            const vendorName = (t.VendorName || t.VendorRef?.name || '').toLowerCase();
+            return accountName.includes(categoryLower) ||
+                   categoryName.includes(categoryLower) ||
+                   categoryLower.includes(accountName) ||
+                   vendorName.includes(categoryLower);
+          })
           .map((t: any) => ({
             id: t.Id || t.id || Math.random(),
             date: t.TxnDate || t.date || '',
-            description: t.Description || t.memo || t.description || t.AccountRef?.name || 'Transaction',
+            description: t.Description || t.VendorName || t.AccountName || 'Transaction',
             amount: Math.abs(t.TotalAmt || t.Amount || t.amount || 0),
-            category: t.category || t.AccountRef?.name || category.name,
-            property: t.property || t.CustomerRef?.name || '',
-            type: t.type === 'income' ? 'income' : 'expense',
+            category: t.AccountName || t.CategoryName || category.name,
+            property: t.VendorName || t.CustomerRef?.name || '',
+            type: t.Type === 'Invoice' || t.Type === 'Payment' ? 'income' : 'expense',
           }));
         setTransactions(mappedTransactions);
       }
@@ -615,7 +625,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                   <button
                     onClick={async () => {
                       try {
-                        const response = await fetch('/api/quickbooks/auth-url');
+                        // Get auth token from localStorage
+                        const stored = localStorage.getItem('luxury-lodging-auth');
+                        const token = stored ? JSON.parse(stored)?.token : null;
+
+                        const response = await fetch('/api/quickbooks/auth-url', {
+                          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                        });
                         const data = await response.json();
                         if (data.success && data.authUrl) {
                           window.open(data.authUrl, '_blank');
