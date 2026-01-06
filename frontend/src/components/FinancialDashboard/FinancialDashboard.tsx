@@ -123,19 +123,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     setQbConnectionError(null); // Reset error state
 
     try {
-      // Check QuickBooks connection status first (with auto-refresh)
-      try {
-        const qbStatusResponse = await fetch('/api/quickbooks/status', {
-          headers: { 'Authorization': 'Basic ' + btoa('LL:bnb547!') }
-        });
-        const qbStatus = await qbStatusResponse.json();
-        if (!qbStatus.connected) {
-          setQbConnectionError(qbStatus.message || 'QuickBooks connection required. Please connect to QuickBooks to view financial data.');
-        }
-      } catch {
-        setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
-      }
-
       // Helper to extract error from axios error response
       const extractError = (e: any) => ({
         success: false,
@@ -158,13 +145,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       console.log('[FinancialDashboard] Essential API calls completed');
       console.log('[FinancialDashboard] homeCategoryResponseData:', JSON.stringify(homeCategoryResponseData, null, 2));
 
-      // Also check if API responses indicate QuickBooks error (backup check)
-      const qbError = [summaryData, categoryResponseData].find(
-        r => r?.success === false && (r?.error?.includes('QuickBooks') || r?.error?.includes('not connected'))
-      );
-      if (qbError) {
-        setQbConnectionError('QuickBooks connection expired or not configured. Please reconnect to view accurate financial data.');
-        // Continue with whatever data is available
+      // Only show QB error banner if summary data actually failed (no data returned)
+      if (summaryData?.success === false &&
+          (summaryData?.error?.includes('QuickBooks') || summaryData?.error?.includes('not connected'))) {
+        setQbConnectionError('QuickBooks connection required. Please connect to QuickBooks to view financial data.');
+      }
+      // If we got summary data successfully, QB is connected - clear any error
+      if (summaryData?.success && summaryData?.data?.summary?.totalIncome !== undefined) {
+        setQbConnectionError(null);
       }
 
       // Extract comparison percentages and previous period data
@@ -624,17 +612,25 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                   Financial data is currently unavailable. Connect to QuickBooks to view real-time income, expenses, and financial reports.
                 </p>
                 <div className="flex items-center gap-3 mt-3">
-                  <a
-                    href="/api/quickbooks/auth-url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/quickbooks/auth-url');
+                        const data = await response.json();
+                        if (data.success && data.authUrl) {
+                          window.open(data.authUrl, '_blank');
+                        }
+                      } catch (error) {
+                        console.error('Failed to get QuickBooks auth URL:', error);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clipRule="evenodd" />
                     </svg>
                     Connect to QuickBooks
-                  </a>
+                  </button>
                   <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded">
                     Data shown below is placeholder only
                   </span>
