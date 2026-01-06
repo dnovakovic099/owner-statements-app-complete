@@ -1296,13 +1296,12 @@ class QuickBooksService {
 
         // Check if we're looking for distribution accounts (need special handling)
         const isDistributionSearch = accountNames.some(name =>
-            name.toLowerCase().includes('distribution') ||
-            name.toLowerCase().includes('darko') ||
-            name.toLowerCase().includes('louis')
+            name.toLowerCase().includes('distribution')
         );
 
         // Helper to check if a value matches any of the target accounts
-        // Uses STRICT matching for regular accounts, more flexible for distributions
+        // Uses STRICT matching - exact match or parent:child relationship
+        // For distributions, also match "Distributions - Darko" style names
         const matchesAnyAccount = (value) => {
             if (!value) return false;
             const valueLower = value.toLowerCase().trim();
@@ -1314,8 +1313,9 @@ class QuickBooksService {
                 if (valueLower.startsWith(accountNameLower + ':')) return true;
                 // Sub-account match: looking for "Parent:Child" and value is "Parent:Child"
                 if (accountNameLower.startsWith(valueLower + ':')) return true;
-                // For distribution accounts, also match if both contain the owner name
-                if (isDistributionSearch) {
+                // For distribution accounts, match if BOTH are distribution accounts with same owner
+                if (isDistributionSearch && valueLower.includes('distribution')) {
+                    // Match "Distributions - Darko" with "Darko Distribution" etc.
                     if (accountNameLower.includes('darko') && valueLower.includes('darko')) return true;
                     if (accountNameLower.includes('louis') && valueLower.includes('louis')) return true;
                 }
