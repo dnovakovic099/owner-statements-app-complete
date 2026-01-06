@@ -13,22 +13,6 @@ const {
 const router = express.Router();
 const quickBooksService = new QuickBooksService();
 
-// Simple in-memory cache for financials data
-const financialsCache = new Map();
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutes (reduced for fresher data)
-
-function getCached(key) {
-    const cached = financialsCache.get(key);
-    if (cached && Date.now() - cached.time < CACHE_TTL) {
-        return cached.data;
-    }
-    return null;
-}
-
-function setCache(key, data) {
-    financialsCache.set(key, { data, time: Date.now() });
-}
-
 /**
  * Helper: Get default date range (last 30 days)
  */
@@ -258,13 +242,6 @@ router.get('/comparison', async (req, res) => {
             });
         }
 
-        // Check cache
-        const cacheKey = `comparison-${currentStart}-${currentEnd}-${compareStart}-${compareEnd}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
-
         // Helper to extract totals from QuickBooks P&L report
         const extractPLTotals = (plReport) => {
             let totalIncome = 0;
@@ -390,7 +367,6 @@ router.get('/comparison', async (req, res) => {
             }
         };
 
-        setCache(cacheKey, response);
         res.json(response);
     } catch (error) {
         console.error('Error fetching financial comparison:', error);
@@ -715,13 +691,6 @@ router.get('/time-series', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
 
-        // Check cache first
-        const cacheKey = `time-series-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
-
         // Use StatementsFinancialService for database queries
         const timeSeriesData = await statementsFinancialService.getTimeSeries(startDate, endDate);
 
@@ -729,7 +698,6 @@ router.get('/time-series', async (req, res) => {
             success: true,
             data: timeSeriesData
         };
-        setCache(cacheKey, response);
         res.json(response);
     } catch (error) {
         console.error('Error fetching financial time series:', error);
@@ -762,13 +730,6 @@ router.get('/by-category', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
         const useMappedCategories = req.query.mapped !== 'false'; // Default to true
-
-        // Check cache first
-        const cacheKey = `by-category-${startDate}-${endDate}-mapped-${useMappedCategories}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
 
         // Try to fetch from QuickBooks for actual account categories
         let income = [];
@@ -904,7 +865,6 @@ router.get('/by-category', async (req, res) => {
                     }
                 }
             };
-            setCache(cacheKey, response);
             return res.json(response);
         }
 
@@ -970,13 +930,6 @@ router.get('/category-mapping', (_req, res) => {
 router.get('/by-home-category', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
-
-        // Check cache first
-        const cacheKey = `by-home-category-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
 
         // Fetch listings from DATABASE (not FileDataService) to get pmFeePercentage, ownerEmail, tags
         const Listing = require('../models/Listing');
@@ -1061,7 +1014,6 @@ router.get('/by-home-category', async (req, res) => {
                 plReport: { available: false } // P&L report skipped for performance
             }
         };
-        setCache(cacheKey, response);
         res.json(response);
     } catch (error) {
         console.error('Error fetching financials by home category:', error);
@@ -1317,13 +1269,6 @@ router.get('/metrics', async (req, res) => {
         const months = parseInt(req.query.months) || 12;
         const { startDate, endDate } = getMonthsDateRange(months);
 
-        // Check cache first
-        const cacheKey = `metrics-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
-
         // Use StatementsFinancialService for database queries
         const metrics = await statementsFinancialService.getMetrics(startDate, endDate, months);
 
@@ -1334,7 +1279,6 @@ router.get('/metrics', async (req, res) => {
                 ...metrics
             }
         };
-        setCache(cacheKey, response);
         res.json(response);
     } catch (error) {
         console.error('Error fetching financial metrics:', error);
@@ -1361,15 +1305,6 @@ router.get('/transactions-by-account', async (req, res) => {
         const { startDate, endDate } = parseDateRange(req.query);
         const includeDebug = req.query.debug === 'true';
 
-        // Check cache first (skip for debug mode)
-        if (!includeDebug) {
-            const cacheKey = `transactions-by-account-${startDate}-${endDate}`;
-            const cached = getCached(cacheKey);
-            if (cached) {
-                return res.json(cached);
-            }
-        }
-
         console.log(`[transactions-by-account] Fetching for ${startDate} to ${endDate}`);
 
         const data = await quickBooksService.getTransactionListByAccount(startDate, endDate);
@@ -1386,10 +1321,6 @@ router.get('/transactions-by-account', async (req, res) => {
             }
         };
 
-        if (!includeDebug) {
-            const cacheKey = `transactions-by-account-${startDate}-${endDate}`;
-            setCache(cacheKey, response);
-        }
         res.json(response);
     } catch (error) {
         console.error('Error fetching transactions by account:', error);
@@ -1689,13 +1620,6 @@ router.get('/payment-status', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
 
-        // Check cache first
-        const cacheKey = `payment-status-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
-
         try {
             // Fetch invoices, payments, and deposits from QuickBooks
             const qbo = await quickBooksService._getQboClient();
@@ -1835,7 +1759,6 @@ router.get('/payment-status', async (req, res) => {
                 }
             };
 
-            setCache(cacheKey, response);
             return res.json(response);
         } catch (qbError) {
             console.error('QuickBooks error in payment-status:', qbError.message);
@@ -1862,13 +1785,6 @@ router.get('/payment-status', async (req, res) => {
 router.get('/invoices-summary', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
-
-        // Check cache first
-        const cacheKey = `invoices-summary-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
 
         try {
             const qbo = await quickBooksService._getQboClient();
@@ -1939,7 +1855,6 @@ router.get('/invoices-summary', async (req, res) => {
                 }
             };
 
-            setCache(cacheKey, response);
             return res.json(response);
         } catch (qbError) {
             console.error('QuickBooks error in invoices-summary:', qbError.message);
@@ -1966,13 +1881,6 @@ router.get('/invoices-summary', async (req, res) => {
 router.get('/deposits', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
-
-        // Check cache first
-        const cacheKey = `deposits-tracker-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
 
         try {
             const qbo = await quickBooksService._getQboClient();
@@ -2024,7 +1932,6 @@ router.get('/deposits', async (req, res) => {
                 }
             };
 
-            setCache(cacheKey, response);
             return res.json(response);
         } catch (qbError) {
             console.error('QuickBooks error in deposits:', qbError.message);
@@ -2052,13 +1959,6 @@ router.get('/sales-chart', async (req, res) => {
     try {
         // Use global date filter from query params
         const { startDate, endDate } = parseDateRange(req.query);
-
-        // Check cache first
-        const cacheKey = `sales-chart-${startDate}-${endDate}`;
-        const cached = getCached(cacheKey);
-        if (cached) {
-            return res.json(cached);
-        }
 
         try {
             const qbo = await quickBooksService._getQboClient();
@@ -2127,7 +2027,6 @@ router.get('/sales-chart', async (req, res) => {
                 }
             };
 
-            setCache(cacheKey, response);
             return res.json(response);
         } catch (qbError) {
             console.error('QuickBooks error in sales-chart:', qbError.message);
