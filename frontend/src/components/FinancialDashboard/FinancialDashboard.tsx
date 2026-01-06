@@ -207,12 +207,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         ];
 
         const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories.map(
-          (c: { name: string; total: number; originalAccounts?: string[] }, index: number) => ({
+          (c: { name: string; total: number; count?: number; originalAccounts?: string[] }, index: number) => ({
             name: c.name,
             amount: c.total || 0,
             color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
             originalAccounts: c.originalAccounts || [],
-          })
+            transactionCount: c.count || 0,
+          } as ExpenseCategory)
         );
         setExpenseCategories(cats);
 
@@ -770,17 +771,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                 ...incomeCategories.map(cat => ({
                   category: cat.name as any,
                   amount: cat.amount,
-                  transactionCount: cat.transactionCount,
+                  transactionCount: cat.transactionCount || 0,
                   type: 'income' as const,
                   originalAccounts: cat.originalAccounts,
                 })),
-                // Expense categories
+                // Expense categories - include transaction count from API
                 ...expenseCategories.map(cat => ({
                   category: cat.name as any,
                   amount: cat.amount,
-                  transactionCount: 0,
+                  transactionCount: (cat as any).transactionCount || 0,
                   type: 'expense' as const,
-                  originalAccounts: (cat as any).originalAccounts,
+                  originalAccounts: cat.originalAccounts,
                 })),
               ]}
               dateRange={dateRange}
@@ -788,6 +789,20 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               dataSource={categoryDataSource}
               categoryMapping={categoryMappingEnabled}
               unmappedAccounts={unmappedAccounts}
+              onCategorySelect={(categoryName) => {
+                // Find the category to get originalAccounts
+                const expCat = expenseCategories.find(c => c.name === categoryName);
+                const incCat = incomeCategories.find(c => c.name === categoryName);
+                const category = expCat || incCat;
+                if (category) {
+                  handleCategoryClick({
+                    name: categoryName,
+                    amount: category.amount,
+                    color: '',
+                    originalAccounts: (category as any).originalAccounts
+                  });
+                }
+              }}
             />
           </TabsContent>
 

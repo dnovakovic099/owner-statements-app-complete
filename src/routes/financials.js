@@ -130,16 +130,31 @@ function getComparisonDates(preset, currentStartDate = null, currentEndDate = nu
 
     switch (preset) {
         case 'mom': {
-            // Month over month: current month vs previous month
-            const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            const currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-            const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            // Month over month: use provided dates or default to current month vs previous month
+            if (currentStartDate && currentEndDate) {
+                currentStart = currentStartDate;
+                currentEnd = currentEndDate;
 
-            currentStart = currentMonthStart.toISOString().split('T')[0];
-            currentEnd = currentMonthEnd.toISOString().split('T')[0];
-            compareStart = prevMonthStart.toISOString().split('T')[0];
-            compareEnd = prevMonthEnd.toISOString().split('T')[0];
+                // Calculate previous month based on the selected date range
+                const startDate = new Date(currentStartDate);
+                const endDate = new Date(currentEndDate);
+                startDate.setMonth(startDate.getMonth() - 1);
+                endDate.setMonth(endDate.getMonth() - 1);
+
+                compareStart = startDate.toISOString().split('T')[0];
+                compareEnd = endDate.toISOString().split('T')[0];
+            } else {
+                // Default: current month vs previous month based on today
+                const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                const currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+
+                currentStart = currentMonthStart.toISOString().split('T')[0];
+                currentEnd = currentMonthEnd.toISOString().split('T')[0];
+                compareStart = prevMonthStart.toISOString().split('T')[0];
+                compareEnd = prevMonthEnd.toISOString().split('T')[0];
+            }
             break;
         }
         case 'yoy': {
