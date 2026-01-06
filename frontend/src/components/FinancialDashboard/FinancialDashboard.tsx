@@ -20,7 +20,6 @@ import ROITab, { ROIMetrics, TrendDataPoint, PropertyPerformance } from './tabs/
 import { financialsAPI } from '../../services/api';
 import PaymentStatusCards from './PaymentStatusCards';
 import SalesChart from './SalesChart';
-import InvoicesWidget from './InvoicesWidget';
 import DepositTracker from './DepositTracker';
 
 interface FinancialSummary {
@@ -143,10 +142,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   });
   const [salesChartData, setSalesChartData] = useState<{ month: string; amount: number }[]>([]);
   const [salesTotalAmount, setSalesTotalAmount] = useState(0);
-  const [invoicesSummary, setInvoicesSummary] = useState({
-    unpaid: { amount: 0, overdue: 0, notDueYet: 0, periodLabel: '' },
-    paid: { amount: 0, deposited: 0, notDeposited: 0, periodLabel: '' },
-  });
   const [depositData, setDepositData] = useState({
     totalAmount: 0,
     depositedToday: 0,
@@ -168,17 +163,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     };
 
     try {
-      const [paymentStatus, salesChart, invoices, deposits] = await Promise.all([
+      const [paymentStatus, salesChart, deposits] = await Promise.all([
         // Use global date filter for payment status
         fetch(`/api/financials/payment-status?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
           headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false })),
         // Use global date filter for sales chart
         fetch(`/api/financials/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-          headers: authHeader
-        }).then(res => res.json()).catch(() => ({ success: false })),
-        // Use global date filter for invoices
-        fetch(`/api/financials/invoices-summary?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
           headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false })),
         // Use global date filter for deposits
@@ -194,10 +185,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       if (salesChart.success && salesChart.data) {
         setSalesChartData(salesChart.data.chartData || []);
         setSalesTotalAmount(salesChart.data.totalAmount || 0);
-      }
-
-      if (invoices.success && invoices.data) {
-        setInvoicesSummary(invoices.data);
       }
 
       if (deposits.success && deposits.data) {
@@ -954,26 +941,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             onCardClick={(type) => console.log('Payment status card clicked:', type)}
           />
 
-          {/* Sales Chart and Invoices Widget Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            {/* Sales Chart - takes 2 columns */}
-            <div className="lg:col-span-2">
-              <SalesChart
-                data={salesChartData}
-                totalAmount={salesTotalAmount}
-                loading={qbWidgetsLoading}
-              />
-            </div>
-
-            {/* Invoices Widget - takes 1 column */}
-            <div>
-              <InvoicesWidget
-                data={invoicesSummary}
-                loading={qbWidgetsLoading}
-                onViewDetails={(type) => console.log('View invoices:', type)}
-              />
-            </div>
-          </div>
+          {/* Sales Chart */}
+          <SalesChart
+            data={salesChartData}
+            totalAmount={salesTotalAmount}
+            loading={qbWidgetsLoading}
+          />
 
           {/* Deposit Tracker */}
           <DepositTracker
