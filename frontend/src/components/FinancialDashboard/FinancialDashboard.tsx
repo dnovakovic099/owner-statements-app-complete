@@ -16,6 +16,7 @@ import ByCategoryTab from './tabs/ByCategoryTab';
 import ByPropertyTab from './tabs/ByPropertyTab';
 import ByHomeTypeTab from './tabs/ByHomeTypeTab';
 import ComparisonTab from './tabs/ComparisonTab';
+import ROITab, { ROIMetrics, TrendDataPoint, PropertyPerformance } from './tabs/ROITab';
 import { financialsAPI } from '../../services/api';
 
 interface FinancialSummary {
@@ -91,6 +92,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
   // Store top properties data separately
   const [topProperties, setTopProperties] = useState<Array<{ id: number; name: string; income: number }>>([]);
+
+  // ROI tab data
+  const [roiData, setRoiData] = useState<ROIMetrics>({
+    average: { value: 0, change: 0 },
+    pm: { value: 0, change: 0 },
+    arbitrage: { value: 0, change: 0 },
+    owned: { value: 0, change: 0 },
+  });
+  const [roiTrendData, setRoiTrendData] = useState<TrendDataPoint[]>([]);
+  const [topPerformers, setTopPerformers] = useState<PropertyPerformance[]>([]);
+  const [needsAttention, setNeedsAttention] = useState<PropertyPerformance[]>([]);
 
   // Store By Home Type tab data
   const [byHomeTypeData, setByHomeTypeData] = useState<any>({
@@ -206,15 +218,38 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           '#0ea5e9', '#06b6d4', '#6d28d9', '#475569', '#3b82f6',
         ];
 
-        const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories.map(
-          (c: { name: string; total: number; count?: number; originalAccounts?: string[] }, index: number) => ({
-            name: c.name,
-            amount: c.total || 0,
-            color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
-            originalAccounts: c.originalAccounts || [],
-            transactionCount: c.count || 0,
-          } as ExpenseCategory)
-        );
+        // Filter out bank/asset accounts that shouldn't appear as expense categories
+        const isBankAccount = (name: string) => {
+          const nameLower = name.toLowerCase();
+          return nameLower.includes('chk') ||
+                 nameLower.includes('checking') ||
+                 nameLower.includes('savings') ||
+                 nameLower.includes('bank account') ||
+                 nameLower.includes('chase bank') ||
+                 nameLower.includes('amex') ||
+                 nameLower.includes('visa') ||
+                 nameLower.includes('mastercard') ||
+                 nameLower.includes('credit card') ||
+                 nameLower.includes('capital one') ||
+                 nameLower.includes('wells fargo') ||
+                 nameLower.includes('bofa') ||
+                 nameLower.includes('bank of america') ||
+                 nameLower.includes('paypal') ||
+                 (nameLower.includes('chase') && nameLower.includes('(')) ||
+                 (nameLower.includes('(') && /\d{4,}/.test(name)); // Account numbers like "(1218)"
+        };
+
+        const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories
+          .filter((c: { name: string; total: number }) => !isBankAccount(c.name))
+          .map(
+            (c: { name: string; total: number; count?: number; originalAccounts?: string[] }, index: number) => ({
+              name: c.name,
+              amount: c.total || 0,
+              color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+              originalAccounts: c.originalAccounts || [],
+              transactionCount: c.count || 0,
+            } as ExpenseCategory)
+          );
         setExpenseCategories(cats);
 
         // Store category metadata
@@ -309,6 +344,50 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const sortedProperties = allPropertiesData.sort((a, b) => b.income - a.income).slice(0, 5);
         setTopProperties(sortedProperties);
         console.log('[FinancialDashboard] Top 5 properties:', sortedProperties);
+
+        // Extract ROI data (using profit margin as proxy)
+        const pmData = categoryMap.pm;
+        const arbData = categoryMap.arbitrage;
+        const ownedData = categoryMap.owned;
+
+        // Calculate profit margins (ROI proxy)
+        const pmMargin = pmData.income > 0 ? (pmData.net / pmData.income) * 100 : 0;
+        const arbMargin = arbData.income > 0 ? (arbData.net / arbData.income) * 100 : 0;
+        const ownedMargin = ownedData.income > 0 ? (ownedData.net / ownedData.income) * 100 : 0;
+
+        const totalIncome = pmData.income + arbData.income + ownedData.income;
+        const totalNet = pmData.net + arbData.net + ownedData.net;
+        const avgMargin = totalIncome > 0 ? (totalNet / totalIncome) * 100 : 0;
+
+        setRoiData({
+          average: { value: avgMargin, change: 0 }, // TODO: calculate change from comparison
+          pm: { value: pmMargin, change: 0 },
+          arbitrage: { value: arbMargin, change: 0 },
+          owned: { value: ownedMargin, change: 0 },
+        });
+
+        // Extract top/bottom performing properties
+        const allPropertiesWithROI = allPropertiesData.map(p => {
+          // Find this property in the original data to get expenses
+          let expenses = 0;
+          homeCategoryResponseData.data.categories.forEach((c: any) => {
+            const prop = c.properties?.find((cp: any) => cp.id === p.id);
+            if (prop) expenses = prop.expenses || 0;
+          });
+          const netIncome = p.income - expenses;
+          const roi = p.income > 0 ? (netIncome / p.income) * 100 : 0;
+          return {
+            propertyId: p.id,
+            propertyName: p.name,
+            roi,
+            trend: roi >= 20 ? 'up' as const : roi < 0 ? 'down' as const : 'stable' as const,
+          };
+        });
+
+        // Sort by ROI and get top 5 and bottom 5
+        const sortedByROI = [...allPropertiesWithROI].sort((a, b) => b.roi - a.roi);
+        setTopPerformers(sortedByROI.slice(0, 5));
+        setNeedsAttention(sortedByROI.filter(p => p.roi < 20).slice(-5).reverse());
 
         // Transform data for ByHomeTypeTab
         const byHomeTypeTransformed: any = {
@@ -535,15 +614,41 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       const data = await response.json();
 
       if (data.success && data.data?.transactions) {
-        const mappedTransactions: Transaction[] = data.data.transactions.map((t: any) => ({
-          id: t.docNumber || Math.random().toString(),
-          date: t.date || '',
-          description: t['Memo/Description'] || t.memo || t.name || t.type || 'Transaction',
-          amount: Math.abs(t.amount || t.debit || t.credit || 0),
-          category: t.matchedAccount || t.account || category.name,
-          property: t.name || '',
-          type: 'expense' as const,
-        }));
+        // Filter and map transactions - exclude invalid ones
+        const mappedTransactions: Transaction[] = data.data.transactions
+          .filter((t: any) => {
+            // Filter out transactions with no date or zero amount
+            const hasValidDate = t.date && t.date !== 'Invalid Date' && !t.date.includes('Beginning Balance');
+            const hasAmount = Math.abs(t.amount || t.debit || t.credit || 0) > 0;
+            return hasValidDate && hasAmount;
+          })
+          .map((t: any) => {
+            // Clean up description - extract meaningful part from bank memo
+            let description = t['Memo/Description'] || t.memo || t.name || t.type || 'Transaction';
+            // If description looks like raw bank data, try to extract vendor name
+            if (description.includes('ORIG CO NAME:')) {
+              const match = description.match(/ORIG CO NAME:([^\s]+)/);
+              if (match) description = match[1];
+            }
+            if (description.includes('IND NAME:')) {
+              const match = description.match(/IND NAME:([^I]+)/);
+              if (match) description = match[1].trim();
+            }
+            // Truncate very long descriptions
+            if (description.length > 60) {
+              description = description.substring(0, 57) + '...';
+            }
+
+            return {
+              id: t.docNumber || t.type_id || Math.random().toString(),
+              date: t.date || '',
+              description,
+              amount: Math.abs(t.amount || t.debit || t.credit || 0),
+              category: category.name, // Always show the clicked category, not the bank account
+              property: t.name || '', // Vendor/payee name
+              type: 'expense' as const,
+            };
+          });
         setTransactions(mappedTransactions);
         console.log(`[FinancialDashboard] Loaded ${mappedTransactions.length} transactions for ${category.name} from TransactionList Report`);
       } else {
@@ -861,34 +966,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
           {/* ROI Tab */}
           <TabsContent value="roi">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 mb-4">
-                  <TrendingUp className="w-8 h-8 text-purple-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">ROI Analysis</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  Return on Investment metrics and property performance analysis
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-                  <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-100">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Average ROI</p>
-                    <p className="text-3xl font-bold text-gray-900">--</p>
-                    <p className="text-xs text-gray-500 mt-1">Across all properties</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Best Performing</p>
-                    <p className="text-3xl font-bold text-gray-900">--</p>
-                    <p className="text-xs text-gray-500 mt-1">Property name</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border border-orange-100">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Total Return</p>
-                    <p className="text-3xl font-bold text-gray-900">--</p>
-                    <p className="text-xs text-gray-500 mt-1">Year to date</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ROITab
+              roiData={roiData}
+              trendData={roiTrendData}
+              topPerformers={topPerformers}
+              needsAttention={needsAttention}
+              onPropertyClick={(propertyId) => console.log('Property clicked:', propertyId)}
+            />
           </TabsContent>
         </Tabs>
       </div>
