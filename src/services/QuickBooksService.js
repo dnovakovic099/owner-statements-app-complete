@@ -588,7 +588,8 @@ class QuickBooksService {
                 const result = await new Promise((resolve, reject) => {
                     qbo.reportProfitAndLoss({
                         start_date: startDate,
-                        end_date: endDate
+                        end_date: endDate,
+                        accounting_method: 'Cash'
                     }, (err, data) => {
                         if (err) {
                             reject(err);
