@@ -25,20 +25,21 @@ export interface ExpensesCategoryChartProps {
 }
 
 // ============================================================================
-// Default Color Palette (Professional blues, teals, grays)
+// Professional Color Palette
 // ============================================================================
 
 export const DEFAULT_COLORS = [
-  '#2563eb', // blue-600
-  '#0891b2', // cyan-600
-  '#6366f1', // indigo-500
+  '#3b82f6', // blue-500 (primary)
+  '#10b981', // emerald-500
+  '#f59e0b', // amber-500
+  '#ef4444', // red-500
   '#8b5cf6', // violet-500
-  '#64748b', // slate-500
-  '#0ea5e9', // sky-500
   '#06b6d4', // cyan-500
-  '#6d28d9', // violet-700
-  '#475569', // slate-600
-  '#3b82f6', // blue-500
+  '#f97316', // orange-500
+  '#84cc16', // lime-500
+  '#ec4899', // pink-500
+  '#6366f1', // indigo-500
+  '#94a3b8', // slate-400 (for "Other")
 ];
 
 // ============================================================================
@@ -71,10 +72,13 @@ const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
   if (active && payload && payload.length > 0) {
     const data = payload[0].payload;
     return (
-      <div className="bg-gray-900 bg-opacity-95 text-white p-3 rounded-lg shadow-lg border border-gray-700">
-        <p className="font-semibold text-sm mb-1">{data.name}</p>
-        <p className="text-xs text-gray-300">
-          {formatCurrency(data.amount)} ({formatPercentage(data.percentage)})
+      <div className="bg-white text-gray-900 px-4 py-3 rounded-xl shadow-xl border border-gray-200">
+        <p className="font-semibold text-sm">{data.name}</p>
+        <p className="text-lg font-bold text-gray-900 mt-1">
+          {formatCurrency(data.amount)}
+        </p>
+        <p className="text-xs text-gray-500">
+          {formatPercentage(data.percentage)} of total
         </p>
       </div>
     );
@@ -93,34 +97,74 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
 }) => {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  // Prepare chart data with percentages and colors
+  // Prepare chart data - group small categories into "Other"
   const chartData = useMemo(() => {
-    return categories.map((category, index) => ({
+    const MIN_PERCENTAGE = 3; // Group categories below 3% into "Other"
+    const MAX_SEGMENTS = 8; // Maximum segments to show
+
+    const withPercentages = categories.map((category, index) => ({
       name: category.name,
       amount: category.amount,
       percentage: total > 0 ? (category.amount / total) * 100 : 0,
       color: category.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+      originalAccounts: category.originalAccounts,
+    }));
+
+    // Sort by amount descending
+    const sorted = [...withPercentages].sort((a, b) => b.amount - a.amount);
+
+    // Take top categories and group the rest into "Other"
+    const topCategories = sorted.slice(0, MAX_SEGMENTS - 1);
+    const otherCategories = sorted.slice(MAX_SEGMENTS - 1);
+
+    // Also move very small categories to "Other"
+    const finalCategories: typeof topCategories = [];
+    let otherAmount = 0;
+
+    topCategories.forEach((cat) => {
+      if (cat.percentage < MIN_PERCENTAGE) {
+        otherAmount += cat.amount;
+      } else {
+        finalCategories.push(cat);
+      }
+    });
+
+    // Add remaining categories to "Other"
+    otherCategories.forEach((cat) => {
+      otherAmount += cat.amount;
+    });
+
+    // Add "Other" category if there's any
+    if (otherAmount > 0) {
+      finalCategories.push({
+        name: 'Other',
+        amount: otherAmount,
+        percentage: total > 0 ? (otherAmount / total) * 100 : 0,
+        color: '#94a3b8', // slate-400
+        originalAccounts: [],
+      });
+    }
+
+    // Assign colors
+    return finalCategories.map((cat, index) => ({
+      ...cat,
+      color: cat.name === 'Other' ? '#94a3b8' : DEFAULT_COLORS[index % DEFAULT_COLORS.length],
     }));
   }, [categories, total]);
 
-  // Get top 5 categories for the list
-  const topCategories = useMemo(() => {
-    return [...chartData]
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-  }, [chartData]);
-
   // Handle segment click
   const handlePieClick = (data: any, index: number) => {
-    if (onCategoryClick) {
-      const category = categories[index];
-      onCategoryClick(category);
+    if (onCategoryClick && chartData[index].name !== 'Other') {
+      const category = categories.find(c => c.name === chartData[index].name);
+      if (category) {
+        onCategoryClick(category);
+      }
     }
   };
 
   // Handle list item click
   const handleListItemClick = (categoryName: string) => {
-    if (onCategoryClick) {
+    if (onCategoryClick && categoryName !== 'Other') {
       const category = categories.find((c) => c.name === categoryName);
       if (category) {
         onCategoryClick(category);
@@ -137,7 +181,7 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
     setActiveIndex(null);
   };
 
-  // Empty state - compact version
+  // Empty state
   if (categories.length === 0) {
     return (
       <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -145,25 +189,13 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
           <h3 className="text-lg font-semibold text-gray-900">
             Expenses by Category
           </h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Total: {formatCurrency(total)}
-          </p>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-gray-400 mb-2">
-              <svg
-                className="mx-auto h-8 w-8"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
+            <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
               </svg>
             </div>
             <p className="text-sm text-gray-500">No expense data available</p>
@@ -176,43 +208,43 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
   return (
     <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       {/* Header */}
-      <div className="mb-3">
+      <div className="mb-2">
         <h3 className="text-lg font-semibold text-gray-900">
           Expenses by Category
         </h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Total: {formatCurrency(total)}
-        </p>
       </div>
 
-      {/* Chart */}
-      <div className="relative mb-3">
-        <ResponsiveContainer width="100%" height={200}>
+      {/* Chart Container */}
+      <div className="relative flex-shrink-0" style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius={55}
-              outerRadius={80}
-              paddingAngle={2}
+              innerRadius={65}
+              outerRadius={95}
+              paddingAngle={3}
               dataKey="amount"
               onClick={handlePieClick}
               onMouseEnter={(_, index) => handleMouseEnter(index)}
               onMouseLeave={handleMouseLeave}
+              animationBegin={0}
+              animationDuration={800}
+              animationEasing="ease-out"
             >
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={entry.color}
                   stroke="#fff"
-                  strokeWidth={2}
-                  className={`
-                    cursor-pointer transition-opacity duration-200
-                    ${activeIndex !== null && activeIndex !== index ? 'opacity-50' : 'opacity-100'}
-                  `}
+                  strokeWidth={3}
                   style={{
-                    filter: activeIndex === index ? 'brightness(1.1)' : 'none',
+                    cursor: entry.name !== 'Other' ? 'pointer' : 'default',
+                    opacity: activeIndex !== null && activeIndex !== index ? 0.5 : 1,
+                    transform: activeIndex === index ? 'scale(1.02)' : 'scale(1)',
+                    transformOrigin: 'center',
+                    transition: 'all 0.2s ease-out',
                   }}
                 />
               ))}
@@ -224,58 +256,45 @@ export const ExpensesCategoryChart: React.FC<ExpensesCategoryChartProps> = ({
         {/* Center Total */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
-            <p className="text-xl font-bold text-gray-900">
+            <p className="text-2xl font-bold text-gray-900">
               {formatCurrency(total)}
             </p>
-            <p className="text-xs text-gray-500">Total</p>
+            <p className="text-xs text-gray-500 font-medium">Total</p>
           </div>
         </div>
       </div>
 
-      {/* Top Categories List */}
-      <div className="flex-1 flex flex-col">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">
-          Top Categories
-        </h4>
-        <div className="space-y-0.5 flex-1">
-          {topCategories.map((category, index) => (
+      {/* Categories List */}
+      <div className="flex-1 mt-2 overflow-auto">
+        <div className="space-y-1">
+          {chartData.map((category, index) => (
             <div
               key={category.name}
               onClick={() => handleListItemClick(category.name)}
-              onMouseEnter={() => {
-                const chartIndex = chartData.findIndex(
-                  (c) => c.name === category.name
-                );
-                handleMouseEnter(chartIndex);
-              }}
+              onMouseEnter={() => handleMouseEnter(index)}
               onMouseLeave={handleMouseLeave}
               className={`
-                flex items-center justify-between py-2 px-2 rounded-lg
+                flex items-center justify-between py-2 px-3 rounded-lg
                 transition-all duration-200
-                ${onCategoryClick ? 'cursor-pointer hover:bg-gray-50' : ''}
-                ${
-                  activeIndex !== null &&
-                  chartData[activeIndex]?.name === category.name
-                    ? 'bg-gray-50'
-                    : ''
-                }
+                ${category.name !== 'Other' && onCategoryClick ? 'cursor-pointer hover:bg-gray-50' : ''}
+                ${activeIndex === index ? 'bg-gray-50' : ''}
               `}
             >
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  className="w-3 h-3 rounded-full flex-shrink-0"
                   style={{ backgroundColor: category.color }}
                 />
-                <span className="text-sm text-gray-900 truncate">
+                <span className="text-sm text-gray-700 truncate">
                   {category.name}
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="flex items-center gap-4 flex-shrink-0">
                 <span className="text-sm font-semibold text-gray-900">
                   {formatCurrency(category.amount)}
                 </span>
-                <span className="text-xs text-gray-500 w-10 text-right">
+                <span className="text-xs text-gray-500 w-12 text-right font-medium">
                   {formatPercentage(category.percentage)}
                 </span>
               </div>

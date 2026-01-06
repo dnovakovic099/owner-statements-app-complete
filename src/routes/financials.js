@@ -15,7 +15,7 @@ const quickBooksService = new QuickBooksService();
 
 // Simple in-memory cache for financials data
 const financialsCache = new Map();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutes (reduced for fresher data)
 
 function getCached(key) {
     const cached = financialsCache.get(key);
