@@ -89,6 +89,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Base tags that are always available as suggestions (frequencies + categories)
+  const BASE_TAGS = ['WEEKLY', 'BI-WEEKLY', 'MONTHLY', 'QUARTERLY', 'ARBITRAGE', 'OWNED', 'SHARED'];
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerGreeting, setOwnerGreeting] = useState('');
   const [autoSendStatements, setAutoSendStatements] = useState(true);
@@ -1381,32 +1385,84 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       </div>
                     )}
                     
-                    {/* Add New Tag */}
+                    {/* Add New Tag with Autocomplete */}
                     <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const trimmedTag = newTag.trim();
-                            if (trimmedTag && !tags.includes(trimmedTag)) {
-                              setTags([...tags, trimmedTag]);
-                              setNewTag('');
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          value={newTag}
+                          onChange={(e) => {
+                            setNewTag(e.target.value);
+                            setShowTagSuggestions(true);
+                          }}
+                          onFocus={() => setShowTagSuggestions(true)}
+                          onBlur={() => {
+                            // Delay to allow click on suggestion
+                            setTimeout(() => setShowTagSuggestions(false), 200);
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const trimmedTag = newTag.trim().toUpperCase();
+                              if (trimmedTag && !tags.includes(trimmedTag)) {
+                                setTags([...tags, trimmedTag]);
+                                setNewTag('');
+                                setShowTagSuggestions(false);
+                              }
                             }
-                          }
-                        }}
-                        placeholder="Add a tag..."
-                        className="flex-1 border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                          }}
+                          placeholder="Add a tag..."
+                          className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {/* Tag Suggestions Dropdown */}
+                        {showTagSuggestions && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {/* Combine base tags + all tags from listings (dynamic) */}
+                            {Array.from(new Set([...BASE_TAGS, ...availableTags]))
+                              .filter(tag =>
+                                !tags.includes(tag) &&
+                                tag.toLowerCase().includes(newTag.toLowerCase())
+                              )
+                              .slice(0, 10)
+                              .map((tag, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => {
+                                    if (!tags.includes(tag)) {
+                                      setTags([...tags, tag]);
+                                      setNewTag('');
+                                      setShowTagSuggestions(false);
+                                    }
+                                  }}
+                                  className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center justify-between"
+                                >
+                                  <span>{tag}</span>
+                                  {availableFrequencyTags.includes(tag) && (
+                                    <span className="text-xs text-green-600">has schedule</span>
+                                  )}
+                                </button>
+                              ))}
+                            {Array.from(new Set([...BASE_TAGS, ...availableTags]))
+                              .filter(tag =>
+                                !tags.includes(tag) &&
+                                tag.toLowerCase().includes(newTag.toLowerCase())
+                              ).length === 0 && newTag.trim() && (
+                              <div className="px-3 py-2 text-sm text-gray-500">
+                                Press Enter to add "{newTag.trim().toUpperCase()}"
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
-                          const trimmedTag = newTag.trim();
+                          const trimmedTag = newTag.trim().toUpperCase();
                           if (trimmedTag && !tags.includes(trimmedTag)) {
                             setTags([...tags, trimmedTag]);
                             setNewTag('');
+                            setShowTagSuggestions(false);
                           }
                         }}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
