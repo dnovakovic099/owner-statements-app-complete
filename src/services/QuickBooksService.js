@@ -1334,14 +1334,54 @@ class QuickBooksService {
             );
         };
 
+        // Helper to check if transaction type is an actual expense (not transfer/adjustment)
+        const isExpenseTransaction = (txn) => {
+            const type = (txn.type || '').toLowerCase();
+            const name = (txn.name || '').toLowerCase();
+            const memo = (txn['Memo/Description'] || txn.memo || '').toLowerCase();
+
+            // Exclude transfers - they move money between accounts, not actual expenses
+            if (type === 'transfer' || type.includes('transfer')) return false;
+            if (memo.includes('transfer from') || memo.includes('transfer to')) return false;
+            if (memo.includes('online transfer')) return false;
+
+            // Exclude journal entries that are usually adjustments
+            if (type === 'journal entry' || type === 'journal') return false;
+
+            // Exclude deposits - these are income, not expenses
+            if (type === 'deposit') return false;
+
+            // Valid expense transaction types
+            const validExpenseTypes = [
+                'check', 'expense', 'bill', 'bill payment', 'purchase',
+                'credit card charge', 'credit card credit', 'vendor credit',
+                'payroll', 'payment'
+            ];
+
+            // If we have a known expense type, accept it
+            if (validExpenseTypes.some(t => type.includes(t))) return true;
+
+            // If type is unknown but amount is negative (debit to expense), accept it
+            // But be cautious with transfers
+            if (!type && txn.amount < 0) return true;
+
+            // Default: accept if not explicitly excluded
+            return true;
+        };
+
         // Only match transactions where the expense account is in the `account` field
-        // The Split field from bank accounts would give us the wrong view
+        // AND the transaction is an actual expense (not transfer/adjustment)
         const mappedTransactions = [];
         const seenIds = new Set();
 
         for (const t of allData.transactions) {
             // Only match on the account field (expense account view), not Split field
             if (matchesAnyAccount(t.account)) {
+                // Filter out non-expense transactions (transfers, deposits, journal entries)
+                if (!isExpenseTransaction(t)) {
+                    continue;
+                }
+
                 const txnId = t.type_id || `${t.date}-${t.name}-${t.amount}`;
                 if (!seenIds.has(txnId)) {
                     seenIds.add(txnId);
