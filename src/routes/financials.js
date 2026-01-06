@@ -2052,4 +2052,174 @@ router.get('/sales-chart', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/financials/owner-distributions
+ * Get distribution totals for each owner (Darko, Louis)
+ */
+router.get('/owner-distributions', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+
+        try {
+            const qbo = await quickBooksService._getQboClient();
+
+            // Fetch all purchases/transfers that could be distributions
+            const purchasesData = await new Promise((resolve) => {
+                qbo.findPurchases({ limit: 1000 }, (err, data) => {
+                    if (err) {
+                        console.error('Error fetching purchases:', err);
+                        resolve({ QueryResponse: { Purchase: [] } });
+                        return;
+                    }
+                    resolve(data);
+                });
+            });
+
+            // Also fetch transfers (distributions might be recorded as transfers)
+            const transfersData = await new Promise((resolve) => {
+                qbo.findTransfers({ limit: 1000 }, (err, data) => {
+                    if (err) {
+                        console.error('Error fetching transfers:', err);
+                        resolve({ QueryResponse: { Transfer: [] } });
+                        return;
+                    }
+                    resolve(data);
+                });
+            });
+
+            const purchases = purchasesData.QueryResponse?.Purchase || [];
+            const transfers = transfersData.QueryResponse?.Transfer || [];
+
+            console.log(`[owner-distributions] Date range: ${startDate} to ${endDate}`);
+            console.log(`[owner-distributions] Fetched: ${purchases.length} purchases, ${transfers.length} transfers`);
+
+            // Track distributions by owner
+            const distributions = {
+                darko: { amount: 0, count: 0, transactions: [] },
+                louis: { amount: 0, count: 0, transactions: [] }
+            };
+
+            // Check purchases for distribution accounts
+            purchases.forEach(purchase => {
+                const txnDate = purchase.TxnDate;
+                if (txnDate < startDate || txnDate > endDate) return;
+
+                // Check the account reference for distribution accounts
+                const accountName = purchase.AccountRef?.name?.toLowerCase() || '';
+                const memo = (purchase.PrivateNote || '').toLowerCase();
+
+                // Check line items for distribution accounts
+                const lines = purchase.Line || [];
+                lines.forEach(line => {
+                    const lineAccountName = line.AccountBasedExpenseLineDetail?.AccountRef?.name?.toLowerCase() || '';
+                    const lineAmount = Math.abs(line.Amount || 0);
+
+                    if (lineAccountName.includes('distribution') && lineAccountName.includes('darko')) {
+                        distributions.darko.amount += lineAmount;
+                        distributions.darko.count++;
+                        distributions.darko.transactions.push({
+                            date: txnDate,
+                            amount: lineAmount,
+                            type: 'Purchase',
+                            memo: purchase.PrivateNote || ''
+                        });
+                    } else if (lineAccountName.includes('distribution') && lineAccountName.includes('louis')) {
+                        distributions.louis.amount += lineAmount;
+                        distributions.louis.count++;
+                        distributions.louis.transactions.push({
+                            date: txnDate,
+                            amount: lineAmount,
+                            type: 'Purchase',
+                            memo: purchase.PrivateNote || ''
+                        });
+                    }
+                });
+
+                // Also check main account
+                if (accountName.includes('distribution') && accountName.includes('darko')) {
+                    const amount = Math.abs(purchase.TotalAmt || 0);
+                    distributions.darko.amount += amount;
+                    distributions.darko.count++;
+                } else if (accountName.includes('distribution') && accountName.includes('louis')) {
+                    const amount = Math.abs(purchase.TotalAmt || 0);
+                    distributions.louis.amount += amount;
+                    distributions.louis.count++;
+                }
+            });
+
+            // Check transfers for distribution accounts
+            transfers.forEach(transfer => {
+                const txnDate = transfer.TxnDate;
+                if (txnDate < startDate || txnDate > endDate) return;
+
+                const toAccountName = transfer.ToAccountRef?.name?.toLowerCase() || '';
+                const fromAccountName = transfer.FromAccountRef?.name?.toLowerCase() || '';
+                const amount = Math.abs(transfer.Amount || 0);
+
+                // Distribution is typically TO the distribution account
+                if (toAccountName.includes('distribution') && toAccountName.includes('darko')) {
+                    distributions.darko.amount += amount;
+                    distributions.darko.count++;
+                    distributions.darko.transactions.push({
+                        date: txnDate,
+                        amount: amount,
+                        type: 'Transfer',
+                        memo: transfer.PrivateNote || ''
+                    });
+                } else if (toAccountName.includes('distribution') && toAccountName.includes('louis')) {
+                    distributions.louis.amount += amount;
+                    distributions.louis.count++;
+                    distributions.louis.transactions.push({
+                        date: txnDate,
+                        amount: amount,
+                        type: 'Transfer',
+                        memo: transfer.PrivateNote || ''
+                    });
+                }
+            });
+
+            console.log(`[owner-distributions] Darko: $${distributions.darko.amount.toFixed(2)} (${distributions.darko.count} transactions)`);
+            console.log(`[owner-distributions] Louis: $${distributions.louis.amount.toFixed(2)} (${distributions.louis.count} transactions)`);
+
+            const response = {
+                success: true,
+                data: {
+                    period: { startDate, endDate },
+                    distributions: {
+                        darko: {
+                            name: 'Darko',
+                            amount: distributions.darko.amount,
+                            count: distributions.darko.count,
+                            transactions: distributions.darko.transactions
+                        },
+                        louis: {
+                            name: 'Louis',
+                            amount: distributions.louis.amount,
+                            count: distributions.louis.count,
+                            transactions: distributions.louis.transactions
+                        }
+                    },
+                    total: distributions.darko.amount + distributions.louis.amount
+                }
+            };
+
+            return res.json(response);
+        } catch (qbError) {
+            console.error('QuickBooks error in owner-distributions:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch distribution data from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching owner distributions:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch owner distributions'
+        });
+    }
+});
+
 module.exports = router;
