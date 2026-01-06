@@ -1282,6 +1282,7 @@ class QuickBooksService {
     /**
      * Get transactions for a specific account name (matches P&L category)
      * Handles parent/child account relationships (e.g., "Automobile" matches "Automobile:Fuel")
+     * Also checks the Split field for bank transactions where expense is the contra account
      * @param {string} accountName - Account name to filter by
      * @param {string} startDate - Start date (YYYY-MM-DD)
      * @param {string} endDate - End date (YYYY-MM-DD)
@@ -1292,46 +1293,82 @@ class QuickBooksService {
 
         const accountNameLower = accountName.toLowerCase();
 
-        // Filter transactions - match both the account and sub-accounts
-        // e.g., "Automobile" should match "Automobile", "Automobile:Fuel", etc.
-        const transactions = allData.transactions.filter(t => {
-            if (!t.account) return false;
-            const tAccountLower = t.account.toLowerCase();
+        // Helper to check if a value matches the target account
+        const matchesAccount = (value) => {
+            if (!value) return false;
+            const valueLower = value.toLowerCase();
+            return valueLower === accountNameLower ||
+                   valueLower.startsWith(accountNameLower + ':') ||
+                   valueLower.startsWith(accountNameLower + ' ') ||
+                   accountNameLower.startsWith(valueLower + ':') ||
+                   valueLower.includes(accountNameLower);
+        };
 
-            // Check if account matches exactly or is a parent/child relationship
-            return tAccountLower === accountNameLower ||
-                   tAccountLower.startsWith(accountNameLower + ':') ||
-                   tAccountLower.startsWith(accountNameLower + ' ') ||
-                   accountNameLower.startsWith(tAccountLower + ':') ||
-                   tAccountLower.includes(accountNameLower);
+        // Filter transactions - check both account field and Split field
+        // In GL report, bank transactions have the expense account in "Split"
+        const transactions = allData.transactions.filter(t => {
+            // Check primary account
+            if (matchesAccount(t.account)) return true;
+            // Check Split account (for bank transactions where expense is contra)
+            if (matchesAccount(t.Split) || matchesAccount(t['Split'])) return true;
+            return false;
         });
+
+        // Map transactions - prefer the expense account view over bank account view
+        // Deduplicate by transaction ID (type_id)
+        const seenIds = new Set();
+        const mappedTransactions = [];
+
+        // First pass: collect transactions where the account directly matches (expense account view)
+        for (const t of transactions) {
+            if (matchesAccount(t.account)) {
+                const txnId = t.type_id || `${t.date}-${t.name}-${t.amount}`;
+                if (!seenIds.has(txnId)) {
+                    seenIds.add(txnId);
+                    mappedTransactions.push({
+                        ...t,
+                        matchedAccount: t.account,
+                        amount: Math.abs(t.amount || 0) // Expense amounts should be positive
+                    });
+                }
+            }
+        }
+
+        // Second pass: collect transactions where Split matches (bank account view)
+        // but skip if we already have this transaction from the expense view
+        for (const t of transactions) {
+            if (matchesAccount(t.Split || t['Split']) && !matchesAccount(t.account)) {
+                const txnId = t.type_id || `${t.date}-${t.name}-${t.amount}`;
+                if (!seenIds.has(txnId)) {
+                    seenIds.add(txnId);
+                    mappedTransactions.push({
+                        ...t,
+                        matchedAccount: t.Split || t['Split'],
+                        account: t.Split || t['Split'], // Override account to show expense account
+                        amount: Math.abs(t.amount || 0) // From bank negative = expense positive
+                    });
+                }
+            }
+        }
 
         // Sum totals from matching accounts (including sub-accounts)
         let total = 0;
-        const matchingAccounts = allData.accounts.filter(a => {
-            if (!a.name) return false;
-            const aNameLower = a.name.toLowerCase();
-            return aNameLower === accountNameLower ||
-                   aNameLower.startsWith(accountNameLower + ':') ||
-                   aNameLower.startsWith(accountNameLower + ' ') ||
-                   accountNameLower.startsWith(aNameLower + ':') ||
-                   aNameLower.includes(accountNameLower);
-        });
+        const matchingAccounts = allData.accounts.filter(a => matchesAccount(a.name));
         matchingAccounts.forEach(a => total += Math.abs(a.total || 0));
 
         // If no matching accounts found by name, calculate from transactions
         if (matchingAccounts.length === 0) {
-            total = transactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+            total = mappedTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
         }
 
-        console.log(`[QuickBooks] Found ${transactions.length} transactions for "${accountName}" from ${matchingAccounts.length} matching accounts`);
+        console.log(`[QuickBooks] Found ${mappedTransactions.length} transactions for "${accountName}" from ${matchingAccounts.length} matching accounts`);
 
         return {
             account: accountName,
             matchingAccounts: matchingAccounts.map(a => a.name),
             total,
-            transactions,
-            transactionCount: transactions.length
+            transactions: mappedTransactions,
+            transactionCount: mappedTransactions.length
         };
     }
 }
