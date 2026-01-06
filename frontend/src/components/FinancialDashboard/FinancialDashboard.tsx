@@ -144,8 +144,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   const [salesChartData, setSalesChartData] = useState<{ month: string; amount: number }[]>([]);
   const [salesTotalAmount, setSalesTotalAmount] = useState(0);
   const [invoicesSummary, setInvoicesSummary] = useState({
-    unpaid: { amount: 0, overdue: 0, notDueYet: 0, periodLabel: 'Last 365 days' },
-    paid: { amount: 0, deposited: 0, notDeposited: 0, periodLabel: 'Last 30 days' },
+    unpaid: { amount: 0, overdue: 0, notDueYet: 0, periodLabel: '' },
+    paid: { amount: 0, deposited: 0, notDeposited: 0, periodLabel: '' },
   });
   const [depositData, setDepositData] = useState({
     totalAmount: 0,
@@ -156,31 +156,34 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   });
   const [qbWidgetsLoading, setQbWidgetsLoading] = useState(false);
 
+  // Fetch QuickBooks widgets data using GLOBAL date filter
   const fetchQuickBooksWidgets = useCallback(async () => {
-    console.log('[FinancialDashboard] Fetching QuickBooks widgets data');
+    if (!dateRange.startDate || !dateRange.endDate) return;
+
+    console.log('[FinancialDashboard] Fetching QuickBooks widgets with global date filter:', dateRange);
     setQbWidgetsLoading(true);
 
+    const authHeader = {
+      'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+    };
+
     try {
-      const [paymentStatus, salesChart, invoicesSummary, deposits] = await Promise.all([
-        fetch('/api/financials/payment-status', {
-          headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-          }
+      const [paymentStatus, salesChart, invoices, deposits] = await Promise.all([
+        // Use global date filter for payment status
+        fetch(`/api/financials/payment-status?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+          headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false })),
-        fetch('/api/financials/sales-chart?period=ytd', {
-          headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-          }
+        // Use global date filter for sales chart
+        fetch(`/api/financials/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+          headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false })),
-        fetch('/api/financials/invoices-summary', {
-          headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-          }
+        // Use global date filter for invoices
+        fetch(`/api/financials/invoices-summary?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+          headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false })),
-        fetch('/api/financials/deposits', {
-          headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-          }
+        // Use global date filter for deposits
+        fetch(`/api/financials/deposits?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+          headers: authHeader
         }).then(res => res.json()).catch(() => ({ success: false }))
       ]);
 
@@ -193,8 +196,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         setSalesTotalAmount(salesChart.data.totalAmount || 0);
       }
 
-      if (invoicesSummary.success && invoicesSummary.data) {
-        setInvoicesSummary(invoicesSummary.data);
+      if (invoices.success && invoices.data) {
+        setInvoicesSummary(invoices.data);
       }
 
       if (deposits.success && deposits.data) {
@@ -205,7 +208,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     } finally {
       setQbWidgetsLoading(false);
     }
-  }, []);
+  }, [dateRange]);
 
   const fetchFinancialData = useCallback(async () => {
     console.log('[FinancialDashboard] Fetching financial data for date range:', dateRange);
@@ -665,7 +668,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       // Debounce to avoid rapid API calls when clicking filter buttons
       const timeoutId = setTimeout(() => {
         fetchFinancialData();
-        fetchQuickBooksWidgets(); // Fetch QuickBooks widgets data
+        fetchQuickBooksWidgets(); // Fetch QB widgets with same date filter
       }, 150);
       return () => clearTimeout(timeoutId);
     }
@@ -944,12 +947,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
         {/* QuickBooks-Style Widgets Section */}
         <div className="space-y-3">
-          {/* Section Header */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">QuickBooks Insights</h2>
-            <span className="text-xs text-gray-500">Powered by QuickBooks data</span>
-          </div>
-
           {/* Payment Status Cards */}
           <PaymentStatusCards
             data={paymentStatusData}
@@ -965,23 +962,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                 data={salesChartData}
                 totalAmount={salesTotalAmount}
                 loading={qbWidgetsLoading}
-                onPeriodChange={(period) => {
-                  console.log('Period changed to:', period);
-                  // Refetch sales chart with new period
-                  fetch(`/api/financials/sales-chart?period=${period}`, {
-                    headers: {
-                      'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-                    }
-                  })
-                    .then(res => res.json())
-                    .then(data => {
-                      if (data.success && data.data) {
-                        setSalesChartData(data.data.chartData || []);
-                        setSalesTotalAmount(data.data.totalAmount || 0);
-                      }
-                    })
-                    .catch(err => console.error('Failed to fetch sales chart:', err));
-                }}
               />
             </div>
 

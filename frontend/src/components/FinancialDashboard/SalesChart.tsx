@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronDown } from 'lucide-react';
 
 interface SalesData {
   month: string;
@@ -11,25 +10,13 @@ interface SalesChartProps {
   data: SalesData[];
   totalAmount: number;
   loading?: boolean;
-  onPeriodChange?: (period: 'ytd' | 'last12' | 'last30' | 'custom') => void;
 }
 
 const SalesChart: React.FC<SalesChartProps> = ({
   data,
   totalAmount,
-  loading = false,
-  onPeriodChange
+  loading = false
 }) => {
-  const [selectedPeriod, setSelectedPeriod] = useState<'ytd' | 'last12' | 'last30' | 'custom'>('ytd');
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  const periods = [
-    { value: 'ytd', label: 'This year to date' },
-    { value: 'last12', label: 'Last 12 months' },
-    { value: 'last30', label: 'Last 30 days' },
-    { value: 'custom', label: 'Custom date range' }
-  ];
-
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -46,12 +33,6 @@ const SalesChart: React.FC<SalesChartProps> = ({
     return date.toLocaleDateString('en-US', { month: 'short' });
   };
 
-  const handlePeriodChange = (period: 'ytd' | 'last12' | 'last30' | 'custom') => {
-    setSelectedPeriod(period);
-    setShowDropdown(false);
-    onPeriodChange?.(period);
-  };
-
   if (loading) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -64,85 +45,64 @@ const SalesChart: React.FC<SalesChartProps> = ({
     );
   }
 
-  const currentPeriodLabel = periods.find(p => p.value === selectedPeriod)?.label || 'This year to date';
-
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Sales</h3>
-          <div className="relative mt-1">
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              {currentPeriodLabel}
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-            {showDropdown && (
-              <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                {periods.map((period) => (
-                  <button
-                    key={period.value}
-                    onClick={() => handlePeriodChange(period.value as any)}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                      selectedPeriod === period.value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                    }`}
-                  >
-                    {period.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Sales</h3>
+        <p className="text-xs text-gray-500 mt-1">Based on selected date range</p>
       </div>
 
       {/* Total Amount */}
       <div className="mb-6">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Total Amount</p>
-        <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalAmount)}</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide">Total Amount</p>
+        <p className="text-3xl font-semibold text-green-600">{formatCurrency(totalAmount)}</p>
       </div>
 
       {/* Chart */}
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis
-              dataKey="month"
-              tickFormatter={formatXAxis}
-              stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
-            />
-            <YAxis
-              tickFormatter={formatCurrency}
-              stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
-            />
-            <Tooltip
-              formatter={(value) => formatCurrency(value as number)}
-              labelFormatter={(label) => formatXAxis(label as string)}
-              contentStyle={{
-                backgroundColor: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '12px'
-              }}
-            />
-            <Legend
-              wrapperStyle={{ fontSize: '12px' }}
-              iconType="circle"
-            />
-            <Bar
-              dataKey="amount"
-              fill="#10b981"
-              name="Amount"
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        {data.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tickFormatter={formatXAxis}
+                stroke="#9ca3af"
+                style={{ fontSize: '12px' }}
+              />
+              <YAxis
+                tickFormatter={formatCurrency}
+                stroke="#9ca3af"
+                style={{ fontSize: '12px' }}
+              />
+              <Tooltip
+                formatter={(value) => formatCurrency(value as number)}
+                labelFormatter={(label) => formatXAxis(label as string)}
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '12px'
+                }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: '12px' }}
+                iconType="circle"
+              />
+              <Bar
+                dataKey="amount"
+                fill="#10b981"
+                name="Amount"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full flex items-center justify-center text-gray-400">
+            No sales data available
+          </div>
+        )}
       </div>
     </div>
   );
