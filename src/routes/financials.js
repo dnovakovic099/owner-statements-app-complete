@@ -2114,7 +2114,8 @@ router.get('/owner-distributions', async (req, res) => {
                     const lineAccountName = line.AccountBasedExpenseLineDetail?.AccountRef?.name?.toLowerCase() || '';
                     const lineAmount = Math.abs(line.Amount || 0);
 
-                    if (lineAccountName.includes('distribution') && lineAccountName.includes('darko')) {
+                    // Match "Distributions - Darko" or similar patterns
+                    if (lineAccountName.includes('darko')) {
                         distributions.darko.amount += lineAmount;
                         distributions.darko.count++;
                         distributions.darko.transactions.push({
@@ -2123,7 +2124,7 @@ router.get('/owner-distributions', async (req, res) => {
                             type: 'Purchase',
                             memo: purchase.PrivateNote || ''
                         });
-                    } else if (lineAccountName.includes('distribution') && lineAccountName.includes('louis')) {
+                    } else if (lineAccountName.includes('louis')) {
                         distributions.louis.amount += lineAmount;
                         distributions.louis.count++;
                         distributions.louis.transactions.push({
@@ -2135,12 +2136,12 @@ router.get('/owner-distributions', async (req, res) => {
                     }
                 });
 
-                // Also check main account
-                if (accountName.includes('distribution') && accountName.includes('darko')) {
+                // Also check main account for distribution accounts
+                if (accountName.includes('darko') && !distributions.darko.transactions.some(t => t.date === txnDate && t.amount === Math.abs(purchase.TotalAmt || 0))) {
                     const amount = Math.abs(purchase.TotalAmt || 0);
                     distributions.darko.amount += amount;
                     distributions.darko.count++;
-                } else if (accountName.includes('distribution') && accountName.includes('louis')) {
+                } else if (accountName.includes('louis') && !distributions.louis.transactions.some(t => t.date === txnDate && t.amount === Math.abs(purchase.TotalAmt || 0))) {
                     const amount = Math.abs(purchase.TotalAmt || 0);
                     distributions.louis.amount += amount;
                     distributions.louis.count++;
@@ -2157,7 +2158,7 @@ router.get('/owner-distributions', async (req, res) => {
                 const amount = Math.abs(transfer.Amount || 0);
 
                 // Distribution is typically TO the distribution account
-                if (toAccountName.includes('distribution') && toAccountName.includes('darko')) {
+                if (toAccountName.includes('darko')) {
                     distributions.darko.amount += amount;
                     distributions.darko.count++;
                     distributions.darko.transactions.push({
@@ -2166,7 +2167,7 @@ router.get('/owner-distributions', async (req, res) => {
                         type: 'Transfer',
                         memo: transfer.PrivateNote || ''
                     });
-                } else if (toAccountName.includes('distribution') && toAccountName.includes('louis')) {
+                } else if (toAccountName.includes('louis')) {
                     distributions.louis.amount += amount;
                     distributions.louis.count++;
                     distributions.louis.transactions.push({

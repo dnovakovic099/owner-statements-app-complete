@@ -41,6 +41,9 @@ const ALL_CATEGORIES = Object.values(STANDARD_CATEGORIES).filter(c => c !== 'Oth
  */
 const CATEGORY_PATTERNS = {
     [STANDARD_CATEGORIES.DARKO_DISTRIBUTION]: [
+        'distributions - darko',
+        'distributions-darko',
+        'distribution - darko',
         'darko distribution',
         'darko dist',
         'darko payout',
@@ -49,6 +52,10 @@ const CATEGORY_PATTERNS = {
         'owner distribution:darko',
     ],
     [STANDARD_CATEGORIES.LOUIS_DISTRIBUTION]: [
+        'distributions - louis - usd',
+        'distributions - louis',
+        'distributions-louis',
+        'distribution - louis',
         'louis distribution',
         'louis dist',
         'louis payout',
