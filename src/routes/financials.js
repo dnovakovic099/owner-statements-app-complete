@@ -1851,16 +1851,8 @@ router.get('/invoices-summary', async (req, res) => {
 
             const invoices = invoicesData.QueryResponse?.Invoice || [];
 
-            // Calculate summary for last 365 days (unpaid) and last 30 days (paid)
-            const now = new Date();
-            const last365Days = new Date(now);
-            last365Days.setDate(last365Days.getDate() - 365);
-            const last30Days = new Date(now);
-            last30Days.setDate(last30Days.getDate() - 30);
-
-            const today = now.toISOString().split('T')[0];
-            const last365DaysStr = last365Days.toISOString().split('T')[0];
-            const last30DaysStr = last30Days.toISOString().split('T')[0];
+            // Use the passed date range for filtering
+            const today = new Date().toISOString().split('T')[0];
 
             let overdueAmount = 0;
             let notDueYetAmount = 0;
@@ -1873,21 +1865,23 @@ router.get('/invoices-summary', async (req, res) => {
                 const total = inv.TotalAmt || 0;
                 const dueDate = inv.DueDate || today;
 
-                // Unpaid invoices (last 365 days)
-                if (txnDate >= last365DaysStr && balance > 0) {
-                    if (dueDate < today) {
-                        overdueAmount += balance;
-                    } else {
-                        notDueYetAmount += balance;
+                // Filter by selected date range
+                if (txnDate >= startDate && txnDate <= endDate) {
+                    // Unpaid invoices (has balance)
+                    if (balance > 0) {
+                        if (dueDate < today) {
+                            overdueAmount += balance;
+                        } else {
+                            notDueYetAmount += balance;
+                        }
                     }
-                }
 
-                // Paid invoices (last 30 days)
-                if (txnDate >= last30DaysStr && balance === 0 && total > 0) {
-                    // Check if deposited based on LastModifiedTime or assume deposited if fully paid
-                    // For simplicity, split 70% deposited, 30% not deposited
-                    depositedAmount += total * 0.7;
-                    notDepositedAmount += total * 0.3;
+                    // Paid invoices (no balance, has total)
+                    if (balance === 0 && total > 0) {
+                        // Estimate deposited vs not deposited (70/30 split)
+                        depositedAmount += total * 0.7;
+                        notDepositedAmount += total * 0.3;
+                    }
                 }
             });
 
@@ -1898,13 +1892,13 @@ router.get('/invoices-summary', async (req, res) => {
                         amount: overdueAmount + notDueYetAmount,
                         overdue: overdueAmount,
                         notDueYet: notDueYetAmount,
-                        periodLabel: 'Last 365 days'
+                        periodLabel: `${startDate} to ${endDate}`
                     },
                     paid: {
                         amount: depositedAmount + notDepositedAmount,
                         deposited: depositedAmount,
                         notDeposited: notDepositedAmount,
-                        periodLabel: 'Last 30 days'
+                        periodLabel: `${startDate} to ${endDate}`
                     }
                 }
             };
@@ -1931,12 +1925,14 @@ router.get('/invoices-summary', async (req, res) => {
 
 /**
  * GET /api/financials/deposits
- * Get deposit tracking data
+ * Get deposit tracking data using global date filter
  */
-router.get('/deposits', async (_req, res) => {
+router.get('/deposits', async (req, res) => {
     try {
+        const { startDate, endDate } = parseDateRange(req.query);
+
         // Check cache first
-        const cacheKey = 'deposits-tracker';
+        const cacheKey = `deposits-tracker-${startDate}-${endDate}`;
         const cached = getCached(cacheKey);
         if (cached) {
             return res.json(cached);
@@ -1944,11 +1940,6 @@ router.get('/deposits', async (_req, res) => {
 
         try {
             const qbo = await quickBooksService._getQboClient();
-
-            // Fetch recent payments (last 7 days)
-            const now = new Date();
-            const last7Days = new Date(now);
-            last7Days.setDate(last7Days.getDate() - 7);
 
             const paymentsData = await new Promise((resolve) => {
                 qbo.findPayments({ limit: 500 }, (err, data) => {
@@ -1962,9 +1953,7 @@ router.get('/deposits', async (_req, res) => {
             });
 
             const payments = paymentsData.QueryResponse?.Payment || [];
-
-            const last7DaysStr = last7Days.toISOString().split('T')[0];
-            const todayStr = now.toISOString().split('T')[0];
+            const todayStr = new Date().toISOString().split('T')[0];
 
             let totalAmount = 0;
             let depositedToday = 0;
@@ -1974,14 +1963,15 @@ router.get('/deposits', async (_req, res) => {
                 const txnDate = payment.TxnDate;
                 const amount = payment.TotalAmt || 0;
 
-                if (txnDate >= last7DaysStr) {
+                // Filter by selected date range
+                if (txnDate >= startDate && txnDate <= endDate) {
                     totalAmount += amount;
 
-                    // If payment is today, count as deposited
+                    // If payment is today, count as deposited today
                     if (txnDate === todayStr) {
                         depositedToday += amount;
                     } else {
-                        // Otherwise, count as arriving
+                        // Otherwise, count as already deposited (in period)
                         arriving += amount;
                     }
                 }
@@ -1994,7 +1984,7 @@ router.get('/deposits', async (_req, res) => {
                     depositedToday,
                     arriving,
                     arrivalDays: '1-2 business days',
-                    asOfDate: `As of ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                    asOfDate: `${startDate} to ${endDate}`
                 }
             };
 
