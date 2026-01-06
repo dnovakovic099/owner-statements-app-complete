@@ -505,36 +505,39 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     setSelectedCategory(category.name);
     setIsTransactionModalOpen(true);
 
-    // Fetch transactions for this category
+    // Fetch transactions using the TransactionList Report API (matches QuickBooks P&L exactly)
     try {
-      const response = await financialsAPI.getTransactions(dateRange.startDate, dateRange.endDate);
-      if (response.success && response.data?.transactions) {
-        // Map API transactions to modal format and filter by category
-        // Check multiple fields since transactions can have category in different places
-        const categoryLower = category.name.toLowerCase();
-        const mappedTransactions: Transaction[] = response.data.transactions
-          .filter((t: any) => {
-            const accountName = (t.AccountName || t.AccountRef?.name || '').toLowerCase();
-            const categoryName = (t.CategoryName || t.category || '').toLowerCase();
-            const vendorName = (t.VendorName || t.VendorRef?.name || '').toLowerCase();
-            return accountName.includes(categoryLower) ||
-                   categoryName.includes(categoryLower) ||
-                   categoryLower.includes(accountName) ||
-                   vendorName.includes(categoryLower);
-          })
-          .map((t: any) => ({
-            id: t.Id || t.id || Math.random(),
-            date: t.TxnDate || t.date || '',
-            description: t.Description || t.VendorName || t.AccountName || 'Transaction',
-            amount: Math.abs(t.TotalAmt || t.Amount || t.amount || 0),
-            category: t.AccountName || t.CategoryName || category.name,
-            property: t.VendorName || t.CustomerRef?.name || '',
-            type: t.Type === 'Invoice' || t.Type === 'Payment' ? 'income' : 'expense',
-          }));
+      // Use the new account-transactions endpoint which uses TransactionList Report API
+      const accountName = encodeURIComponent(category.name);
+      const response = await fetch(
+        `/api/financials/account-transactions/${accountName}?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+          }
+        }
+      );
+      const data = await response.json();
+
+      if (data.success && data.data?.transactions) {
+        const mappedTransactions: Transaction[] = data.data.transactions.map((t: any) => ({
+          id: t.docNumber || Math.random().toString(),
+          date: t.date || '',
+          description: t.memo || t.name || t.type || 'Transaction',
+          amount: Math.abs(t.amount || t.debit || t.credit || 0),
+          category: t.account || category.name,
+          property: t.name || '',
+          type: 'expense' as const,
+        }));
         setTransactions(mappedTransactions);
+        console.log(`[FinancialDashboard] Loaded ${mappedTransactions.length} transactions for ${category.name} from TransactionList Report`);
+      } else {
+        setTransactions([]);
+        console.log(`[FinancialDashboard] No transactions found for ${category.name}`);
       }
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
+      setTransactions([]);
     }
   };
 

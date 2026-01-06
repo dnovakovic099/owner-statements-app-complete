@@ -1069,6 +1069,271 @@ class QuickBooksService {
         parseRows(reportData.Rows.Row);
         return transactions;
     }
+
+    /**
+     * Get General Ledger Detail report grouped by Account - matches P&L categories exactly
+     * The General Ledger report shows transactions for each account in the chart of accounts
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @param {string} sourceAccountType - Optional: filter by account type (Expense, Income, etc.)
+     * @returns {Promise<Object>} Transactions grouped by account
+     */
+    async getTransactionListByAccount(startDate, endDate, sourceAccountType = null) {
+        // Try up to 2 times - first with current token, then with forced refresh
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const forceRefresh = attempt > 1;
+                const qbo = await this._getQboClient(forceRefresh);
+
+                const result = await new Promise((resolve, reject) => {
+                    const params = {
+                        start_date: startDate,
+                        end_date: endDate,
+                        accounting_method: 'Accrual',
+                        minorversion: 65
+                    };
+
+                    // Filter by account type if specified
+                    if (sourceAccountType) {
+                        params.source_account_type = sourceAccountType;
+                    }
+
+                    console.log('[QuickBooks] Fetching GeneralLedger report with params:', params);
+
+                    // Use General Ledger Detail report - this shows transactions by account
+                    qbo.reportGeneralLedgerDetail(params, (err, data) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        resolve(data);
+                    });
+                });
+
+                // Parse the report into structured data grouped by account
+                const parsed = this._parseTransactionListByAccount(result);
+                return parsed;
+            } catch (err) {
+                console.error(`[QuickBooks] GeneralLedger attempt ${attempt} failed:`, err.message || err);
+
+                // If auth error and first attempt, retry with force refresh
+                if (attempt === 1 && this._isAuthError(err)) {
+                    console.log('[QuickBooks] Auth error detected, will retry with fresh token');
+                    continue;
+                }
+
+                // Final attempt failed or non-auth error
+                throw new Error(`Failed to fetch GeneralLedger report: ${err.message || JSON.stringify(err)}`);
+            }
+        }
+    }
+
+    /**
+     * Parse TransactionList report grouped by Account into structured data
+     * @param {Object} reportData - Raw report from QuickBooks
+     * @returns {Object} { accounts: [...], transactions: [...], totals: {...} }
+     */
+    _parseTransactionListByAccount(reportData) {
+        const result = {
+            accounts: [],
+            transactions: [],
+            totals: {
+                totalAmount: 0,
+                transactionCount: 0
+            },
+            raw: reportData
+        };
+
+        if (!reportData || !reportData.Rows || !reportData.Rows.Row) {
+            return result;
+        }
+
+        // Get column definitions
+        const columns = reportData.Columns?.Column || [];
+        const columnNames = columns.map(c => c.ColTitle || c.ColType);
+        console.log('[QuickBooks] TransactionList columns:', columnNames);
+
+        // Parse rows - grouped by Account means we have Section rows with account names
+        const parseSection = (section, accountName = null) => {
+            // Get account name from Header if this is a section
+            if (section.Header && section.Header.ColData) {
+                const headerName = section.Header.ColData[0]?.value;
+                if (headerName) {
+                    accountName = headerName;
+                }
+            }
+
+            // Get summary total from Summary
+            let sectionTotal = 0;
+            if (section.Summary && section.Summary.ColData) {
+                // Find the amount column (usually 'Amount' or 'subt_nat_amount')
+                section.Summary.ColData.forEach((col, index) => {
+                    const val = parseFloat(col.value);
+                    if (!isNaN(val) && columnNames[index]?.toLowerCase().includes('amount')) {
+                        sectionTotal = val;
+                    }
+                });
+            }
+
+            // Parse transaction rows within this section
+            const sectionTransactions = [];
+            if (section.Rows && section.Rows.Row) {
+                for (const row of section.Rows.Row) {
+                    // If this is a nested section (sub-account), recurse
+                    if (row.type === 'Section') {
+                        const nestedResult = parseSection(row, accountName);
+                        sectionTransactions.push(...nestedResult.transactions);
+                        continue;
+                    }
+
+                    // Data row - actual transaction
+                    if (row.type === 'Data' && row.ColData) {
+                        const transaction = {
+                            account: accountName
+                        };
+                        row.ColData.forEach((col, index) => {
+                            const colName = columnNames[index] || `col_${index}`;
+                            // Map common column names to standard fields
+                            const fieldMap = {
+                                'Date': 'date',
+                                'tx_date': 'date',
+                                'Transaction Type': 'type',
+                                'txn_type': 'type',
+                                'Num': 'docNumber',
+                                'doc_num': 'docNumber',
+                                'Name': 'name',
+                                'name': 'name',
+                                'Account': 'account',
+                                'account_name': 'account',
+                                'Amount': 'amount',
+                                'subt_nat_amount': 'amount',
+                                'Debit': 'debit',
+                                'debt_amt': 'debit',
+                                'Credit': 'credit',
+                                'credit_amt': 'credit',
+                                'Open Balance': 'openBalance',
+                                'nat_open_bal': 'openBalance',
+                                'Memo': 'memo',
+                                'memo': 'memo'
+                            };
+                            const fieldName = fieldMap[colName] || colName;
+                            transaction[fieldName] = col.value;
+                            if (col.id) transaction[`${fieldName}_id`] = col.id;
+                        });
+
+                        // Ensure account is set from section header if not in row
+                        if (!transaction.account && accountName) {
+                            transaction.account = accountName;
+                        }
+
+                        // Parse amount as number
+                        if (transaction.amount) {
+                            transaction.amount = parseFloat(transaction.amount) || 0;
+                        }
+                        if (transaction.debit) {
+                            transaction.debit = parseFloat(transaction.debit) || 0;
+                        }
+                        if (transaction.credit) {
+                            transaction.credit = parseFloat(transaction.credit) || 0;
+                        }
+
+                        sectionTransactions.push(transaction);
+                    }
+                }
+            }
+
+            return {
+                accountName,
+                total: sectionTotal,
+                transactions: sectionTransactions
+            };
+        };
+
+        // Process top-level rows (each is typically an account section)
+        for (const row of reportData.Rows.Row) {
+            if (row.type === 'Section') {
+                const sectionResult = parseSection(row);
+                if (sectionResult.accountName) {
+                    result.accounts.push({
+                        name: sectionResult.accountName,
+                        total: sectionResult.total,
+                        transactionCount: sectionResult.transactions.length
+                    });
+                }
+                result.transactions.push(...sectionResult.transactions);
+                result.totals.totalAmount += Math.abs(sectionResult.total);
+                result.totals.transactionCount += sectionResult.transactions.length;
+            } else if (row.type === 'Data') {
+                // Top-level data row without section
+                const transaction = {};
+                row.ColData.forEach((col, index) => {
+                    const colName = columnNames[index] || `col_${index}`;
+                    transaction[colName] = col.value;
+                });
+                result.transactions.push(transaction);
+                result.totals.transactionCount++;
+            }
+        }
+
+        console.log(`[QuickBooks] Parsed ${result.accounts.length} accounts with ${result.transactions.length} transactions`);
+        return result;
+    }
+
+    /**
+     * Get transactions for a specific account name (matches P&L category)
+     * Handles parent/child account relationships (e.g., "Automobile" matches "Automobile:Fuel")
+     * @param {string} accountName - Account name to filter by
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @returns {Promise<Array>} Transactions for this account
+     */
+    async getTransactionsForAccount(accountName, startDate, endDate) {
+        const allData = await this.getTransactionListByAccount(startDate, endDate);
+
+        const accountNameLower = accountName.toLowerCase();
+
+        // Filter transactions - match both the account and sub-accounts
+        // e.g., "Automobile" should match "Automobile", "Automobile:Fuel", etc.
+        const transactions = allData.transactions.filter(t => {
+            if (!t.account) return false;
+            const tAccountLower = t.account.toLowerCase();
+
+            // Check if account matches exactly or is a parent/child relationship
+            return tAccountLower === accountNameLower ||
+                   tAccountLower.startsWith(accountNameLower + ':') ||
+                   tAccountLower.startsWith(accountNameLower + ' ') ||
+                   accountNameLower.startsWith(tAccountLower + ':') ||
+                   tAccountLower.includes(accountNameLower);
+        });
+
+        // Sum totals from matching accounts (including sub-accounts)
+        let total = 0;
+        const matchingAccounts = allData.accounts.filter(a => {
+            if (!a.name) return false;
+            const aNameLower = a.name.toLowerCase();
+            return aNameLower === accountNameLower ||
+                   aNameLower.startsWith(accountNameLower + ':') ||
+                   aNameLower.startsWith(accountNameLower + ' ') ||
+                   accountNameLower.startsWith(aNameLower + ':') ||
+                   aNameLower.includes(accountNameLower);
+        });
+        matchingAccounts.forEach(a => total += Math.abs(a.total || 0));
+
+        // If no matching accounts found by name, calculate from transactions
+        if (matchingAccounts.length === 0) {
+            total = transactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+        }
+
+        console.log(`[QuickBooks] Found ${transactions.length} transactions for "${accountName}" from ${matchingAccounts.length} matching accounts`);
+
+        return {
+            account: accountName,
+            matchingAccounts: matchingAccounts.map(a => a.name),
+            total,
+            transactions,
+            transactionCount: transactions.length
+        };
+    }
 }
 
 module.exports = QuickBooksService;

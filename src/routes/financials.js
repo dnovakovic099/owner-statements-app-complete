@@ -1326,6 +1326,151 @@ router.get('/metrics', async (req, res) => {
 });
 
 /**
+ * GET /api/financials/transactions-by-account
+ * Get TransactionList report from QuickBooks grouped by Account
+ * This matches exactly what QuickBooks P&L shows
+ *
+ * Query params:
+ * - startDate: Start date (YYYY-MM-DD)
+ * - endDate: End date (YYYY-MM-DD)
+ * - debug: If 'true', include raw response from QuickBooks
+ */
+router.get('/transactions-by-account', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+        const includeDebug = req.query.debug === 'true';
+
+        // Check cache first (skip for debug mode)
+        if (!includeDebug) {
+            const cacheKey = `transactions-by-account-${startDate}-${endDate}`;
+            const cached = getCached(cacheKey);
+            if (cached) {
+                return res.json(cached);
+            }
+        }
+
+        console.log(`[transactions-by-account] Fetching for ${startDate} to ${endDate}`);
+
+        const data = await quickBooksService.getTransactionListByAccount(startDate, endDate);
+
+        const response = {
+            success: true,
+            data: {
+                period: { startDate, endDate },
+                accounts: data.accounts,
+                transactions: data.transactions,
+                totals: data.totals,
+                source: 'quickbooks-transaction-list-report',
+                ...(includeDebug && { raw: data.raw })
+            }
+        };
+
+        if (!includeDebug) {
+            const cacheKey = `transactions-by-account-${startDate}-${endDate}`;
+            setCache(cacheKey, response);
+        }
+        res.json(response);
+    } catch (error) {
+        console.error('Error fetching transactions by account:', error);
+
+        const isQBError = error.message && (
+            error.message.includes('Not connected') ||
+            error.message.includes('qbo') ||
+            error.message.includes('token') ||
+            error.message.includes('Token') ||
+            error.message.includes('refresh')
+        );
+
+        if (isQBError) {
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'QuickBooks connection expired. Please re-authenticate.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch transactions by account'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/account-transactions/:accountName
+ * Get transactions for a specific account (category drill-down)
+ * Matches exactly what QuickBooks shows for that P&L category
+ *
+ * Query params:
+ * - startDate: Start date (YYYY-MM-DD)
+ * - endDate: End date (YYYY-MM-DD)
+ */
+router.get('/account-transactions/:accountName', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+        const accountName = decodeURIComponent(req.params.accountName);
+
+        if (!accountName) {
+            return res.status(400).json({
+                success: false,
+                error: 'Account name is required'
+            });
+        }
+
+        console.log(`[account-transactions] Fetching transactions for "${accountName}" from ${startDate} to ${endDate}`);
+
+        const data = await quickBooksService.getTransactionsForAccount(accountName, startDate, endDate);
+
+        res.json({
+            success: true,
+            data: {
+                period: { startDate, endDate },
+                account: accountName,
+                total: data.total,
+                transactionCount: data.transactionCount,
+                transactions: data.transactions.map(t => ({
+                    date: t.date,
+                    type: t.type,
+                    docNumber: t.docNumber,
+                    name: t.name,
+                    memo: t.memo,
+                    amount: t.amount,
+                    debit: t.debit,
+                    credit: t.credit,
+                    account: t.account
+                })),
+                source: 'quickbooks-transaction-list-report'
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching account transactions:', error);
+
+        const isQBError = error.message && (
+            error.message.includes('Not connected') ||
+            error.message.includes('qbo') ||
+            error.message.includes('token') ||
+            error.message.includes('Token') ||
+            error.message.includes('refresh')
+        );
+
+        if (isQBError) {
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'QuickBooks connection expired. Please re-authenticate.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch account transactions'
+        });
+    }
+});
+
+/**
  * GET /api/financials/transactions
  * Get raw transaction list with filters from QuickBooks
  */
