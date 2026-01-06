@@ -42,12 +42,12 @@ const InvoicesWidget: React.FC<InvoicesWidgetProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div className="animate-pulse space-y-6">
-          <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-8 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-5 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-7 bg-gray-200 rounded w-2/3"></div>
           <div className="h-4 bg-gray-200 rounded"></div>
-          <div className="h-8 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-7 bg-gray-200 rounded w-2/3"></div>
           <div className="h-4 bg-gray-200 rounded"></div>
         </div>
       </div>
@@ -63,17 +63,15 @@ const InvoicesWidget: React.FC<InvoicesWidgetProps> = ({
   const notDepositedPercent = calculatePercentage(data.paid.notDeposited, paidTotal);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-6">
-        Invoices
-      </h3>
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <h3 className="text-base font-semibold text-gray-900 mb-4">Invoices</h3>
 
       {/* Unpaid Section */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-baseline justify-between mb-2">
           <button
             onClick={() => onViewDetails?.('unpaid')}
-            className="text-xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
+            className="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors"
           >
             {formatCurrency(unpaidTotal)} Unpaid
           </button>
@@ -134,7 +132,7 @@ const InvoicesWidget: React.FC<InvoicesWidgetProps> = ({
         <div className="flex items-baseline justify-between mb-2">
           <button
             onClick={() => onViewDetails?.('paid')}
-            className="text-xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
+            className="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors"
           >
             {formatCurrency(paidTotal)} Paid
           </button>

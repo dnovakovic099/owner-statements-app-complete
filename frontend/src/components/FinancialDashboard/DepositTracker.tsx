@@ -36,11 +36,11 @@ const DepositTracker: React.FC<DepositTrackerProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+          <div className="h-5 bg-gray-200 rounded w-1/2"></div>
           <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-          <div className="h-8 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-7 bg-gray-200 rounded w-2/3"></div>
           <div className="h-6 bg-gray-200 rounded"></div>
         </div>
       </div>
@@ -51,19 +51,17 @@ const DepositTracker: React.FC<DepositTrackerProps> = ({
   const arrivingPercent = calculatePercentage(data.arriving, data.totalAmount);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-            Deposit Tracker
-          </h3>
+          <h3 className="text-base font-semibold text-gray-900">Deposit Tracker</h3>
           <p className="text-xs text-gray-500 mt-1">{data.asOfDate}</p>
         </div>
       </div>
 
       {/* Description */}
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-gray-600 mb-4">
         Track all your QuickBooks Payments deposits here
       </p>
 
