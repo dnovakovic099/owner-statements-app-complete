@@ -19,8 +19,6 @@ import ComparisonTab from './tabs/ComparisonTab';
 import ROITab, { ROIMetrics, TrendDataPoint, PropertyPerformance } from './tabs/ROITab';
 import { financialsAPI } from '../../services/api';
 import PaymentStatusCards from './PaymentStatusCards';
-import SalesChart from './SalesChart';
-import DepositTracker from './DepositTracker';
 
 interface FinancialSummary {
   totalIncome: number;
@@ -140,22 +138,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     paid: { amount: 0, count: 0 },
     deposited: { amount: 0, count: 0 },
   });
-  const [salesChartData, setSalesChartData] = useState<{ month: string; amount: number }[]>([]);
-  const [salesTotalAmount, setSalesTotalAmount] = useState(0);
-  const [depositData, setDepositData] = useState({
-    totalAmount: 0,
-    depositedToday: 0,
-    arriving: 0,
-    arrivalDays: '1-2 business days',
-    asOfDate: 'As of Today',
-  });
   const [qbWidgetsLoading, setQbWidgetsLoading] = useState(false);
 
-  // Fetch QuickBooks widgets data using GLOBAL date filter
+  // Fetch QuickBooks payment status using GLOBAL date filter
   const fetchQuickBooksWidgets = useCallback(async () => {
     if (!dateRange.startDate || !dateRange.endDate) return;
 
-    console.log('[FinancialDashboard] Fetching QuickBooks widgets with global date filter:', dateRange);
+    console.log('[FinancialDashboard] Fetching payment status with global date filter:', dateRange);
     setQbWidgetsLoading(true);
 
     const authHeader = {
@@ -163,35 +152,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     };
 
     try {
-      const [paymentStatus, salesChart, deposits] = await Promise.all([
-        // Use global date filter for payment status
-        fetch(`/api/financials/payment-status?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-          headers: authHeader
-        }).then(res => res.json()).catch(() => ({ success: false })),
-        // Use global date filter for sales chart
-        fetch(`/api/financials/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-          headers: authHeader
-        }).then(res => res.json()).catch(() => ({ success: false })),
-        // Use global date filter for deposits
-        fetch(`/api/financials/deposits?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
-          headers: authHeader
-        }).then(res => res.json()).catch(() => ({ success: false }))
-      ]);
+      const paymentStatus = await fetch(
+        `/api/financials/payment-status?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
+        { headers: authHeader }
+      ).then(res => res.json()).catch(() => ({ success: false }));
 
       if (paymentStatus.success && paymentStatus.data) {
         setPaymentStatusData(paymentStatus.data);
       }
-
-      if (salesChart.success && salesChart.data) {
-        setSalesChartData(salesChart.data.chartData || []);
-        setSalesTotalAmount(salesChart.data.totalAmount || 0);
-      }
-
-      if (deposits.success && deposits.data) {
-        setDepositData(deposits.data);
-      }
     } catch (error) {
-      console.error('[FinancialDashboard] Failed to fetch QuickBooks widgets:', error);
+      console.error('[FinancialDashboard] Failed to fetch payment status:', error);
     } finally {
       setQbWidgetsLoading(false);
     }
@@ -941,19 +911,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             onCardClick={(type) => console.log('Payment status card clicked:', type)}
           />
 
-          {/* Sales Chart */}
-          <SalesChart
-            data={salesChartData}
-            totalAmount={salesTotalAmount}
-            loading={qbWidgetsLoading}
-          />
-
-          {/* Deposit Tracker */}
-          <DepositTracker
-            data={depositData}
-            loading={qbWidgetsLoading}
-            onViewDeposits={() => console.log('View deposits clicked')}
-          />
         </div>
 
         {/* Tabs Section */}
