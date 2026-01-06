@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { PieChart, Home, GitCompare, TrendingUp, Percent } from 'lucide-react';
+import { PieChart, Home, GitCompare, Percent } from 'lucide-react';
 import DateRangeFilter, { DateRange } from './DateRangeFilter';
 import { DashboardHeader } from './components/DashboardHeader';
 import { SummaryCardsRow } from './components/SummaryCardsRow';
@@ -100,6 +100,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     arbitrage: { value: 0, change: 0 },
     owned: { value: 0, change: 0 },
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [roiTrendData, setRoiTrendData] = useState<TrendDataPoint[]>([]);
   const [topPerformers, setTopPerformers] = useState<PropertyPerformance[]>([]);
   const [needsAttention, setNeedsAttention] = useState<PropertyPerformance[]>([]);
@@ -218,29 +219,41 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           '#0ea5e9', '#06b6d4', '#6d28d9', '#475569', '#3b82f6',
         ];
 
-        // Filter out bank/asset accounts that shouldn't appear as expense categories
-        const isBankAccount = (name: string) => {
+        // Filter out bank/asset/personal accounts that shouldn't appear as expense categories
+        const isBankOrPersonalAccount = (name: string) => {
           const nameLower = name.toLowerCase();
-          return nameLower.includes('chk') ||
-                 nameLower.includes('checking') ||
-                 nameLower.includes('savings') ||
-                 nameLower.includes('bank account') ||
-                 nameLower.includes('chase bank') ||
-                 nameLower.includes('amex') ||
-                 nameLower.includes('visa') ||
-                 nameLower.includes('mastercard') ||
-                 nameLower.includes('credit card') ||
-                 nameLower.includes('capital one') ||
-                 nameLower.includes('wells fargo') ||
-                 nameLower.includes('bofa') ||
-                 nameLower.includes('bank of america') ||
-                 nameLower.includes('paypal') ||
-                 (nameLower.includes('chase') && nameLower.includes('(')) ||
-                 (nameLower.includes('(') && /\d{4,}/.test(name)); // Account numbers like "(1218)"
+          // Check for bank accounts
+          if (nameLower.includes('chk') ||
+              nameLower.includes('checking') ||
+              nameLower.includes('savings') ||
+              nameLower.includes('bank account') ||
+              nameLower.includes('chase bank') ||
+              nameLower.includes('amex') ||
+              nameLower.includes('visa') ||
+              nameLower.includes('mastercard') ||
+              nameLower.includes('credit card') ||
+              nameLower.includes('capital one') ||
+              nameLower.includes('wells fargo') ||
+              nameLower.includes('bofa') ||
+              nameLower.includes('bank of america') ||
+              nameLower.includes('paypal') ||
+              nameLower.includes('complete ok') ||
+              nameLower.includes('bus complete')) {
+            return true;
+          }
+          // Check for personal accounts with account numbers like "(0561)" or "(1218)"
+          if (/\(\d{4}\)/.test(name)) {
+            return true;
+          }
+          // Check for accounts ending with " - 1", " - 2" pattern (sub-accounts)
+          if (/\s-\s\d+$/.test(name)) {
+            return true;
+          }
+          return false;
         };
 
         const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories
-          .filter((c: { name: string; total: number }) => !isBankAccount(c.name))
+          .filter((c: { name: string; total: number }) => !isBankOrPersonalAccount(c.name))
           .map(
             (c: { name: string; total: number; count?: number; originalAccounts?: string[] }, index: number) => ({
               name: c.name,
@@ -639,12 +652,21 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               description = description.substring(0, 57) + '...';
             }
 
+            // Determine the actual expense category
+            // If Split field exists and looks like an expense category, use it
+            // Otherwise use the clicked category name
+            let actualCategory = category.name;
+            const split = t.Split || t['Split'] || '';
+            if (split && !split.includes('CHK') && !split.includes('(') && !split.includes(' - ')) {
+              actualCategory = split;
+            }
+
             return {
               id: t.docNumber || t.type_id || Math.random().toString(),
               date: t.date || '',
               description,
               amount: Math.abs(t.amount || t.debit || t.credit || 0),
-              category: category.name, // Always show the clicked category, not the bank account
+              category: actualCategory,
               property: t.name || '', // Vendor/payee name
               type: 'expense' as const,
             };
