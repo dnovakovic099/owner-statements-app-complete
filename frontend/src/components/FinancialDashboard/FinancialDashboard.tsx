@@ -18,6 +18,10 @@ import ByHomeTypeTab from './tabs/ByHomeTypeTab';
 import ComparisonTab from './tabs/ComparisonTab';
 import ROITab, { ROIMetrics, TrendDataPoint, PropertyPerformance } from './tabs/ROITab';
 import { financialsAPI } from '../../services/api';
+import PaymentStatusCards from './PaymentStatusCards';
+import SalesChart from './SalesChart';
+import InvoicesWidget from './InvoicesWidget';
+import DepositTracker from './DepositTracker';
 
 interface FinancialSummary {
   totalIncome: number;
@@ -130,6 +134,78 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       monthlyTrend: [],
     },
   });
+
+  // QuickBooks-style widgets data
+  const [paymentStatusData, setPaymentStatusData] = useState({
+    notPaid: { amount: 0, count: 0, overdue: 0 },
+    paid: { amount: 0, count: 0 },
+    deposited: { amount: 0, count: 0 },
+  });
+  const [salesChartData, setSalesChartData] = useState<{ month: string; amount: number }[]>([]);
+  const [salesTotalAmount, setSalesTotalAmount] = useState(0);
+  const [invoicesSummary, setInvoicesSummary] = useState({
+    unpaid: { amount: 0, overdue: 0, notDueYet: 0, periodLabel: 'Last 365 days' },
+    paid: { amount: 0, deposited: 0, notDeposited: 0, periodLabel: 'Last 30 days' },
+  });
+  const [depositData, setDepositData] = useState({
+    totalAmount: 0,
+    depositedToday: 0,
+    arriving: 0,
+    arrivalDays: '1-2 business days',
+    asOfDate: 'As of Today',
+  });
+  const [qbWidgetsLoading, setQbWidgetsLoading] = useState(false);
+
+  const fetchQuickBooksWidgets = useCallback(async () => {
+    console.log('[FinancialDashboard] Fetching QuickBooks widgets data');
+    setQbWidgetsLoading(true);
+
+    try {
+      const [paymentStatus, salesChart, invoicesSummary, deposits] = await Promise.all([
+        fetch('/api/financials/payment-status', {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+          }
+        }).then(res => res.json()).catch(() => ({ success: false })),
+        fetch('/api/financials/sales-chart?period=ytd', {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+          }
+        }).then(res => res.json()).catch(() => ({ success: false })),
+        fetch('/api/financials/invoices-summary', {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+          }
+        }).then(res => res.json()).catch(() => ({ success: false })),
+        fetch('/api/financials/deposits', {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+          }
+        }).then(res => res.json()).catch(() => ({ success: false }))
+      ]);
+
+      if (paymentStatus.success && paymentStatus.data) {
+        setPaymentStatusData(paymentStatus.data);
+      }
+
+      if (salesChart.success && salesChart.data) {
+        setSalesChartData(salesChart.data.chartData || []);
+        setSalesTotalAmount(salesChart.data.totalAmount || 0);
+      }
+
+      if (invoicesSummary.success && invoicesSummary.data) {
+        setInvoicesSummary(invoicesSummary.data);
+      }
+
+      if (deposits.success && deposits.data) {
+        setDepositData(deposits.data);
+      }
+    } catch (error) {
+      console.error('[FinancialDashboard] Failed to fetch QuickBooks widgets:', error);
+    } finally {
+      setQbWidgetsLoading(false);
+    }
+  }, []);
 
   const fetchFinancialData = useCallback(async () => {
     console.log('[FinancialDashboard] Fetching financial data for date range:', dateRange);
@@ -589,10 +665,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       // Debounce to avoid rapid API calls when clicking filter buttons
       const timeoutId = setTimeout(() => {
         fetchFinancialData();
+        fetchQuickBooksWidgets(); // Fetch QuickBooks widgets data
       }, 150);
       return () => clearTimeout(timeoutId);
     }
-  }, [dateRange, fetchFinancialData]);
+  }, [dateRange, fetchFinancialData, fetchQuickBooksWidgets]);
 
   // Event handlers
   const handleCategoryClick = async (category: ExpenseCategory) => {
@@ -864,6 +941,67 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           categories={homeCategories}
           onCategoryClick={handleHomeCategoryClick}
         />
+
+        {/* QuickBooks-Style Widgets Section */}
+        <div className="space-y-3">
+          {/* Section Header */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">QuickBooks Insights</h2>
+            <span className="text-xs text-gray-500">Powered by QuickBooks data</span>
+          </div>
+
+          {/* Payment Status Cards */}
+          <PaymentStatusCards
+            data={paymentStatusData}
+            loading={qbWidgetsLoading}
+            onCardClick={(type) => console.log('Payment status card clicked:', type)}
+          />
+
+          {/* Sales Chart and Invoices Widget Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {/* Sales Chart - takes 2 columns */}
+            <div className="lg:col-span-2">
+              <SalesChart
+                data={salesChartData}
+                totalAmount={salesTotalAmount}
+                loading={qbWidgetsLoading}
+                onPeriodChange={(period) => {
+                  console.log('Period changed to:', period);
+                  // Refetch sales chart with new period
+                  fetch(`/api/financials/sales-chart?period=${period}`, {
+                    headers: {
+                      'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
+                    }
+                  })
+                    .then(res => res.json())
+                    .then(data => {
+                      if (data.success && data.data) {
+                        setSalesChartData(data.data.chartData || []);
+                        setSalesTotalAmount(data.data.totalAmount || 0);
+                      }
+                    })
+                    .catch(err => console.error('Failed to fetch sales chart:', err));
+                }}
+              />
+            </div>
+
+            {/* Invoices Widget - takes 1 column */}
+            <div>
+              <InvoicesWidget
+                data={invoicesSummary}
+                loading={qbWidgetsLoading}
+                onViewDetails={(type) => console.log('View invoices:', type)}
+              />
+            </div>
+          </div>
+
+          {/* Deposit Tracker */}
+          <DepositTracker
+            data={depositData}
+            loading={qbWidgetsLoading}
+            onViewDeposits={() => console.log('View deposits clicked')}
+          />
+        </div>
 
         {/* Tabs Section */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

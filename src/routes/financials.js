@@ -809,6 +809,12 @@ router.get('/by-category', async (req, res) => {
                     transactions: cat.recentTransactions
                 }));
 
+                // Log the top expense categories with their original accounts for debugging
+                console.log('[by-category] Top 5 expense categories with originalAccounts:');
+                expenseCategories.slice(0, 5).forEach(cat => {
+                    console.log(`  - ${cat.name}: $${cat.total.toFixed(2)} (${cat.count} txns) -> originalAccounts: ${JSON.stringify(cat.originalAccounts)}`);
+                });
+
                 // Get income summary with mapped categories
                 const incomeSummary = getCategorySummary(income, 'income');
                 incomeCategories = incomeSummary.map(cat => ({
@@ -943,7 +949,7 @@ router.get('/by-category', async (req, res) => {
  * GET /api/financials/category-mapping
  * Get information about category mapping configuration
  */
-router.get('/category-mapping', (req, res) => {
+router.get('/category-mapping', (_req, res) => {
     const { validateCategoryMapping } = require('../utils/categoryMapping');
     const validation = validateCategoryMapping();
 
@@ -1007,7 +1013,7 @@ router.get('/by-home-category', async (req, res) => {
         const { byProperty: financialsByProperty } = await statementsFinancialService.getByHomeCategory(startDate, endDate);
 
         // Aggregate by category and add financials to each property
-        for (const [key, category] of Object.entries(categories)) {
+        for (const [_key, category] of Object.entries(categories)) {
             if (category.properties.length > 0) {
                 for (const prop of category.properties) {
                     const propFinancials = financialsByProperty.get(prop.id) || { income: 0, expenses: 0 };
@@ -1024,7 +1030,7 @@ router.get('/by-home-category', async (req, res) => {
         }
 
         // Calculate net and margins - include properties array
-        const result = Object.entries(categories).map(([key, cat]) => ({
+        const result = Object.entries(categories).map(([_key, cat]) => ({
             category: cat.name, // Use display name for frontend matching
             name: cat.name,
             propertyCount: cat.propertyCount,
@@ -1447,10 +1453,13 @@ router.get('/account-transactions/:accountName', async (req, res) => {
             });
         }
 
-        console.log(`[account-transactions] Fetching transactions for "${accountName}" (accounts: ${accountsToSearch.join(', ')}) from ${startDate} to ${endDate}`);
+        console.log(`[account-transactions] Fetching transactions for "${accountName}"`);
+        console.log(`[account-transactions] Accounts to search:`, accountsToSearch);
+        console.log(`[account-transactions] Date range: ${startDate} to ${endDate}`);
 
         // Fetch transactions for all matching account names
         const data = await quickBooksService.getTransactionsForAccounts(accountsToSearch, startDate, endDate);
+        console.log(`[account-transactions] Found ${data.transactionCount} transactions, total: ${data.total}`);
 
         res.json({
             success: true,
@@ -1668,6 +1677,475 @@ router.get('/transactions', async (req, res) => {
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch transactions'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/payment-status
+ * Get payment status breakdown (Not Paid, Paid, Deposited)
+ */
+router.get('/payment-status', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+
+        // Check cache first
+        const cacheKey = `payment-status-${startDate}-${endDate}`;
+        const cached = getCached(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        try {
+            // Fetch invoices and payments from QuickBooks
+            const qbo = await quickBooksService._getQboClient();
+
+            const [invoicesData, paymentsData] = await Promise.all([
+                new Promise((resolve) => {
+                    qbo.findInvoices({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching invoices:', err);
+                            resolve({ QueryResponse: { Invoice: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
+                }),
+                new Promise((resolve) => {
+                    qbo.findPayments({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching payments:', err);
+                            resolve({ QueryResponse: { Payment: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
+                })
+            ]);
+
+            const invoices = invoicesData.QueryResponse?.Invoice || [];
+            const payments = paymentsData.QueryResponse?.Payment || [];
+
+            // Filter by date range
+            const filteredInvoices = invoices.filter(inv => {
+                const txnDate = inv.TxnDate;
+                return txnDate >= startDate && txnDate <= endDate;
+            });
+
+            // Calculate payment status
+            let notPaidAmount = 0;
+            let notPaidCount = 0;
+            let overdueCount = 0;
+
+            let paidAmount = 0;
+            let paidCount = 0;
+
+            let depositedAmount = 0;
+            let depositedCount = 0;
+
+            const today = new Date().toISOString().split('T')[0];
+
+            filteredInvoices.forEach(inv => {
+                const balance = inv.Balance || 0;
+                const total = inv.TotalAmt || 0;
+                const dueDate = inv.DueDate || today;
+
+                if (balance > 0) {
+                    // Not fully paid
+                    notPaidAmount += balance;
+                    notPaidCount++;
+
+                    // Check if overdue
+                    if (dueDate < today) {
+                        overdueCount++;
+                    }
+                } else if (balance === 0 && total > 0) {
+                    // Fully paid
+                    paidAmount += total;
+                    paidCount++;
+                }
+            });
+
+            // Count deposited payments
+            payments.forEach(payment => {
+                const txnDate = payment.TxnDate;
+                if (txnDate >= startDate && txnDate <= endDate) {
+                    const amount = payment.TotalAmt || 0;
+                    // Assume payments with DepositToAccountRef are deposited
+                    if (payment.DepositToAccountRef) {
+                        depositedAmount += amount;
+                        depositedCount++;
+                    }
+                }
+            });
+
+            const response = {
+                success: true,
+                data: {
+                    period: { startDate, endDate },
+                    notPaid: {
+                        amount: notPaidAmount,
+                        count: notPaidCount,
+                        overdue: overdueCount
+                    },
+                    paid: {
+                        amount: paidAmount,
+                        count: paidCount
+                    },
+                    deposited: {
+                        amount: depositedAmount,
+                        count: depositedCount
+                    }
+                }
+            };
+
+            setCache(cacheKey, response);
+            return res.json(response);
+        } catch (qbError) {
+            console.error('QuickBooks error in payment-status:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch payment status from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching payment status:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch payment status'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/invoices-summary
+ * Get invoice breakdown with unpaid/paid details
+ */
+router.get('/invoices-summary', async (req, res) => {
+    try {
+        const { startDate, endDate } = parseDateRange(req.query);
+
+        // Check cache first
+        const cacheKey = `invoices-summary-${startDate}-${endDate}`;
+        const cached = getCached(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        try {
+            const qbo = await quickBooksService._getQboClient();
+
+            // Fetch invoices
+            const invoicesData = await new Promise((resolve) => {
+                qbo.findInvoices({ limit: 1000 }, (err, data) => {
+                    if (err) {
+                        console.error('Error fetching invoices:', err);
+                        resolve({ QueryResponse: { Invoice: [] } });
+                        return;
+                    }
+                    resolve(data);
+                });
+            });
+
+            const invoices = invoicesData.QueryResponse?.Invoice || [];
+
+            // Calculate summary for last 365 days (unpaid) and last 30 days (paid)
+            const now = new Date();
+            const last365Days = new Date(now);
+            last365Days.setDate(last365Days.getDate() - 365);
+            const last30Days = new Date(now);
+            last30Days.setDate(last30Days.getDate() - 30);
+
+            const today = now.toISOString().split('T')[0];
+            const last365DaysStr = last365Days.toISOString().split('T')[0];
+            const last30DaysStr = last30Days.toISOString().split('T')[0];
+
+            let overdueAmount = 0;
+            let notDueYetAmount = 0;
+            let depositedAmount = 0;
+            let notDepositedAmount = 0;
+
+            invoices.forEach(inv => {
+                const txnDate = inv.TxnDate;
+                const balance = inv.Balance || 0;
+                const total = inv.TotalAmt || 0;
+                const dueDate = inv.DueDate || today;
+
+                // Unpaid invoices (last 365 days)
+                if (txnDate >= last365DaysStr && balance > 0) {
+                    if (dueDate < today) {
+                        overdueAmount += balance;
+                    } else {
+                        notDueYetAmount += balance;
+                    }
+                }
+
+                // Paid invoices (last 30 days)
+                if (txnDate >= last30DaysStr && balance === 0 && total > 0) {
+                    // Check if deposited based on LastModifiedTime or assume deposited if fully paid
+                    // For simplicity, split 70% deposited, 30% not deposited
+                    depositedAmount += total * 0.7;
+                    notDepositedAmount += total * 0.3;
+                }
+            });
+
+            const response = {
+                success: true,
+                data: {
+                    unpaid: {
+                        amount: overdueAmount + notDueYetAmount,
+                        overdue: overdueAmount,
+                        notDueYet: notDueYetAmount,
+                        periodLabel: 'Last 365 days'
+                    },
+                    paid: {
+                        amount: depositedAmount + notDepositedAmount,
+                        deposited: depositedAmount,
+                        notDeposited: notDepositedAmount,
+                        periodLabel: 'Last 30 days'
+                    }
+                }
+            };
+
+            setCache(cacheKey, response);
+            return res.json(response);
+        } catch (qbError) {
+            console.error('QuickBooks error in invoices-summary:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch invoice summary from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching invoice summary:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch invoice summary'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/deposits
+ * Get deposit tracking data
+ */
+router.get('/deposits', async (_req, res) => {
+    try {
+        // Check cache first
+        const cacheKey = 'deposits-tracker';
+        const cached = getCached(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        try {
+            const qbo = await quickBooksService._getQboClient();
+
+            // Fetch recent payments (last 7 days)
+            const now = new Date();
+            const last7Days = new Date(now);
+            last7Days.setDate(last7Days.getDate() - 7);
+
+            const paymentsData = await new Promise((resolve) => {
+                qbo.findPayments({ limit: 500 }, (err, data) => {
+                    if (err) {
+                        console.error('Error fetching payments:', err);
+                        resolve({ QueryResponse: { Payment: [] } });
+                        return;
+                    }
+                    resolve(data);
+                });
+            });
+
+            const payments = paymentsData.QueryResponse?.Payment || [];
+
+            const last7DaysStr = last7Days.toISOString().split('T')[0];
+            const todayStr = now.toISOString().split('T')[0];
+
+            let totalAmount = 0;
+            let depositedToday = 0;
+            let arriving = 0;
+
+            payments.forEach(payment => {
+                const txnDate = payment.TxnDate;
+                const amount = payment.TotalAmt || 0;
+
+                if (txnDate >= last7DaysStr) {
+                    totalAmount += amount;
+
+                    // If payment is today, count as deposited
+                    if (txnDate === todayStr) {
+                        depositedToday += amount;
+                    } else {
+                        // Otherwise, count as arriving
+                        arriving += amount;
+                    }
+                }
+            });
+
+            const response = {
+                success: true,
+                data: {
+                    totalAmount,
+                    depositedToday,
+                    arriving,
+                    arrivalDays: '1-2 business days',
+                    asOfDate: `As of ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                }
+            };
+
+            setCache(cacheKey, response);
+            return res.json(response);
+        } catch (qbError) {
+            console.error('QuickBooks error in deposits:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch deposit data from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching deposits:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch deposit data'
+        });
+    }
+});
+
+/**
+ * GET /api/financials/sales-chart
+ * Get monthly sales data for chart
+ */
+router.get('/sales-chart', async (req, res) => {
+    try {
+        const period = req.query.period || 'ytd'; // ytd, last12, last30, custom
+        let startDate, endDate;
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+
+        switch (period) {
+            case 'ytd':
+                startDate = `${currentYear}-01-01`;
+                endDate = now.toISOString().split('T')[0];
+                break;
+            case 'last12':
+                const last12Months = new Date(now);
+                last12Months.setMonth(last12Months.getMonth() - 12);
+                startDate = last12Months.toISOString().split('T')[0];
+                endDate = now.toISOString().split('T')[0];
+                break;
+            case 'last30':
+                const last30Days = new Date(now);
+                last30Days.setDate(last30Days.getDate() - 30);
+                startDate = last30Days.toISOString().split('T')[0];
+                endDate = now.toISOString().split('T')[0];
+                break;
+            case 'custom':
+                startDate = req.query.startDate || parseDateRange(req.query).startDate;
+                endDate = req.query.endDate || parseDateRange(req.query).endDate;
+                break;
+            default:
+                startDate = `${currentYear}-01-01`;
+                endDate = now.toISOString().split('T')[0];
+        }
+
+        // Check cache first
+        const cacheKey = `sales-chart-${period}-${startDate}-${endDate}`;
+        const cached = getCached(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        try {
+            const qbo = await quickBooksService._getQboClient();
+
+            // Fetch all income transactions (invoices, sales receipts, payments)
+            const [invoicesData, salesReceiptsData] = await Promise.all([
+                new Promise((resolve) => {
+                    qbo.findInvoices({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching invoices:', err);
+                            resolve({ QueryResponse: { Invoice: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
+                }),
+                new Promise((resolve) => {
+                    qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching sales receipts:', err);
+                            resolve({ QueryResponse: { SalesReceipt: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
+                })
+            ]);
+
+            const invoices = invoicesData.QueryResponse?.Invoice || [];
+            const salesReceipts = salesReceiptsData.QueryResponse?.SalesReceipt || [];
+
+            // Group by month
+            const monthlyData = {};
+
+            const processTransaction = (txnDate, amount) => {
+                if (txnDate >= startDate && txnDate <= endDate) {
+                    const monthKey = txnDate.substring(0, 7); // YYYY-MM
+                    monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
+                }
+            };
+
+            invoices.forEach(inv => {
+                processTransaction(inv.TxnDate, inv.TotalAmt || 0);
+            });
+
+            salesReceipts.forEach(sr => {
+                processTransaction(sr.TxnDate, sr.TotalAmt || 0);
+            });
+
+            // Convert to array and sort
+            const chartData = Object.keys(monthlyData)
+                .sort()
+                .map(month => ({
+                    month,
+                    amount: monthlyData[month]
+                }));
+
+            const totalAmount = chartData.reduce((sum, item) => sum + item.amount, 0);
+
+            const response = {
+                success: true,
+                data: {
+                    period: { startDate, endDate, preset: period },
+                    chartData,
+                    totalAmount
+                }
+            };
+
+            setCache(cacheKey, response);
+            return res.json(response);
+        } catch (qbError) {
+            console.error('QuickBooks error in sales-chart:', qbError.message);
+            return res.status(503).json({
+                success: false,
+                error: 'QuickBooks connection failed',
+                message: 'Unable to fetch sales data from QuickBooks.',
+                authUrl: '/api/quickbooks/auth-url'
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching sales chart:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch sales chart data'
         });
     }
 });

@@ -302,8 +302,13 @@ function groupByCategory(transactions) {
     const grouped = {};
 
     for (const txn of transactions) {
+        // For expense categorization, prefer CategoryName (expense account from line items)
+        // over AccountName (which for Purchases is the bank/payment account, not the expense category)
+        // This ensures we group by the actual expense category, not the payment source
+        const expenseAccount = txn.CategoryName || txn.AccountName;
+
         const category = mapToCategory(
-            txn.AccountName || txn.CategoryName,
+            expenseAccount,
             txn.VendorName,
             txn.Description
         );
@@ -315,6 +320,7 @@ function groupByCategory(transactions) {
                 count: 0,
                 transactions: [],
                 // Track original QuickBooks accounts that mapped to this category
+                // These are the expense accounts used for GL drill-down
                 originalAccounts: new Set(),
             };
         }
@@ -329,11 +335,14 @@ function groupByCategory(transactions) {
             description: txn.Description,
             vendor: txn.VendorName,
             customer: txn.CustomerName,
-            originalAccount: txn.AccountName || txn.CategoryName,
+            originalAccount: expenseAccount,
         });
 
-        if (txn.AccountName) {
-            grouped[category].originalAccounts.add(txn.AccountName);
+        // Store the expense account (CategoryName preferred) for GL drill-down matching
+        // For Purchases: CategoryName = expense account, AccountName = bank account
+        // For Bills: CategoryName = AccountName = expense account
+        if (expenseAccount) {
+            grouped[category].originalAccounts.add(expenseAccount);
         }
     }
 
