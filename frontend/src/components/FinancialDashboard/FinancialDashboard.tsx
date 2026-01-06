@@ -39,6 +39,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('by-category');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   // Financial data states
   const [summary, setSummary] = useState<FinancialSummary>({
@@ -504,6 +505,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   const handleCategoryClick = async (category: ExpenseCategory) => {
     setSelectedCategory(category.name);
     setIsTransactionModalOpen(true);
+    setTransactions([]); // Clear previous transactions
+    setTransactionsLoading(true); // Show loader
 
     // Fetch transactions using the TransactionList Report API (matches QuickBooks P&L exactly)
     try {
@@ -549,6 +552,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
       setTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
     }
   };
 
@@ -596,9 +601,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     document.body.removeChild(a);
   };
 
-  const filteredTransactions = selectedCategory
-    ? transactions.filter((t) => t.category === selectedCategory)
-    : transactions;
+  // Don't filter - transactions are already fetched for the selected category
+  // The category field contains the actual QB account name, not the mapped category name
+  const filteredTransactions = transactions;
 
   // Generate sparkline data for summary cards
   const sparklineData = {
@@ -882,6 +887,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         }}
         transactions={filteredTransactions}
         title={selectedCategory ? `${selectedCategory} Transactions` : 'All Transactions'}
+        loading={transactionsLoading}
       />
     </div>
   );

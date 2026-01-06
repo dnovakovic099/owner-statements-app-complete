@@ -13,6 +13,13 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { Input } from '../ui/input';
 import { Search, X } from 'lucide-react';
 
@@ -31,6 +38,7 @@ interface TransactionModalProps {
   onClose: () => void;
   transactions: Transaction[];
   title?: string;
+  loading?: boolean;
 }
 
 const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -38,6 +46,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({
   onClose,
   transactions,
   title = 'Transactions',
+  loading = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -116,32 +125,34 @@ const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
 
           {/* Category Filter */}
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Categories</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
+          <Select value={filterCategory || 'all'} onValueChange={(val) => setFilterCategory(val === 'all' ? '' : val)}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.filter(c => c).map((category) => (
+                <SelectItem key={category} value={category}>
+                  {category}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Property Filter */}
-          <select
-            value={filterProperty}
-            onChange={(e) => setFilterProperty(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Properties</option>
-            {properties.map((property) => (
-              <option key={property} value={property}>
-                {property}
-              </option>
-            ))}
-          </select>
+          <Select value={filterProperty || 'all'} onValueChange={(val) => setFilterProperty(val === 'all' ? '' : val)}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Properties" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Properties</SelectItem>
+              {properties.filter(p => p).map((property) => (
+                <SelectItem key={property} value={property}>
+                  {property}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Summary */}
@@ -179,7 +190,16 @@ const TransactionModal: React.FC<TransactionModalProps> = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.length > 0 ? (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-12">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <span className="text-gray-500 text-sm">Loading transactions...</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredTransactions.length > 0 ? (
                 filteredTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell className="text-sm text-gray-600">
