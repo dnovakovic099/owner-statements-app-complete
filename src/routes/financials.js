@@ -1697,10 +1697,10 @@ router.get('/payment-status', async (req, res) => {
         }
 
         try {
-            // Fetch invoices and payments from QuickBooks
+            // Fetch invoices, payments, and deposits from QuickBooks
             const qbo = await quickBooksService._getQboClient();
 
-            const [invoicesData, paymentsData] = await Promise.all([
+            const [invoicesData, paymentsData, depositsData] = await Promise.all([
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
@@ -1720,19 +1720,24 @@ router.get('/payment-status', async (req, res) => {
                         }
                         resolve(data);
                     });
+                }),
+                new Promise((resolve) => {
+                    qbo.findDeposits({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching deposits:', err);
+                            resolve({ QueryResponse: { Deposit: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
                 })
             ]);
 
             const invoices = invoicesData.QueryResponse?.Invoice || [];
             const payments = paymentsData.QueryResponse?.Payment || [];
+            const deposits = depositsData.QueryResponse?.Deposit || [];
 
-            // Filter by date range
-            const filteredInvoices = invoices.filter(inv => {
-                const txnDate = inv.TxnDate;
-                return txnDate >= startDate && txnDate <= endDate;
-            });
-
-            // Calculate payment status
+            // Calculate payment status matching QuickBooks exactly
             let notPaidAmount = 0;
             let notPaidCount = 0;
             let overdueCount = 0;
@@ -1745,13 +1750,12 @@ router.get('/payment-status', async (req, res) => {
 
             const today = new Date().toISOString().split('T')[0];
 
-            filteredInvoices.forEach(inv => {
+            // NOT PAID: All invoices with outstanding balance (QB shows all open, not filtered by date)
+            invoices.forEach(inv => {
                 const balance = inv.Balance || 0;
-                const total = inv.TotalAmt || 0;
                 const dueDate = inv.DueDate || today;
 
                 if (balance > 0) {
-                    // Not fully paid
                     notPaidAmount += balance;
                     notPaidCount++;
 
@@ -1759,23 +1763,26 @@ router.get('/payment-status', async (req, res) => {
                     if (dueDate < today) {
                         overdueCount++;
                     }
-                } else if (balance === 0 && total > 0) {
-                    // Fully paid
-                    paidAmount += total;
-                    paidCount++;
                 }
             });
 
-            // Count deposited payments
+            // PAID: Payment transactions in the date range
             payments.forEach(payment => {
                 const txnDate = payment.TxnDate;
                 if (txnDate >= startDate && txnDate <= endDate) {
                     const amount = payment.TotalAmt || 0;
-                    // Assume payments with DepositToAccountRef are deposited
-                    if (payment.DepositToAccountRef) {
-                        depositedAmount += amount;
-                        depositedCount++;
-                    }
+                    paidAmount += amount;
+                    paidCount++;
+                }
+            });
+
+            // DEPOSITED: Actual Deposit transactions in the date range
+            deposits.forEach(deposit => {
+                const txnDate = deposit.TxnDate;
+                if (txnDate >= startDate && txnDate <= endDate) {
+                    const amount = deposit.TotalAmt || 0;
+                    depositedAmount += amount;
+                    depositedCount++;
                 }
             });
 
@@ -2010,44 +2017,15 @@ router.get('/deposits', async (req, res) => {
 
 /**
  * GET /api/financials/sales-chart
- * Get monthly sales data for chart
+ * Get monthly sales data for chart - uses global date filter
  */
 router.get('/sales-chart', async (req, res) => {
     try {
-        const period = req.query.period || 'ytd'; // ytd, last12, last30, custom
-        let startDate, endDate;
-
-        const now = new Date();
-        const currentYear = now.getFullYear();
-
-        switch (period) {
-            case 'ytd':
-                startDate = `${currentYear}-01-01`;
-                endDate = now.toISOString().split('T')[0];
-                break;
-            case 'last12':
-                const last12Months = new Date(now);
-                last12Months.setMonth(last12Months.getMonth() - 12);
-                startDate = last12Months.toISOString().split('T')[0];
-                endDate = now.toISOString().split('T')[0];
-                break;
-            case 'last30':
-                const last30Days = new Date(now);
-                last30Days.setDate(last30Days.getDate() - 30);
-                startDate = last30Days.toISOString().split('T')[0];
-                endDate = now.toISOString().split('T')[0];
-                break;
-            case 'custom':
-                startDate = req.query.startDate || parseDateRange(req.query).startDate;
-                endDate = req.query.endDate || parseDateRange(req.query).endDate;
-                break;
-            default:
-                startDate = `${currentYear}-01-01`;
-                endDate = now.toISOString().split('T')[0];
-        }
+        // Use global date filter from query params
+        const { startDate, endDate } = parseDateRange(req.query);
 
         // Check cache first
-        const cacheKey = `sales-chart-${period}-${startDate}-${endDate}`;
+        const cacheKey = `sales-chart-${startDate}-${endDate}`;
         const cached = getCached(cacheKey);
         if (cached) {
             return res.json(cached);
@@ -2114,7 +2092,7 @@ router.get('/sales-chart', async (req, res) => {
             const response = {
                 success: true,
                 data: {
-                    period: { startDate, endDate, preset: period },
+                    period: { startDate, endDate },
                     chartData,
                     totalAmount
                 }
