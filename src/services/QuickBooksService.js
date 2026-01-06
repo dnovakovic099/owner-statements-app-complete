@@ -1291,17 +1291,20 @@ class QuickBooksService {
         const allData = await this.getTransactionListByAccount(startDate, endDate);
 
         // Helper to check if a value matches any of the target accounts
+        // Uses STRICT matching - exact match or parent:child relationship only
         const matchesAnyAccount = (value) => {
             if (!value) return false;
-            const valueLower = value.toLowerCase();
+            const valueLower = value.toLowerCase().trim();
             return accountNames.some(accountName => {
-                const accountNameLower = accountName.toLowerCase();
-                return valueLower === accountNameLower ||
-                       valueLower.startsWith(accountNameLower + ':') ||
-                       valueLower.startsWith(accountNameLower + ' ') ||
-                       accountNameLower.startsWith(valueLower + ':') ||
-                       valueLower.includes(accountNameLower) ||
-                       accountNameLower.includes(valueLower);
+                const accountNameLower = accountName.toLowerCase().trim();
+                // Exact match
+                if (valueLower === accountNameLower) return true;
+                // Sub-account match: "Parent:Child" where we're looking for "Parent"
+                if (valueLower.startsWith(accountNameLower + ':')) return true;
+                // Sub-account match: looking for "Parent:Child" and value is "Parent:Child"
+                if (accountNameLower.startsWith(valueLower + ':')) return true;
+                // Don't use partial/contains matching - too broad
+                return false;
             });
         };
 
@@ -1379,17 +1382,21 @@ class QuickBooksService {
     async getTransactionsForAccount(accountName, startDate, endDate) {
         const allData = await this.getTransactionListByAccount(startDate, endDate);
 
-        const accountNameLower = accountName.toLowerCase();
+        const accountNameLower = accountName.toLowerCase().trim();
 
         // Helper to check if a value matches the target account
+        // Uses STRICT matching - exact match or parent:child relationship only
         const matchesAccount = (value) => {
             if (!value) return false;
-            const valueLower = value.toLowerCase();
-            return valueLower === accountNameLower ||
-                   valueLower.startsWith(accountNameLower + ':') ||
-                   valueLower.startsWith(accountNameLower + ' ') ||
-                   accountNameLower.startsWith(valueLower + ':') ||
-                   valueLower.includes(accountNameLower);
+            const valueLower = value.toLowerCase().trim();
+            // Exact match
+            if (valueLower === accountNameLower) return true;
+            // Sub-account match: "Parent:Child" where we're looking for "Parent"
+            if (valueLower.startsWith(accountNameLower + ':')) return true;
+            // Sub-account match: looking for "Parent:Child" and value is "Parent:Child"
+            if (accountNameLower.startsWith(valueLower + ':')) return true;
+            // Don't use partial/contains matching - too broad
+            return false;
         };
 
         // Filter transactions - check both account field and Split field
