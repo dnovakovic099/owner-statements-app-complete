@@ -1294,8 +1294,15 @@ class QuickBooksService {
         console.log(`[QuickBooks] GL report has ${allData.accounts.length} accounts, ${allData.transactions.length} transactions`);
         console.log(`[QuickBooks] Searching for accounts:`, accountNames);
 
+        // Check if we're looking for distribution accounts (need special handling)
+        const isDistributionSearch = accountNames.some(name =>
+            name.toLowerCase().includes('distribution') ||
+            name.toLowerCase().includes('darko') ||
+            name.toLowerCase().includes('louis')
+        );
+
         // Helper to check if a value matches any of the target accounts
-        // Uses STRICT matching - exact match or parent:child relationship only
+        // Uses STRICT matching for regular accounts, more flexible for distributions
         const matchesAnyAccount = (value) => {
             if (!value) return false;
             const valueLower = value.toLowerCase().trim();
@@ -1307,7 +1314,11 @@ class QuickBooksService {
                 if (valueLower.startsWith(accountNameLower + ':')) return true;
                 // Sub-account match: looking for "Parent:Child" and value is "Parent:Child"
                 if (accountNameLower.startsWith(valueLower + ':')) return true;
-                // Don't use partial/contains matching - too broad
+                // For distribution accounts, also match if both contain the owner name
+                if (isDistributionSearch) {
+                    if (accountNameLower.includes('darko') && valueLower.includes('darko')) return true;
+                    if (accountNameLower.includes('louis') && valueLower.includes('louis')) return true;
+                }
                 return false;
             });
         };
@@ -1335,10 +1346,19 @@ class QuickBooksService {
         };
 
         // Helper to check if transaction type is an actual expense (not transfer/adjustment)
+        // For distribution accounts, we ALLOW transfers since that's how distributions are recorded
         const isExpenseTransaction = (txn) => {
             const type = (txn.type || '').toLowerCase();
             const name = (txn.name || '').toLowerCase();
             const memo = (txn['Memo/Description'] || txn.memo || '').toLowerCase();
+            const account = (txn.account || '').toLowerCase();
+
+            // For distribution accounts, allow ALL transaction types including transfers
+            if (isDistributionSearch) {
+                // Only exclude deposits (income) for distribution accounts
+                if (type === 'deposit') return false;
+                return true;
+            }
 
             // Exclude transfers - they move money between accounts, not actual expenses
             if (type === 'transfer' || type.includes('transfer')) return false;
