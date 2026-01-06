@@ -760,34 +760,19 @@ router.get('/by-category', async (req, res) => {
         let expenses = [];
         let usingQuickBooks = false;
 
-        // Check if QuickBooks is connected (with fast timeout)
-        let isConnected = false;
+        // Try to fetch from QuickBooks directly (like /summary does)
         try {
-            isConnected = await Promise.race([
-                quickBooksService.isConnectedAsync(),
-                new Promise(resolve => setTimeout(() => resolve(false), 2000)) // 2 second timeout
+            console.log('[by-category] Fetching from QuickBooks...');
+            const results = await Promise.all([
+                quickBooksService.getAllIncome(startDate, endDate),
+                quickBooksService.getAllExpenses(startDate, endDate)
             ]);
-        } catch (e) {
-            isConnected = false;
-        }
-
-        if (isConnected) {
-            try {
-                // Fetch from QuickBooks with fast timeout (5 seconds for more data)
-                const results = await Promise.race([
-                    Promise.all([
-                        quickBooksService.getAllIncome(startDate, endDate),
-                        quickBooksService.getAllExpenses(startDate, endDate)
-                    ]),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 5000))
-                ]);
-                income = results[0] || [];
-                expenses = results[1] || [];
-                usingQuickBooks = true;
-                console.log(`[by-category] Fetched ${income.length} income and ${expenses.length} expense transactions from QuickBooks`);
-            } catch (qbError) {
-                console.warn('[by-category] QuickBooks fetch failed, falling back to statements:', qbError.message);
-            }
+            income = results[0] || [];
+            expenses = results[1] || [];
+            usingQuickBooks = true;
+            console.log(`[by-category] Fetched ${income.length} income and ${expenses.length} expense transactions from QuickBooks`);
+        } catch (qbError) {
+            console.warn('[by-category] QuickBooks fetch failed:', qbError.message);
         }
 
         // If QuickBooks data available, group by mapped or raw categories

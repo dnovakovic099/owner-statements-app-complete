@@ -589,7 +589,7 @@ class QuickBooksService {
                     qbo.reportProfitAndLoss({
                         start_date: startDate,
                         end_date: endDate,
-                        accounting_method: 'Cash'
+                        accounting_method: 'Accrual'
                     }, (err, data) => {
                         if (err) {
                             reject(err);
