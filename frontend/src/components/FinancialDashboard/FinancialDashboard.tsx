@@ -507,10 +507,21 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
     // Fetch transactions using the TransactionList Report API (matches QuickBooks P&L exactly)
     try {
-      // Use the new account-transactions endpoint which uses TransactionList Report API
-      const accountName = encodeURIComponent(category.name);
+      // Use original account names if available (these are the actual QB account names)
+      // Otherwise fall back to the category name
+      const accountNames = (category as any).originalAccounts?.length > 0
+        ? (category as any).originalAccounts
+        : [category.name];
+
+      // Build query params
+      const params = new URLSearchParams({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        accounts: JSON.stringify(accountNames)
+      });
+
       const response = await fetch(
-        `/api/financials/account-transactions/${accountName}?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
+        `/api/financials/account-transactions/${encodeURIComponent(category.name)}?${params}`,
         {
           headers: {
             'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
@@ -523,9 +534,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const mappedTransactions: Transaction[] = data.data.transactions.map((t: any) => ({
           id: t.docNumber || Math.random().toString(),
           date: t.date || '',
-          description: t.memo || t.name || t.type || 'Transaction',
+          description: t['Memo/Description'] || t.memo || t.name || t.type || 'Transaction',
           amount: Math.abs(t.amount || t.debit || t.credit || 0),
-          category: t.account || category.name,
+          category: t.matchedAccount || t.account || category.name,
           property: t.name || '',
           type: 'expense' as const,
         }));

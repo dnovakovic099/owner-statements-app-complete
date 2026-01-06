@@ -1280,6 +1280,94 @@ class QuickBooksService {
     }
 
     /**
+     * Get transactions for multiple account names (for category drill-down)
+     * Used when a P&L category maps to multiple original QB accounts
+     * @param {string[]} accountNames - Array of account names to search for
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @returns {Promise<Object>} Combined transactions from all matching accounts
+     */
+    async getTransactionsForAccounts(accountNames, startDate, endDate) {
+        const allData = await this.getTransactionListByAccount(startDate, endDate);
+
+        // Helper to check if a value matches any of the target accounts
+        const matchesAnyAccount = (value) => {
+            if (!value) return false;
+            const valueLower = value.toLowerCase();
+            return accountNames.some(accountName => {
+                const accountNameLower = accountName.toLowerCase();
+                return valueLower === accountNameLower ||
+                       valueLower.startsWith(accountNameLower + ':') ||
+                       valueLower.startsWith(accountNameLower + ' ') ||
+                       accountNameLower.startsWith(valueLower + ':') ||
+                       valueLower.includes(accountNameLower) ||
+                       accountNameLower.includes(valueLower);
+            });
+        };
+
+        // Filter transactions - check both account field and Split field
+        const transactions = allData.transactions.filter(t => {
+            if (matchesAnyAccount(t.account)) return true;
+            if (matchesAnyAccount(t.Split) || matchesAnyAccount(t['Split'])) return true;
+            return false;
+        });
+
+        // Deduplicate by transaction ID
+        const seenIds = new Set();
+        const mappedTransactions = [];
+
+        // First pass: collect transactions where the account directly matches
+        for (const t of transactions) {
+            if (matchesAnyAccount(t.account)) {
+                const txnId = t.type_id || `${t.date}-${t.name}-${t.amount}`;
+                if (!seenIds.has(txnId)) {
+                    seenIds.add(txnId);
+                    mappedTransactions.push({
+                        ...t,
+                        matchedAccount: t.account,
+                        amount: Math.abs(t.amount || 0)
+                    });
+                }
+            }
+        }
+
+        // Second pass: collect transactions where Split matches
+        for (const t of transactions) {
+            if (matchesAnyAccount(t.Split || t['Split']) && !matchesAnyAccount(t.account)) {
+                const txnId = t.type_id || `${t.date}-${t.name}-${t.amount}`;
+                if (!seenIds.has(txnId)) {
+                    seenIds.add(txnId);
+                    mappedTransactions.push({
+                        ...t,
+                        matchedAccount: t.Split || t['Split'],
+                        account: t.Split || t['Split'],
+                        amount: Math.abs(t.amount || 0)
+                    });
+                }
+            }
+        }
+
+        // Sum totals from matching accounts
+        let total = 0;
+        const matchingAccounts = allData.accounts.filter(a => matchesAnyAccount(a.name));
+        matchingAccounts.forEach(a => total += Math.abs(a.total || 0));
+
+        if (matchingAccounts.length === 0) {
+            total = mappedTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+        }
+
+        console.log(`[QuickBooks] Found ${mappedTransactions.length} transactions for ${accountNames.length} accounts (${accountNames.join(', ')})`);
+
+        return {
+            searchedAccounts: accountNames,
+            matchingAccounts: matchingAccounts.map(a => a.name),
+            total,
+            transactions: mappedTransactions,
+            transactionCount: mappedTransactions.length
+        };
+    }
+
+    /**
      * Get transactions for a specific account name (matches P&L category)
      * Handles parent/child account relationships (e.g., "Automobile" matches "Automobile:Fuel")
      * Also checks the Split field for bank transactions where expense is the contra account

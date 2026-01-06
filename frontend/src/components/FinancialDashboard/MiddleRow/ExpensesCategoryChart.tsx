@@ -15,6 +15,7 @@ export interface ExpenseCategory {
   name: string;
   amount: number;
   color: string;
+  originalAccounts?: string[]; // Original QuickBooks account names
 }
 
 export interface ExpensesCategoryChartProps {

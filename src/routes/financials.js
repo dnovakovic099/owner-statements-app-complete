@@ -1405,11 +1405,25 @@ router.get('/transactions-by-account', async (req, res) => {
  * Query params:
  * - startDate: Start date (YYYY-MM-DD)
  * - endDate: End date (YYYY-MM-DD)
+ * - accounts: JSON array of original account names to search for (optional)
  */
 router.get('/account-transactions/:accountName', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
         const accountName = decodeURIComponent(req.params.accountName);
+
+        // Parse accounts array if provided (these are the original QB account names)
+        let accountsToSearch = [accountName];
+        if (req.query.accounts) {
+            try {
+                const parsed = JSON.parse(req.query.accounts);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    accountsToSearch = parsed;
+                }
+            } catch (e) {
+                // Ignore parse error, use default
+            }
+        }
 
         if (!accountName) {
             return res.status(400).json({
@@ -1418,15 +1432,18 @@ router.get('/account-transactions/:accountName', async (req, res) => {
             });
         }
 
-        console.log(`[account-transactions] Fetching transactions for "${accountName}" from ${startDate} to ${endDate}`);
+        console.log(`[account-transactions] Fetching transactions for "${accountName}" (accounts: ${accountsToSearch.join(', ')}) from ${startDate} to ${endDate}`);
 
-        const data = await quickBooksService.getTransactionsForAccount(accountName, startDate, endDate);
+        // Fetch transactions for all matching account names
+        const data = await quickBooksService.getTransactionsForAccounts(accountsToSearch, startDate, endDate);
 
         res.json({
             success: true,
             data: {
                 period: { startDate, endDate },
                 account: accountName,
+                searchedAccounts: accountsToSearch,
+                matchingAccounts: data.matchingAccounts,
                 total: data.total,
                 transactionCount: data.transactionCount,
                 transactions: data.transactions.map(t => ({
@@ -1434,11 +1451,13 @@ router.get('/account-transactions/:accountName', async (req, res) => {
                     type: t.type,
                     docNumber: t.docNumber,
                     name: t.name,
+                    'Memo/Description': t['Memo/Description'],
                     memo: t.memo,
                     amount: t.amount,
                     debit: t.debit,
                     credit: t.credit,
-                    account: t.account
+                    account: t.account,
+                    matchedAccount: t.matchedAccount
                 })),
                 source: 'quickbooks-transaction-list-report'
             }
