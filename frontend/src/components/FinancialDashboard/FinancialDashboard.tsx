@@ -513,9 +513,31 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   }, [dateRange, fetchFinancialData]);
 
   // Event handlers
-  const handleCategoryClick = (category: ExpenseCategory) => {
+  const handleCategoryClick = async (category: ExpenseCategory) => {
     setSelectedCategory(category.name);
     setIsTransactionModalOpen(true);
+
+    // Fetch transactions for this category
+    try {
+      const response = await financialsAPI.getTransactions(dateRange.startDate, dateRange.endDate);
+      if (response.success && response.data?.transactions) {
+        // Map API transactions to modal format and filter by category
+        const mappedTransactions: Transaction[] = response.data.transactions
+          .filter((t: any) => t.category === category.name || t.AccountRef?.name === category.name)
+          .map((t: any) => ({
+            id: t.Id || t.id || Math.random(),
+            date: t.TxnDate || t.date || '',
+            description: t.Description || t.memo || t.description || t.AccountRef?.name || 'Transaction',
+            amount: Math.abs(t.TotalAmt || t.Amount || t.amount || 0),
+            category: t.category || t.AccountRef?.name || category.name,
+            property: t.property || t.CustomerRef?.name || '',
+            type: t.type === 'income' ? 'income' : 'expense',
+          }));
+        setTransactions(mappedTransactions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+    }
   };
 
   const handleHomeCategoryClick = (categoryType: 'pm' | 'arbitrage' | 'owned' | 'shared') => {

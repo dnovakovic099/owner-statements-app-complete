@@ -1334,44 +1334,18 @@ router.get('/transactions', async (req, res) => {
         const { startDate, endDate } = parseDateRange(req.query);
         const { type, category, minAmount, maxAmount, search } = req.query;
 
-        // Fast check if QuickBooks is connected (2 second timeout)
-        let isConnected = false;
-        try {
-            isConnected = await Promise.race([
-                quickBooksService.isConnectedAsync(),
-                new Promise(resolve => setTimeout(() => resolve(false), 2000))
-            ]);
-        } catch (e) {
-            isConnected = false;
-        }
-
-        if (!isConnected) {
-            // Return empty data instead of trying to fetch from disconnected QB
-            return res.json({
-                success: true,
-                data: {
-                    period: { startDate, endDate },
-                    transactions: [],
-                    pagination: { page: 1, limit: 50, totalCount: 0, totalPages: 0, hasMore: false },
-                    totals: { income: 0, expenses: 0, net: 0, transactionCount: 0 }
-                },
-                message: 'QuickBooks not connected. Please connect in Settings to view transactions.'
-            });
-        }
-
-        // Fetch all transactions from QuickBooks with timeout
+        // Fetch all transactions from QuickBooks directly (like /summary does)
         let income = [];
         let expenses = [];
         try {
-            const results = await Promise.race([
-                Promise.all([
-                    quickBooksService.getAllIncome(startDate, endDate),
-                    quickBooksService.getAllExpenses(startDate, endDate)
-                ]),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('QuickBooks timeout')), 8000))
+            console.log('[transactions] Fetching from QuickBooks...');
+            const results = await Promise.all([
+                quickBooksService.getAllIncome(startDate, endDate),
+                quickBooksService.getAllExpenses(startDate, endDate)
             ]);
             income = results[0] || [];
             expenses = results[1] || [];
+            console.log(`[transactions] Fetched ${income.length} income and ${expenses.length} expense transactions`);
         } catch (qbError) {
             console.error('QuickBooks fetch error:', qbError);
             // Return empty data on any QB error
