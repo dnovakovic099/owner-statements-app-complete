@@ -72,7 +72,7 @@ describe('ByHomeTypeTab', () => {
 
     expect(screen.getByText('Property Management')).toBeInTheDocument();
     expect(screen.getByText('Arbitrage')).toBeInTheDocument();
-    expect(screen.getByText('Home Owned')).toBeInTheDocument();
+    expect(screen.getByText('Owned')).toBeInTheDocument();
     expect(screen.getByText('Shared')).toBeInTheDocument();
   });
 
@@ -105,10 +105,10 @@ describe('ByHomeTypeTab', () => {
     expect(screen.getByText('Utilities')).toBeInTheDocument();
   });
 
-  it('switches to Home Owned category when clicked', () => {
+  it('switches to Owned category when clicked', () => {
     render(<ByHomeTypeTab data={mockData} dateRange={mockDateRange} />);
 
-    const ownedButton = screen.getByText('Home Owned');
+    const ownedButton = screen.getByText('Owned');
     fireEvent.click(ownedButton);
 
     expect(screen.getByText('Mortgage')).toBeInTheDocument();

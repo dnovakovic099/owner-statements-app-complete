@@ -257,7 +257,7 @@ const PropertyFinancials: React.FC<PropertyFinancialsProps> = ({
                 <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="PM">PM</SelectItem>
                 <SelectItem value="Arbitrage">Arbitrage</SelectItem>
-                <SelectItem value="Owned">Home Owned</SelectItem>
+                <SelectItem value="Owned">Owned</SelectItem>
               </SelectContent>
             </Select>
 

@@ -49,7 +49,7 @@ const categoryConfigs: CategoryCardConfig[] = [
   },
   {
     key: 'owned',
-    title: 'Home Owned',
+    title: 'Owned',
     icon: Key,
     bgTint: 'bg-purple-50/50',
     iconBg: 'bg-purple-100',

@@ -157,7 +157,7 @@ const CategoryDetails: React.FC<CategoryDetailsProps> = ({
             <SelectContent>
               <SelectItem value="PM">PM</SelectItem>
               <SelectItem value="Arbitrage">Arbitrage</SelectItem>
-              <SelectItem value="Owned">Home Owned</SelectItem>
+              <SelectItem value="Owned">Owned</SelectItem>
               <SelectItem value="Shared">Shared Expenses</SelectItem>
             </SelectContent>
           </Select>
@@ -188,7 +188,7 @@ const CategoryDetails: React.FC<CategoryDetailsProps> = ({
             <SelectContent>
               <SelectItem value="PM">PM</SelectItem>
               <SelectItem value="Arbitrage">Arbitrage</SelectItem>
-              <SelectItem value="Owned">Home Owned</SelectItem>
+              <SelectItem value="Owned">Owned</SelectItem>
               <SelectItem value="Shared">Shared Expenses</SelectItem>
             </SelectContent>
           </Select>

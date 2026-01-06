@@ -14,7 +14,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-export type HomeCategory = 'Property Management' | 'Arbitrage' | 'Home Owned' | 'Shared';
+export type HomeCategory = 'Property Management' | 'Arbitrage' | 'Owned' | 'Shared';
 
 export interface IncomeItem {
   label: string;
@@ -234,7 +234,7 @@ interface CategorySelectorProps {
 }
 
 const CategorySelector: React.FC<CategorySelectorProps> = ({ selected, onSelect }) => {
-  const categories: HomeCategory[] = ['Property Management', 'Arbitrage', 'Home Owned', 'Shared'];
+  const categories: HomeCategory[] = ['Property Management', 'Arbitrage', 'Owned', 'Shared'];
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -405,7 +405,7 @@ const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemCl
           </>
         );
 
-      case 'Home Owned':
+      case 'Owned':
         return (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
