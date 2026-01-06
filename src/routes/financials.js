@@ -1624,7 +1624,7 @@ router.get('/payment-status', async (req, res) => {
             // Fetch invoices, payments, and deposits from QuickBooks
             const qbo = await quickBooksService._getQboClient();
 
-            const [invoicesData, paymentsData, salesReceiptsData] = await Promise.all([
+            const [invoicesData, paymentsData, salesReceiptsData, depositsData] = await Promise.all([
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
@@ -1654,15 +1654,27 @@ router.get('/payment-status', async (req, res) => {
                         }
                         resolve(data);
                     });
+                }),
+                // Fetch actual Deposit transactions for "Deposited" calculation
+                new Promise((resolve) => {
+                    qbo.findDeposits({ limit: 1000 }, (err, data) => {
+                        if (err) {
+                            console.error('Error fetching deposits:', err);
+                            resolve({ QueryResponse: { Deposit: [] } });
+                            return;
+                        }
+                        resolve(data);
+                    });
                 })
             ]);
 
             const invoices = invoicesData.QueryResponse?.Invoice || [];
             const payments = paymentsData.QueryResponse?.Payment || [];
             const salesReceipts = salesReceiptsData.QueryResponse?.SalesReceipt || [];
+            const deposits = depositsData.QueryResponse?.Deposit || [];
 
             console.log(`[payment-status] Date range: ${startDate} to ${endDate}`);
-            console.log(`[payment-status] Fetched: ${invoices.length} invoices, ${payments.length} payments, ${salesReceipts.length} sales receipts`);
+            console.log(`[payment-status] Fetched: ${invoices.length} invoices, ${payments.length} payments, ${salesReceipts.length} sales receipts, ${deposits.length} deposits`);
 
             // Calculate payment status matching QuickBooks exactly
             let notPaidAmount = 0;
@@ -1720,20 +1732,14 @@ router.get('/payment-status', async (req, res) => {
 
             console.log(`[payment-status] Found ${paidCount} paid transactions (payments + sales receipts) totaling $${paidAmount.toFixed(2)}`);
 
-            // DEPOSITED: Payments that have been deposited to a bank account
-            // (DepositToAccountRef is set to a real bank, not "Undeposited Funds")
-            payments.forEach(payment => {
-                const txnDate = payment.TxnDate;
+            // DEPOSITED: Use actual Deposit transactions from QuickBooks
+            // A Deposit is a bank deposit that groups payments/sales receipts
+            deposits.forEach(deposit => {
+                const txnDate = deposit.TxnDate;
                 if (txnDate >= startDate && txnDate <= endDate) {
-                    const depositToAccount = payment.DepositToAccountRef?.name || '';
-
-                    // Only count as deposited if not in Undeposited Funds
-                    if (payment.DepositToAccountRef &&
-                        !depositToAccount.toLowerCase().includes('undeposited')) {
-                        const amount = payment.TotalAmt || 0;
-                        depositedAmount += amount;
-                        depositedCount++;
-                    }
+                    const amount = deposit.TotalAmt || 0;
+                    depositedAmount += amount;
+                    depositedCount++;
                 }
             });
 
