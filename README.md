@@ -1,282 +1,306 @@
-# Owner Statements Automation System
+# Owner Statements App
 
-A comprehensive web application for automating property management owner statements with integrations to Hostaway PMS and SecureStay expense management.
+A full-stack property management application for generating owner statements, tracking financials, and managing vacation rental properties. Built for property managers who need to automate owner payouts and expense tracking.
 
-## Features
+## Overview
 
-### 🏠 Core Functionality
-- **Automated Statement Generation**: Tuesday-Monday weekly payout cycles
-- **Multi-Property Support**: Handle multiple properties per owner
-- **Business Rules Engine**: Configurable PM commissions, co-hosting, prorations
-- **Expense Management**: Multiple expense categories with automated imports
+This system automates the process of:
+1. Pulling reservation data from Hostify RMS (property management system)
+2. Syncing expense/income data from QuickBooks Online
+3. Generating owner statements with calculated payouts
+4. Emailing PDF statements to property owners
 
-### 🔌 Integrations
-- **Hostaway API**: Automatic reservation import and synchronization
-- **SecureStay API**: Cleaning fees, maintenance, upsells import
-- **CSV Upload**: Manual expense entry via spreadsheet upload
-- **Email Delivery**: Automated PDF statement distribution
+## Tech Stack
 
-### 📊 Dashboard Features
-- **Real-time Analytics**: Revenue tracking, owner summaries
-- **Advanced Filtering**: By owner, property, status, date range
-- **Statement Management**: Draft, generate, send, track status
-- **Manual Adjustments**: Chargebacks, refunds, one-off expenses
+| Layer | Technology |
+| ----- | ---------- |
+| Backend | Node.js 18+, Express 5, Sequelize ORM |
+| Frontend | React 19, TypeScript, Tailwind CSS, Radix UI |
+| Database | PostgreSQL (production), SQLite (development) |
+| Charts | Recharts, D3.js |
+| PDF | Puppeteer, PDFKit |
+| Email | SendGrid, Nodemailer |
+| Auth | JWT tokens, bcrypt |
+
+## Core Features
+
+### Statement Generation
+- Weekly (Tuesday-Monday) or monthly payout cycles
+- Automatic calculation of PM fees, tech fees, insurance
+- Support for multi-property owners
+- PDF generation with detailed line items
+
+### Financial Dashboard
+- Real-time expense/income breakdown by category
+- Period-over-period comparisons
+- Drill-down to individual transactions
+- Data pulled directly from QuickBooks
+
+### Integrations
+- **Hostify RMS** - Reservations, listings, property data
+- **QuickBooks Online** - Expenses, income, P&L reports
+- **SendGrid/SMTP** - Email delivery
+
+### Listings Management
+- Property details and owner assignments
+- Configurable PM fee percentages per property
+- Owner contact information and payment details
 
 ## Quick Start
 
-### 1. Installation
-```bash
-# Clone or download the application
-cd owner-statements-app
+### Prerequisites
 
-# Install dependencies
+- Node.js 18 or higher
+- PostgreSQL 14+ (production) or SQLite (local dev)
+- QuickBooks Online account (for financial data)
+- Hostify RMS account (for reservation data)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd owner-statements-app-complete
+
+# Install backend dependencies
 npm install
 
-# Copy environment configuration
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Create environment file
 cp config/environment.example .env
 ```
 
-### 2. Configuration
-Edit `.env` file with your API credentials:
+### Environment Configuration
+
+Edit `.env` with your credentials:
+
 ```env
-# Hostaway API
-HOSTAWAY_CLIENT_ID=your_client_id
-HOSTAWAY_CLIENT_SECRET=your_client_secret
+# Application
+PORT=3003
+NODE_ENV=development
+APP_URL=http://localhost:3000
+JWT_SECRET=your_jwt_secret_here
 
-# SecureStay API
-SECURESTAY_API_KEY=your_api_key
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/owner_statements_local
 
-# SendGrid Email
+# Hostify RMS API
+HOSTIFY_API_URL=https://api-rms.hostify.com
+HOSTIFY_API_KEY=your_hostify_api_key
+
+# QuickBooks Online
+QUICKBOOKS_CLIENT_ID=your_qb_client_id
+QUICKBOOKS_CLIENT_SECRET=your_qb_client_secret
+QUICKBOOKS_REDIRECT_URI=http://localhost:3003/api/quickbooks/auth/callback
+QUICKBOOKS_USE_SANDBOX=false
+
+# Email
 SENDGRID_API_KEY=your_sendgrid_key
 FROM_EMAIL=statements@yourcompany.com
+FROM_NAME=Property Management
 ```
 
-### 3. Database Setup
+### Database Setup
+
 ```bash
-# Initialize database with sample data
+# Initialize database with schema
 npm run init-db
 
-# OR reset database (deletes all data)
-npm run reset-db
+# Import listings from Hostify (optional)
+npm run import-listings
 ```
 
-### 4. Start Application
+### Running the Application
+
 ```bash
-# Production
-npm start
-
-# Development (with auto-reload)
+# Terminal 1 - Backend API (port 3003)
 npm run dev
+
+# Terminal 2 - Frontend React app (port 3000)
+cd frontend && npm start
 ```
 
-Visit `http://localhost:3003` to access the dashboard.
+Open `http://localhost:3000` in your browser.
 
-## Application Structure
+## Project Structure
 
-```
-owner-statements-app/
+```text
+owner-statements-app-complete/
 ├── src/
-│   ├── controllers/          # Request handlers
-│   ├── models/              # Database models (Sequelize)
-│   ├── routes/              # API endpoints
-│   ├── services/            # Business logic & integrations
-│   ├── middleware/          # Custom middleware
-│   ├── utils/               # Helper functions
-│   └── server.js            # Main application entry
-├── public/                  # Frontend assets
-│   ├── js/dashboard.js      # Dashboard JavaScript
-│   └── index.html           # Main UI
-├── config/                  # Configuration files
-├── database/                # SQLite database storage
-├── statements/              # Generated PDF statements
+│   ├── models/              # Sequelize database models
+│   │   ├── Listing.js       # Properties/listings
+│   │   ├── Statement.js     # Generated statements
+│   │   ├── User.js          # User accounts
+│   │   └── QuickBooksToken.js
+│   ├── routes/              # Express API routes
+│   │   ├── statements-file.js
+│   │   ├── financials.js    # QuickBooks financial data
+│   │   ├── quickbooks.js    # QB OAuth & API
+│   │   ├── listings.js
+│   │   └── auth.js
+│   ├── services/            # Business logic
+│   │   ├── QuickBooksService.js
+│   │   ├── HostifyService.js
+│   │   └── StatementService.js
+│   └── server.js            # Express app entry point
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── Dashboard.tsx
+│       │   ├── FinancialDashboard/  # Financial analytics
+│       │   ├── StatementsTable.tsx
+│       │   ├── ListingsPage.tsx
+│       │   └── GenerateModal.tsx
+│       ├── services/
+│       │   └── api.ts       # API client
+│       └── App.tsx
+├── config/
+│   └── environment.example
 ├── scripts/                 # Database utilities
-└── logs/                    # Application logs
+├── statements/              # Generated PDF files
+└── package.json
 ```
 
-## API Endpoints
+## API Reference
 
-### Dashboard
-- `GET /api/dashboard` - Main dashboard statistics
-- `GET /api/dashboard/properties` - Properties with owner info
-- `GET /api/dashboard/owners` - Owners with property counts
-- `GET /api/dashboard/week/:date` - Week-specific data
+### Authentication
 
-### Reservations
-- `GET /api/reservations` - List reservations with filters
-- `POST /api/reservations/sync` - Sync from Hostaway API
-- `POST /api/reservations/sync-week` - Sync specific payout week
-- `PUT /api/reservations/:id` - Update reservation
-- `DELETE /api/reservations/:id` - Delete reservation
-
-### Expenses
-- `GET /api/expenses` - List expenses with filters
-- `POST /api/expenses/sync` - Sync from SecureStay API
-- `POST /api/expenses/upload-csv` - Upload CSV file
-- `POST /api/expenses` - Create manual expense
-- `PUT /api/expenses/:id` - Update expense
-- `DELETE /api/expenses/:id` - Delete expense
+```bash
+POST /api/auth/login
+Body: { "username": "admin", "password": "..." }
+Returns: { "token": "jwt_token", "user": {...} }
+```
 
 ### Statements
-- `GET /api/statements` - List statements with filters
-- `GET /api/statements/:id` - Statement details with items
-- `POST /api/statements/generate` - Generate new statement
-- `PUT /api/statements/:id/adjustments` - Add manual adjustments
-- `PUT /api/statements/:id/status` - Update statement status
 
-### Properties & Owners
-- `GET /api/properties` - List properties
-- `POST /api/properties` - Create property
-- `PUT /api/properties/:id` - Update property
-- `DELETE /api/properties/:id` - Deactivate property
+```bash
+GET  /api/statements              # List all statements
+GET  /api/statements/:id          # Get statement details
+POST /api/statements/generate     # Generate new statement
+Body: {
+  "propertyId": "123",
+  "startDate": "2025-01-01",
+  "endDate": "2025-01-31",
+  "calculationType": "calendar"
+}
+```
 
-## Business Rules
+### Financials (QuickBooks)
 
-### Weekly Payout Cycle
-- **Tuesday to Monday**: Statements include reservations with checkout dates in this range
-- **Automatic Calculation**: Revenue, expenses, commissions, fees calculated per property
-- **Proration Support**: Long stays (28+ nights) with configurable percentage
+```bash
+GET /api/financials/summary?startDate=2025-01-01&endDate=2025-01-31
+GET /api/financials/by-category?startDate=...&endDate=...
+GET /api/financials/transactions?category=Utilities&startDate=...&endDate=...
+GET /api/financials/comparison?startDate=...&endDate=...
+```
 
-### Commission Structure
-- **Configurable Rates**: 10%, 15%, 20%, 25% per property or owner default
-- **Co-hosting Support**: Percentage splits and fixed fee deductions
-- **Tech Fees**: Monthly fees prorated weekly (default $50/month)
-- **Insurance Fees**: Monthly fees prorated weekly (default $25/month)
+### Listings
 
-### Expense Categories
-- **Cleaning**: Post-checkout cleaning services
-- **Maintenance**: Repairs, supplies, HVAC, etc.
-- **Upsells**: Guest add-ons and upgrades
-- **Tech Fee**: Monthly technology platform fee
-- **Insurance**: Property insurance coverage
-- **Chargebacks**: Payment disputes and reversals
-- **Refunds**: Guest refunds and cancellations
-- **Other**: Miscellaneous expenses
+```bash
+GET  /api/listings                # List all properties
+PUT  /api/listings/:id            # Update property
+POST /api/listings/sync           # Sync from Hostify
+```
 
-## CSV Upload Format
+### QuickBooks
 
-For manual expense uploads, use this CSV format:
-```csv
-propertyName,type,description,amount,date,vendor,invoiceNumber,category,notes
-"Downtown Condo","cleaning","Post-checkout cleaning",125.00,"2024-01-15","CleanPro","INV-001","cleaning","Standard cleaning"
-"Beach Villa","maintenance","HVAC repair",350.00,"2024-01-16","ABC Repair","MNT-456","maintenance","Emergency repair"
+```bash
+GET  /api/quickbooks/status       # Connection status
+GET  /api/quickbooks/auth-url     # Get OAuth URL
+GET  /api/quickbooks/auth/callback  # OAuth callback
 ```
 
 ## Database Schema
 
-### Core Tables
-- **owners**: Property owner information and default settings
-- **properties**: Property details with owner relationships
-- **reservations**: Booking data from Hostaway integration
-- **expenses**: All expense records from various sources
-- **statements**: Generated owner statements
-- **statement_items**: Detailed line items for each statement
+### Key Tables
 
-### Key Relationships
-- Owner → Properties (1:many)
-- Property → Reservations (1:many)
-- Property → Expenses (1:many)
-- Owner → Statements (1:many)
-- Statement → Statement Items (1:many)
+- **listings** - Properties with owner info, PM fees, addresses
+- **statements** - Generated owner statements
+- **users** - User accounts for authentication
+- **quickbooks_tokens** - OAuth tokens for QB connection
+
+### Relationships
+
+```text
+listings (1) ──── (many) statements
+users (1) ──── (many) statements (createdBy)
+```
 
 ## Development
 
-### Database Migrations
+### Running Tests
 
-**Important:** Automatic schema changes (`alter: true`) are disabled in production to prevent unintended data modifications. Schema changes must be done via manual migrations.
-
-**When adding new columns to models:**
-
-1. Update the Sequelize model in `src/models/` (e.g., `Listing.js`)
-2. Create a migration SQL file in `migrations/` folder
-3. Run the migration manually on the production database
-
-**Example migration:**
-```sql
--- migrations/add_new_field.sql
-ALTER TABLE listings ADD COLUMN IF NOT EXISTS new_field TEXT;
-```
-
-**Running migrations:**
 ```bash
-# For PostgreSQL (production)
-psql $DATABASE_URL -f migrations/add_new_field.sql
-
-# For SQLite (local development)
-sqlite3 database/owner_statements.db < migrations/add_new_field.sql
+npm run test           # Run main test suite
+npm run test:all       # Run all test suites
+npm run test:jest      # Run Jest tests
 ```
 
-**Note:** The `{ force: false }` sync option only creates tables if they don't exist - it will NOT modify existing tables or columns.
+### Adding New Features
 
-### Adding New Expense Sources
-1. Create service in `src/services/` (e.g., `NewServiceAPI.js`)
-2. Add transformation logic for expense data format
-3. Create sync endpoint in `src/routes/expenses.js`
-4. Add UI button and handler in `public/js/dashboard.js`
+1. **New API Route**: Add to `src/routes/`, register in `server.js`
+2. **New Model**: Add to `src/models/`, import in `server.js`
+3. **New Component**: Add to `frontend/src/components/`
 
-### Customizing Business Rules
-Edit `src/services/BusinessRulesService.js`:
-- Modify commission calculation logic
-- Add new proration rules
-- Customize fee calculations
-- Adjust payout week logic
+### Code Style
 
-### Adding Statement Fields
-1. Update database model in `src/models/Statement.js`
-2. Modify calculation logic in `BusinessRulesService.js`
-3. Update API responses in statement routes
-4. Add UI fields in dashboard
+- Backend: CommonJS modules, async/await
+- Frontend: TypeScript, functional components, hooks
+
+## Deployment
+
+### Railway (Recommended)
+
+1. Connect GitHub repository to Railway
+2. Add PostgreSQL database service
+3. Configure environment variables:
+
+```text
+DATABASE_URL          = (auto-set by Railway Postgres)
+APP_URL               = https://your-app.up.railway.app
+NODE_ENV              = production
+QUICKBOOKS_REDIRECT_URI = https://your-app.up.railway.app/api/quickbooks/auth/callback
+JWT_SECRET            = (generate secure random string)
+... (all other env vars)
+```
+
+4. Deploy - Railway auto-detects Node.js and runs `npm start`
+
+### Build Commands
+
+```bash
+npm run build          # Build frontend for production
+npm start              # Start production server
+```
 
 ## Troubleshooting
 
-### Common Issues
+### QuickBooks Connection Issues
 
-**Database Connection Errors**
+1. Verify `QUICKBOOKS_CLIENT_ID` and `QUICKBOOKS_CLIENT_SECRET`
+2. Ensure redirect URI matches exactly in QB Developer Portal
+3. Check `QUICKBOOKS_USE_SANDBOX` matches your QB account type
+
+### Database Connection
+
 ```bash
-# Reset database
+# Reset local database
 npm run reset-db
+
+# Check PostgreSQL connection
+psql $DATABASE_URL -c "SELECT 1"
 ```
 
-**API Integration Failures**
-- Check API credentials in `.env`
-- Verify network connectivity
-- Review API rate limits
+### Common Errors
 
-**Missing Dependencies**
-```bash
-# Reinstall packages
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Logs
-- Application logs: `logs/combined.log`
-- Error logs: `logs/error.log`
-- Console output for real-time debugging
-
-## Production Deployment
-
-### Environment Setup
-1. Set `NODE_ENV=production` in environment
-2. Configure production database (PostgreSQL recommended)
-3. Set up SSL certificates for HTTPS
-4. Configure email delivery service
-5. Set up automated backups
-
-### Security Considerations
-- Store API keys in secure environment variables
-- Enable HTTPS for all communications
-- Implement rate limiting for API endpoints
-- Regular security updates for dependencies
-
-## Support
-
-For technical support or feature requests:
-1. Check application logs for error details
-2. Verify API integrations are working
-3. Test with sample data using `npm run reset-db`
-4. Review configuration in `.env` file
+| Error | Solution |
+| ----- | -------- |
+| `ECONNREFUSED` | Database not running |
+| `401 Unauthorized` | Invalid/expired JWT token |
+| `QuickBooks token expired` | Reconnect in Settings page |
 
 ## License
 
-ISC License - Internal use for property management operations.
-# Database connection configured
+ISC License

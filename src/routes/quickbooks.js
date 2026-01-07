@@ -468,7 +468,10 @@ router.get('/auth/callback', async (req, res) => {
         }
 
         console.log('QuickBooks connected successfully!');
-        
+
+        // Determine return URL based on environment
+        const appUrl = process.env.APP_URL || 'http://localhost:3000';
+
         // Return success page like working example
         res.send(`
             <!DOCTYPE html>
@@ -484,7 +487,7 @@ router.get('/auth/callback', async (req, res) => {
             <body>
                 <div class="success">Connected to QuickBooks!</div>
                 <p>You can now access QuickBooks data. You can close this window.</p>
-                <a href="http://localhost:3000" class="button">Return to Application</a>
+                <a href="${appUrl}" class="button">Return to Application</a>
                 <script>
                     // Auto-close if opened in popup
                     if (window.opener) {
@@ -497,6 +500,7 @@ router.get('/auth/callback', async (req, res) => {
         `);
     } catch (error) {
         console.error('OAuth error:', error);
+        const appUrl = process.env.APP_URL || 'http://localhost:3000';
         res.status(500).send(`
             <!DOCTYPE html>
             <html>
@@ -511,7 +515,7 @@ router.get('/auth/callback', async (req, res) => {
             <body>
                 <div class="error">OAuth Error</div>
                 <p>Error: ${error.message}</p>
-                <a href="http://localhost:3000" class="button">Return to Application</a>
+                <a href="${appUrl}" class="button">Return to Application</a>
             </body>
             </html>
         `);
