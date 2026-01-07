@@ -968,21 +968,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               dataSource={categoryDataSource}
               categoryMapping={categoryMappingEnabled}
               unmappedAccounts={unmappedAccounts}
-              onCategorySelect={(categoryName) => {
-                // Find the category to get originalAccounts and determine if income or expense
-                const expCat = expenseCategories.find(c => c.name === categoryName);
-                const incCat = incomeCategories.find(c => c.name === categoryName);
-                const category = expCat || incCat;
-                const categoryType = incCat ? 'income' : 'expense';
-                if (category) {
-                  handleCategoryClick({
-                    name: categoryName,
-                    amount: category.amount,
-                    color: '',
-                    originalAccounts: (category as any).originalAccounts,
-                    categoryType
-                  });
-                }
+              onCategorySelect={(categoryName, categoryData) => {
+                // Use the type from the category data directly (income or expense)
+                // This is the definitive source since ByCategoryTab tracks which list it came from
+                const categoryType = categoryData?.type || 'expense';
+                handleCategoryClick({
+                  name: categoryName,
+                  amount: categoryData?.amount || 0,
+                  color: '',
+                  originalAccounts: categoryData?.originalAccounts || [],
+                  categoryType
+                });
               }}
             />
           </TabsContent>

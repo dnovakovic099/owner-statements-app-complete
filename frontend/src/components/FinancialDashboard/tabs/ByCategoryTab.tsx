@@ -58,7 +58,7 @@ export interface CategoryData {
 
 export interface ByCategoryTabProps {
   categories: CategoryData[];
-  onCategorySelect?: (category: QuickBooksCategory) => void;
+  onCategorySelect?: (category: QuickBooksCategory, categoryData?: CategoryData) => void;
   dateRange?: {
     startDate: string;
     endDate: string;
@@ -204,8 +204,9 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
     }
   };
 
-  const handleRowClick = (category: QuickBooksCategory) => {
-    onCategorySelect?.(category);
+  const handleRowClick = (categoryName: QuickBooksCategory, categoryData?: CategoryData) => {
+    // Pass both the category name and full data (including type) to the parent
+    onCategorySelect?.(categoryName, categoryData);
   };
 
   const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
@@ -413,7 +414,13 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
                   dataKey="amount"
                   radius={[0, 4, 4, 0]}
                   cursor="pointer"
-                  onClick={(data: any) => data?.payload?.category && handleRowClick(data.payload.category as QuickBooksCategory)}
+                  onClick={(data: any) => {
+                    if (data?.payload?.category) {
+                      // Find the full item data from processedData
+                      const item = processedData.find(d => d.category === data.payload.category);
+                      handleRowClick(data.payload.category as QuickBooksCategory, item);
+                    }
+                  }}
                 >
                   {chartData.map((entry, index) => (
                     <Cell
@@ -474,7 +481,7 @@ const ByCategoryTab: React.FC<ByCategoryTabProps> = ({
                   {processedData.map((item, index) => (
                     <tr
                       key={item.category}
-                      onClick={() => handleRowClick(item.category)}
+                      onClick={() => handleRowClick(item.category, item)}
                       className="hover:bg-blue-50 cursor-pointer transition-colors group"
                     >
                       <td className="px-4 py-3">
