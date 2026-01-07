@@ -1573,6 +1573,168 @@ class QuickBooksService {
             throw new Error(`Failed to get expenses by account names: ${error.message}`);
         }
     }
+
+    /**
+     * Get income transactions for specific account names using Invoice/SalesReceipt data
+     * @param {string[]} accountNames - Array of account names to filter by
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @returns {Promise<Object>} Filtered transactions matching the accounts
+     */
+    async getIncomeByAccountNames(accountNames, startDate, endDate) {
+        try {
+            console.log(`[QuickBooks] getIncomeByAccountNames called with:`, accountNames);
+            const qbo = await this._getQboClient();
+
+            // Fetch both Invoices and SalesReceipts
+            const [invoices, salesReceipts] = await Promise.all([
+                this._fetchInvoices(qbo, startDate, endDate),
+                this._fetchSalesReceipts(qbo, startDate, endDate)
+            ]);
+
+            console.log(`[QuickBooks] Fetched ${invoices.length} invoices, ${salesReceipts.length} sales receipts`);
+
+            // Helper to check if account matches any of the target accounts
+            const matchesAnyAccount = (value) => {
+                if (!value) return false;
+                const valueLower = value.toLowerCase().trim();
+
+                // "Other" is a catch-all - match if no specific pattern matches
+                if (accountNames.some(a => a.toLowerCase() === 'other')) {
+                    return true; // Include all for "Other" category
+                }
+
+                return accountNames.some(accountName => {
+                    const accountNameLower = accountName.toLowerCase().trim();
+                    if (valueLower === accountNameLower) return true;
+                    if (valueLower.includes(accountNameLower) || accountNameLower.includes(valueLower)) return true;
+                    return false;
+                });
+            };
+
+            const matchingIncome = [];
+            const matchingAccounts = new Set();
+
+            // Process Invoices - check each line item
+            for (const invoice of invoices) {
+                const lines = invoice.Line || [];
+                for (const line of lines) {
+                    // Get income account from line item
+                    const lineAccountName = line.SalesItemLineDetail?.ItemRef?.name ||
+                                           line.Description ||
+                                           'Services';
+                    const lineAmount = line.Amount || 0;
+
+                    if (lineAmount > 0 && (accountNames.some(a => a.toLowerCase() === 'other') || matchesAnyAccount(lineAccountName))) {
+                        matchingIncome.push({
+                            date: invoice.TxnDate,
+                            type: 'Invoice',
+                            docNumber: invoice.DocNumber,
+                            name: invoice.CustomerRef?.name || line.Description || 'Invoice',
+                            memo: line.Description || invoice.PrivateNote,
+                            amount: Math.abs(lineAmount),
+                            account: lineAccountName,
+                            matchedAccount: lineAccountName,
+                            id: `${invoice.Id}-${line.Id || lines.indexOf(line)}`
+                        });
+                        matchingAccounts.add(lineAccountName);
+                    }
+                }
+            }
+
+            // Process SalesReceipts - check each line item
+            for (const receipt of salesReceipts) {
+                const lines = receipt.Line || [];
+                for (const line of lines) {
+                    const lineAccountName = line.SalesItemLineDetail?.ItemRef?.name ||
+                                           line.Description ||
+                                           'Sales';
+                    const lineAmount = line.Amount || 0;
+
+                    if (lineAmount > 0 && (accountNames.some(a => a.toLowerCase() === 'other') || matchesAnyAccount(lineAccountName))) {
+                        matchingIncome.push({
+                            date: receipt.TxnDate,
+                            type: 'SalesReceipt',
+                            docNumber: receipt.DocNumber,
+                            name: receipt.CustomerRef?.name || line.Description || 'Sales Receipt',
+                            memo: line.Description || receipt.PrivateNote,
+                            amount: Math.abs(lineAmount),
+                            account: lineAccountName,
+                            matchedAccount: lineAccountName,
+                            id: `${receipt.Id}-${line.Id || lines.indexOf(line)}`
+                        });
+                        matchingAccounts.add(lineAccountName);
+                    }
+                }
+            }
+
+            // Sort by date descending
+            matchingIncome.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const total = matchingIncome.reduce((sum, t) => sum + t.amount, 0);
+
+            console.log(`[QuickBooks] Found ${matchingIncome.length} matching income transactions, total: $${total.toFixed(2)}`);
+
+            return {
+                searchedAccounts: accountNames,
+                matchingAccounts: Array.from(matchingAccounts),
+                total,
+                transactions: matchingIncome,
+                transactionCount: matchingIncome.length
+            };
+        } catch (error) {
+            console.error('getIncomeByAccountNames error:', error);
+            throw new Error(`Failed to get income by account names: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get ALL transactions (income + expenses) for specific account names
+     * Used for categories like "Other" that might contain both types
+     * @param {string[]} accountNames - Array of account names to filter by
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @param {string} type - 'income', 'expense', or 'all'
+     * @returns {Promise<Object>} Filtered transactions matching the accounts
+     */
+    async getTransactionsByAccountNames(accountNames, startDate, endDate, type = 'all') {
+        console.log(`[QuickBooks] getTransactionsByAccountNames type=${type}, accounts:`, accountNames);
+
+        if (type === 'expense') {
+            return this.getExpensesByAccountNames(accountNames, startDate, endDate);
+        }
+
+        if (type === 'income') {
+            return this.getIncomeByAccountNames(accountNames, startDate, endDate);
+        }
+
+        // Fetch both income and expenses
+        const [expenses, income] = await Promise.all([
+            this.getExpensesByAccountNames(accountNames, startDate, endDate),
+            this.getIncomeByAccountNames(accountNames, startDate, endDate)
+        ]);
+
+        // Combine and sort
+        const allTransactions = [
+            ...expenses.transactions.map(t => ({ ...t, transactionType: 'expense' })),
+            ...income.transactions.map(t => ({ ...t, transactionType: 'income' }))
+        ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const allMatchingAccounts = new Set([
+            ...expenses.matchingAccounts,
+            ...income.matchingAccounts
+        ]);
+
+        return {
+            searchedAccounts: accountNames,
+            matchingAccounts: Array.from(allMatchingAccounts),
+            total: income.total - expenses.total, // Net
+            incomeTotal: income.total,
+            expenseTotal: expenses.total,
+            transactions: allTransactions,
+            transactionCount: allTransactions.length
+        };
+    }
 }
 
 module.exports = QuickBooksService;

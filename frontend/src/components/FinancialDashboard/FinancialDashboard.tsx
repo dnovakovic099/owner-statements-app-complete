@@ -632,7 +632,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   }, [dateRange, fetchFinancialData, fetchQuickBooksWidgets]);
 
   // Event handlers
-  const handleCategoryClick = async (category: ExpenseCategory) => {
+  const handleCategoryClick = async (category: ExpenseCategory & { categoryType?: 'income' | 'expense' }) => {
     setSelectedCategory(category.name);
     setIsTransactionModalOpen(true);
     setTransactions([]); // Clear previous transactions
@@ -646,11 +646,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         ? (category as any).originalAccounts
         : [category.name];
 
+      // Determine transaction type - income categories should fetch income transactions
+      const transactionType = category.categoryType || 'expense';
+
       // Build query params
       const params = new URLSearchParams({
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
-        accounts: JSON.stringify(accountNames)
+        accounts: JSON.stringify(accountNames),
+        type: transactionType
       });
 
       const response = await fetch(
@@ -704,8 +708,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               description,
               amount: Math.abs(t.amount || t.debit || t.credit || 0),
               category: actualCategory,
-              property: t.name || '', // Vendor/payee name
-              type: 'expense' as const,
+              property: t.name || '', // Vendor/payee or customer name
+              type: (t.transactionType === 'income' ? 'income' : 'expense') as 'income' | 'expense',
             };
           });
         setTransactions(mappedTransactions);
@@ -874,7 +878,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             <ExpensesCategoryChart
               categories={expenseCategories}
               total={summary.totalExpenses}
-              onCategoryClick={handleCategoryClick}
+              onCategoryClick={(cat) => handleCategoryClick({ ...cat, categoryType: 'expense' })}
             />
           </div>
 
@@ -965,16 +969,18 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               categoryMapping={categoryMappingEnabled}
               unmappedAccounts={unmappedAccounts}
               onCategorySelect={(categoryName) => {
-                // Find the category to get originalAccounts
+                // Find the category to get originalAccounts and determine if income or expense
                 const expCat = expenseCategories.find(c => c.name === categoryName);
                 const incCat = incomeCategories.find(c => c.name === categoryName);
                 const category = expCat || incCat;
+                const categoryType = incCat ? 'income' : 'expense';
                 if (category) {
                   handleCategoryClick({
                     name: categoryName,
                     amount: category.amount,
                     color: '',
-                    originalAccounts: (category as any).originalAccounts
+                    originalAccounts: (category as any).originalAccounts,
+                    categoryType
                   });
                 }
               }}

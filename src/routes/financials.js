@@ -1352,19 +1352,21 @@ router.get('/transactions-by-account', async (req, res) => {
 /**
  * GET /api/financials/account-transactions/:accountName
  * Get transactions for a specific account (category drill-down)
- * Uses the same Purchase/Bill data source as by-category for consistency
+ * Uses the same Purchase/Bill/Invoice/SalesReceipt data source as by-category
  *
  * Query params:
  * - startDate: Start date (YYYY-MM-DD)
  * - endDate: End date (YYYY-MM-DD)
  * - accounts: JSON array of original account names to search for (optional)
- * - source: 'purchases' (default, matches by-category) or 'gl' (GL report, may differ)
+ * - type: 'income', 'expense', or 'all' (default: 'expense')
+ * - source: 'purchases' (default) or 'gl' (GL report)
  */
 router.get('/account-transactions/:accountName', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
         const accountName = decodeURIComponent(req.params.accountName);
-        const source = req.query.source || 'purchases'; // Default to purchases for consistency
+        const source = req.query.source || 'purchases';
+        const transactionType = req.query.type || 'expense'; // 'income', 'expense', or 'all'
 
         // Parse accounts array if provided (these are the original QB account names)
         let accountsToSearch = [accountName];
@@ -1389,17 +1391,20 @@ router.get('/account-transactions/:accountName', async (req, res) => {
         console.log(`[account-transactions] Fetching transactions for "${accountName}"`);
         console.log(`[account-transactions] Accounts to search:`, accountsToSearch);
         console.log(`[account-transactions] Date range: ${startDate} to ${endDate}`);
-        console.log(`[account-transactions] Source: ${source}`);
+        console.log(`[account-transactions] Type: ${transactionType}, Source: ${source}`);
 
-        // Use the same data source as by-category (Purchases/Bills) for consistency
-        // This ensures transaction count matches what's shown in the category summary
         let data;
         if (source === 'gl') {
             // GL report source (may show more transactions due to different transaction types)
             data = await quickBooksService.getTransactionsForAccounts(accountsToSearch, startDate, endDate);
         } else {
-            // Purchases/Bills source (matches by-category exactly)
-            data = await quickBooksService.getExpensesByAccountNames(accountsToSearch, startDate, endDate);
+            // Use the appropriate method based on transaction type
+            data = await quickBooksService.getTransactionsByAccountNames(
+                accountsToSearch,
+                startDate,
+                endDate,
+                transactionType
+            );
         }
         console.log(`[account-transactions] Found ${data.transactionCount} transactions, total: ${data.total}`);
 
@@ -1411,6 +1416,8 @@ router.get('/account-transactions/:accountName', async (req, res) => {
                 searchedAccounts: accountsToSearch,
                 matchingAccounts: data.matchingAccounts,
                 total: data.total,
+                incomeTotal: data.incomeTotal,
+                expenseTotal: data.expenseTotal,
                 transactionCount: data.transactionCount,
                 transactions: data.transactions.map(t => ({
                     date: t.date,
@@ -1424,9 +1431,11 @@ router.get('/account-transactions/:accountName', async (req, res) => {
                     credit: t.credit,
                     account: t.account,
                     matchedAccount: t.matchedAccount,
+                    transactionType: t.transactionType, // 'income' or 'expense'
                     id: t.id
                 })),
-                source: source === 'gl' ? 'quickbooks-gl-report' : 'quickbooks-purchases-bills'
+                source: source === 'gl' ? 'quickbooks-gl-report' : 'quickbooks-transactions',
+                requestedType: transactionType
             }
         });
     } catch (error) {
