@@ -747,108 +747,106 @@ class QuickBooksService {
     }
 
     /**
-     * Helper: Fetch purchases within date range
+     * Helper: Fetch all records with pagination support
+     * QuickBooks API returns max 1000 records per request
+     * @param {Function} findMethod - The qbo.findXXX method to call
+     * @param {string} entityName - Name of entity for logging (e.g., 'Purchase', 'Bill')
+     * @param {string} responseKey - Key in QueryResponse (e.g., 'Purchase', 'Bill')
+     * @returns {Promise<Array>} All records across all pages
      */
-    _fetchPurchases(qbo, startDate, endDate) {
-        return new Promise((resolve) => {
-            // Fetch all purchases then filter by date client-side
-            qbo.findPurchases({ limit: 1000 }, (err, data) => {
-                if (err) {
-                    console.error('QBO Purchases query error:', err);
-                    resolve([]);
-                    return;
-                }
-                const purchases = data.QueryResponse?.Purchase || [];
-                const filtered = purchases.filter(p => {
-                    const txnDate = p.TxnDate;
-                    return txnDate >= startDate && txnDate <= endDate;
+    async _fetchAllWithPagination(qbo, findMethod, entityName, responseKey) {
+        const PAGE_SIZE = 1000;
+        const MAX_PAGES = 10; // Safety limit to prevent infinite loops
+        let allRecords = [];
+        let startPosition = 1;
+        let hasMore = true;
+        let pageCount = 0;
+
+        while (hasMore && pageCount < MAX_PAGES) {
+            const records = await new Promise((resolve) => {
+                findMethod.call(qbo, {
+                    limit: PAGE_SIZE,
+                    offset: startPosition - 1 // node-quickbooks uses 0-based offset
+                }, (err, data) => {
+                    if (err) {
+                        console.error(`QBO ${entityName} query error:`, err);
+                        resolve([]);
+                        return;
+                    }
+                    resolve(data.QueryResponse?.[responseKey] || []);
                 });
-                resolve(filtered);
             });
+
+            allRecords = allRecords.concat(records);
+            pageCount++;
+
+            // Check if there are more records
+            if (records.length < PAGE_SIZE) {
+                hasMore = false;
+            } else {
+                startPosition += PAGE_SIZE;
+            }
+        }
+
+        if (pageCount > 1) {
+            console.log(`[QuickBooks] Fetched ${allRecords.length} ${entityName} records across ${pageCount} pages`);
+        }
+
+        return allRecords;
+    }
+
+    /**
+     * Helper: Fetch purchases within date range (with pagination)
+     */
+    async _fetchPurchases(qbo, startDate, endDate) {
+        const purchases = await this._fetchAllWithPagination(qbo, qbo.findPurchases, 'Purchase', 'Purchase');
+        return purchases.filter(p => {
+            const txnDate = p.TxnDate;
+            return txnDate >= startDate && txnDate <= endDate;
         });
     }
 
     /**
-     * Helper: Fetch bills within date range
+     * Helper: Fetch bills within date range (with pagination)
      */
-    _fetchBills(qbo, startDate, endDate) {
-        return new Promise((resolve) => {
-            qbo.findBills({ limit: 1000 }, (err, data) => {
-                if (err) {
-                    console.error('QBO Bills query error:', err);
-                    resolve([]);
-                    return;
-                }
-                const bills = data.QueryResponse?.Bill || [];
-                const filtered = bills.filter(b => {
-                    const txnDate = b.TxnDate;
-                    return txnDate >= startDate && txnDate <= endDate;
-                });
-                resolve(filtered);
-            });
+    async _fetchBills(qbo, startDate, endDate) {
+        const bills = await this._fetchAllWithPagination(qbo, qbo.findBills, 'Bill', 'Bill');
+        return bills.filter(b => {
+            const txnDate = b.TxnDate;
+            return txnDate >= startDate && txnDate <= endDate;
         });
     }
 
     /**
-     * Helper: Fetch invoices within date range
+     * Helper: Fetch invoices within date range (with pagination)
      */
-    _fetchInvoices(qbo, startDate, endDate) {
-        return new Promise((resolve) => {
-            qbo.findInvoices({ limit: 1000 }, (err, data) => {
-                if (err) {
-                    console.error('QBO Invoices query error:', err);
-                    resolve([]);
-                    return;
-                }
-                const invoices = data.QueryResponse?.Invoice || [];
-                const filtered = invoices.filter(i => {
-                    const txnDate = i.TxnDate;
-                    return txnDate >= startDate && txnDate <= endDate;
-                });
-                resolve(filtered);
-            });
+    async _fetchInvoices(qbo, startDate, endDate) {
+        const invoices = await this._fetchAllWithPagination(qbo, qbo.findInvoices, 'Invoice', 'Invoice');
+        return invoices.filter(i => {
+            const txnDate = i.TxnDate;
+            return txnDate >= startDate && txnDate <= endDate;
         });
     }
 
     /**
-     * Helper: Fetch sales receipts within date range
+     * Helper: Fetch sales receipts within date range (with pagination)
      */
-    _fetchSalesReceipts(qbo, startDate, endDate) {
-        return new Promise((resolve) => {
-            qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
-                if (err) {
-                    console.error('QBO SalesReceipts query error:', err);
-                    resolve([]);
-                    return;
-                }
-                const receipts = data.QueryResponse?.SalesReceipt || [];
-                const filtered = receipts.filter(r => {
-                    const txnDate = r.TxnDate;
-                    return txnDate >= startDate && txnDate <= endDate;
-                });
-                resolve(filtered);
-            });
+    async _fetchSalesReceipts(qbo, startDate, endDate) {
+        const receipts = await this._fetchAllWithPagination(qbo, qbo.findSalesReceipts, 'SalesReceipt', 'SalesReceipt');
+        return receipts.filter(r => {
+            const txnDate = r.TxnDate;
+            return txnDate >= startDate && txnDate <= endDate;
         });
     }
 
     /**
-     * Helper: Fetch payments within date range
+     * Helper: Fetch payments within date range (with pagination)
      */
-    _fetchPayments(qbo, startDate, endDate) {
-        return new Promise((resolve) => {
-            qbo.findPayments({ limit: 1000 }, (err, data) => {
-                if (err) {
-                    console.error('QBO Payments query error:', err);
-                    resolve([]);
-                    return;
-                }
-                const payments = data.QueryResponse?.Payment || [];
-                const filtered = payments.filter(p => {
-                    const txnDate = p.TxnDate;
-                    return txnDate >= startDate && txnDate <= endDate;
-                });
-                resolve(filtered);
-            });
+    async _fetchPayments(qbo, startDate, endDate) {
+        const payments = await this._fetchAllWithPagination(qbo, qbo.findPayments, 'Payment', 'Payment');
+        return payments.filter(p => {
+            const txnDate = p.TxnDate;
+            return txnDate >= startDate && txnDate <= endDate;
         });
     }
 
@@ -1464,6 +1462,7 @@ class QuickBooksService {
     /**
      * Get expense transactions for specific account names using Purchase/Bill data
      * This matches exactly what by-category returns (uses findPurchases/findBills)
+     * Checks ALL line items in each purchase, not just the first one
      * @param {string[]} accountNames - Array of account names to filter by
      * @param {string} startDate - Start date (YYYY-MM-DD)
      * @param {string} endDate - End date (YYYY-MM-DD)
@@ -1480,13 +1479,7 @@ class QuickBooksService {
                 this._fetchBills(qbo, startDate, endDate)
             ]);
 
-            // Normalize all expenses
-            const allExpenses = [
-                ...purchases.map(p => this._normalizePurchase(p)),
-                ...bills.map(b => this._normalizeBill(b))
-            ];
-
-            console.log(`[QuickBooks] Total expenses fetched: ${allExpenses.length}`);
+            console.log(`[QuickBooks] Fetched ${purchases.length} purchases, ${bills.length} bills`);
 
             // Helper to check if account matches any of the target accounts
             const matchesAnyAccount = (value) => {
@@ -1505,28 +1498,58 @@ class QuickBooksService {
                 });
             };
 
-            // Filter expenses by account name (using CategoryName which is the expense account)
+            // Filter by checking ALL line items in each purchase/bill
+            // This is critical because a purchase can have multiple lines with different expense accounts
             const matchingExpenses = [];
             const matchingAccounts = new Set();
 
-            for (const expense of allExpenses) {
-                // CategoryName is the expense account from line items
-                // For Purchases: CategoryName = expense account, AccountName = bank account
-                const categoryName = expense.CategoryName || expense.AccountName;
+            // Process Purchases - check each line item
+            for (const purchase of purchases) {
+                const lines = purchase.Line || [];
+                for (const line of lines) {
+                    // Get the expense account from the line item
+                    const lineAccountName = line.AccountBasedExpenseLineDetail?.AccountRef?.name || null;
+                    const lineAmount = line.Amount || 0;
 
-                if (matchesAnyAccount(categoryName)) {
-                    matchingExpenses.push({
-                        date: expense.TxnDate,
-                        type: expense.Type,
-                        docNumber: expense.DocNumber,
-                        name: expense.VendorName || expense.Description,
-                        memo: expense.Description,
-                        amount: Math.abs(expense.Amount || 0),
-                        account: categoryName,
-                        matchedAccount: categoryName,
-                        id: expense.Id
-                    });
-                    matchingAccounts.add(categoryName);
+                    if (lineAccountName && matchesAnyAccount(lineAccountName) && lineAmount > 0) {
+                        matchingExpenses.push({
+                            date: purchase.TxnDate,
+                            type: 'Purchase',
+                            docNumber: purchase.DocNumber,
+                            name: purchase.EntityRef?.name || line.Description || 'Purchase',
+                            memo: line.Description || purchase.PrivateNote,
+                            amount: Math.abs(lineAmount),
+                            account: lineAccountName,
+                            matchedAccount: lineAccountName,
+                            id: `${purchase.Id}-${line.Id || lines.indexOf(line)}`
+                        });
+                        matchingAccounts.add(lineAccountName);
+                    }
+                }
+            }
+
+            // Process Bills - check each line item
+            for (const bill of bills) {
+                const lines = bill.Line || [];
+                for (const line of lines) {
+                    // Get the expense account from the line item
+                    const lineAccountName = line.AccountBasedExpenseLineDetail?.AccountRef?.name || null;
+                    const lineAmount = line.Amount || 0;
+
+                    if (lineAccountName && matchesAnyAccount(lineAccountName) && lineAmount > 0) {
+                        matchingExpenses.push({
+                            date: bill.TxnDate,
+                            type: 'Bill',
+                            docNumber: bill.DocNumber,
+                            name: bill.VendorRef?.name || line.Description || 'Bill',
+                            memo: line.Description || bill.PrivateNote,
+                            amount: Math.abs(lineAmount),
+                            account: lineAccountName,
+                            matchedAccount: lineAccountName,
+                            id: `${bill.Id}-${line.Id || lines.indexOf(line)}`
+                        });
+                        matchingAccounts.add(lineAccountName);
+                    }
                 }
             }
 
