@@ -767,13 +767,14 @@ router.get('/by-category', async (req, res) => {
                     total: cat.total,
                     count: cat.count,
                     originalAccounts: cat.originalAccounts,
-                    transactions: cat.recentTransactions
+                    // Include ALL transactions for drill-down (not just recent 5)
+                    transactions: cat.transactions || []
                 }));
 
                 // Log the top expense categories with their original accounts for debugging
-                console.log('[by-category] Top 5 expense categories with originalAccounts:');
+                console.log('[by-category] Top 5 expense categories with transactions:');
                 expenseCategories.slice(0, 5).forEach(cat => {
-                    console.log(`  - ${cat.name}: $${cat.total.toFixed(2)} (${cat.count} txns) -> originalAccounts: ${JSON.stringify(cat.originalAccounts)}`);
+                    console.log(`  - ${cat.name}: $${cat.total.toFixed(2)} (${cat.count} txns, ${cat.transactions?.length || 0} in array)`);
                 });
 
                 // Get income summary with mapped categories
@@ -783,7 +784,8 @@ router.get('/by-category', async (req, res) => {
                     total: cat.total,
                     count: cat.count,
                     originalAccounts: cat.originalAccounts,
-                    transactions: cat.recentTransactions
+                    // Include ALL transactions for drill-down (not just recent 5)
+                    transactions: cat.transactions || []
                 }));
 
                 // Track unmapped accounts for debugging/improvement
