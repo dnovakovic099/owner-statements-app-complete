@@ -8,11 +8,13 @@ const assert = require('assert');
 const Statement = require('../models/Statement');
 const Listing = require('../models/Listing');
 
-describe('Internal Notes Snapshotting', function() {
-    this.timeout(30000);
+// Set Jest timeout for all tests in this file
+jest.setTimeout(30000);
 
-    describe('1. Statement Model', function() {
-        it('should have internalNotes field defined', function() {
+describe('Internal Notes Snapshotting', () => {
+
+    describe('1. Statement Model', () => {
+        it('should have internalNotes field defined', () => {
             const attributes = Statement.rawAttributes;
             assert(attributes.internalNotes, 'Statement model should have internalNotes field');
             assert.strictEqual(attributes.internalNotes.type.key, 'TEXT', 'internalNotes should be TEXT type');
@@ -22,8 +24,8 @@ describe('Internal Notes Snapshotting', function() {
         });
     });
 
-    describe('2. Database Column', function() {
-        it('should have internal_notes column in statements table', async function() {
+    describe('2. Database Column', () => {
+        it('should have internal_notes column in statements table', async () => {
             const [results] = await Statement.sequelize.query(
                 "SELECT column_name FROM information_schema.columns WHERE table_name = 'statements' AND column_name = 'internal_notes'"
             );
@@ -32,8 +34,8 @@ describe('Internal Notes Snapshotting', function() {
         });
     });
 
-    describe('3. Existing Statement Notes Persistence', function() {
-        it('should retrieve stored internalNotes from existing statements', async function() {
+    describe('3. Existing Statement Notes Persistence', () => {
+        it('should retrieve stored internalNotes from existing statements', async () => {
             // Find any statement that has internalNotes set
             const statementWithNotes = await Statement.findOne({
                 where: Statement.sequelize.literal("internal_notes IS NOT NULL AND internal_notes != ''")
@@ -54,14 +56,14 @@ describe('Internal Notes Snapshotting', function() {
         });
     });
 
-    describe('4. Listing Internal Notes', function() {
-        it('should have internalNotes on Listing model', function() {
+    describe('4. Listing Internal Notes', () => {
+        it('should have internalNotes on Listing model', () => {
             const attributes = Listing.rawAttributes;
             assert(attributes.internalNotes, 'Listing model should have internalNotes field');
             console.log('✓ Listing model has internalNotes field');
         });
 
-        it('should retrieve internalNotes from listings', async function() {
+        it('should retrieve internalNotes from listings', async () => {
             const listingWithNotes = await Listing.findOne({
                 where: Listing.sequelize.literal("internal_notes IS NOT NULL AND internal_notes != ''")
             });
@@ -75,8 +77,8 @@ describe('Internal Notes Snapshotting', function() {
         });
     });
 
-    describe('5. Notes Aggregation Logic', function() {
-        it('should correctly aggregate notes from multiple listings', function() {
+    describe('5. Notes Aggregation Logic', () => {
+        it('should correctly aggregate notes from multiple listings', () => {
             // Test the aggregation logic used in combined statements
             const mockListings = [
                 { id: 1, nickname: 'Beach House', internalNotes: 'Owner prefers monthly payments' },
@@ -102,8 +104,8 @@ describe('Internal Notes Snapshotting', function() {
         });
     });
 
-    describe('6. Fallback Logic', function() {
-        it('should demonstrate fallback behavior for statements without notes', async function() {
+    describe('6. Fallback Logic', () => {
+        it('should demonstrate fallback behavior for statements without notes', async () => {
             // Find a statement and its corresponding listing
             const statement = await Statement.findOne({
                 where: { propertyId: Statement.sequelize.literal('property_id IS NOT NULL') }

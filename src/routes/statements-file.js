@@ -672,8 +672,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-        // Filter expenses by date
+        // Filter expenses by date and exclude LL Cover expenses
         const periodExpenses = allExpenses.filter(exp => {
+            // Exclude expenses where llCover is checked (company covers, not owner)
+            if (exp.llCover && exp.llCover !== 0) {
+                return false;
+            }
             // Check property ID is in our list (or is null for SecureStay)
             // Use parseInt to ensure proper type comparison
             if (exp.propertyId !== null && !parsedPropertyIds.includes(parseInt(exp.propertyId))) {
@@ -1170,6 +1174,10 @@ router.post('/generate', async (req, res) => {
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
         // so we don't need to filter by propertyId here for SecureStay expenses (they have propertyId: null)
         const periodExpenses = expenses.filter(exp => {
+            // Exclude expenses where llCover is checked (company covers, not owner)
+            if (exp.llCover && exp.llCover !== 0) {
+                return false;
+            }
             // For file-based expenses, filter by propertyId (use parseInt to ensure proper type comparison)
             if (propertyId && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(propertyId)) {
                 return false;
@@ -5854,8 +5862,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                     }
 
-                    // Filter expenses for this property
+                    // Filter expenses for this property (exclude LL Cover expenses)
                     const periodExpenses = allExpenses.filter(exp => {
+                        // Exclude expenses where llCover is checked (company covers, not owner)
+                        if (exp.llCover && exp.llCover !== 0) {
+                            return false;
+                        }
                         const matchesPropertyId = parseInt(exp.propertyId) === parseInt(property.id);
                         const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === parseInt(property.id);
                         if (!matchesPropertyId && !matchesSecureStayId) return false;
@@ -6263,8 +6275,12 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         return dateMatch && statusMatch;
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-                    // Filter expenses for this property
+                    // Filter expenses for this property (exclude LL Cover expenses)
                     const periodExpenses = expenses.filter(exp => {
+                        // Exclude expenses where llCover is checked (company covers, not owner)
+                        if (exp.llCover && exp.llCover !== 0) {
+                            return false;
+                        }
                         // Use parseInt to ensure proper type comparison
                         if (property.id && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(property.id)) {
                             return false;

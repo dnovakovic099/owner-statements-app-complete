@@ -70,7 +70,8 @@ class SecureStayService {
                         status: expense.status,
                         paymentMethod: expense.paymentMethod,
                         category: expense.categories,
-                        expenseType: expense.type // Original type from API (expense or extras)
+                        expenseType: expense.type, // Original type from API (expense or extras)
+                        llCover: expense.llCover || 0 // LL Cover flag - if 1, company covers (exclude from owner statement)
                     }));
                     
                     allExpenses = allExpenses.concat(pageExpenses);
