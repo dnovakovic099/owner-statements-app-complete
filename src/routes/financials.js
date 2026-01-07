@@ -964,8 +964,54 @@ router.get('/by-home-category', async (req, res) => {
 
         console.log(`[by-home-category] Categorized: PM=${categories.pm.propertyCount}, Arb=${categories.arbitrage.propertyCount}, Owned=${categories.owned.propertyCount}, Shared=${categories.shared.propertyCount}, Uncategorized=${categories.uncategorized.propertyCount}`);
 
-        // Use StatementsFinancialService to get property financials
-        const { byProperty: financialsByProperty } = await statementsFinancialService.getByHomeCategory(startDate, endDate);
+        // Use StatementsFinancialService to get property financials (total and monthly)
+        const [{ byProperty: financialsByProperty }, monthlyByProperty] = await Promise.all([
+            statementsFinancialService.getByHomeCategory(startDate, endDate),
+            statementsFinancialService.getByHomeCategoryMonthly(startDate, endDate)
+        ]);
+
+        // Create property -> category mapping for monthly aggregation
+        const propertyCategoryMap = {};
+        Object.entries(categories).forEach(([catKey, cat]) => {
+            cat.properties.forEach(prop => {
+                propertyCategoryMap[prop.id] = catKey;
+            });
+        });
+
+        // Initialize monthly trend data structure by category
+        const monthlyTrendByCategory = {
+            arbitrage: {},
+            pm: {},
+            owned: {},
+            shared: {},
+            uncategorized: {}
+        };
+
+        // Aggregate monthly data by category
+        monthlyByProperty.forEach((monthlyData, propertyId) => {
+            const categoryKey = propertyCategoryMap[propertyId];
+            if (categoryKey && monthlyTrendByCategory[categoryKey]) {
+                monthlyData.forEach(({ month, income, expenses }) => {
+                    if (!monthlyTrendByCategory[categoryKey][month]) {
+                        monthlyTrendByCategory[categoryKey][month] = { income: 0, expenses: 0 };
+                    }
+                    monthlyTrendByCategory[categoryKey][month].income += income;
+                    monthlyTrendByCategory[categoryKey][month].expenses += expenses;
+                });
+            }
+        });
+
+        // Convert monthly trend objects to sorted arrays
+        const formatMonthlyTrend = (monthlyObj) => {
+            return Object.entries(monthlyObj)
+                .map(([month, data]) => ({
+                    month,
+                    income: data.income,
+                    expenses: data.expenses,
+                    netIncome: data.income - data.expenses
+                }))
+                .sort((a, b) => a.month.localeCompare(b.month));
+        };
 
         // Aggregate by category and add financials to each property
         for (const [_key, category] of Object.entries(categories)) {
@@ -984,8 +1030,8 @@ router.get('/by-home-category', async (req, res) => {
             }
         }
 
-        // Calculate net and margins - include properties array
-        const result = Object.entries(categories).map(([_key, cat]) => ({
+        // Calculate net and margins - include properties array and monthly trend
+        const result = Object.entries(categories).map(([catKey, cat]) => ({
             category: cat.name, // Use display name for frontend matching
             name: cat.name,
             propertyCount: cat.propertyCount,
@@ -993,7 +1039,8 @@ router.get('/by-home-category', async (req, res) => {
             expenses: cat.expenses,
             netIncome: cat.income - cat.expenses,
             profitMargin: cat.income > 0 ? (((cat.income - cat.expenses) / cat.income) * 100).toFixed(2) : 0,
-            properties: cat.properties // Include properties with financials
+            properties: cat.properties, // Include properties with financials
+            monthlyTrend: formatMonthlyTrend(monthlyTrendByCategory[catKey] || {})
         }));
 
         // Calculate totals

@@ -72,6 +72,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     expenses: 0,
   });
 
+  // Comparison tab state
+  const [comparisonPeriods, setComparisonPeriods] = useState({
+    current: { startDate: '', endDate: '' },
+    previous: { startDate: '', endDate: '' },
+  });
+
   // Lazy loading states - track what data has been fetched
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['by-category']));
   const [tabLoading, setTabLoading] = useState<string | null>(null);
@@ -493,18 +499,25 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             }))
             .sort((a: any, b: any) => b.amount - a.amount);
 
+          // Get monthly trend data from API response
+          const monthlyTrend = c.monthlyTrend || [];
+
           if (mappedKey === 'pm') {
             byHomeTypeTransformed.pm.income = incomeItems;
             byHomeTypeTransformed.pm.expenses = expenseItems;
+            byHomeTypeTransformed.pm.monthlyTrend = monthlyTrend;
           } else if (mappedKey === 'arbitrage') {
             byHomeTypeTransformed.arbitrage.income = incomeItems;
             byHomeTypeTransformed.arbitrage.expenses = expenseItems;
+            byHomeTypeTransformed.arbitrage.monthlyTrend = monthlyTrend;
           } else if (mappedKey === 'owned') {
             byHomeTypeTransformed.owned.income = incomeItems;
             byHomeTypeTransformed.owned.expenses = expenseItems;
+            byHomeTypeTransformed.owned.monthlyTrend = monthlyTrend;
           } else if (mappedKey === 'shared') {
             // For shared, map expenses to employeeCosts
             byHomeTypeTransformed.shared.employeeCosts = expenseItems;
+            byHomeTypeTransformed.shared.monthlyTrend = monthlyTrend;
           }
         });
 
@@ -635,6 +648,127 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       return () => clearTimeout(timeoutId);
     }
   }, [dateRange, fetchFinancialData, fetchQuickBooksWidgets]);
+
+  // Helper to calculate date range from period selection
+  const calculatePeriodDates = (period: string): { startDate: string; endDate: string } => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+    switch (period) {
+      case 'this-month': {
+        const start = new Date(year, month, 1);
+        const end = new Date(year, month + 1, 0);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-month': {
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'this-quarter': {
+        const qStart = Math.floor(month / 3) * 3;
+        const start = new Date(year, qStart, 1);
+        const end = new Date(year, qStart + 3, 0);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-quarter': {
+        const qStart = Math.floor(month / 3) * 3 - 3;
+        const start = new Date(year, qStart, 1);
+        const end = new Date(year, qStart + 3, 0);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'this-year': {
+        const start = new Date(year, 0, 1);
+        const end = new Date(year, 11, 31);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-year': {
+        const start = new Date(year - 1, 0, 1);
+        const end = new Date(year - 1, 11, 31);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-30-days': {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-60-days': {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 60);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-90-days': {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 90);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      case 'last-6-months': {
+        const end = new Date();
+        const start = new Date();
+        start.setMonth(start.getMonth() - 6);
+        return { startDate: formatDate(start), endDate: formatDate(end) };
+      }
+      default:
+        return { startDate: '', endDate: '' };
+    }
+  };
+
+  // Handler for comparison period change (Apply button)
+  const handleComparisonPeriodChange = async (currentPeriod: string, previousPeriod: string) => {
+    console.log('[Comparison] Period change:', currentPeriod, 'vs', previousPeriod);
+
+    const currentDates = calculatePeriodDates(currentPeriod);
+    const previousDates = calculatePeriodDates(previousPeriod);
+
+    setComparisonPeriods({
+      current: currentDates,
+      previous: previousDates,
+    });
+
+    // Fetch summary data for both periods
+    try {
+      const [currentResponse, previousResponse] = await Promise.all([
+        financialsAPI.getSummary(currentDates.startDate, currentDates.endDate),
+        financialsAPI.getSummary(previousDates.startDate, previousDates.endDate),
+      ]);
+
+      console.log('[Comparison] Current period data:', currentResponse);
+      console.log('[Comparison] Previous period data:', previousResponse);
+
+      // Update summary with current period data
+      if (currentResponse.success && currentResponse.data) {
+        const s = currentResponse.data;
+        const netIncome = (s.totalIncome || 0) - (s.totalExpenses || 0);
+        const profitMargin = s.totalIncome > 0 ? (netIncome / s.totalIncome) * 100 : 0;
+        setSummary({
+          totalIncome: s.totalIncome || 0,
+          totalExpenses: s.totalExpenses || 0,
+          netIncome,
+          profitMargin,
+          incomeChange: 0,
+          expensesChange: 0,
+          netChange: 0,
+          marginChange: 0,
+        });
+      }
+
+      // Update previous period data for comparison
+      if (previousResponse.success && previousResponse.data) {
+        setPreviousPeriodData({
+          income: previousResponse.data.totalIncome || 0,
+          expenses: previousResponse.data.totalExpenses || 0,
+        });
+      }
+    } catch (error) {
+      console.error('[Comparison] Error fetching comparison data:', error);
+    }
+  };
 
   // Event handlers
   const handleCategoryClick = async (category: ExpenseCategory & { categoryType?: 'income' | 'expense'; transactions?: any[] }) => {
@@ -962,8 +1096,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             <ComparisonTab
               currentPeriod={{
                 label: 'Current Period',
-                startDate: dateRange.startDate,
-                endDate: dateRange.endDate,
+                startDate: comparisonPeriods.current.startDate || dateRange.startDate,
+                endDate: comparisonPeriods.current.endDate || dateRange.endDate,
                 data: {
                   income: summary.totalIncome,
                   expenses: summary.totalExpenses,
@@ -975,8 +1109,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               }}
               previousPeriod={{
                 label: 'Previous Period',
-                startDate: '',
-                endDate: '',
+                startDate: comparisonPeriods.previous.startDate,
+                endDate: comparisonPeriods.previous.endDate,
                 data: {
                   income: previousPeriodData.income,
                   expenses: previousPeriodData.expenses,
@@ -988,6 +1122,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
                   avgPerProperty: 0,
                 },
               }}
+              onPeriodChange={handleComparisonPeriodChange}
             />
           </TabsContent>
 

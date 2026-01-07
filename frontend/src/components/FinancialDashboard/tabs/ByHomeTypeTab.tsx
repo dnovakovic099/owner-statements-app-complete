@@ -672,9 +672,11 @@ const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemCl
                 }
               />
             </div>
-            <div className="mt-6">
-              <MonthlyTrendChart data={data.pm.monthlyTrend} />
-            </div>
+            {data.pm.monthlyTrend && data.pm.monthlyTrend.length > 0 && (
+              <div className="mt-6">
+                <MonthlyTrendChart data={data.pm.monthlyTrend} />
+              </div>
+            )}
           </>
         );
 
@@ -706,9 +708,11 @@ const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemCl
                 onItemClick={(item) => handleItemClick('expense', item)}
               />
             </div>
-            <div className="mt-6">
-              <MonthlyTrendChart data={data.arbitrage.monthlyTrend} />
-            </div>
+            {data.arbitrage.monthlyTrend && data.arbitrage.monthlyTrend.length > 0 && (
+              <div className="mt-6">
+                <MonthlyTrendChart data={data.arbitrage.monthlyTrend} />
+              </div>
+            )}
           </>
         );
 
@@ -740,9 +744,11 @@ const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemCl
                 onItemClick={(item) => handleItemClick('expense', item)}
               />
             </div>
-            <div className="mt-6">
-              <MonthlyTrendChart data={data.owned.monthlyTrend} />
-            </div>
+            {data.owned.monthlyTrend && data.owned.monthlyTrend.length > 0 && (
+              <div className="mt-6">
+                <MonthlyTrendChart data={data.owned.monthlyTrend} />
+              </div>
+            )}
           </>
         );
 
@@ -815,9 +821,11 @@ const ByHomeTypeTab: React.FC<ByHomeTypeTabProps> = ({ data, dateRange, onItemCl
                 </div>
               </div>
             </div>
-            <div className="mt-6">
-              <MonthlyTrendChart data={data.shared.monthlyTrend} />
-            </div>
+            {data.shared.monthlyTrend && data.shared.monthlyTrend.length > 0 && (
+              <div className="mt-6">
+                <MonthlyTrendChart data={data.shared.monthlyTrend} />
+              </div>
+            )}
           </>
         );
 

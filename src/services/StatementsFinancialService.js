@@ -153,6 +153,48 @@ class StatementsFinancialService {
     }
 
     /**
+     * Get monthly breakdown by property for trend charts
+     * Returns income/expenses grouped by month and property
+     *
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @returns {Promise<Map>} Map of propertyId -> array of {month, income, expenses}
+     */
+    async getByHomeCategoryMonthly(startDate, endDate) {
+        const results = await Statement.findAll({
+            attributes: [
+                'propertyId',
+                [fn('TO_CHAR', col('week_end_date'), literal("'YYYY-MM'")), 'month'],
+                [fn('COALESCE', fn('SUM', col('total_revenue')), 0), 'total_income'],
+                [fn('COALESCE', fn('SUM', col('total_expenses')), 0), 'total_expenses']
+            ],
+            where: {
+                weekEndDate: { [Op.gte]: startDate },
+                weekStartDate: { [Op.lte]: endDate }
+            },
+            group: ['propertyId', fn('TO_CHAR', col('week_end_date'), literal("'YYYY-MM'"))],
+            order: [[fn('TO_CHAR', col('week_end_date'), literal("'YYYY-MM'")), 'ASC']],
+            raw: true
+        });
+
+        // Build lookup map by property_id -> monthly data
+        const monthlyByProperty = new Map();
+        results.forEach(row => {
+            const propertyId = row.propertyId;
+            if (!monthlyByProperty.has(propertyId)) {
+                monthlyByProperty.set(propertyId, []);
+            }
+            monthlyByProperty.get(propertyId).push({
+                month: row.month,
+                income: parseFloat(row.total_income) || 0,
+                expenses: parseFloat(row.total_expenses) || 0
+            });
+        });
+
+        return monthlyByProperty;
+    }
+
+    /**
      * Get by-category breakdown parsing actual expense categories from JSON
      * Uses efficient SQL aggregation with jsonb_array_elements
      * Shows real expense categories like Cleaning, Maintenance, Pet Fee, Photography, etc.
