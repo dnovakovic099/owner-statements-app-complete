@@ -1481,10 +1481,25 @@ class QuickBooksService {
 
             console.log(`[QuickBooks] Fetched ${purchases.length} purchases, ${bills.length} bills`);
 
+            // Import category mapping to properly handle "Other" category
+            const { mapToCategory, ALL_CATEGORIES } = require('../utils/categoryMapping');
+
+            // Check if we're searching for "Other" category
+            const searchingForOther = accountNames.some(a => a.toLowerCase() === 'other');
+
             // Helper to check if account matches any of the target accounts
             const matchesAnyAccount = (value) => {
                 if (!value) return false;
                 const valueLower = value.toLowerCase().trim();
+
+                // For "Other" category - check if the account maps to "Other" or an unmapped category
+                if (searchingForOther) {
+                    const mappedCategory = mapToCategory(value);
+                    // Include if it maps to "Other" OR if it returns the original name (unmapped)
+                    const isUnmapped = !ALL_CATEGORIES.includes(mappedCategory);
+                    return mappedCategory.toLowerCase() === 'other' || isUnmapped;
+                }
+
                 return accountNames.some(accountName => {
                     const accountNameLower = accountName.toLowerCase().trim();
                     // Exact match
@@ -1586,6 +1601,9 @@ class QuickBooksService {
             console.log(`[QuickBooks] getIncomeByAccountNames called with:`, accountNames);
             const qbo = await this._getQboClient();
 
+            // Import category mapping to properly handle "Other" category
+            const { mapToCategory, ALL_CATEGORIES } = require('../utils/categoryMapping');
+
             // Fetch both Invoices and SalesReceipts
             const [invoices, salesReceipts] = await Promise.all([
                 this._fetchInvoices(qbo, startDate, endDate),
@@ -1594,14 +1612,20 @@ class QuickBooksService {
 
             console.log(`[QuickBooks] Fetched ${invoices.length} invoices, ${salesReceipts.length} sales receipts`);
 
+            // Check if we're searching for "Other" category
+            const searchingForOther = accountNames.some(a => a.toLowerCase() === 'other');
+
             // Helper to check if account matches any of the target accounts
             const matchesAnyAccount = (value) => {
                 if (!value) return false;
                 const valueLower = value.toLowerCase().trim();
 
-                // "Other" is a catch-all - match if no specific pattern matches
-                if (accountNames.some(a => a.toLowerCase() === 'other')) {
-                    return true; // Include all for "Other" category
+                // For "Other" category - check if the account maps to "Other" or an unmapped category
+                if (searchingForOther) {
+                    const mappedCategory = mapToCategory(value);
+                    // Include if it maps to "Other" OR if it returns the original name (unmapped)
+                    const isUnmapped = !ALL_CATEGORIES.includes(mappedCategory);
+                    return mappedCategory.toLowerCase() === 'other' || isUnmapped;
                 }
 
                 return accountNames.some(accountName => {
@@ -1625,7 +1649,7 @@ class QuickBooksService {
                                            'Services';
                     const lineAmount = line.Amount || 0;
 
-                    if (lineAmount > 0 && (accountNames.some(a => a.toLowerCase() === 'other') || matchesAnyAccount(lineAccountName))) {
+                    if (lineAmount > 0 && matchesAnyAccount(lineAccountName)) {
                         matchingIncome.push({
                             date: invoice.TxnDate,
                             type: 'Invoice',
@@ -1651,7 +1675,7 @@ class QuickBooksService {
                                            'Sales';
                     const lineAmount = line.Amount || 0;
 
-                    if (lineAmount > 0 && (accountNames.some(a => a.toLowerCase() === 'other') || matchesAnyAccount(lineAccountName))) {
+                    if (lineAmount > 0 && matchesAnyAccount(lineAccountName)) {
                         matchingIncome.push({
                             date: receipt.TxnDate,
                             type: 'SalesReceipt',
