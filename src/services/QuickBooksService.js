@@ -1460,6 +1460,96 @@ class QuickBooksService {
         // Delegate to the plural version for consistent logic
         return this.getTransactionsForAccounts([accountName], startDate, endDate);
     }
+
+    /**
+     * Get expense transactions for specific account names using Purchase/Bill data
+     * This matches exactly what by-category returns (uses findPurchases/findBills)
+     * @param {string[]} accountNames - Array of account names to filter by
+     * @param {string} startDate - Start date (YYYY-MM-DD)
+     * @param {string} endDate - End date (YYYY-MM-DD)
+     * @returns {Promise<Object>} Filtered transactions matching the accounts
+     */
+    async getExpensesByAccountNames(accountNames, startDate, endDate) {
+        try {
+            console.log(`[QuickBooks] getExpensesByAccountNames called with:`, accountNames);
+            const qbo = await this._getQboClient();
+
+            // Fetch both Purchases and Bills (same as getAllExpenses)
+            const [purchases, bills] = await Promise.all([
+                this._fetchPurchases(qbo, startDate, endDate),
+                this._fetchBills(qbo, startDate, endDate)
+            ]);
+
+            // Normalize all expenses
+            const allExpenses = [
+                ...purchases.map(p => this._normalizePurchase(p)),
+                ...bills.map(b => this._normalizeBill(b))
+            ];
+
+            console.log(`[QuickBooks] Total expenses fetched: ${allExpenses.length}`);
+
+            // Helper to check if account matches any of the target accounts
+            const matchesAnyAccount = (value) => {
+                if (!value) return false;
+                const valueLower = value.toLowerCase().trim();
+                return accountNames.some(accountName => {
+                    const accountNameLower = accountName.toLowerCase().trim();
+                    // Exact match
+                    if (valueLower === accountNameLower) return true;
+                    // Contains match for distribution-style names
+                    if (valueLower.includes(accountNameLower) || accountNameLower.includes(valueLower)) return true;
+                    // Check for owner name matching (darko, louis, etc.)
+                    if (accountNameLower.includes('darko') && valueLower.includes('darko')) return true;
+                    if (accountNameLower.includes('louis') && valueLower.includes('louis')) return true;
+                    return false;
+                });
+            };
+
+            // Filter expenses by account name (using CategoryName which is the expense account)
+            const matchingExpenses = [];
+            const matchingAccounts = new Set();
+
+            for (const expense of allExpenses) {
+                // CategoryName is the expense account from line items
+                // For Purchases: CategoryName = expense account, AccountName = bank account
+                const categoryName = expense.CategoryName || expense.AccountName;
+
+                if (matchesAnyAccount(categoryName)) {
+                    matchingExpenses.push({
+                        date: expense.TxnDate,
+                        type: expense.Type,
+                        docNumber: expense.DocNumber,
+                        name: expense.VendorName || expense.Description,
+                        memo: expense.Description,
+                        amount: Math.abs(expense.Amount || 0),
+                        account: categoryName,
+                        matchedAccount: categoryName,
+                        id: expense.Id
+                    });
+                    matchingAccounts.add(categoryName);
+                }
+            }
+
+            // Sort by date descending
+            matchingExpenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const total = matchingExpenses.reduce((sum, t) => sum + t.amount, 0);
+
+            console.log(`[QuickBooks] Found ${matchingExpenses.length} matching expenses, total: $${total.toFixed(2)}`);
+            console.log(`[QuickBooks] Matching accounts:`, Array.from(matchingAccounts));
+
+            return {
+                searchedAccounts: accountNames,
+                matchingAccounts: Array.from(matchingAccounts),
+                total,
+                transactions: matchingExpenses,
+                transactionCount: matchingExpenses.length
+            };
+        } catch (error) {
+            console.error('getExpensesByAccountNames error:', error);
+            throw new Error(`Failed to get expenses by account names: ${error.message}`);
+        }
+    }
 }
 
 module.exports = QuickBooksService;

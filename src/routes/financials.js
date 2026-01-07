@@ -1352,17 +1352,19 @@ router.get('/transactions-by-account', async (req, res) => {
 /**
  * GET /api/financials/account-transactions/:accountName
  * Get transactions for a specific account (category drill-down)
- * Matches exactly what QuickBooks shows for that P&L category
+ * Uses the same Purchase/Bill data source as by-category for consistency
  *
  * Query params:
  * - startDate: Start date (YYYY-MM-DD)
  * - endDate: End date (YYYY-MM-DD)
  * - accounts: JSON array of original account names to search for (optional)
+ * - source: 'purchases' (default, matches by-category) or 'gl' (GL report, may differ)
  */
 router.get('/account-transactions/:accountName', async (req, res) => {
     try {
         const { startDate, endDate } = parseDateRange(req.query);
         const accountName = decodeURIComponent(req.params.accountName);
+        const source = req.query.source || 'purchases'; // Default to purchases for consistency
 
         // Parse accounts array if provided (these are the original QB account names)
         let accountsToSearch = [accountName];
@@ -1387,9 +1389,18 @@ router.get('/account-transactions/:accountName', async (req, res) => {
         console.log(`[account-transactions] Fetching transactions for "${accountName}"`);
         console.log(`[account-transactions] Accounts to search:`, accountsToSearch);
         console.log(`[account-transactions] Date range: ${startDate} to ${endDate}`);
+        console.log(`[account-transactions] Source: ${source}`);
 
-        // Fetch transactions for all matching account names
-        const data = await quickBooksService.getTransactionsForAccounts(accountsToSearch, startDate, endDate);
+        // Use the same data source as by-category (Purchases/Bills) for consistency
+        // This ensures transaction count matches what's shown in the category summary
+        let data;
+        if (source === 'gl') {
+            // GL report source (may show more transactions due to different transaction types)
+            data = await quickBooksService.getTransactionsForAccounts(accountsToSearch, startDate, endDate);
+        } else {
+            // Purchases/Bills source (matches by-category exactly)
+            data = await quickBooksService.getExpensesByAccountNames(accountsToSearch, startDate, endDate);
+        }
         console.log(`[account-transactions] Found ${data.transactionCount} transactions, total: ${data.total}`);
 
         res.json({
@@ -1412,9 +1423,10 @@ router.get('/account-transactions/:accountName', async (req, res) => {
                     debit: t.debit,
                     credit: t.credit,
                     account: t.account,
-                    matchedAccount: t.matchedAccount
+                    matchedAccount: t.matchedAccount,
+                    id: t.id
                 })),
-                source: 'quickbooks-transaction-list-report'
+                source: source === 'gl' ? 'quickbooks-gl-report' : 'quickbooks-purchases-bills'
             }
         });
     } catch (error) {
