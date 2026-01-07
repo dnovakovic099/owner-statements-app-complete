@@ -291,12 +291,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const cats: ExpenseCategory[] = categoryResponseData.data.expenses.categories
           .filter((c: { name: string; total: number }) => !isBankOrPersonalAccount(c.name))
           .map(
-            (c: { name: string; total: number; count?: number; originalAccounts?: string[] }, index: number) => ({
+            (c: { name: string; total: number; count?: number; originalAccounts?: string[]; transactions?: any[] }, index: number) => ({
               name: c.name,
               amount: c.total || 0,
               color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
               originalAccounts: c.originalAccounts || [],
               transactionCount: c.count || 0,
+              // Store transactions directly from by-category for 100% consistency
+              transactions: c.transactions || [],
             } as ExpenseCategory)
           );
         setExpenseCategories(cats);
@@ -310,11 +312,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
       // Extract income categories from API response
       if (categoryResponseData.success && categoryResponseData.data?.income?.categories) {
         const incomeCats = categoryResponseData.data.income.categories.map(
-          (c: { name: string; total: number; count?: number; originalAccounts?: string[] }) => ({
+          (c: { name: string; total: number; count?: number; originalAccounts?: string[]; transactions?: any[] }) => ({
             name: c.name,
             amount: c.total || 0,
             transactionCount: c.count || 0,
             originalAccounts: c.originalAccounts || [],
+            // Store transactions directly from by-category for 100% consistency
+            transactions: c.transactions || [],
           })
         );
         setIncomeCategories(incomeCats);
@@ -632,98 +636,40 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   }, [dateRange, fetchFinancialData, fetchQuickBooksWidgets]);
 
   // Event handlers
-  const handleCategoryClick = async (category: ExpenseCategory & { categoryType?: 'income' | 'expense' }) => {
+  const handleCategoryClick = async (category: ExpenseCategory & { categoryType?: 'income' | 'expense'; transactions?: any[] }) => {
     setSelectedCategory(category.name);
     setIsTransactionModalOpen(true);
-    setTransactions([]); // Clear previous transactions
-    setTransactionsLoading(true); // Show loader
+    setTransactionsLoading(true);
 
-    // Fetch transactions using the TransactionList Report API (matches QuickBooks P&L exactly)
-    try {
-      // Use original account names if available (these are the actual QB account names)
-      // Otherwise fall back to the category name
-      const accountNames = (category as any).originalAccounts?.length > 0
-        ? (category as any).originalAccounts
-        : [category.name];
+    // USE STORED TRANSACTIONS DIRECTLY - guarantees 100% consistency with category counts
+    // The transactions come from the same by-category API that calculates the totals
+    const storedTransactions = (category as any).transactions || [];
 
-      // Determine transaction type - income categories should fetch income transactions
-      const transactionType = category.categoryType || 'expense';
-
-      // Build query params
-      const params = new URLSearchParams({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        accounts: JSON.stringify(accountNames),
-        type: transactionType
-      });
-
-      const response = await fetch(
-        `/api/financials/account-transactions/${encodeURIComponent(category.name)}?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('luxury-lodging-auth') || '{}')?.token || ''}`
-          }
+    if (storedTransactions.length > 0) {
+      const mappedTransactions: Transaction[] = storedTransactions.map((t: any) => {
+        let description = t.description || t.vendor || t.customer || 'Transaction';
+        if (description.length > 60) {
+          description = description.substring(0, 57) + '...';
         }
-      );
-      const data = await response.json();
 
-      if (data.success && data.data?.transactions) {
-        // Filter and map transactions - exclude invalid ones
-        const mappedTransactions: Transaction[] = data.data.transactions
-          .filter((t: any) => {
-            // Filter out transactions with no date or zero amount
-            const hasValidDate = t.date && t.date !== 'Invalid Date' && !t.date.includes('Beginning Balance');
-            const hasAmount = Math.abs(t.amount || t.debit || t.credit || 0) > 0;
-            return hasValidDate && hasAmount;
-          })
-          .map((t: any) => {
-            // Clean up description - extract meaningful part from bank memo
-            let description = t['Memo/Description'] || t.memo || t.name || t.type || 'Transaction';
-            // If description looks like raw bank data, try to extract vendor name
-            if (description.includes('ORIG CO NAME:')) {
-              const match = description.match(/ORIG CO NAME:([^\s]+)/);
-              if (match) description = match[1];
-            }
-            if (description.includes('IND NAME:')) {
-              const match = description.match(/IND NAME:([^I]+)/);
-              if (match) description = match[1].trim();
-            }
-            // Truncate very long descriptions
-            if (description.length > 60) {
-              description = description.substring(0, 57) + '...';
-            }
-
-            // Determine the actual expense category
-            // If Split field exists and looks like an expense category, use it
-            // Otherwise use the clicked category name
-            let actualCategory = category.name;
-            const split = t.Split || t['Split'] || '';
-            if (split && !split.includes('CHK') && !split.includes('(') && !split.includes(' - ')) {
-              actualCategory = split;
-            }
-
-            return {
-              id: t.docNumber || t.type_id || Math.random().toString(),
-              date: t.date || '',
-              description,
-              amount: Math.abs(t.amount || t.debit || t.credit || 0),
-              category: actualCategory,
-              property: t.name || '', // Vendor/payee or customer name
-              type: (t.transactionType === 'income' ? 'income' : 'expense') as 'income' | 'expense',
-            };
-          });
-        setTransactions(mappedTransactions);
-        console.log(`[FinancialDashboard] Loaded ${mappedTransactions.length} transactions for ${category.name} from TransactionList Report`);
-      } else {
-        setTransactions([]);
-        console.log(`[FinancialDashboard] No transactions found for ${category.name}`);
-      }
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
+        return {
+          id: t.id || Math.random().toString(),
+          date: t.date || '',
+          description,
+          amount: Math.abs(t.amount || 0),
+          category: category.name,
+          property: t.vendor || t.customer || '',
+          type: (category.categoryType === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+        };
+      });
+      setTransactions(mappedTransactions);
+      console.log(`[FinancialDashboard] Using ${mappedTransactions.length} stored transactions for ${category.name}`);
+    } else {
       setTransactions([]);
-    } finally {
-      setTransactionsLoading(false);
+      console.log(`[FinancialDashboard] No stored transactions for ${category.name}`);
     }
+
+    setTransactionsLoading(false);
   };
 
   const handleHomeCategoryClick = (categoryType: 'pm' | 'arbitrage' | 'owned' | 'shared') => {
@@ -946,21 +892,23 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           <TabsContent value="by-category">
             <ByCategoryTab
               categories={[
-                // Income categories
+                // Income categories - include transactions for drill-down
                 ...incomeCategories.map(cat => ({
                   category: cat.name as any,
                   amount: cat.amount,
                   transactionCount: cat.transactionCount || 0,
                   type: 'income' as const,
                   originalAccounts: cat.originalAccounts,
+                  transactions: (cat as any).transactions || [],
                 })),
-                // Expense categories - include transaction count from API
+                // Expense categories - include transactions for drill-down
                 ...expenseCategories.map(cat => ({
                   category: cat.name as any,
                   amount: cat.amount,
                   transactionCount: (cat as any).transactionCount || 0,
                   type: 'expense' as const,
                   originalAccounts: cat.originalAccounts,
+                  transactions: (cat as any).transactions || [],
                 })),
               ]}
               dateRange={dateRange}
@@ -969,15 +917,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
               categoryMapping={categoryMappingEnabled}
               unmappedAccounts={unmappedAccounts}
               onCategorySelect={(categoryName, categoryData) => {
-                // Use the type from the category data directly (income or expense)
-                // This is the definitive source since ByCategoryTab tracks which list it came from
-                const categoryType = categoryData?.type || 'expense';
+                // Use the type and transactions from category data directly
+                // This guarantees 100% match because we use the SAME data source
                 handleCategoryClick({
                   name: categoryName,
                   amount: categoryData?.amount || 0,
                   color: '',
                   originalAccounts: categoryData?.originalAccounts || [],
-                  categoryType
+                  categoryType: categoryData?.type || 'expense',
+                  transactions: categoryData?.transactions || [],
                 });
               }}
             />

@@ -54,6 +54,8 @@ export interface CategoryData {
   percentage?: number;
   // Original QuickBooks accounts that were mapped to this category
   originalAccounts?: string[];
+  // All transactions for this category (for drill-down)
+  transactions?: any[];
 }
 
 export interface ByCategoryTabProps {

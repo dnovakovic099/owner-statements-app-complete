@@ -376,8 +376,8 @@ function getCategorySummary(transactions, type = 'expense') {
         total: cat.total,
         count: cat.count,
         originalAccounts: cat.originalAccounts,
-        // Include only limited transaction details in summary
-        recentTransactions: cat.transactions.slice(0, 5),
+        // Include ALL transactions for drill-down consistency
+        transactions: cat.transactions,
     }));
 
     // Sort by absolute amount descending
