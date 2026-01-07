@@ -19,6 +19,7 @@ import ComparisonTab from './tabs/ComparisonTab';
 import ROITab, { ROIMetrics, TrendDataPoint, PropertyPerformance } from './tabs/ROITab';
 import { financialsAPI } from '../../services/api';
 import PaymentStatusCards from './PaymentStatusCards';
+import SkeletonLoader from './SkeletonLoader';
 
 interface FinancialSummary {
   totalIncome: number;
@@ -741,8 +742,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         {/* Date Range Filter */}
         <DateRangeFilter dateRange={dateRange} onDateRangeChange={setDateRange} />
 
+        {/* Show Skeleton Loader while data is loading */}
+        {loading && <SkeletonLoader />}
+
         {/* QuickBooks Connection Required Banner */}
-        {qbConnectionError && (
+        {!loading && qbConnectionError && (
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl p-5 shadow-sm">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
@@ -790,6 +794,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           </div>
         )}
 
+        {/* Main Dashboard Content - hidden while loading */}
+        {!loading && (
+        <>
         {/* Summary Cards Row */}
         <SummaryCardsRow
           totalIncome={summary.totalIncome}
@@ -995,6 +1002,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             />
           </TabsContent>
         </Tabs>
+        </>
+        )}
       </div>
 
       {/* Transaction Modal */}

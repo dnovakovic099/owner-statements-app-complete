@@ -26,6 +26,7 @@ const STANDARD_CATEGORIES = {
     SOFTWARE_SUBSCRIPTION: 'Software subscription',
     ARBITRAGE_ACQUISITION: 'Arbitrage acquisition',
     HOME_OWNER_ACQUISITION: 'Home owner acquisition',
+    UNCATEGORIZED: 'Uncategorized',
     OTHER: 'Other'
 };
 
@@ -255,6 +256,51 @@ const CATEGORY_PATTERNS = {
 };
 
 /**
+ * Check if an account name is a bank/credit card account (payment source, not expense category)
+ * These should be filtered out from expense categorization
+ */
+function isBankOrPaymentAccount(accountName) {
+    if (!accountName) return false;
+    const nameLower = accountName.toLowerCase();
+
+    // Bank account patterns
+    if (nameLower.includes('checking') ||
+        nameLower.includes('savings') ||
+        nameLower.includes('bank account') ||
+        nameLower.includes('chase bank') ||
+        nameLower.includes('chase account') ||
+        nameLower.includes('chase checking') ||
+        nameLower.includes(' chk') ||
+        nameLower.includes('chk ') ||
+        nameLower.startsWith('chk') ||
+        nameLower.includes('bus complete')) {
+        return true;
+    }
+
+    // Credit card patterns
+    if (nameLower.includes('amex') ||
+        nameLower.includes('visa') ||
+        nameLower.includes('mastercard') ||
+        nameLower.includes('credit card') ||
+        nameLower.includes('capital one') ||
+        nameLower.includes('discover card')) {
+        return true;
+    }
+
+    // Account number patterns like "(1234)" or "- 1" suffix
+    if (/\(\d{4,5}\)/.test(accountName) || /\s-\s\d+$/.test(accountName)) {
+        return true;
+    }
+
+    // Checking/savings with last 4 digits like "-6720"
+    if (/-\d{4}$/.test(accountName)) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Maps a QuickBooks account name to a standard category.
  *
  * @param {string} accountName - The QuickBooks account name
@@ -265,6 +311,12 @@ const CATEGORY_PATTERNS = {
 function mapToCategory(accountName, vendorName = '', description = '') {
     if (!accountName) {
         return STANDARD_CATEGORIES.OTHER;
+    }
+
+    // Bank/credit card accounts are payment sources, not expense categories
+    // Map them to "Uncategorized" so they're visible but clearly need review
+    if (isBankOrPaymentAccount(accountName)) {
+        return STANDARD_CATEGORIES.UNCATEGORIZED;
     }
 
     // Combine all text for matching, prioritizing account name
@@ -427,6 +479,12 @@ function getUnmappedAccounts(transactions) {
 
     for (const txn of transactions) {
         const originalAccount = txn.AccountName || txn.CategoryName;
+
+        // Skip bank/credit card accounts - they're not expense categories
+        if (isBankOrPaymentAccount(originalAccount)) {
+            continue;
+        }
+
         const category = mapToCategory(originalAccount, txn.VendorName, txn.Description);
 
         // If the category is the same as the original account, it wasn't mapped
@@ -447,4 +505,5 @@ module.exports = {
     getCategorySummary,
     validateCategoryMapping,
     getUnmappedAccounts,
+    isBankOrPaymentAccount,
 };
