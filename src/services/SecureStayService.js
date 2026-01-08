@@ -57,6 +57,19 @@ class SecureStayService {
                 const response = await this.makeRequest('/accounting/getexpenses', params);
                 
                 if (response.data && Array.isArray(response.data)) {
+                    // Debug: Log first expense to see all available fields including llCover variants
+                    if (currentPage === 1 && response.data.length > 0) {
+                        const sample = response.data[0];
+                        console.log('[SecureStay] Sample expense fields:', Object.keys(sample).join(', '));
+                        console.log('[SecureStay] llCover variants:', {
+                            llCover: sample.llCover,
+                            ll_cover: sample.ll_cover,
+                            LLCover: sample.LLCover,
+                            LL_Cover: sample.LL_Cover,
+                            landlordCover: sample.landlordCover
+                        });
+                    }
+
                     const pageExpenses = response.data.map(expense => ({
                         id: expense.expenseId,
                         description: expense.description || 'Expense',
@@ -71,7 +84,8 @@ class SecureStayService {
                         paymentMethod: expense.paymentMethod,
                         category: expense.categories,
                         expenseType: expense.type, // Original type from API (expense or extras)
-                        llCover: expense.llCover || 0 // LL Cover flag - if 1, company covers (exclude from owner statement)
+                        // Check multiple possible field names for LL Cover
+                        llCover: expense.llCover ?? expense.ll_cover ?? expense.LLCover ?? 0
                     }));
                     
                     allExpenses = allExpenses.concat(pageExpenses);

@@ -88,6 +88,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [selectedExpenseIndices, setSelectedExpenseIndices] = useState<number[]>([]);
   const [selectedUpsellIndices, setSelectedUpsellIndices] = useState<number[]>([]);
+  const [selectedHiddenExpenseIndices, setSelectedHiddenExpenseIndices] = useState<number[]>([]);
+  const [selectedHiddenUpsellIndices, setSelectedHiddenUpsellIndices] = useState<number[]>([]);
+  const [selectedLLCoverExpenseIndices, setSelectedLLCoverExpenseIndices] = useState<number[]>([]);
+  const [selectedLLCoverUpsellIndices, setSelectedLLCoverUpsellIndices] = useState<number[]>([]);
+  const [showHiddenExpenses, setShowHiddenExpenses] = useState(false);
+  const [showHiddenUpsells, setShowHiddenUpsells] = useState(false);
   const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
   const [selectedReservationIdsToAdd, setSelectedReservationIdsToAdd] = useState<number[]>([]);
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
@@ -174,6 +180,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setStatement(response);
       setSelectedExpenseIndices([]);
       setSelectedUpsellIndices([]);
+      setSelectedHiddenExpenseIndices([]);
+      setSelectedHiddenUpsellIndices([]);
+      setSelectedLLCoverExpenseIndices([]);
+      setSelectedLLCoverUpsellIndices([]);
       setSelectedReservationIdsToRemove([]);
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
@@ -181,6 +191,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setCancelledReservations([]);
       setShowCancelledSection(false);
       setSelectedCancelledIdsToAdd([]);
+      setShowHiddenExpenses(false);
+      setShowHiddenUpsells(false);
       setCleaningFeeEdits({});
       setInternalNotes(response.internalNotes || '');
       setNotesModified(false);
@@ -315,10 +327,35 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     );
   };
 
+  const handleHiddenExpenseToggle = (index: number) => {
+    setSelectedHiddenExpenseIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handleLLCoverExpenseToggle = (index: number) => {
+    setSelectedLLCoverExpenseIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handleLLCoverUpsellToggle = (index: number) => {
+    setSelectedLLCoverUpsellIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
   const handleStartEditExpense = (index: number, expense: any, e: React.MouseEvent) => {
     e.stopPropagation();
     // Deselect any selected expenses when entering edit mode
     setSelectedExpenseIndices([]);
+    setSelectedHiddenExpenseIndices([]);
     setEditingExpenseIndex(index);
     setEditedExpense({
       date: expense.date || '',
@@ -351,7 +388,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     let globalIndex = -1;
     let expenseCount = 0;
     for (let i = 0; i < (statement.items?.length || 0); i++) {
-      if (statement.items![i].type === 'expense') {
+      if (statement.items![i].type === 'expense' && !statement.items![i].hidden) {
         if (expenseCount === editingExpenseIndex) {
           globalIndex = i;
           break;
@@ -403,10 +440,19 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     );
   };
 
+  const handleHiddenUpsellToggle = (index: number) => {
+    setSelectedHiddenUpsellIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
   const handleStartEditUpsell = (index: number, upsell: any, e: React.MouseEvent) => {
     e.stopPropagation();
     // Deselect any selected upsells when entering edit mode
     setSelectedUpsellIndices([]);
+    setSelectedHiddenUpsellIndices([]);
     setEditingUpsellIndex(index);
     setEditedUpsell({
       date: upsell.date || '',
@@ -439,7 +485,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     let globalIndex = -1;
     let upsellCount = 0;
     for (let i = 0; i < (statement.items?.length || 0); i++) {
-      if (statement.items![i].type === 'upsell') {
+      if (statement.items![i].type === 'upsell' && !statement.items![i].hidden) {
         if (upsellCount === editingUpsellIndex) {
           globalIndex = i;
           break;
@@ -638,16 +684,28 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleSaveChanges = () => {
-    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0 && selectedCancelledIdsToAdd.length === 0)) {
+    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedHiddenExpenseIndices.length === 0 && selectedHiddenUpsellIndices.length === 0 && selectedLLCoverExpenseIndices.length === 0 && selectedLLCoverUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0 && selectedCancelledIdsToAdd.length === 0)) {
       return;
     }
 
     const actions = [];
     if (selectedExpenseIndices.length > 0) {
-      actions.push(`remove ${selectedExpenseIndices.length} expense(s)`);
+      actions.push(`hide ${selectedExpenseIndices.length} expense(s)`);
     }
     if (selectedUpsellIndices.length > 0) {
-      actions.push(`remove ${selectedUpsellIndices.length} upsell(s)`);
+      actions.push(`hide ${selectedUpsellIndices.length} upsell(s)`);
+    }
+    if (selectedHiddenExpenseIndices.length > 0) {
+      actions.push(`restore ${selectedHiddenExpenseIndices.length} expense(s)`);
+    }
+    if (selectedHiddenUpsellIndices.length > 0) {
+      actions.push(`restore ${selectedHiddenUpsellIndices.length} upsell(s)`);
+    }
+    if (selectedLLCoverExpenseIndices.length > 0) {
+      actions.push(`include ${selectedLLCoverExpenseIndices.length} LL Cover expense(s)`);
+    }
+    if (selectedLLCoverUpsellIndices.length > 0) {
+      actions.push(`include ${selectedLLCoverUpsellIndices.length} LL Cover upsell(s)`);
     }
     if (selectedReservationIdsToRemove.length > 0) {
       actions.push(`remove ${selectedReservationIdsToRemove.length} reservation(s)`);
@@ -675,31 +733,66 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           setSaving(true);
           setError(null);
 
-          // Map expense and upsell indices to their global item indices
-          // We need to find the actual position in statement.items array
-          const globalIndicesToRemove: number[] = [];
+          // Map visible/hidden expense and upsell indices to global indices
+          const itemVisibilityUpdates: Array<{ globalIndex: number; hidden: boolean }> = [];
 
           if (statement.items) {
             let expenseCount = 0;
             let upsellCount = 0;
+            let hiddenExpenseCount = 0;
+            let hiddenUpsellCount = 0;
+            let llCoverExpenseCount = 0;
+            let llCoverUpsellCount = 0;
 
             statement.items.forEach((item, globalIndex) => {
               if (item.type === 'expense') {
-                if (selectedExpenseIndices.includes(expenseCount)) {
-                  globalIndicesToRemove.push(globalIndex);
+                if (item.hidden) {
+                  if (item.hiddenReason === 'll_cover') {
+                    // LL Cover expense
+                    if (selectedLLCoverExpenseIndices.includes(llCoverExpenseCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    llCoverExpenseCount++;
+                  } else {
+                    // Regular hidden expense
+                    if (selectedHiddenExpenseIndices.includes(hiddenExpenseCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    hiddenExpenseCount++;
+                  }
+                } else {
+                  if (selectedExpenseIndices.includes(expenseCount)) {
+                    itemVisibilityUpdates.push({ globalIndex, hidden: true });
+                  }
+                  expenseCount++;
                 }
-                expenseCount++;
               } else if (item.type === 'upsell') {
-                if (selectedUpsellIndices.includes(upsellCount)) {
-                  globalIndicesToRemove.push(globalIndex);
+                if (item.hidden) {
+                  if (item.hiddenReason === 'll_cover') {
+                    // LL Cover upsell
+                    if (selectedLLCoverUpsellIndices.includes(llCoverUpsellCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    llCoverUpsellCount++;
+                  } else {
+                    // Regular hidden upsell
+                    if (selectedHiddenUpsellIndices.includes(hiddenUpsellCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    hiddenUpsellCount++;
+                  }
+                } else {
+                  if (selectedUpsellIndices.includes(upsellCount)) {
+                    itemVisibilityUpdates.push({ globalIndex, hidden: true });
+                  }
+                  upsellCount++;
                 }
-                upsellCount++;
               }
             });
           }
 
           await statementsAPI.editStatement(statement.id, {
-            expenseIdsToRemove: globalIndicesToRemove.length > 0 ? globalIndicesToRemove : undefined,
+            itemVisibilityUpdates: itemVisibilityUpdates.length > 0 ? itemVisibilityUpdates : undefined,
             reservationIdsToRemove: selectedReservationIdsToRemove.length > 0 ? selectedReservationIdsToRemove : undefined,
             reservationIdsToAdd: selectedReservationIdsToAdd.length > 0 ? selectedReservationIdsToAdd : undefined,
             cancelledReservationIdsToAdd: selectedCancelledIdsToAdd.length > 0 ? selectedCancelledIdsToAdd : undefined
@@ -721,6 +814,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setStatement(null);
     setSelectedExpenseIndices([]);
     setSelectedUpsellIndices([]);
+    setSelectedHiddenExpenseIndices([]);
+    setSelectedHiddenUpsellIndices([]);
+    setSelectedLLCoverExpenseIndices([]);
+    setSelectedLLCoverUpsellIndices([]);
     setSelectedReservationIdsToRemove([]);
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
@@ -728,6 +825,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setCancelledReservations([]);
     setShowCancelledSection(false);
     setSelectedCancelledIdsToAdd([]);
+    setShowHiddenExpenses(false);
+    setShowHiddenUpsells(false);
     setCleaningFeeEdits({});
     setInternalNotes('');
     setNotesModified(false);
@@ -770,8 +869,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   if (!isOpen) return null;
 
-  const expenses = statement?.items?.filter(item => item.type === 'expense') || [];
-  const upsells = statement?.items?.filter(item => item.type === 'upsell') || [];
+  const expenses = statement?.items?.filter(item => item.type === 'expense' && !item.hidden) || [];
+  const hiddenExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason !== 'll_cover') || [];
+  const llCoverExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason === 'll_cover') || [];
+  const upsells = statement?.items?.filter(item => item.type === 'upsell' && !item.hidden) || [];
+  const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover') || [];
+  const llCoverUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'll_cover') || [];
   const reservations = statement?.reservations || [];
   
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
@@ -780,6 +883,22 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   const selectedUpsellsTotal = selectedUpsellIndices.reduce((sum, index) => {
     return sum + (upsells[index]?.amount || 0);
+  }, 0);
+
+  const selectedHiddenExpensesTotal = selectedHiddenExpenseIndices.reduce((sum, index) => {
+    return sum + (hiddenExpenses[index]?.amount || 0);
+  }, 0);
+
+  const selectedHiddenUpsellsTotal = selectedHiddenUpsellIndices.reduce((sum, index) => {
+    return sum + (hiddenUpsells[index]?.amount || 0);
+  }, 0);
+
+  const selectedLLCoverExpensesTotal = selectedLLCoverExpenseIndices.reduce((sum, index) => {
+    return sum + (llCoverExpenses[index]?.amount || 0);
+  }, 0);
+
+  const selectedLLCoverUpsellsTotal = selectedLLCoverUpsellIndices.reduce((sum, index) => {
+    return sum + (llCoverUpsells[index]?.amount || 0);
   }, 0);
 
   const selectedReservationsToRemoveTotal = selectedReservationIdsToRemove.reduce((sum, id) => {
@@ -791,6 +910,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     const res = availableReservations.find(r => (r.hostifyId || r.id) === id);
     return sum + (res?.grossAmount || res?.clientRevenue || 0);
   }, 0);
+
+  const netChange = selectedExpensesTotal
+    - selectedUpsellsTotal
+    - selectedReservationsToRemoveTotal
+    + selectedReservationsToAddTotal
+    - selectedHiddenExpensesTotal
+    + selectedHiddenUpsellsTotal
+    - selectedLLCoverExpensesTotal
+    + selectedLLCoverUpsellsTotal;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
@@ -1005,7 +1133,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               </div>
 
               {/* Selection Info */}
-              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0 || selectedCancelledIdsToAdd.length > 0) && (
+              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedHiddenExpenseIndices.length > 0 || selectedHiddenUpsellIndices.length > 0 || selectedLLCoverExpenseIndices.length > 0 || selectedLLCoverUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0 || selectedCancelledIdsToAdd.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -1013,7 +1141,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         {selectedExpenseIndices.length > 0 && (
                           <>
                             <h4 className="font-medium text-amber-800">
-                              {selectedExpenseIndices.length} expense(s) selected for removal
+                              {selectedExpenseIndices.length} expense(s) selected to hide
                             </h4>
                             <p className="text-sm text-amber-700">
                               Expense reduction: ${selectedExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
@@ -1023,10 +1151,50 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         {selectedUpsellIndices.length > 0 && (
                           <>
                             <h4 className="font-medium text-amber-800">
-                              {selectedUpsellIndices.length} upsell(s) selected for removal
+                              {selectedUpsellIndices.length} upsell(s) selected to hide
                             </h4>
                             <p className="text-sm text-amber-700">
                               Revenue reduction: ${selectedUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedHiddenExpenseIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-amber-800">
+                              {selectedHiddenExpenseIndices.length} hidden expense(s) selected to restore
+                            </h4>
+                            <p className="text-sm text-amber-700">
+                              Expense increase: ${selectedHiddenExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedHiddenUpsellIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-amber-800">
+                              {selectedHiddenUpsellIndices.length} hidden upsell(s) selected to restore
+                            </h4>
+                            <p className="text-sm text-amber-700">
+                              Revenue increase: ${selectedHiddenUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedLLCoverExpenseIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-purple-800">
+                              {selectedLLCoverExpenseIndices.length} LL Cover expense(s) selected to include
+                            </h4>
+                            <p className="text-sm text-purple-700">
+                              Expense increase: ${selectedLLCoverExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </p>
+                          </>
+                        )}
+                        {selectedLLCoverUpsellIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-purple-800">
+                              {selectedLLCoverUpsellIndices.length} LL Cover upsell(s) selected to include
+                            </h4>
+                            <p className="text-sm text-purple-700">
+                              Revenue increase: ${selectedLLCoverUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </p>
                           </>
                         )}
@@ -1061,7 +1229,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           </>
                         )}
                         <p className="text-xs text-amber-600 font-semibold pt-1">
-                          Net change: ${((selectedExpensesTotal - selectedUpsellsTotal - selectedReservationsToRemoveTotal + selectedReservationsToAddTotal)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                          Net change: ${netChange.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                         </p>
                       </div>
                     </div>
@@ -1079,13 +1247,24 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
               {/* Expenses List */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">
-                  Expenses ({expenses.length})
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">
+                    Expenses ({expenses.length})
+                  </h3>
+                  {hiddenExpenses.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHiddenExpenses(prev => !prev)}
+                      className="text-xs font-medium text-gray-600 hover:text-gray-800"
+                    >
+                      {showHiddenExpenses ? 'Hide hidden' : `Show hidden (${hiddenExpenses.length})`}
+                    </button>
+                  )}
+                </div>
                 
                 {expenses.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    No expenses found in this statement
+                    No visible expenses found in this statement
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1214,17 +1393,143 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     })}
                   </div>
                 )}
+
+                {showHiddenExpenses && hiddenExpenses.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-700">
+                        Hidden Expenses ({hiddenExpenses.length})
+                      </h4>
+                      <span className="text-xs text-gray-500">Select to restore</span>
+                    </div>
+                    <div className="space-y-2">
+                      {hiddenExpenses.map((expense, index) => {
+                        const isSelected = selectedHiddenExpenseIndices.includes(index);
+                        return (
+                          <div
+                            key={`hidden-expense-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-amber-50 border-amber-200'
+                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleHiddenExpenseToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleHiddenExpenseToggle(index)}
+                                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{expense.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{expense.category}</span> • {expense.date}
+                                      {expense.hiddenReason === 'll_cover' && (
+                                        <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                                          LL Cover
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-gray-500 font-semibold">
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* LL Cover Expenses Section */}
+                {llCoverExpenses.length > 0 && (
+                  <div className="mt-4 rounded-lg border-2 border-purple-200 bg-purple-50 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white">
+                          LL Cover
+                        </span>
+                        <h4 className="text-sm font-semibold text-purple-900">
+                          Company-Covered Expenses ({llCoverExpenses.length})
+                        </h4>
+                      </div>
+                      <span className="text-xs text-purple-700">Select to include in statement</span>
+                    </div>
+                    <p className="text-xs text-purple-700 mb-3">
+                      These expenses are marked as "LL Cover" in SecureStay and are excluded by default. Select to charge to owner.
+                    </p>
+                    <div className="space-y-2">
+                      {llCoverExpenses.map((expense, index) => {
+                        const isSelected = selectedLLCoverExpenseIndices.includes(index);
+                        return (
+                          <div
+                            key={`llcover-expense-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-purple-100 border-purple-400'
+                                : 'bg-white border-purple-200 hover:bg-purple-50'
+                            }`}
+                            onClick={() => handleLLCoverExpenseToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleLLCoverExpenseToggle(index)}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{expense.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{expense.category}</span> • {expense.date}
+                                      {expense.vendor && <span> • {expense.vendor}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-purple-700 font-semibold">
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Additional Revenue (Upsells) List */}
               <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-4">
-                  Additional Revenue / Upsells ({upsells.length})
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">
+                    Additional Revenue / Upsells ({upsells.length})
+                  </h3>
+                  {hiddenUpsells.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHiddenUpsells(prev => !prev)}
+                      className="text-xs font-medium text-gray-600 hover:text-gray-800"
+                    >
+                      {showHiddenUpsells ? 'Hide hidden' : `Show hidden (${hiddenUpsells.length})`}
+                    </button>
+                  )}
+                </div>
                 
                 {upsells.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    No additional revenue/upsells in this statement
+                    No visible additional revenue/upsells in this statement
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1352,6 +1657,62 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {showHiddenUpsells && hiddenUpsells.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-700">
+                        Hidden Upsells ({hiddenUpsells.length})
+                      </h4>
+                      <span className="text-xs text-gray-500">Select to restore</span>
+                    </div>
+                    <div className="space-y-2">
+                      {hiddenUpsells.map((upsell, index) => {
+                        const isSelected = selectedHiddenUpsellIndices.includes(index);
+                        return (
+                          <div
+                            key={`hidden-upsell-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-amber-50 border-amber-200'
+                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleHiddenUpsellToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleHiddenUpsellToggle(index)}
+                                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{upsell.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{upsell.category}</span> • {upsell.date}
+                                      {upsell.listing && <span className="ml-2">• {upsell.listing}</span>}
+                                      {upsell.hiddenReason === 'll_cover' && (
+                                        <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                                          LL Cover
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-gray-500 font-semibold">
+                                <Plus className="w-4 h-4 mr-1" />
+                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

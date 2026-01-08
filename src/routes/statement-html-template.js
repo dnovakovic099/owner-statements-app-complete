@@ -695,16 +695,17 @@ function generateStatementHTML(statement, id) {
                     return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 })()}</td>
             </tr>
-            ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+            ${statement.items?.filter(item => item.type === 'upsell' && !item.hidden).length > 0 ? `
             <tr>
                 <td class="summary-label">Additional Payouts</td>
-                <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="summary-value revenue">+$${(statement.items?.filter(item => item.type === 'upsell' && !item.hidden).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             ` : ''}
             <tr>
                 <td class="summary-label">Expenses</td>
                 <td class="summary-value expense">-$${(statement.items?.filter(item => {
                     if (item.type !== 'expense') return false;
+                    if (item.hidden) return false;
                     // Exclude cleaning expenses when cleaningFeePassThrough is enabled
                     if (statement.cleaningFeePassThrough) {
                         const category = (item.category || '').toLowerCase();
@@ -738,9 +739,10 @@ function generateStatementHTML(statement, id) {
                         const grossPayout = clientRevenue - pmFeeToDeduct;
                         return sum + grossPayout;
                     }, 0) || 0;
-                    const upsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+                    const upsells = statement.items?.filter(item => item.type === 'upsell' && !item.hidden).reduce((sum, item) => sum + item.amount, 0) || 0;
                     const expenses = statement.items?.filter(item => {
                         if (item.type !== 'expense') return false;
+                        if (item.hidden) return false;
                         // Exclude cleaning expenses when cleaningFeePassThrough is enabled
                         if (statement.cleaningFeePassThrough) {
                             const category = (item.category || '').toLowerCase();
@@ -915,6 +917,7 @@ function generateStatementHTML(statement, id) {
                 <tbody>
                     ${statement.items?.filter(item => {
                         if (item.type !== 'expense') return false;
+                        if (item.hidden) return false;
                         // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
                         // (they're already shown in the Rental Activity table's Cleaning Expense column)
                         if (statement.cleaningFeePassThrough) {
@@ -957,6 +960,7 @@ function generateStatementHTML(statement, id) {
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
                         <td style="text-align: right;"><strong>$${(statement.items?.filter(item => {
                             if (item.type !== 'expense') return false;
+                            if (item.hidden) return false;
                             // Exclude cleaning expenses when cleaningFeePassThrough is enabled
                             if (statement.cleaningFeePassThrough) {
                                 const category = (item.category || '').toLowerCase();
@@ -973,7 +977,7 @@ function generateStatementHTML(statement, id) {
         </div>
 
         <!-- Additional Payouts Section (Upsells) -->
-        ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+        ${statement.items?.filter(item => item.type === 'upsell' && !item.hidden).length > 0 ? `
         <div class="upsells-section page-break-avoid">
             <h3>ADDITIONAL PAYOUTS</h3>
             <table class="expense-table">
@@ -987,7 +991,7 @@ function generateStatementHTML(statement, id) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${statement.items?.filter(item => item.type === 'upsell').map(upsell => `
+                    ${statement.items?.filter(item => item.type === 'upsell' && !item.hidden).map(upsell => `
                         <tr>
                             <td style="font-weight: 500; color: #374151;">
                                 ${(() => {
@@ -1003,7 +1007,7 @@ function generateStatementHTML(statement, id) {
                     `).join('')}
                     <tr class="total-row">
                         <td colspan="4"><strong>TOTAL ADDITIONAL PAYOUTS</strong></td>
-                        <td style="text-align: right;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td style="text-align: right;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell' && !item.hidden).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
                 </tbody>
             </table>

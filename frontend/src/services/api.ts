@@ -245,6 +245,10 @@ export const statementsAPI = {
       category?: string;
       amount?: number;
     }>;
+    itemVisibilityUpdates?: Array<{
+      globalIndex: number;
+      hidden: boolean;
+    }>;
   }): Promise<{ message: string; statement?: any }> => {
     const response = await api.put(`/statements/${id}`, data);
     return response.data;

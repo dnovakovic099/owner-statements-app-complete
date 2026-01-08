@@ -5,6 +5,9 @@ const BackgroundJobService = require('../services/BackgroundJobService');
 const ListingService = require('../services/ListingService');
 const { ActivityLog } = require('../models');
 
+const isLlCoverExpense = (expense) => Boolean(expense && expense.llCover && expense.llCover !== 0);
+const isHiddenItem = (item) => Boolean(item && item.hidden);
+
 // GET /api/statements/jobs/:jobId - Get background job status
 router.get('/jobs/:jobId', async (req, res) => {
     try {
@@ -503,6 +506,33 @@ router.get('/:id', async (req, res) => {
             }
         }
 
+        // Inject LL Cover expenses as hidden items for edit visibility
+        if (statement.expenses && statement.expenses.length > 0) {
+            const existingItems = statement.items || [];
+            const hasLlCoverItems = existingItems.some(i => i.hiddenReason === 'll_cover');
+            if (!hasLlCoverItems) {
+                const llCoverExpenses = statement.expenses.filter(exp => isLlCoverExpense(exp));
+                if (llCoverExpenses.length > 0) {
+                    const llCoverItems = llCoverExpenses.map(exp => {
+                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
+                        return {
+                            type: isUpsell ? 'upsell' : 'expense',
+                            description: exp.description,
+                            amount: Math.abs(exp.amount),
+                            date: exp.date,
+                            category: exp.type || exp.category || 'expense',
+                            vendor: exp.vendor,
+                            listing: exp.listing,
+                            hidden: true,
+                            hiddenReason: 'll_cover'
+                        };
+                    });
+                    statement.items = [...existingItems, ...llCoverItems];
+                    await FileDataService.updateStatement(id, { items: statement.items });
+                }
+            }
+        }
+
         // Use statement's own internalNotes if available (snapshotted at creation/finalization)
         // Only fall back to listing notes for backward compatibility with old statements
         if (!statement.internalNotes) {
@@ -672,12 +702,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-        // Filter expenses by date and exclude LL Cover expenses
-        const periodExpenses = allExpenses.filter(exp => {
-            // Exclude expenses where llCover is checked (company covers, not owner)
-            if (exp.llCover && exp.llCover !== 0) {
-                return false;
-            }
+        // Filter expenses by date (LL Cover handled separately for hidden items)
+        const periodExpensesAll = allExpenses.filter(exp => {
             // Check property ID is in our list (or is null for SecureStay)
             // Use parseInt to ensure proper type comparison
             if (exp.propertyId !== null && !parsedPropertyIds.includes(parseInt(exp.propertyId))) {
@@ -686,6 +712,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const expenseDate = new Date(exp.date);
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
+        const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
+        const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
 
         // Identify cleaning expenses
         const cleaningExpenses = periodExpenses.filter(exp => {
@@ -922,6 +950,25 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                         vendor: exp.vendor,
                         listing: exp.listing,
                         propertyId: exp.propertyId
+                    };
+                }),
+                // LL Cover expenses are stored as hidden items for review
+                ...llCoverExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
+                    const listing = exp.propertyId ? targetListings.find(l => parseInt(l.id) === parseInt(exp.propertyId)) : null;
+                    const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : (exp.listing || 'General');
+
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing,
+                        propertyId: exp.propertyId,
+                        hidden: true,
+                        hiddenReason: 'll_cover'
                     };
                 })
             ]
@@ -1173,11 +1220,7 @@ router.post('/generate', async (req, res) => {
         // Get expenses for the date range
         // Note: SecureStay expenses are already filtered by property in FileDataService.getExpenses()
         // so we don't need to filter by propertyId here for SecureStay expenses (they have propertyId: null)
-        const periodExpenses = expenses.filter(exp => {
-            // Exclude expenses where llCover is checked (company covers, not owner)
-            if (exp.llCover && exp.llCover !== 0) {
-                return false;
-            }
+        const periodExpensesAll = expenses.filter(exp => {
             // For file-based expenses, filter by propertyId (use parseInt to ensure proper type comparison)
             if (propertyId && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(propertyId)) {
                 return false;
@@ -1185,6 +1228,8 @@ router.post('/generate', async (req, res) => {
             const expenseDate = new Date(exp.date);
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
+        const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
+        const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
 
         // Check if this is a co-host on Airbnb property (need this early for revenue calculation)
         let isCohostOnAirbnb = false;
@@ -1271,8 +1316,8 @@ router.post('/generate', async (req, res) => {
             }
         }
 
-        // Combine filtered expenses with cleaning fee expenses
-        const allExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
+        // Combine all expenses with cleaning fee expenses
+        const allExpenses = [...periodExpensesAll, ...cleaningFeeExpenses];
 
         // Separate expenses (negative/costs) from upsells (positive/revenue)
         const totalExpenses = filteredExpenses.reduce((sum, exp) => {
@@ -1452,12 +1497,28 @@ router.post('/generate', async (req, res) => {
                     
                     return {
                         type: isUpsell ? 'upsell' : 'expense',
-                    description: exp.description,
+                        description: exp.description,
                         amount: Math.abs(exp.amount), // Always store as positive, type determines if it's added or subtracted
-                    date: exp.date,
-                    category: exp.type || exp.category || 'expense',
-                    vendor: exp.vendor,
-                    listing: exp.listing
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing
+                    };
+                }),
+                // LL Cover expenses are stored as hidden items for review
+                ...llCoverExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
+
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing,
+                        hidden: true,
+                        hiddenReason: 'll_cover'
                     };
                 })
             ]
@@ -1717,6 +1778,8 @@ router.put('/:id/reconfigure', async (req, res) => {
             // Flatten and dedupe
             const allReservations = reservationsArrays.flat();
             const allExpenses = expensesArrays.flat();
+            const llCoverExpenses = allExpenses.filter(exp => isLlCoverExpense(exp));
+            const visibleExpenses = allExpenses.filter(exp => !isLlCoverExpense(exp));
 
             // Build property PM fees map
             const propertyPmFees = {};
@@ -1737,7 +1800,7 @@ router.put('/:id/reconfigure', async (req, res) => {
                 pmCommission += revenue * (resPmFee / 100);
             }
 
-            for (const exp of allExpenses) {
+            for (const exp of visibleExpenses) {
                 const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell');
                 if (isUpsell) {
                     totalUpsells += Math.abs(exp.amount);
@@ -1790,7 +1853,7 @@ router.put('/:id/reconfigure', async (req, res) => {
                         date: cr.checkOutDate,
                         category: 'custom'
                     })),
-                    ...allExpenses.map(exp => {
+                    ...visibleExpenses.map(exp => {
                         const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell');
                         return {
                             type: isUpsell ? 'upsell' : 'expense',
@@ -1800,6 +1863,20 @@ router.put('/:id/reconfigure', async (req, res) => {
                             category: exp.type || exp.category || 'expense',
                             vendor: exp.vendor,
                             listing: exp.listing
+                        };
+                    }),
+                    ...llCoverExpenses.map(exp => {
+                        const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell');
+                        return {
+                            type: isUpsell ? 'upsell' : 'expense',
+                            description: exp.description,
+                            amount: Math.abs(exp.amount),
+                            date: exp.date,
+                            category: exp.type || exp.category || 'expense',
+                            vendor: exp.vendor,
+                            listing: exp.listing,
+                            hidden: true,
+                            hiddenReason: 'll_cover'
                         };
                     })
                 ]
@@ -1866,12 +1943,14 @@ router.put('/:id/reconfigure', async (req, res) => {
         }
 
         // Filter and calculate expenses
+        const expenseCandidates = expenses.filter(exp => !isLlCoverExpense(exp));
+        const llCoverExpenses = expenses.filter(exp => isLlCoverExpense(exp));
         const filteredExpenses = cleaningFeePassThrough
-            ? expenses.filter(exp => {
+            ? expenseCandidates.filter(exp => {
                 const cat = (exp.category || exp.type || '').toLowerCase();
                 return !cat.includes('cleaning');
             })
-            : expenses;
+            : expenseCandidates;
 
         let totalExpenses = 0;
         let totalUpsells = 0;
@@ -2005,6 +2084,20 @@ router.put('/:id/reconfigure', async (req, res) => {
                         vendor: exp.vendor,
                         listing: exp.listing
                     };
+                }),
+                ...llCoverExpenses.map(exp => {
+                    const isUpsell = exp.amount > 0 || (exp.type?.toLowerCase() === 'upsell') || (exp.category?.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
+                    return {
+                        type: isUpsell ? 'upsell' : 'expense',
+                        description: exp.description,
+                        amount: Math.abs(exp.amount),
+                        date: exp.date,
+                        category: exp.type || exp.category || 'expense',
+                        vendor: exp.vendor,
+                        listing: exp.listing,
+                        hidden: true,
+                        hiddenReason: 'll_cover'
+                    };
                 })
             ]
         };
@@ -2027,7 +2120,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, expenseItemUpdates, upsellItemUpdates } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, expenseItemUpdates, upsellItemUpdates, itemVisibilityUpdates } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -2036,20 +2129,43 @@ router.put('/:id', async (req, res) => {
 
         let modified = false;
 
-        // Remove expenses and upsells by global index
+        // Hide expenses and upsells by global index (keeps history for restore)
         if (expenseIdsToRemove && Array.isArray(expenseIdsToRemove) && expenseIdsToRemove.length > 0) {
-            const originalItemsCount = statement.items.length;
-            
-            // The frontend now sends global indices directly
-            const globalIndicesToRemove = new Set(expenseIdsToRemove);
-            
-            // Filter out items at those global indices
-            statement.items = statement.items.filter((item, globalIndex) => {
-                return !globalIndicesToRemove.has(globalIndex);
-            });
+            for (const globalIndex of expenseIdsToRemove) {
+                const item = statement.items[globalIndex];
+                if (!item || (item.type !== 'expense' && item.type !== 'upsell')) continue;
+                if (!item.hidden) {
+                    item.hidden = true;
+                    if (!item.hiddenReason) {
+                        item.hiddenReason = 'manual';
+                    }
+                    modified = true;
+                }
+            }
+        }
 
-            if (statement.items.length < originalItemsCount) {
-                modified = true;
+        // Update item visibility (hide/show)
+        if (itemVisibilityUpdates && Array.isArray(itemVisibilityUpdates) && itemVisibilityUpdates.length > 0) {
+            for (const update of itemVisibilityUpdates) {
+                const { globalIndex, hidden } = update || {};
+                if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
+                    console.warn(`Invalid globalIndex ${globalIndex} for visibility update, skipping`);
+                    continue;
+                }
+                const item = statement.items[globalIndex];
+                if (!item || (item.type !== 'expense' && item.type !== 'upsell')) {
+                    console.warn(`Item at globalIndex ${globalIndex} is not a hideable item, skipping`);
+                    continue;
+                }
+                if (typeof hidden === 'boolean') {
+                    if (item.hidden !== hidden) {
+                        item.hidden = hidden;
+                        if (hidden && !item.hiddenReason) {
+                            item.hiddenReason = 'manual';
+                        }
+                        modified = true;
+                    }
+                }
             }
         }
 
@@ -2365,6 +2481,7 @@ router.put('/:id', async (req, res) => {
             // Recalculate totals after modifications
             const expenses = statement.items.filter(item => {
                 if (item.type !== 'expense') return false;
+                if (isHiddenItem(item)) return false;
                 // Exclude cleaning expenses when cleaningFeePassThrough is enabled
                 if (statement.cleaningFeePassThrough) {
                     const category = (item.category || '').toLowerCase();
@@ -2395,7 +2512,7 @@ router.put('/:id', async (req, res) => {
             statement.insuranceFees = expenses.filter(e => e.description && e.description.includes('Insurance')).reduce((sum, item) => sum + item.amount, 0);
 
             // Calculate total upsells from items
-            const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+            const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
 
             // Recalculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
             // Note: techFees and insuranceFees are stored but not included in payout calculation
@@ -2738,9 +2855,10 @@ router.get('/:id/view', async (req, res) => {
             recalculatedGrossPayout += grossPayout;
         });
 
-        const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
         const totalExpenses = statement.items?.filter(item => {
             if (item.type !== 'expense') return false;
+            if (isHiddenItem(item)) return false;
             // Exclude cleaning expenses when cleaningFeePassThrough is enabled
             if (statement.cleaningFeePassThrough) {
                 const category = (item.category || '').toLowerCase();
@@ -4647,6 +4765,7 @@ router.get('/:id/view', async (req, res) => {
     <!-- Expenses Section - only show if there are expenses (excluding cleaning when pass-through enabled) -->
     ${statement.items?.filter(item => {
         if (item.type !== 'expense') return false;
+        if (isHiddenItem(item)) return false;
         // Exclude cleaning expenses when cleaningFeePassThrough is enabled
         if (statement.cleaningFeePassThrough) {
             const category = (item.category || '').toLowerCase();
@@ -4673,6 +4792,7 @@ router.get('/:id/view', async (req, res) => {
             <tbody>
                     ${statement.items?.filter(item => {
                         if (item.type !== 'expense') return false;
+                        if (isHiddenItem(item)) return false;
                         // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
                         if (statement.cleaningFeePassThrough) {
                             const category = (item.category || '').toLowerCase();
@@ -4714,6 +4834,7 @@ router.get('/:id/view', async (req, res) => {
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
                         <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => {
                             if (item.type !== 'expense') return false;
+                            if (isHiddenItem(item)) return false;
                             // Exclude cleaning expenses when cleaningFeePassThrough is enabled
                             if (statement.cleaningFeePassThrough) {
                                 const category = (item.category || '').toLowerCase();
@@ -4732,7 +4853,7 @@ router.get('/:id/view', async (req, res) => {
     ` : ''}
 
     <!-- Additional Payouts Section (Upsells) -->
-    ${statement.items?.filter(item => item.type === 'upsell').length > 0 ? `
+    ${statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).length > 0 ? `
     <div class="section">
         <h2 class="section-title">ADDITIONAL PAYOUTS</h2>
         <div class="expenses-container">
@@ -4747,7 +4868,7 @@ router.get('/:id/view', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                    ${statement.items?.filter(item => item.type === 'upsell').map(upsell => `
+                    ${statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).map(upsell => `
                         <tr>
                             <td class="date-cell">
                                 ${(() => {
@@ -4763,7 +4884,7 @@ router.get('/:id/view', async (req, res) => {
                     `).join('')}
                     <tr class="totals-row">
                         <td colspan="4" style="color: white;"><strong>TOTAL ADDITIONAL PAYOUTS</strong></td>
-                        <td class="amount-cell revenue-amount" style="color: white;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                        <td class="amount-cell revenue-amount" style="color: white;"><strong>+$${(statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
         </table>
@@ -4829,9 +4950,10 @@ router.get('/:id/view', async (req, res) => {
             summaryGrossPayout += grossPayout;
         });
 
-        const totalUpsells = statement.items?.filter(item => item.type === 'upsell').reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
         const totalExpenses = statement.items?.filter(item => {
             if (item.type !== 'expense') return false;
+            if (isHiddenItem(item)) return false;
             // Exclude cleaning expenses when cleaningFeePassThrough is enabled
             if (statement.cleaningFeePassThrough) {
                 const category = (item.category || '').toLowerCase();
@@ -5862,18 +5984,19 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                     }
 
-                    // Filter expenses for this property (exclude LL Cover expenses)
-                    const periodExpenses = allExpenses.filter(exp => {
-                        // Exclude expenses where llCover is checked (company covers, not owner)
-                        if (exp.llCover && exp.llCover !== 0) {
-                            return false;
-                        }
+                    // Filter expenses for this property (LL Cover handled separately for hidden items)
+                    const periodExpensesAll = allExpenses.filter(exp => {
                         const matchesPropertyId = parseInt(exp.propertyId) === parseInt(property.id);
                         const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === parseInt(property.id);
                         if (!matchesPropertyId && !matchesSecureStayId) return false;
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
+                    const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
+                    const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
+                    if (llCoverExpenses.length > 0) {
+                        console.log(`[LL-COVER] Marking ${llCoverExpenses.length} LL Cover expense(s) as hidden for property ${property.id}`);
+                    }
 
                     // NEW LOGIC: If there's ANY overlapping reservation, create the statement
                     // This ensures long-stay guests are visible even if they don't checkout in the period
@@ -6075,11 +6198,25 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                         vendor: exp.vendor,
                                         listing: exp.listing
                                     };
+                                }),
+                                ...llCoverExpenses.map(exp => {
+                                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                    return {
+                                        type: isUpsell ? 'upsell' : 'expense',
+                                        description: exp.description,
+                                        amount: Math.abs(exp.amount),
+                                        date: exp.date,
+                                        category: exp.type || exp.category || 'expense',
+                                        vendor: exp.vendor,
+                                        listing: exp.listing,
+                                        hidden: true,
+                                        hiddenReason: 'll_cover'
+                                    };
                                 })
                             ]
                         },
                         periodReservations,
-                        periodExpenses: allExpenses
+                        periodExpenses: periodExpenses
                     };
                 } catch (error) {
                     return {
@@ -6275,12 +6412,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         return dateMatch && statusMatch;
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
-                    // Filter expenses for this property (exclude LL Cover expenses)
-                    const periodExpenses = expenses.filter(exp => {
-                        // Exclude expenses where llCover is checked (company covers, not owner)
-                        if (exp.llCover && exp.llCover !== 0) {
-                            return false;
-                        }
+                    // Filter expenses for this property (LL Cover handled separately for hidden items)
+                    const periodExpensesAll = expenses.filter(exp => {
                         // Use parseInt to ensure proper type comparison
                         if (property.id && exp.propertyId !== null && parseInt(exp.propertyId) !== parseInt(property.id)) {
                             return false;
@@ -6288,6 +6421,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
+                    const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
+                    const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
 
                     // Skip if no activity
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {
@@ -6450,12 +6585,26 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                                 const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                 return {
                                     type: isUpsell ? 'upsell' : 'expense',
-                                description: exp.description,
+                                    description: exp.description,
                                     amount: Math.abs(exp.amount),
-                                date: exp.date,
-                                category: exp.type || exp.category || 'expense',
-                                vendor: exp.vendor,
-                                listing: exp.listing
+                                    date: exp.date,
+                                    category: exp.type || exp.category || 'expense',
+                                    vendor: exp.vendor,
+                                    listing: exp.listing
+                                };
+                            }),
+                            ...llCoverExpenses.map(exp => {
+                                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                return {
+                                    type: isUpsell ? 'upsell' : 'expense',
+                                    description: exp.description,
+                                    amount: Math.abs(exp.amount),
+                                    date: exp.date,
+                                    category: exp.type || exp.category || 'expense',
+                                    vendor: exp.vendor,
+                                    listing: exp.listing,
+                                    hidden: true,
+                                    hiddenReason: 'll_cover'
                                 };
                             })
                         ]

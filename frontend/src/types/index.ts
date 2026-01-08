@@ -59,6 +59,8 @@ export interface StatementItem {
   category: string;
   vendor?: string;
   listing?: string;
+  hidden?: boolean;
+  hiddenReason?: string;
 }
 
 export interface Statement {
