@@ -39,7 +39,15 @@ This system automates the process of:
 ### Integrations
 - **Hostify RMS** - Reservations, listings, property data
 - **QuickBooks Online** - Expenses, income, P&L reports
+- **SecureStay** - Expense tracking with LL Cover support
 - **SendGrid/SMTP** - Email delivery
+
+### Edit Statement
+- Hide/show individual expenses and upsells
+- **LL Cover Toggle** - Company-covered expenses excluded by default, can be included per statement
+- Add/remove reservations from statement period
+- Edit expense amounts and categories inline
+- Cleaning fee pass-through configuration
 
 ### Listings Management
 - Property details and owner assignments
@@ -96,6 +104,9 @@ QUICKBOOKS_CLIENT_SECRET=your_qb_client_secret
 QUICKBOOKS_REDIRECT_URI=http://localhost:3003/api/quickbooks/auth/callback
 QUICKBOOKS_USE_SANDBOX=false
 
+# SecureStay (Expense Management)
+SECURESTAY_API_KEY=your_securestay_api_key
+
 # Email
 SENDGRID_API_KEY=your_sendgrid_key
 FROM_EMAIL=statements@yourcompany.com
@@ -143,6 +154,7 @@ owner-statements-app-complete/
 │   ├── services/            # Business logic
 │   │   ├── QuickBooksService.js
 │   │   ├── HostifyService.js
+│   │   ├── SecureStayService.js
 │   │   └── StatementService.js
 │   └── server.js            # Express app entry point
 ├── frontend/
@@ -151,6 +163,7 @@ owner-statements-app-complete/
 │       │   ├── Dashboard.tsx
 │       │   ├── FinancialDashboard/  # Financial analytics
 │       │   ├── StatementsTable.tsx
+│       │   ├── EditStatementModal.tsx  # Edit with LL Cover toggle
 │       │   ├── ListingsPage.tsx
 │       │   └── GenerateModal.tsx
 │       ├── services/
@@ -274,6 +287,23 @@ JWT_SECRET            = (generate secure random string)
 npm run build          # Build frontend for production
 npm start              # Start production server
 ```
+
+## LL Cover Feature
+
+Expenses marked as "LL Cover" in SecureStay are company-covered costs that should not be charged to property owners by default.
+
+### How It Works
+
+1. **Automatic Detection** - When generating statements, expenses with `llCover: true` from SecureStay are automatically marked as hidden
+2. **Edit Statement** - A purple "LL Cover" section appears showing all company-covered expenses/upsells
+3. **Toggle to Include** - Check the box next to any LL Cover item to include it in the owner's statement
+4. **Recalculates Totals** - Statement totals update automatically when LL Cover items are toggled
+
+### Use Cases
+
+- Cleaning costs covered by company during vacancy
+- Maintenance items absorbed by property manager
+- One-time owner credits or adjustments
 
 ## Troubleshooting
 

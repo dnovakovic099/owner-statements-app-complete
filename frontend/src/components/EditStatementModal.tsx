@@ -1715,6 +1715,66 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* LL Cover Upsells Section */}
+                {llCoverUpsells.length > 0 && (
+                  <div className="mt-4 rounded-lg border-2 border-purple-200 bg-purple-50 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white">
+                          LL Cover
+                        </span>
+                        <h4 className="text-sm font-semibold text-purple-900">
+                          Company-Covered Upsells ({llCoverUpsells.length})
+                        </h4>
+                      </div>
+                      <span className="text-xs text-purple-700">Select to include in statement</span>
+                    </div>
+                    <p className="text-xs text-purple-700 mb-3">
+                      These upsells are marked as "LL Cover" in SecureStay and are excluded by default. Select to add to owner revenue.
+                    </p>
+                    <div className="space-y-2">
+                      {llCoverUpsells.map((upsell, index) => {
+                        const isSelected = selectedLLCoverUpsellIndices.includes(index);
+                        return (
+                          <div
+                            key={`llcover-upsell-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-purple-100 border-purple-400'
+                                : 'bg-white border-purple-200 hover:bg-purple-50'
+                            }`}
+                            onClick={() => handleLLCoverUpsellToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleLLCoverUpsellToggle(index)}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{upsell.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{upsell.category}</span> • {upsell.date}
+                                      {upsell.listing && <span> • {upsell.listing}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-purple-700 font-semibold">
+                                <Plus className="w-4 h-4 mr-1" />
+                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Current Reservations Section */}
