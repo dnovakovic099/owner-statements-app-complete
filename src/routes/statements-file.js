@@ -618,7 +618,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // Helper function to generate a COMBINED statement for multiple properties
-async function generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType) {
+// Optional 'group' parameter contains group info when generating from a listing group
+async function generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType, group = null) {
     try {
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
@@ -877,6 +878,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             ? propertyNames
             : `${targetListings.slice(0, 2).map(l => l.nickname || l.displayName || l.name).join(', ')} +${targetListings.length - 2} more`;
 
+        // Use group name for display if this is a group-based statement
+        const displayName = group ? group.name : shortPropertyNames;
+
         // Create statement object
         const statement = {
             id: newId,
@@ -884,8 +888,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             ownerName: owner.name,
             propertyId: null, // Combined statement has no single property
             propertyIds: parsedPropertyIds, // Store all property IDs
-            propertyName: shortPropertyNames,
+            propertyName: displayName,
             propertyNames: propertyNames, // Full list for detail view
+            // Store group info if this statement was generated from a group
+            groupId: group ? group.id : null,
+            groupName: group ? group.name : null,
+            groupTags: group ? group.tags : null,
             weekStartDate: startDate,
             weekEndDate: endDate,
             calculationType,
@@ -987,11 +995,18 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             propertyName: propertyDisplay,
             period: periodDisplay,
             propertyCount,
-            isCombined: true
+            isCombined: true,
+            groupId: group ? group.id : null,
+            groupName: group ? group.name : null
         });
 
+        // Create response message based on whether this is a group statement
+        const responseMessage = group
+            ? `Statement generated for group "${group.name}" (${propertyCount} properties)`
+            : `Combined statement generated for ${propertyCount} properties`;
+
         res.status(201).json({
-            message: `Combined statement generated for ${propertyCount} properties`,
+            message: responseMessage,
             statement: {
                 id: statement.id,
                 ownerPayout: statement.ownerPayout,
@@ -999,7 +1014,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 totalExpenses: statement.totalExpenses,
                 itemCount: statement.items.length,
                 propertyCount: propertyCount,
-                isCombinedStatement: true
+                isCombinedStatement: true,
+                groupId: group ? group.id : null,
+                groupName: group ? group.name : null
             }
         });
     } catch (error) {
@@ -1011,14 +1028,37 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, propertyIds, ownerId, tag, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
+        const { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
         }
 
-        if (!propertyId && !propertyIds && !ownerId && !tag) {
-            return res.status(400).json({ error: 'Either property ID, property IDs, owner ID, or tag is required' });
+        if (!propertyId && !propertyIds && !ownerId && !tag && !groupId) {
+            return res.status(400).json({ error: 'Either property ID, property IDs, owner ID, tag, or group ID is required' });
+        }
+
+        // Handle group-based COMBINED statement generation
+        if (groupId) {
+            console.log(`[Group Combined] Generating combined statement for group ID: ${groupId}`);
+
+            // Fetch group and its member listings
+            const ListingGroupService = require('../services/ListingGroupService');
+            const group = await ListingGroupService.getGroupById(parseInt(groupId));
+
+            if (!group) {
+                return res.status(404).json({ error: `Group not found: ${groupId}` });
+            }
+
+            if (!group.members || group.members.length === 0) {
+                return res.status(400).json({ error: `Group "${group.name}" has no member listings` });
+            }
+
+            console.log(`[Group Combined] Found ${group.members.length} listings in group "${group.name}"`);
+
+            // Generate combined statement using the existing function with group's listing IDs
+            const groupPropertyIds = group.members.map(m => m.id.toString());
+            return await generateCombinedStatement(req, res, groupPropertyIds, ownerId, startDate, endDate, calculationType, group);
         }
 
         // Handle combined multi-property statement generation

@@ -510,6 +510,58 @@ export const listingsAPI = {
   },
 };
 
+// Groups API
+export const groupsAPI = {
+  getGroups: async (): Promise<{ groups: any[] }> => {
+    const response = await api.get('/groups');
+    return response.data;
+  },
+
+  getGroup: async (id: number): Promise<{ group: any }> => {
+    const response = await api.get(`/groups/${id}`);
+    return response.data;
+  },
+
+  createGroup: async (data: {
+    name: string;
+    tags: string[];
+    listingIds: number[];
+  }): Promise<{ group: any }> => {
+    const response = await api.post('/groups', data);
+    return response.data;
+  },
+
+  updateGroup: async (
+    id: number,
+    data: {
+      name?: string;
+      tags?: string[];
+    }
+  ): Promise<{ group: any }> => {
+    const response = await api.put(`/groups/${id}`, data);
+    return response.data;
+  },
+
+  deleteGroup: async (id: number): Promise<void> => {
+    await api.delete(`/groups/${id}`);
+  },
+
+  addListingsToGroup: async (
+    id: number,
+    listingIds: number[]
+  ): Promise<{ group: any }> => {
+    const response = await api.post(`/groups/${id}/listings`, { listingIds });
+    return response.data;
+  },
+
+  removeListingFromGroup: async (
+    groupId: number,
+    listingId: number
+  ): Promise<void> => {
+    await api.delete(`/groups/${groupId}/listings/${listingId}`);
+  },
+};
+
 // Email API
 export interface EmailLog {
   id: number;

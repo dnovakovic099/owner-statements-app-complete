@@ -176,6 +176,25 @@ const Statement = sequelize.define('Statement', {
         defaultValue: null,
         field: 'internal_notes',
         comment: 'Snapshot of internal notes at time of statement creation/finalization'
+    },
+    // Group fields for auto-generated group statements
+    groupId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'group_id',
+        comment: 'Reference to listing_groups for group-based statements'
+    },
+    groupName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'group_name',
+        comment: 'Name of the group at time of statement generation'
+    },
+    groupTags: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'group_tags',
+        comment: 'Tags of the group at time of statement generation'
     }
 }, {
     tableName: 'statements',

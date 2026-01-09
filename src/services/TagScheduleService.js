@@ -3,10 +3,27 @@ const TagSchedule = require('../models/TagSchedule');
 const TagNotification = require('../models/TagNotification');
 const Listing = require('../models/Listing');
 
+// Lazy load to avoid circular dependency
+let ListingGroupService = null;
+const getListingGroupService = () => {
+    if (!ListingGroupService) {
+        ListingGroupService = require('./ListingGroupService');
+    }
+    return ListingGroupService;
+};
+
 class TagScheduleService {
     constructor() {
         this.checkInterval = null;
         this.CHECK_INTERVAL_MS = 60000; // Check every minute
+        this.TIMEZONE = 'America/New_York'; // Always use EST/EDT
+    }
+
+    /**
+     * Get current time in EST/EDT timezone
+     */
+    getESTTime() {
+        return new Date(new Date().toLocaleString('en-US', { timeZone: this.TIMEZONE }));
     }
 
     /**
@@ -35,10 +52,11 @@ class TagScheduleService {
 
     /**
      * Check all schedules and create notifications for due ones
+     * Always uses EST/EDT timezone
      */
     async checkSchedules() {
         try {
-            const now = new Date();
+            const now = this.getESTTime(); // Always use EST
 
             // Get all enabled schedules
             const schedules = await TagSchedule.findAll({
@@ -123,7 +141,7 @@ class TagScheduleService {
     }
 
     /**
-     * Trigger a notification for a schedule
+     * Trigger a notification for a schedule and auto-generate draft statements for groups AND individual listings
      */
     async triggerNotification(schedule, now) {
         try {
@@ -131,11 +149,18 @@ class TagScheduleService {
             const listings = await this.getListingsWithTag(schedule.tagName);
             const listingCount = listings.length;
 
+            // Auto-generate draft statements for groups with this tag
+            const groupResults = await this.autoGenerateGroupStatements(schedule.tagName, schedule);
+
+            // Auto-generate draft statements for individual (non-grouped) listings with this tag
+            const individualResults = await this.autoGenerateIndividualStatements(schedule.tagName, schedule);
+
             // Create notification
+            const totalGenerated = groupResults.generated + individualResults.generated;
             const notification = await TagNotification.create({
                 tagName: schedule.tagName,
                 scheduleId: schedule.id,
-                message: `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings)`,
+                message: `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts auto-generated)`,
                 status: 'unread',
                 listingCount,
                 scheduledFor: now
@@ -147,7 +172,7 @@ class TagScheduleService {
                 nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
             });
 
-            console.log(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings`);
+            console.log(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts`);
 
             return notification;
         } catch (error) {
@@ -157,7 +182,217 @@ class TagScheduleService {
     }
 
     /**
-     * Get all listings with a specific tag
+     * Auto-generate draft statements for all groups with the given tag
+     */
+    async autoGenerateGroupStatements(tagName, schedule) {
+        const results = { generated: 0, skipped: 0, errors: 0, groups: [] };
+
+        try {
+            const groupService = getListingGroupService();
+            const groups = await groupService.getGroupsByTag(tagName);
+
+            if (groups.length === 0) {
+                console.log(`[TagScheduleService] No groups found with tag "${tagName}"`);
+                return results;
+            }
+
+            console.log(`[TagScheduleService] Found ${groups.length} groups with tag "${tagName}", generating draft statements...`);
+
+            // Calculate date range based on tag
+            const dateRange = this.calculateDateRangeForTag(tagName);
+
+            // Lazy load statement generation
+            const StatementService = require('./StatementService');
+
+            for (const group of groups) {
+                try {
+                    // Get group details with member listings
+                    const groupDetails = await groupService.getGroupById(group.id);
+
+                    if (!groupDetails.members || groupDetails.members.length === 0) {
+                        console.log(`[TagScheduleService] Skipping group "${group.name}" - no member listings`);
+                        continue;
+                    }
+
+                    // Generate combined draft statement for the group
+                    const statement = await StatementService.generateGroupStatement({
+                        groupId: group.id,
+                        groupName: group.name,
+                        listingIds: groupDetails.members.map(m => m.id),
+                        startDate: dateRange.start,
+                        endDate: dateRange.end,
+                        calculationType: group.calculationType || 'checkout'
+                    });
+
+                    // Check if statement was skipped (duplicate)
+                    if (statement?.skipped) {
+                        results.skipped++;
+                        console.log(`[TagScheduleService] Skipped group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
+                        continue;
+                    }
+
+                    results.generated++;
+                    results.groups.push({
+                        groupId: group.id,
+                        groupName: group.name,
+                        statementId: statement?.id
+                    });
+
+                    console.log(`[TagScheduleService] Generated draft statement for group "${group.name}" (ID: ${group.id})`);
+                } catch (groupError) {
+                    console.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
+                    results.errors++;
+                }
+            }
+
+            console.log(`[TagScheduleService] Auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
+        } catch (error) {
+            console.error('[TagScheduleService] Error in autoGenerateGroupStatements:', error);
+        }
+
+        return results;
+    }
+
+    /**
+     * Auto-generate draft statements for individual (non-grouped) listings with the given tag
+     */
+    async autoGenerateIndividualStatements(tagName, schedule) {
+        const results = { generated: 0, skipped: 0, errors: 0, listings: [] };
+
+        try {
+            // Get all listings with this tag that are NOT in any group
+            // Use case-insensitive matching with ILIKE for PostgreSQL
+            const listings = await Listing.findAll({
+                where: {
+                    isActive: true,
+                    groupId: null, // Only non-grouped listings
+                    tags: {
+                        [Op.or]: [
+                            { [Op.iLike]: tagName },
+                            { [Op.iLike]: `${tagName},%` },
+                            { [Op.iLike]: `%,${tagName}` },
+                            { [Op.iLike]: `%,${tagName},%` }
+                        ]
+                    }
+                }
+            });
+
+            if (listings.length === 0) {
+                console.log(`[TagScheduleService] No non-grouped listings found with tag "${tagName}"`);
+                return results;
+            }
+
+            console.log(`[TagScheduleService] Found ${listings.length} non-grouped listings with tag "${tagName}", generating draft statements...`);
+
+            // Calculate date range based on tag
+            const dateRange = this.calculateDateRangeForTag(tagName);
+
+            // Lazy load statement generation
+            const StatementService = require('./StatementService');
+
+            for (const listing of listings) {
+                try {
+                    // Generate individual draft statement
+                    const statement = await StatementService.generateIndividualStatement({
+                        listingId: listing.id,
+                        startDate: dateRange.start,
+                        endDate: dateRange.end,
+                        calculationType: schedule.calculationType || 'checkout'
+                    });
+
+                    // Check if statement was skipped (duplicate)
+                    if (statement?.skipped) {
+                        results.skipped++;
+                        console.log(`[TagScheduleService] Skipped listing "${listing.displayName || listing.name}" - statement already exists (ID: ${statement.existingId})`);
+                        continue;
+                    }
+
+                    results.generated++;
+                    results.listings.push({
+                        listingId: listing.id,
+                        listingName: listing.displayName || listing.name,
+                        statementId: statement?.id
+                    });
+
+                    console.log(`[TagScheduleService] Generated draft statement for listing "${listing.displayName || listing.name}" (ID: ${listing.id})`);
+                } catch (listingError) {
+                    console.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
+                    results.errors++;
+                }
+            }
+
+            console.log(`[TagScheduleService] Individual auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
+        } catch (error) {
+            console.error('[TagScheduleService] Error in autoGenerateIndividualStatements:', error);
+        }
+
+        return results;
+    }
+
+    /**
+     * Calculate date range for a given tag (Monday to Monday for weekly, etc.)
+     * Always uses EST timezone for consistency
+     */
+    calculateDateRangeForTag(tagName) {
+        // Use EST time for consistent date calculations
+        const today = this.getESTTime();
+        const dayOfWeek = today.getDay(); // 0 = Sunday
+
+        const upperTag = tagName.toUpperCase();
+
+        // Helper to format date as YYYY-MM-DD without timezone conversion
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) {
+            // WEEKLY: Monday to Monday
+            const lastMonday = new Date(today);
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            lastMonday.setDate(today.getDate() - daysToMonday);
+
+            const prevMonday = new Date(lastMonday);
+            prevMonday.setDate(lastMonday.getDate() - 7);
+
+            return {
+                start: formatDate(prevMonday),
+                end: formatDate(lastMonday)
+            };
+        } else if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
+            // BI-WEEKLY: Monday to Monday (14 days)
+            const lastMonday = new Date(today);
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            lastMonday.setDate(today.getDate() - daysToMonday);
+
+            const twoWeeksAgo = new Date(lastMonday);
+            twoWeeksAgo.setDate(lastMonday.getDate() - 14);
+
+            return {
+                start: formatDate(twoWeeksAgo),
+                end: formatDate(lastMonday)
+            };
+        } else {
+            // MONTHLY: Last month (1st to last day)
+            const year = today.getFullYear();
+            const month = today.getMonth(); // Current month (0-indexed)
+
+            // First day of last month
+            const firstOfLastMonth = new Date(year, month - 1, 1);
+            // Last day of last month (day 0 of current month)
+            const lastOfLastMonth = new Date(year, month, 0);
+
+            return {
+                start: formatDate(firstOfLastMonth),
+                end: formatDate(lastOfLastMonth)
+            };
+        }
+    }
+
+    /**
+     * Get all listings with a specific tag (case-insensitive)
      */
     async getListingsWithTag(tagName) {
         const listings = await Listing.findAll({
@@ -165,10 +400,10 @@ class TagScheduleService {
                 isActive: true,
                 tags: {
                     [Op.or]: [
-                        { [Op.like]: tagName },
-                        { [Op.like]: `${tagName},%` },
-                        { [Op.like]: `%,${tagName}` },
-                        { [Op.like]: `%,${tagName},%` }
+                        { [Op.iLike]: tagName },
+                        { [Op.iLike]: `${tagName},%` },
+                        { [Op.iLike]: `%,${tagName}` },
+                        { [Op.iLike]: `%,${tagName},%` }
                     ]
                 }
             }

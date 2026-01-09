@@ -84,4 +84,22 @@ ActivityLog.log = async function(req, action, resource, resourceId = null, detai
     }
 };
 
+// Helper to log system-generated activity (no HTTP request)
+ActivityLog.logSystem = async function(action, resource, resourceId = null, details = null) {
+    try {
+        await this.create({
+            userId: null,
+            username: 'System',
+            action,
+            resource,
+            resourceId: resourceId ? String(resourceId) : null,
+            details: details ? JSON.stringify(details) : null,
+            ipAddress: null,
+            userAgent: 'TagScheduleService/AutoGeneration'
+        });
+    } catch (error) {
+        console.error('[ActivityLog] Failed to log system activity:', error.message);
+    }
+};
+
 module.exports = ActivityLog;

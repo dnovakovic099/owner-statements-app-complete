@@ -1,0 +1,358 @@
+/**
+ * Statement Service
+ * Handles statement generation for scheduled tasks
+ * Uses same calculation logic as manual generation for consistency
+ */
+
+const { Op } = require('sequelize');
+const Statement = require('../models/Statement');
+const Listing = require('../models/Listing');
+const ActivityLog = require('../models/ActivityLog');
+const FileDataService = require('./FileDataService');
+const ListingService = require('./ListingService');
+const StatementCalculationService = require('./StatementCalculationService');
+
+class StatementService {
+    /**
+     * Check if a statement already exists for the given criteria
+     * Prevents duplicate auto-generation
+     */
+    async checkExistingStatement(options) {
+        const { groupId, listingId, startDate, endDate } = options;
+
+        // Check in database
+        const dbWhere = {
+            weekStartDate: startDate,
+            weekEndDate: endDate
+        };
+
+        if (groupId) {
+            dbWhere.groupId = groupId;
+        } else if (listingId) {
+            dbWhere.propertyId = listingId;
+            dbWhere.groupId = null;
+        }
+
+        const dbExisting = await Statement.findOne({ where: dbWhere });
+        if (dbExisting) {
+            return dbExisting;
+        }
+
+        // Also check in file-based statements
+        try {
+            const fileStatements = await FileDataService.getStatements();
+            const fileExisting = fileStatements.find(s => {
+                if (s.weekStartDate !== startDate || s.weekEndDate !== endDate) {
+                    return false;
+                }
+                if (groupId) {
+                    return s.groupId === groupId;
+                } else if (listingId) {
+                    return s.propertyId === listingId && !s.groupId;
+                }
+                return false;
+            });
+            if (fileExisting) {
+                return fileExisting;
+            }
+        } catch (err) {
+            // File service might not be available
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate a combined statement for a group
+     * Uses same logic as manual generation
+     */
+    async generateGroupStatement(options) {
+        const { groupId, groupName, listingIds, startDate, endDate, calculationType = 'checkout' } = options;
+
+        console.log(`[StatementService] Generating statement for group "${groupName}" (${listingIds.length} listings)`);
+        console.log(`[StatementService] Period: ${startDate} to ${endDate}, Type: ${calculationType}`);
+
+        try {
+            // Check for existing statement to prevent duplicates
+            const existingStatement = await this.checkExistingStatement({ groupId, startDate, endDate });
+            if (existingStatement) {
+                console.log(`[StatementService] Statement already exists for group "${groupName}" (ID: ${existingStatement.id}), skipping`);
+                return { skipped: true, existingId: existingStatement.id, reason: 'duplicate' };
+            }
+
+            const parsedPropertyIds = listingIds.map(id => parseInt(id));
+
+            // Fetch listings from file data (same as manual generation)
+            const allListings = await FileDataService.getListings();
+            const targetListings = allListings.filter(l => parsedPropertyIds.includes(l.id));
+
+            if (targetListings.length === 0) {
+                throw new Error('No listings found for the group');
+            }
+
+            // Get listing info with PM fees from database
+            const dbListings = await ListingService.getListingsWithPmFees(parsedPropertyIds);
+            const listingInfoMap = {};
+            dbListings.forEach(l => { listingInfoMap[l.id] = l; });
+
+            // Merge file data into listing info
+            targetListings.forEach(l => {
+                if (listingInfoMap[l.id]) {
+                    listingInfoMap[l.id].cleaningFee = l.cleaningFee || 0;
+                    listingInfoMap[l.id].internalNotes = l.internalNotes;
+                } else {
+                    listingInfoMap[l.id] = l;
+                }
+            });
+
+            // Fetch reservations and expenses using batch methods (same as manual generation)
+            const [reservationsByProperty, expensesByProperty] = await Promise.all([
+                FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap),
+                FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds)
+            ]);
+
+            // Combine all reservations and expenses
+            let allReservations = [];
+            let allExpenses = [];
+
+            for (const propId of parsedPropertyIds) {
+                const propReservations = reservationsByProperty[propId] || [];
+                const propExpenseData = expensesByProperty[propId] || { expenses: [], duplicateWarnings: [] };
+
+                allReservations.push(...propReservations);
+                allExpenses.push(...propExpenseData.expenses);
+            }
+
+            // Add duplicate warnings
+            allExpenses.duplicateWarnings = [];
+            for (const propId of parsedPropertyIds) {
+                const propExpenseData = expensesByProperty[propId] || { duplicateWarnings: [] };
+                allExpenses.duplicateWarnings.push(...(propExpenseData.duplicateWarnings || []));
+            }
+
+            // Calculate financials using shared service
+            const financials = StatementCalculationService.calculateStatementFinancials({
+                reservations: allReservations,
+                expenses: allExpenses,
+                listingInfoMap,
+                propertyIds: parsedPropertyIds,
+                startDate,
+                endDate,
+                calculationType
+            });
+
+            // Build internal notes
+            const internalNotes = StatementCalculationService.buildInternalNotes(targetListings);
+
+            // Create property names string
+            const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
+
+            // Get owners for owner info
+            const owners = await FileDataService.getOwners();
+            const owner = owners[0] || { id: 1, name: groupName };
+
+            // Generate unique ID for file-based storage
+            const existingStatements = await FileDataService.getStatements();
+            const newId = FileDataService.generateId(existingStatements);
+
+            // Create statement object (matching manual generation structure)
+            const statementData = {
+                id: newId,
+                ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
+                ownerName: owner.name,
+                propertyId: null,
+                propertyIds: parsedPropertyIds,
+                propertyName: groupName,
+                propertyNames: propertyNames,
+                groupId,
+                groupName,
+                groupTags: null,
+                weekStartDate: startDate,
+                weekEndDate: endDate,
+                calculationType,
+                totalRevenue: financials.totalRevenue,
+                totalExpenses: financials.totalExpenses,
+                pmCommission: financials.pmCommission,
+                pmPercentage: financials.pmPercentage,
+                techFees: financials.techFees,
+                insuranceFees: financials.insuranceFees,
+                adjustments: 0,
+                ownerPayout: financials.ownerPayout,
+                isCombinedStatement: true,
+                propertyCount: financials.propertyCount,
+                totalCleaningFee: financials.totalCleaningFee,
+                cleaningFeePassThrough: targetListings.some(l => listingInfoMap[l.id]?.cleaningFeePassThrough),
+                status: 'draft',
+                sentAt: null,
+                createdAt: new Date().toISOString(),
+                internalNotes,
+                reservations: financials.periodReservations,
+                expenses: allExpenses,
+                duplicateWarnings: financials.duplicateWarnings,
+                cleaningMismatchWarning: financials.cleaningMismatchWarning,
+                items: []
+            };
+
+            // Save to file (same storage as manual generation)
+            existingStatements.push(statementData);
+            await FileDataService.saveStatements(existingStatements);
+
+            console.log(`[StatementService] Created draft statement ID: ${statementData.id} for group "${groupName}"`);
+
+            // Log to activity log
+            await ActivityLog.logSystem('AUTO_GENERATE', 'statement', statementData.id, {
+                type: 'group',
+                groupId,
+                groupName,
+                listingCount: listingIds.length,
+                startDate,
+                endDate,
+                calculationType,
+                totalRevenue: financials.totalRevenue,
+                ownerPayout: financials.ownerPayout
+            });
+
+            return statementData;
+        } catch (error) {
+            console.error(`[StatementService] Error generating group statement:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Generate an individual statement for a single listing
+     * Uses same logic as manual generation
+     */
+    async generateIndividualStatement(options) {
+        const { listingId, startDate, endDate, calculationType = 'checkout' } = options;
+
+        console.log(`[StatementService] Generating individual statement for listing ${listingId}`);
+        console.log(`[StatementService] Period: ${startDate} to ${endDate}, Type: ${calculationType}`);
+
+        try {
+            // Check for existing statement to prevent duplicates
+            const existingStatement = await this.checkExistingStatement({ listingId, startDate, endDate });
+            if (existingStatement) {
+                console.log(`[StatementService] Statement already exists for listing ${listingId} (ID: ${existingStatement.id}), skipping`);
+                return { skipped: true, existingId: existingStatement.id, reason: 'duplicate' };
+            }
+
+            const parsedPropertyId = parseInt(listingId);
+
+            // Fetch listing from file data
+            const allListings = await FileDataService.getListings();
+            const targetListing = allListings.find(l => l.id === parsedPropertyId);
+
+            if (!targetListing) {
+                throw new Error(`Listing ${listingId} not found`);
+            }
+
+            const listingName = targetListing.nickname || targetListing.displayName || targetListing.name;
+
+            // Get listing info with PM fees from database
+            const dbListings = await ListingService.getListingsWithPmFees([parsedPropertyId]);
+            const listingInfoMap = {};
+            dbListings.forEach(l => { listingInfoMap[l.id] = l; });
+
+            // Merge file data
+            if (listingInfoMap[parsedPropertyId]) {
+                listingInfoMap[parsedPropertyId].cleaningFee = targetListing.cleaningFee || 0;
+                listingInfoMap[parsedPropertyId].internalNotes = targetListing.internalNotes;
+            } else {
+                listingInfoMap[parsedPropertyId] = targetListing;
+            }
+
+            // Fetch reservations and expenses
+            const [reservations, expenseData] = await Promise.all([
+                FileDataService.getReservations(startDate, endDate, parsedPropertyId, calculationType),
+                FileDataService.getExpenses(startDate, endDate, parsedPropertyId)
+            ]);
+
+            const expenses = expenseData.expenses || expenseData;
+            expenses.duplicateWarnings = expenseData.duplicateWarnings || [];
+
+            // Calculate financials using shared service
+            const financials = StatementCalculationService.calculateStatementFinancials({
+                reservations,
+                expenses,
+                listingInfoMap,
+                propertyIds: [parsedPropertyId],
+                startDate,
+                endDate,
+                calculationType
+            });
+
+            // Get owners for owner info
+            const owners = await FileDataService.getOwners();
+            const owner = owners[0] || { id: 1, name: listingName };
+
+            // Generate unique ID
+            const existingStatements = await FileDataService.getStatements();
+            const newId = FileDataService.generateId(existingStatements);
+
+            // Create statement object
+            const statementData = {
+                id: newId,
+                ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
+                ownerName: owner.name,
+                propertyId: parsedPropertyId,
+                propertyIds: [parsedPropertyId],
+                propertyName: listingName,
+                propertyNames: listingName,
+                groupId: null,
+                groupName: null,
+                groupTags: null,
+                weekStartDate: startDate,
+                weekEndDate: endDate,
+                calculationType,
+                totalRevenue: financials.totalRevenue,
+                totalExpenses: financials.totalExpenses,
+                pmCommission: financials.pmCommission,
+                pmPercentage: financials.pmPercentage,
+                techFees: financials.techFees,
+                insuranceFees: financials.insuranceFees,
+                adjustments: 0,
+                ownerPayout: financials.ownerPayout,
+                isCombinedStatement: false,
+                propertyCount: 1,
+                totalCleaningFee: financials.totalCleaningFee,
+                cleaningFeePassThrough: listingInfoMap[parsedPropertyId]?.cleaningFeePassThrough || false,
+                isCohostOnAirbnb: listingInfoMap[parsedPropertyId]?.isCohostOnAirbnb || false,
+                status: 'draft',
+                sentAt: null,
+                createdAt: new Date().toISOString(),
+                internalNotes: targetListing.internalNotes || null,
+                reservations: financials.periodReservations,
+                expenses: expenses,
+                duplicateWarnings: financials.duplicateWarnings,
+                cleaningMismatchWarning: financials.cleaningMismatchWarning,
+                items: []
+            };
+
+            // Save to file
+            existingStatements.push(statementData);
+            await FileDataService.saveStatements(existingStatements);
+
+            console.log(`[StatementService] Created draft statement ID: ${statementData.id} for listing "${listingName}"`);
+
+            // Log to activity log
+            await ActivityLog.logSystem('AUTO_GENERATE', 'statement', statementData.id, {
+                type: 'individual',
+                listingId,
+                listingName,
+                startDate,
+                endDate,
+                calculationType,
+                totalRevenue: financials.totalRevenue,
+                ownerPayout: financials.ownerPayout
+            });
+
+            return statementData;
+        } catch (error) {
+            console.error(`[StatementService] Error generating individual statement:`, error);
+            throw error;
+        }
+    }
+}
+
+module.exports = new StatementService();

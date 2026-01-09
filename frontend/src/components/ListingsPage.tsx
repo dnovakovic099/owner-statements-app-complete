@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download } from 'lucide-react';
-import { listingsAPI, tagScheduleAPI } from '../services/api';
-import { Listing } from '../types';
+import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown } from 'lucide-react';
+import { listingsAPI, tagScheduleAPI, groupsAPI } from '../services/api';
+import { Listing, ListingGroup } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
 import TagScheduleModal from './TagScheduleModal';
+import GroupModal from './GroupModal';
 
 interface NewListing {
   id: number;
@@ -77,6 +78,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [existingSchedule, setExistingSchedule] = useState<any>(null);
   const [tagSchedules, setTagSchedules] = useState<Record<string, any>>({});
 
+  // Groups states
+  const [groups, setGroups] = useState<ListingGroup[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<ListingGroup | null>(null);
+  const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
+
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
@@ -101,6 +108,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   useEffect(() => {
     loadListings();
     loadTagSchedules();
+    loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,6 +153,100 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       await tagScheduleAPI.deleteSchedule(scheduleTagName);
       await loadTagSchedules();
       showToast('Schedule removed', 'success');
+    }
+  };
+
+  // Load all groups
+  const loadGroups = async () => {
+    try {
+      const response = await groupsAPI.getGroups();
+      setGroups(response.groups || []);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+    }
+  };
+
+  // Open group modal for creating
+  const openCreateGroupModal = () => {
+    setEditingGroup(null);
+    setIsGroupModalOpen(true);
+  };
+
+  // Open group modal for editing
+  const openEditGroupModal = (group: ListingGroup) => {
+    setEditingGroup(group);
+    setIsGroupModalOpen(true);
+  };
+
+  // Save group (create or update)
+  const handleSaveGroup = async (data: {
+    id?: number;
+    name: string;
+    tags: string[];
+    listingIds: number[];
+  }) => {
+    try {
+      if (data.id) {
+        // Update existing group
+        await groupsAPI.updateGroup(data.id, {
+          name: data.name,
+          tags: data.tags,
+        });
+
+        // Handle listing membership changes
+        const currentGroup = groups.find(g => g.id === data.id);
+        if (currentGroup) {
+          const toAdd = data.listingIds.filter(id => !currentGroup.listingIds.includes(id));
+          const toRemove = currentGroup.listingIds.filter(id => !data.listingIds.includes(id));
+
+          if (toAdd.length > 0) {
+            await groupsAPI.addListingsToGroup(data.id, toAdd);
+          }
+
+          for (const listingId of toRemove) {
+            await groupsAPI.removeListingFromGroup(data.id, listingId);
+          }
+        }
+
+        showToast('Group updated successfully', 'success');
+      } else {
+        // Create new group
+        await groupsAPI.createGroup(data);
+        showToast('Group created successfully', 'success');
+      }
+
+      await loadGroups();
+      await loadListings();
+    } catch (error) {
+      console.error('Failed to save group:', error);
+      showToast('Failed to save group', 'error');
+      throw error;
+    }
+  };
+
+  // Remove listing from group
+  const handleRemoveFromGroup = async (groupId: number, listingId: number) => {
+    try {
+      await groupsAPI.removeListingFromGroup(groupId, listingId);
+      showToast('Listing removed from group', 'success');
+      await loadGroups();
+      await loadListings();
+    } catch (error) {
+      console.error('Failed to remove listing from group:', error);
+      showToast('Failed to remove listing from group', 'error');
+    }
+  };
+
+  // Add listing to existing group
+  const handleAddToExistingGroup = async (groupId: number, listingId: number) => {
+    try {
+      await groupsAPI.addListingsToGroup(groupId, [listingId]);
+      showToast('Listing added to group', 'success');
+      await loadGroups();
+      await loadListings();
+    } catch (error) {
+      console.error('Failed to add listing to group:', error);
+      showToast('Failed to add listing to group', 'error');
     }
   };
 
@@ -1487,6 +1589,129 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     />
                   </div>
 
+                  {/* Group Management */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <FolderOpen className="w-4 h-4 text-purple-700" />
+                        <h3 className="text-sm font-medium text-purple-900">Listing Group</h3>
+                      </div>
+                    </div>
+                    <p className="text-xs text-purple-700 mb-3">
+                      Groups combine multiple listings into a single statement
+                    </p>
+
+                    {selectedListing.group ? (
+                      <div className="space-y-3">
+                        {/* Current Group Info */}
+                        <div className="bg-white rounded-md p-3 border border-purple-200">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <div className="font-medium text-purple-900">{selectedListing.group.name}</div>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {selectedListing.group.tags?.map((tag, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {selectedListing.group.listingIds && selectedListing.group.listingIds.length > 1 && (
+                            <div className="text-xs text-purple-700 mt-2">
+                              <UsersIcon className="w-3 h-3 inline mr-1" />
+                              Also includes:{' '}
+                              {listings
+                                .filter(l =>
+                                  selectedListing.group?.listingIds?.includes(l.id) &&
+                                  l.id !== selectedListing.id
+                                )
+                                .map(l => l.displayName || l.nickname || l.name)
+                                .join(', ')}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditGroupModal(selectedListing.group!)}
+                            className="flex-1 px-3 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-300 rounded-md hover:bg-purple-50 transition-colors"
+                          >
+                            Edit Group
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedListing.group?.id && window.confirm('Remove this listing from the group?')) {
+                                handleRemoveFromGroup(selectedListing.group.id, selectedListing.id);
+                              }
+                            }}
+                            className="flex-1 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+                          >
+                            Remove from Group
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="text-sm text-purple-700 bg-white rounded-md p-3 border border-purple-200">
+                          No group assigned
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={openCreateGroupModal}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Create New Group
+                          </button>
+                          {groups.length > 0 && (
+                            <div className="relative flex-1">
+                              <button
+                                type="button"
+                                onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
+                                className="w-full flex items-center justify-between px-3 py-2 text-sm border border-purple-300 rounded-md bg-white hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
+                              >
+                                <span className="text-gray-700">Add to Existing Group</span>
+                                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                              {isGroupDropdownOpen && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-10"
+                                    onClick={() => setIsGroupDropdownOpen(false)}
+                                  />
+                                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
+                                    {groups.map(group => (
+                                      <button
+                                        key={group.id}
+                                        type="button"
+                                        onClick={() => {
+                                          handleAddToExistingGroup(group.id, selectedListing.id);
+                                          setIsGroupDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between"
+                                      >
+                                        <span className="font-medium text-gray-900">{group.name}</span>
+                                        <span className="text-xs text-purple-600">{group.tags?.join(', ')}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Location Info */}
                   {(selectedListing.street || selectedListing.city || selectedListing.state) && (
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -1526,6 +1751,19 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         existingSchedule={existingSchedule}
         onSave={handleSaveSchedule}
         onDelete={existingSchedule ? handleDeleteSchedule : undefined}
+      />
+
+      {/* Group Modal */}
+      <GroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => {
+          setIsGroupModalOpen(false);
+          setEditingGroup(null);
+        }}
+        group={editingGroup}
+        onSave={handleSaveGroup}
+        allListings={listings}
+        allGroups={groups}
       />
     </div>
   );

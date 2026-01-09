@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Tag, Check, ChevronDown, Calendar, Building2, Users, Loader2, X } from 'lucide-react';
-import { Owner, Property, Listing } from '../types';
-import { listingsAPI } from '../services/api';
+import { Search, Tag, Check, ChevronDown, Calendar, Building2, Users, Loader2, X, FolderOpen, Home } from 'lucide-react';
+import { Owner, Property, Listing, ListingGroup } from '../types';
+import { listingsAPI, groupsAPI } from '../services/api';
 import { useToast } from './ui/toast';
 import {
   Dialog,
@@ -25,7 +25,7 @@ import {
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; tag?: string; startDate: string; endDate: string; calculationType: string; generateCombined?: boolean }) => Promise<void>;
+  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; groupId?: number; tag?: string; startDate: string; endDate: string; calculationType: string; generateCombined?: boolean }) => Promise<void>;
   owners: Owner[];
   properties: Property[];
 }
@@ -52,6 +52,77 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
   // Progress tracking for multi-property generation
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
+
+  // Groups state
+  const [groups, setGroups] = useState<ListingGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+
+  // Helper function to calculate date range based on tag
+  const getDateRangeForTag = (tag: string): { start: string; end: string } => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+    const upperTag = tag.toUpperCase();
+
+    if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) {
+      // WEEKLY: Monday to Monday
+      // Find most recent Monday
+      const lastMonday = new Date(today);
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      lastMonday.setDate(today.getDate() - daysToMonday);
+
+      // Previous Monday (7 days before last Monday)
+      const prevMonday = new Date(lastMonday);
+      prevMonday.setDate(lastMonday.getDate() - 7);
+
+      return {
+        start: prevMonday.toISOString().split('T')[0],
+        end: lastMonday.toISOString().split('T')[0]
+      };
+    } else if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
+      // BI-WEEKLY A/B: Monday to Monday (14 days), alternating
+      // Find most recent Monday
+      const lastMonday = new Date(today);
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      lastMonday.setDate(today.getDate() - daysToMonday);
+
+      // Calculate week number to determine A or B
+      const startOfYear = new Date(lastMonday.getFullYear(), 0, 1);
+      const weekNumber = Math.ceil(((lastMonday.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+      const isWeekA = weekNumber % 2 === 1; // Odd weeks = A, Even weeks = B
+
+      // Determine if this tag is A or B
+      const isTagA = upperTag.includes(' A');
+      const isTagB = upperTag.includes(' B');
+
+      let endMonday = new Date(lastMonday);
+
+      // If current week matches the tag (A/B), use previous 2-week period
+      // If not, offset by 1 week to get the correct alternating period
+      if ((isTagA && !isWeekA) || (isTagB && isWeekA)) {
+        // Offset by 1 week
+        endMonday.setDate(lastMonday.getDate() - 7);
+      }
+
+      // Start is 14 days before end
+      const startMonday = new Date(endMonday);
+      startMonday.setDate(endMonday.getDate() - 14);
+
+      return {
+        start: startMonday.toISOString().split('T')[0],
+        end: endMonday.toISOString().split('T')[0]
+      };
+    } else {
+      // MONTHLY: Last month
+      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+
+      return {
+        start: lastMonth.toISOString().split('T')[0],
+        end: lastDayOfLastMonth.toISOString().split('T')[0]
+      };
+    }
+  };
 
   // Combined statement toggle - when true, generate ONE statement for all selected properties
   const [generateCombined, setGenerateCombined] = useState(true);
@@ -116,6 +187,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     setOwnerId('default');
 
     loadListings();
+    loadGroups();
   }, []);
 
   const loadListings = async () => {
@@ -131,6 +203,15 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setAvailableTags(Array.from(allTags).sort());
     } catch {
       // Tags will remain empty if listings fail to load
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const response = await groupsAPI.getGroups();
+      setGroups(response.groups || []);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
     }
   };
 
@@ -155,7 +236,17 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     try {
       setIsGenerating(true);
 
-      if (selectedPropertyIds.length > 0) {
+      // Handle group selection - send groupId for proper combined statement with group metadata
+      if (selectedGroupId) {
+        setGenerationProgress({ current: 0, total: 1 });
+        await onGenerate({
+          ownerId: generateAll ? 'all' : ownerId,
+          groupId: selectedGroupId,
+          startDate,
+          endDate,
+          calculationType,
+        });
+      } else if (selectedPropertyIds.length > 0) {
         if (generateCombined && selectedPropertyIds.length > 1) {
           setGenerationProgress({ current: 0, total: 1 });
           await onGenerate({
@@ -223,6 +314,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setOwnerId('');
       setSelectedPropertyIds([]);
       setSelectedTags([]);
+      setSelectedGroupId(null);
       setGenerateAll(false);
       setGenerateCombined(true);
       setPropertySearch('');
@@ -565,17 +657,17 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                 )}
               </div>
 
-              {/* COLUMN 2 - Properties */}
+              {/* COLUMN 2 - Properties & Groups */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center space-x-2 text-gray-700 font-medium">
                     <Building2 className="w-4 h-4" />
-                    <span>Properties</span>
+                    <span>Properties & Groups</span>
                     <span className="text-gray-400 font-normal text-xs">(Select multiple)</span>
                   </div>
-                  {selectedPropertyIds.length > 0 && (
+                  {(selectedPropertyIds.length > 0 || selectedGroupId) && (
                     <span className="text-blue-600 text-xs font-medium bg-blue-50 px-2 py-0.5 rounded-full">
-                      {selectedPropertyIds.length} selected
+                      {selectedGroupId ? '1 group' : `${selectedPropertyIds.length} selected`}
                     </span>
                   )}
                 </div>
@@ -604,32 +696,112 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                 )}
 
                 {!generateAll && ownerId ? (
-                  <ScrollArea className="h-[280px] border rounded-md">
-                    {searchFilteredProperties.length === 0 ? (
+                  <ScrollArea className="h-[280px] border rounded-md bg-gray-50">
+                    {groups.length === 0 && searchFilteredProperties.length === 0 ? (
                       <div className="px-3 py-4 text-sm text-gray-500 text-center">
                         {propertySearch ? `No properties found matching "${propertySearch}"` : 'No properties available'}
                       </div>
                     ) : (
                       <div className="p-1">
-                        {searchFilteredProperties.map((property) => (
-                          <label
-                            key={property.id}
-                            className={`flex items-center px-2 py-1.5 cursor-pointer hover:bg-gray-50 rounded-md transition-colors ${
-                              selectedPropertyIds.includes(property.id.toString()) ? 'bg-blue-50' : ''
-                            }`}
-                            title={`PM Commission: ${property.pmPercentage ?? 15}%`}
-                          >
-                            <Checkbox
-                              checked={selectedPropertyIds.includes(property.id.toString())}
-                              onCheckedChange={() => togglePropertySelection(property.id.toString())}
-                              className="mr-2"
-                            />
-                            <span className="text-sm text-gray-700 truncate flex-1">
-                              {property.nickname || property.name}
-                            </span>
-                            <span className="ml-1 text-xs text-gray-400">#{property.id}</span>
-                          </label>
-                        ))}
+                        {/* Groups Section */}
+                        {groups.length > 0 && !propertySearch && (
+                          <>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-100 sticky top-0">
+                              Groups
+                            </div>
+                            {groups.map((group) => (
+                              <label
+                                key={`group-${group.id}`}
+                                className={`flex items-center px-2 py-2 cursor-pointer hover:bg-purple-50 rounded-md transition-colors mb-1 ${
+                                  selectedGroupId === group.id ? 'bg-purple-100 border border-purple-300' : 'border border-transparent'
+                                }`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (selectedGroupId === group.id) {
+                                    setSelectedGroupId(null);
+                                  } else {
+                                    setSelectedGroupId(group.id);
+                                    setSelectedPropertyIds([]);
+                                    // Auto-set dates based on group's first tag
+                                    if (group.tags && group.tags.length > 0) {
+                                      const dateRange = getDateRangeForTag(group.tags[0]);
+                                      setStartDate(dateRange.start);
+                                      setEndDate(dateRange.end);
+                                    }
+                                    // Auto-set calculation type from group
+                                    if (group.calculationType) {
+                                      setCalculationType(group.calculationType);
+                                    }
+                                  }
+                                }}
+                              >
+                                <div className="mr-2 flex-shrink-0">
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                    selectedGroupId === group.id
+                                      ? 'bg-purple-600 border-purple-600'
+                                      : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {selectedGroupId === group.id && (
+                                      <Check className="w-3 h-3 text-white" />
+                                    )}
+                                  </div>
+                                </div>
+                                <FolderOpen className="w-4 h-4 text-purple-600 mr-2 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                    {group.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {group.memberCount || group.listingIds?.length || 0} listings
+                                    {group.tags && group.tags.length > 0 && (
+                                      <span className="ml-2 text-purple-600">
+                                        {group.tags.join(', ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-100 mt-2">
+                              Individual Listings
+                            </div>
+                          </>
+                        )}
+
+                        {/* Properties Section */}
+                        {searchFilteredProperties.map((property) => {
+                          const propertyGroup = groups.find(g => g.listingIds?.includes(property.id));
+                          return (
+                            <label
+                              key={property.id}
+                              className={`flex items-center px-2 py-1.5 cursor-pointer hover:bg-gray-50 rounded-md transition-colors ${
+                                selectedPropertyIds.includes(property.id.toString()) ? 'bg-blue-50' : ''
+                              }`}
+                              title={`PM Commission: ${property.pmPercentage ?? 15}%`}
+                            >
+                              <Checkbox
+                                checked={selectedPropertyIds.includes(property.id.toString())}
+                                onCheckedChange={() => {
+                                  togglePropertySelection(property.id.toString());
+                                  setSelectedGroupId(null);
+                                }}
+                                className="mr-2"
+                              />
+                              <Home className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm text-gray-700 truncate block">
+                                  {property.nickname || property.name}
+                                </span>
+                                {propertyGroup && (
+                                  <span className="text-xs text-purple-600">
+                                    (in: {propertyGroup.name})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="ml-1 text-xs text-gray-400">#{property.id}</span>
+                            </label>
+                          );
+                        })}
                       </div>
                     )}
                   </ScrollArea>

@@ -49,10 +49,25 @@ This system automates the process of:
 - Edit expense amounts and categories inline
 - Cleaning fee pass-through configuration
 
+### Listing Groups
+- Group multiple listings for combined statements
+- Assign schedule tags (WEEKLY, BI-WEEKLY A/B, MONTHLY)
+- Auto-generate draft statements at 8:00 AM EST when schedules trigger
+- Group-level calculation type (checkout/calendar)
+- One listing can belong to only one group
+
+### Auto-Generation
+- Automatic draft statement generation based on tag schedules
+- Groups AND individual tagged listings are processed
+- Duplicate prevention (won't create if statement already exists)
+- Uses same calculation logic as manual generation
+- All auto-generated statements saved as "draft" for review
+
 ### Listings Management
 - Property details and owner assignments
 - Configurable PM fee percentages per property
 - Owner contact information and payment details
+- Assign listings to groups for combined statements
 
 ## Quick Start
 
@@ -142,7 +157,9 @@ owner-statements-app-complete/
 ├── src/
 │   ├── models/              # Sequelize database models
 │   │   ├── Listing.js       # Properties/listings
+│   │   ├── ListingGroup.js  # Listing groups for combined statements
 │   │   ├── Statement.js     # Generated statements
+│   │   ├── ActivityLog.js   # Audit logging
 │   │   ├── User.js          # User accounts
 │   │   └── QuickBooksToken.js
 │   ├── routes/              # Express API routes
@@ -150,12 +167,16 @@ owner-statements-app-complete/
 │   │   ├── financials.js    # QuickBooks financial data
 │   │   ├── quickbooks.js    # QB OAuth & API
 │   │   ├── listings.js
+│   │   ├── groups.js        # Listing groups API
 │   │   └── auth.js
 │   ├── services/            # Business logic
 │   │   ├── QuickBooksService.js
 │   │   ├── HostifyService.js
 │   │   ├── SecureStayService.js
-│   │   └── StatementService.js
+│   │   ├── StatementService.js           # Auto-generation
+│   │   ├── StatementCalculationService.js # Shared calculation logic
+│   │   ├── ListingGroupService.js        # Group management
+│   │   └── TagScheduleService.js         # Schedule-based auto-generation
 │   └── server.js            # Express app entry point
 ├── frontend/
 │   └── src/
@@ -164,8 +185,9 @@ owner-statements-app-complete/
 │       │   ├── FinancialDashboard/  # Financial analytics
 │       │   ├── StatementsTable.tsx
 │       │   ├── EditStatementModal.tsx  # Edit with LL Cover toggle
-│       │   ├── ListingsPage.tsx
-│       │   └── GenerateModal.tsx
+│       │   ├── ListingsPage.tsx       # Listings with group management
+│       │   ├── GroupModal.tsx         # Create/edit listing groups
+│       │   └── GenerateModal.tsx      # Generate with group selection
 │       ├── services/
 │       │   └── api.ts       # API client
 │       └── App.tsx
@@ -217,6 +239,26 @@ PUT  /api/listings/:id            # Update property
 POST /api/listings/sync           # Sync from Hostify
 ```
 
+### Listing Groups
+
+```bash
+GET    /api/groups                    # List all groups
+GET    /api/groups?tag=WEEKLY         # Filter groups by tag
+GET    /api/groups/:id                # Get group with members
+POST   /api/groups                    # Create new group
+Body: {
+  "name": "Weekly Properties",
+  "tags": ["WEEKLY"],
+  "listingIds": [1, 2, 3],
+  "calculationType": "checkout"
+}
+PUT    /api/groups/:id                # Update group
+DELETE /api/groups/:id                # Delete group (ungroups listings)
+POST   /api/groups/:id/listings       # Add listings to group
+Body: { "listingIds": [4, 5] }
+DELETE /api/groups/:id/listings/:listingId  # Remove listing from group
+```
+
 ### QuickBooks
 
 ```bash
@@ -230,15 +272,42 @@ GET  /api/quickbooks/auth/callback  # OAuth callback
 ### Key Tables
 
 - **listings** - Properties with owner info, PM fees, addresses
-- **statements** - Generated owner statements
+- **listing_groups** - Groups for combined statements with schedule tags
+- **statements** - Generated owner statements (includes group metadata)
+- **activity_logs** - Audit trail for all actions including auto-generation
+- **tag_schedules** - Schedule configuration for each tag
+- **tag_notifications** - Notifications when schedules trigger
 - **users** - User accounts for authentication
 - **quickbooks_tokens** - OAuth tokens for QB connection
 
 ### Relationships
 
 ```text
+listing_groups (1) ──── (many) listings
 listings (1) ──── (many) statements
+listing_groups (1) ──── (many) statements (via groupId)
 users (1) ──── (many) statements (createdBy)
+```
+
+### Listing Groups Migration
+
+```sql
+-- Run: psql $DATABASE_URL -f migrations/listing-groups-postgresql.sql
+CREATE TABLE IF NOT EXISTS listing_groups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    tags TEXT,
+    calculation_type VARCHAR(20) DEFAULT 'checkout',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS group_id INTEGER
+    REFERENCES listing_groups(id) ON DELETE SET NULL;
+
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS group_id INTEGER;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS group_name VARCHAR(255);
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS group_tags TEXT;
 ```
 
 ## Development
@@ -304,6 +373,42 @@ Expenses marked as "LL Cover" in SecureStay are company-covered costs that shoul
 - Cleaning costs covered by company during vacancy
 - Maintenance items absorbed by property manager
 - One-time owner credits or adjustments
+
+## Listing Groups Feature
+
+Group multiple listings together to generate combined statements automatically.
+
+### How It Works
+
+1. **Create Group** - In Listings page, select listings and create a group with a name and schedule tag
+2. **Assign Schedule** - Choose WEEKLY, BI-WEEKLY A, BI-WEEKLY B, or MONTHLY
+3. **Set Calculation Type** - Choose checkout-based or calendar-based
+4. **Auto-Generation** - At 8:00 AM EST when the schedule triggers, draft statements are created automatically
+
+### Schedule Tags
+
+| Tag | Frequency | Date Range |
+|-----|-----------|------------|
+| WEEKLY | Every week | Monday to Monday (7 days) |
+| BI-WEEKLY A | Every 2 weeks (odd) | Monday to Monday (14 days) |
+| BI-WEEKLY B | Every 2 weeks (even) | Monday to Monday (14 days) |
+| MONTHLY | Every month | 1st to last day of previous month |
+
+### Auto-Generation Rules
+
+- **Groups with tag** - Combined statement for all listings in the group
+- **Individual listings with tag** (not in any group) - Individual statement per listing
+- **Duplicates prevented** - Won't create if statement exists for same period
+- **Always draft** - Auto-generated statements are never finalized or sent automatically
+- **Audit logged** - All auto-generations recorded with "System" as user
+
+### Manual Generation with Groups
+
+When generating statements manually:
+1. Select a group from the dropdown (appears alongside individual properties)
+2. Dates auto-fill based on the group's tag
+3. Calculation type auto-fills from group settings
+4. Statement is created as combined for all group members
 
 ## Troubleshooting
 

@@ -2,6 +2,20 @@ const { Listing } = require('../models');
 const HostifyService = require('./HostifyService');
 const { Op } = require('sequelize');
 
+// Lazy load ListingGroup to avoid circular dependency issues
+let ListingGroup = null;
+const getListingGroup = () => {
+    if (!ListingGroup) {
+        try {
+            ListingGroup = require('../models/ListingGroup');
+        } catch (e) {
+            // Model may not exist yet during initial setup
+            ListingGroup = null;
+        }
+    }
+    return ListingGroup;
+};
+
 class ListingService {
     /**
      * Extract PM fee percentage from tags string
@@ -167,7 +181,7 @@ class ListingService {
     }
 
     /**
-     * Get multiple listings with PM fees
+     * Get multiple listings with PM fees and group data
      */
     async getListingsWithPmFees(listingIds = []) {
         try {
@@ -176,7 +190,39 @@ class ListingService {
                 : {};
 
             const listings = await Listing.findAll({ where });
-            return listings.map(l => l.toJSON());
+
+            // Try to include group data if ListingGroup model exists
+            const LG = getListingGroup();
+            if (LG) {
+                // Get all unique group IDs
+                const groupIds = [...new Set(listings.map(l => l.groupId).filter(id => id != null))];
+
+                if (groupIds.length > 0) {
+                    // Fetch groups in one query
+                    const groups = await LG.findAll({
+                        where: { id: { [Op.in]: groupIds } }
+                    });
+                    const groupMap = new Map(groups.map(g => [g.id, g.toJSON()]));
+
+                    // Attach group data to each listing
+                    return listings.map(l => {
+                        const listingJson = l.toJSON();
+                        if (listingJson.groupId && groupMap.has(listingJson.groupId)) {
+                            const group = groupMap.get(listingJson.groupId);
+                            listingJson.group = {
+                                id: group.id,
+                                name: group.name,
+                                tags: group.tags
+                            };
+                        } else {
+                            listingJson.group = null;
+                        }
+                        return listingJson;
+                    });
+                }
+            }
+
+            return listings.map(l => ({ ...l.toJSON(), group: null }));
         } catch (error) {
             console.error('Error fetching listings:', error);
             return [];
@@ -307,7 +353,7 @@ class ListingService {
     }
 
     /**
-     * Update listing configuration (display name, co-host status, PM fee)
+     * Update listing configuration (display name, co-host status, PM fee, groupId, etc.)
      */
     async updateListingConfig(listingId, config) {
         try {
@@ -336,6 +382,8 @@ class ListingService {
             if (config.ownerGreeting !== undefined) updates.ownerGreeting = config.ownerGreeting;
             if (config.autoSendStatements !== undefined) updates.autoSendStatements = config.autoSendStatements;
             if (config.internalNotes !== undefined) updates.internalNotes = config.internalNotes;
+            // Support groupId assignment (null to remove from group, number to assign to group)
+            if (config.groupId !== undefined) updates.groupId = config.groupId;
 
             await listing.update(updates);
             await listing.reload(); // Reload to get fresh data from DB

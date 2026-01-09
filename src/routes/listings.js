@@ -187,12 +187,12 @@ router.put('/:id/cohost-status', async (req, res) => {
     }
 });
 
-// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver, damage coverage, owner email, auto-send)
+// PUT /api/listings/:id/config - Update listing configuration (display name, co-host, PM fee, tags, pass-through tax, cleaning fee, pet fee, commission waiver, damage coverage, owner email, auto-send, groupId)
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         console.log('[ROUTE] PUT /listings/:id/config - Request body:', JSON.stringify(req.body));
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes, ownerEmail, ownerGreeting, autoSendStatements } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -209,6 +209,10 @@ router.put('/:id/config', async (req, res) => {
         if (ownerEmail !== undefined) config.ownerEmail = ownerEmail;
         if (ownerGreeting !== undefined) config.ownerGreeting = ownerGreeting;
         if (autoSendStatements !== undefined) config.autoSendStatements = autoSendStatements;
+        // Handle groupId: can be number (assign to group), null (remove from group), or undefined (no change)
+        if (groupId !== undefined) {
+            config.groupId = groupId === null || groupId === '' ? null : parseInt(groupId);
+        }
         if (pmFeePercentage !== undefined) {
             const pmFee = parseFloat(pmFeePercentage);
             if (isNaN(pmFee) || pmFee < 0 || pmFee > 100) {
@@ -257,7 +261,8 @@ router.put('/:id/config', async (req, res) => {
             ownerEmail: 'Owner Email',
             ownerGreeting: 'Owner Greeting',
             autoSendStatements: 'Auto Send',
-            defaultPetFee: 'Pet Fee'
+            defaultPetFee: 'Pet Fee',
+            groupId: 'Group'
         };
         const changesDetailed = Object.keys(config).map(key => {
             const label = fieldLabels[key] || key;

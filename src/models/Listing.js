@@ -164,6 +164,12 @@ const Listing = sequelize.define('Listing', {
         defaultValue: true,
         field: 'is_active'
     },
+    groupId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'group_id',
+        comment: 'Foreign key to listing_groups table (null = ungrouped)'
+    },
     lastSyncedAt: {
         type: DataTypes.DATE,
         allowNull: true,

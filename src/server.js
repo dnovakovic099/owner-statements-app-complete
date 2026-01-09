@@ -193,6 +193,9 @@ app.use('/api/statements', authenticate, require('./routes/statements-file'));
 // Listings - Viewers can read, Editors/Admins can modify
 app.use('/api/listings', authenticate, require('./routes/listings'));
 
+// Listing Groups - Editors/Admins can manage groups
+app.use('/api/groups', authenticate, require('./routes/groups'));
+
 // Properties - Any authenticated user
 app.use('/api/properties', authenticate, require('./routes/properties-file'));
 

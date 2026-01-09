@@ -184,6 +184,20 @@ export interface Listing {
   syncedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  groupId?: number | null;
+  group?: ListingGroup | null;
+}
+
+export interface ListingGroup {
+  id: number;
+  name: string;
+  tags: string[];
+  listingIds: number[];
+  calculationType?: 'checkout' | 'calendar';
+  listings?: Listing[];
+  memberCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface QuickBooksTransaction {
