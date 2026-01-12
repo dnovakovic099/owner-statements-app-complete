@@ -96,6 +96,16 @@ class TagScheduleService {
             return false;
         }
 
+        // Check if today is in the skip dates list
+        const skipDates = schedule.skipDates || [];
+        if (skipDates.length > 0) {
+            const todayStr = this.formatDateYMD(now);
+            if (skipDates.includes(todayStr)) {
+                console.log(`[TagScheduleService] Skipping schedule "${schedule.tagName}" - date ${todayStr} is in skip list`);
+                return false;
+            }
+        }
+
         // Check if already notified today for this time slot
         if (lastNotified) {
             const lastNotifiedDate = new Date(lastNotified);
@@ -138,6 +148,16 @@ class TagScheduleService {
         d.setUTCDate(d.getUTCDate() + 4 - dayNum);
         const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
         return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    /**
+     * Format date as YYYY-MM-DD
+     */
+    formatDateYMD(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     /**

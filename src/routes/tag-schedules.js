@@ -252,4 +252,103 @@ router.put('/period-configs/:tagName', async (req, res) => {
     }
 });
 
+// === Skip Dates Routes ===
+
+// Get skip dates for a schedule
+router.get('/schedules/:tagName/skip-dates', async (req, res) => {
+    try {
+        const { tagName } = req.params;
+        const schedule = await TagScheduleService.getScheduleByTag(decodeURIComponent(tagName));
+        if (schedule) {
+            res.json({ success: true, skipDates: schedule.skipDates || [] });
+        } else {
+            res.status(404).json({ success: false, error: 'Schedule not found' });
+        }
+    } catch (error) {
+        console.error('Error fetching skip dates:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add a skip date
+router.post('/schedules/:tagName/skip-dates', async (req, res) => {
+    try {
+        const { tagName } = req.params;
+        const { date } = req.body;
+
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return res.status(400).json({ success: false, error: 'Valid date in YYYY-MM-DD format is required' });
+        }
+
+        const schedule = await TagScheduleService.getScheduleByTag(decodeURIComponent(tagName));
+        if (!schedule) {
+            return res.status(404).json({ success: false, error: 'Schedule not found' });
+        }
+
+        const skipDates = schedule.skipDates || [];
+        if (!skipDates.includes(date)) {
+            skipDates.push(date);
+            skipDates.sort();
+            await schedule.update({ skipDates });
+        }
+
+        res.json({ success: true, skipDates, message: `Skip date ${date} added` });
+    } catch (error) {
+        console.error('Error adding skip date:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Remove a skip date
+router.delete('/schedules/:tagName/skip-dates/:date', async (req, res) => {
+    try {
+        const { tagName, date } = req.params;
+
+        const schedule = await TagScheduleService.getScheduleByTag(decodeURIComponent(tagName));
+        if (!schedule) {
+            return res.status(404).json({ success: false, error: 'Schedule not found' });
+        }
+
+        const skipDates = (schedule.skipDates || []).filter(d => d !== date);
+        await schedule.update({ skipDates });
+
+        res.json({ success: true, skipDates, message: `Skip date ${date} removed` });
+    } catch (error) {
+        console.error('Error removing skip date:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update all skip dates (replace entire list)
+router.put('/schedules/:tagName/skip-dates', async (req, res) => {
+    try {
+        const { tagName } = req.params;
+        const { skipDates } = req.body;
+
+        if (!Array.isArray(skipDates)) {
+            return res.status(400).json({ success: false, error: 'skipDates must be an array' });
+        }
+
+        // Validate all dates
+        for (const date of skipDates) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return res.status(400).json({ success: false, error: `Invalid date format: ${date}. Use YYYY-MM-DD` });
+            }
+        }
+
+        const schedule = await TagScheduleService.getScheduleByTag(decodeURIComponent(tagName));
+        if (!schedule) {
+            return res.status(404).json({ success: false, error: 'Schedule not found' });
+        }
+
+        const sortedDates = [...new Set(skipDates)].sort();
+        await schedule.update({ skipDates: sortedDates });
+
+        res.json({ success: true, skipDates: sortedDates, message: 'Skip dates updated' });
+    } catch (error) {
+        console.error('Error updating skip dates:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;

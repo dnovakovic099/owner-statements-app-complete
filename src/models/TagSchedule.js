@@ -83,6 +83,19 @@ const TagSchedule = sequelize.define('TagSchedule', {
         allowNull: true,
         field: 'template_id',
         comment: 'ID of the email template to use for this tag'
+    },
+    skipDates: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'skip_dates',
+        comment: 'JSON array of dates (YYYY-MM-DD) to skip auto-generation',
+        get() {
+            const value = this.getDataValue('skipDates');
+            return value ? JSON.parse(value) : [];
+        },
+        set(value) {
+            this.setDataValue('skipDates', value ? JSON.stringify(value) : null);
+        }
     }
 }, {
     tableName: 'tag_schedules',
