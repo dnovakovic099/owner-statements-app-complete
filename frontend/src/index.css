@@ -32,3 +32,171 @@ code {
 .notification-slide-in {
   animation: slideInFromRight 0.3s ease-out forwards;
 }
+
+/* Print-friendly styles for Analytics PDF export */
+@media print {
+  /* Hide navigation, sidebar, and UI controls */
+  nav,
+  aside,
+  .sidebar,
+  .print\\:hidden,
+  button:not(.print\\:show),
+  select,
+  input[type="date"] {
+    display: none !important;
+  }
+
+  /* Reset page layout */
+  body {
+    background-color: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Full width content */
+  .h-full,
+  .flex-1,
+  .overflow-auto {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Page margins and sizing */
+  @page {
+    margin: 0.5in;
+    size: A4 landscape;
+  }
+
+  /* Ensure charts and cards are visible */
+  .bg-white {
+    background-color: white !important;
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Financial metrics bar styling for print */
+  .bg-slate-700 {
+    background-color: #334155 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ensure text colors print correctly */
+  .text-white {
+    color: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .text-slate-300 {
+    color: #cbd5e1 !important;
+  }
+
+  /* Charts container - ensure visible */
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Grid layout adjustments for print */
+  .grid {
+    display: grid !important;
+  }
+
+  .lg\\:col-span-2 {
+    grid-column: span 2 !important;
+  }
+
+  .lg\\:grid-cols-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .lg\\:grid-cols-4 {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* KPI Cards styling */
+  .rounded-lg {
+    border-radius: 0.5rem !important;
+  }
+
+  /* Table styling for print */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th, td {
+    border: 1px solid #e5e7eb !important;
+    padding: 8px !important;
+  }
+
+  thead {
+    background-color: #f9fafb !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page breaks */
+  .mb-6 {
+    margin-bottom: 1.5rem !important;
+    page-break-after: auto;
+  }
+
+  /* Prevent orphans and widows */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+
+  p, li, td {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Header styling for print */
+  .border-b {
+    border-bottom: 2px solid #e5e7eb !important;
+    padding-bottom: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  /* Print title */
+  h1.text-xl {
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+  }
+
+  /* Ensure trend/change indicators print with color */
+  .text-green-600 {
+    color: #16a34a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .text-red-600 {
+    color: #dc2626 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Status badges */
+  .bg-yellow-100 {
+    background-color: #fef3c7 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .bg-green-100 {
+    background-color: #dcfce7 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .bg-blue-100 {
+    background-color: #dbeafe !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

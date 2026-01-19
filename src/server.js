@@ -222,6 +222,9 @@ app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
 // Activity Logs - Admin only
 app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));
 
+// Analytics - Any authenticated user can view
+app.use('/api/analytics', authenticate, require('./routes/analytics'));
+
 // ================================
 // FRONTEND ROUTES
 // ================================

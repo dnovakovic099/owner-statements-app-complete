@@ -16,7 +16,8 @@ const GenerateModal = lazy(() => import('./GenerateModal'));
 const UploadModal = lazy(() => import('./UploadModal'));
 const ExpenseUpload = lazy(() => import('./ExpenseUpload'));
 const EditStatementModal = lazy(() => import('./EditStatementModal'));
-const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
+// const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
+const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
 
 interface User {
   username: string;
@@ -65,7 +66,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings' | 'financials'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -1087,10 +1088,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       );
     }
 
-    if (currentPage === 'financials') {
+    // if (currentPage === 'financials') {
+    //   return (
+    //     <Suspense fallback={<LoadingSpinner />}>
+    //       <FinancialDashboard
+    //         onBack={() => setCurrentPage('dashboard')}
+    //       />
+    //     </Suspense>
+    //   );
+    // }
+
+    if (currentPage === 'analytics') {
       return (
         <Suspense fallback={<LoadingSpinner />}>
-          <FinancialDashboard
+          <AnalyticsDashboard
             onBack={() => setCurrentPage('dashboard')}
           />
         </Suspense>

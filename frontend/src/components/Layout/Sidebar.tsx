@@ -9,10 +9,10 @@ import {
   ChevronRight,
   Bell,
   X,
-  DollarSign,
+  BarChart3,
 } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials';
+type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials' | 'analytics';
 
 interface UserInfo {
   username: string;
@@ -57,7 +57,7 @@ interface SidebarProps {
 const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'listings', label: 'Listings', icon: <Home className="w-5 h-5" /> },
-  { id: 'financials', label: 'Financials', icon: <DollarSign className="w-5 h-5" />, adminOnly: true },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, adminOnly: true },
   { id: 'email', label: 'Email', icon: <Mail className="w-5 h-5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },
 ];
@@ -104,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-200 ease-in-out z-40 ${
+      className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-200 ease-in-out z-40 print:hidden ${
         collapsed ? 'w-16' : 'w-60'
       }`}
     >
@@ -158,19 +158,19 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Bottom Actions Bar */}
-      <div className="px-2 py-1 border-t border-gray-100 flex-shrink-0" ref={notificationRef}>
-        <div className={`flex items-center ${collapsed ? 'flex-col gap-0.5' : 'justify-between'}`}>
+      <div className="px-2 py-2 border-t border-gray-100 flex-shrink-0 relative" ref={notificationRef}>
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between'}`}>
           {/* Notifications Button */}
           <button
             onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-            className={`relative flex items-center justify-center w-8 h-8 rounded-md transition-all flex-shrink-0 ${
+            className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
               isNotificationOpen
                 ? 'bg-blue-100 text-blue-600'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
             }`}
             title="Notifications"
           >
-            <Bell className="w-4 h-4" />
+            <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -181,13 +181,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Collapse Toggle */}
           <button
             onClick={onToggleCollapse}
-            className="flex items-center justify-center w-8 h-8 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all flex-shrink-0"
+            className="relative z-10 flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg text-gray-500 bg-gray-50 hover:bg-gray-200 hover:text-gray-700 transition-all flex-shrink-0 border border-gray-200 hover:border-gray-300 active:bg-gray-300 cursor-pointer shadow-sm"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{ touchAction: 'manipulation' }}
           >
             {collapsed ? (
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-5 h-5" />
             ) : (
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-5 h-5" />
             )}
           </button>
         </div>
