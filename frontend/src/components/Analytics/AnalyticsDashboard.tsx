@@ -590,7 +590,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   };
 
   // Fetch filter options
-  const { data: filtersData, loading: filtersLoading } = useAnalyticsFilters();
+  const { data: filtersData } = useAnalyticsFilters();
 
   // Fetch data
   const { data: summaryData, loading: summaryLoading, refetch: refetchSummary } = useAnalyticsSummary({
