@@ -3,6 +3,10 @@ import { useState, useEffect, useCallback } from 'react';
 interface StatementStatusParams {
   startDate: string;
   endDate: string;
+  ownerId?: string;
+  propertyId?: string;
+  tag?: string;
+  groupId?: string;
 }
 
 interface StatementStatusItem {
@@ -43,6 +47,10 @@ export const useStatementStatus = (
         startDate: params.startDate,
         endDate: params.endDate,
       });
+      if (params.ownerId) queryParams.append('ownerId', params.ownerId);
+      if (params.propertyId) queryParams.append('propertyId', params.propertyId);
+      if (params.tag) queryParams.append('tag', params.tag);
+      if (params.groupId) queryParams.append('groupId', params.groupId);
 
       const baseUrl = getBaseUrl();
       const response = await fetch(
@@ -73,7 +81,7 @@ export const useStatementStatus = (
     } finally {
       setLoading(false);
     }
-  }, [params.startDate, params.endDate]);
+  }, [params.startDate, params.endDate, params.ownerId, params.propertyId, params.tag, params.groupId]);
 
   useEffect(() => {
     fetchData();

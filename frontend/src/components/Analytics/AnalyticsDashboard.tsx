@@ -20,6 +20,9 @@ import {
   Printer
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import { useAnalyticsSummary } from './hooks/useAnalyticsSummary';
 import { useRevenueTrend } from './hooks/useRevenueTrend';
 import { useExpenseBreakdown } from './hooks/useExpenseBreakdown';
@@ -79,6 +82,83 @@ const KPICard: React.FC<{
           <span className="text-xs text-gray-400">vs {previousValue}</span>
         )}
       </div>
+    </div>
+  );
+};
+
+// Searchable Dropdown Component
+interface DropdownOption {
+  id: string | number;
+  name: string;
+}
+
+const FilterDropdown: React.FC<{
+  label: string;
+  options: DropdownOption[];
+  value: string | undefined;
+  onChange: (value: string | undefined) => void;
+}> = ({ label, options, value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((opt) => opt.id.toString() === value);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+          value
+            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+        }`}
+      >
+        <span className="truncate max-w-[100px]">
+          {selectedOption ? selectedOption.name : label}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto">
+          <div
+            onClick={() => {
+              onChange(undefined);
+              setIsOpen(false);
+            }}
+            className={`px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm ${
+              !value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+            }`}
+          >
+            All {label}
+          </div>
+          {options.map((option) => (
+            <div
+              key={option.id}
+              onClick={() => {
+                onChange(option.id.toString());
+                setIsOpen(false);
+              }}
+              className={`px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm truncate ${
+                value === option.id.toString() ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+            >
+              {option.name}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -175,6 +255,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | undefined>(undefined);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | undefined>(undefined);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(undefined);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -233,10 +314,279 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     await handleExportCSV();
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     setShowExportMenu(false);
-    // Use browser print functionality with print-friendly styles
-    window.print();
+    setIsExporting(true);
+
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      let yPos = margin;
+
+      // Helper function to add new page if needed
+      const checkNewPage = (neededHeight: number) => {
+        if (yPos + neededHeight > pageHeight - margin) {
+          pdf.addPage();
+          yPos = margin;
+          return true;
+        }
+        return false;
+      };
+
+      // === HEADER ===
+      pdf.setFillColor(51, 65, 85); // slate-700
+      pdf.rect(0, 0, pageWidth, 35, 'F');
+
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(22);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Analytics Report', margin, 18);
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Period: ${dateRange.start} to ${dateRange.end}`, margin, 28);
+      pdf.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth - margin - 45, 28);
+
+      yPos = 45;
+
+      // === METRICS BAR ===
+      pdf.setTextColor(51, 65, 85);
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Financial Overview', margin, yPos);
+      yPos += 8;
+
+      const metricsData = [
+        ['Base Rate', 'Guest Fees', 'Platform Fees', 'Revenue', 'PM Commission', 'Tax', 'Gross Payout'],
+        [
+          formatFullCurrency(kpiData.baseRate),
+          formatFullCurrency(kpiData.guestFees),
+          formatFullCurrency(kpiData.platformFees),
+          formatFullCurrency(kpiData.revenue),
+          formatFullCurrency(kpiData.pmCommission),
+          formatFullCurrency(kpiData.taxes),
+          formatFullCurrency(kpiData.grossPayout)
+        ]
+      ];
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [metricsData[0]],
+        body: [metricsData[1]],
+        theme: 'grid',
+        headStyles: { fillColor: [71, 85, 105], textColor: 255, fontSize: 8, halign: 'center' },
+        bodyStyles: { fontSize: 10, halign: 'center', fontStyle: 'bold' },
+        margin: { left: margin, right: margin },
+      });
+
+      yPos = (pdf as any).lastAutoTable.finalY + 12;
+
+      // === KPI CARDS ===
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Key Performance Indicators', margin, yPos);
+      yPos += 8;
+
+      const kpiTableData = [
+        ['Total Revenue', 'Net Income', 'Total Expenses', 'Statements'],
+        [
+          formatFullCurrency(kpiData.revenue),
+          formatFullCurrency(kpiData.netIncome),
+          formatFullCurrency(kpiData.expenses),
+          kpiData.statementCount.toString()
+        ],
+        ['Avg Payout', 'Reservations', 'Properties', 'Negative Payouts'],
+        [
+          formatFullCurrency(kpiData.avgPayoutPerStatement),
+          kpiData.reservationCount.toString(),
+          kpiData.propertyCount.toString(),
+          kpiData.negativePayoutCount.toString()
+        ]
+      ];
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [kpiTableData[0]],
+        body: [kpiTableData[1]],
+        theme: 'grid',
+        headStyles: { fillColor: [100, 116, 139], textColor: 255, fontSize: 9, halign: 'center' },
+        bodyStyles: { fontSize: 11, halign: 'center', fontStyle: 'bold' },
+        margin: { left: margin, right: margin },
+      });
+
+      yPos = (pdf as any).lastAutoTable.finalY + 3;
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [kpiTableData[2]],
+        body: [kpiTableData[3]],
+        theme: 'grid',
+        headStyles: { fillColor: [100, 116, 139], textColor: 255, fontSize: 9, halign: 'center' },
+        bodyStyles: { fontSize: 11, halign: 'center', fontStyle: 'bold' },
+        margin: { left: margin, right: margin },
+      });
+
+      yPos = (pdf as any).lastAutoTable.finalY + 12;
+
+      // === CHARTS SECTION ===
+      checkNewPage(100);
+
+      // Capture Revenue Trend Chart
+      const revenueChartEl = document.querySelector('[data-chart="revenue-trend"]');
+      if (revenueChartEl) {
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Revenue Trend', margin, yPos);
+        yPos += 5;
+
+        try {
+          const canvas = await html2canvas(revenueChartEl as HTMLElement, { scale: 2, backgroundColor: '#ffffff' });
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = pageWidth - (margin * 2);
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          checkNewPage(imgHeight + 10);
+          pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, Math.min(imgHeight, 60));
+          yPos += Math.min(imgHeight, 60) + 10;
+        } catch (e) {
+          console.error('Failed to capture revenue chart:', e);
+        }
+      }
+
+      // === PROPERTY PERFORMANCE TABLE ===
+      checkNewPage(60);
+
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Property Performance', margin, yPos);
+      yPos += 8;
+
+      if (propertyData?.properties && propertyData.properties.length > 0) {
+        const propertyTableHead = ['Property', 'Revenue', 'Expenses', 'Net Income', 'Bookings'];
+        const propertyTableBody = propertyData.properties.slice(0, 10).map((p: any) => [
+          p.propertyName?.substring(0, 25) || 'Unknown',
+          formatFullCurrency(p.totalRevenue),
+          formatFullCurrency(p.totalExpenses),
+          formatFullCurrency(p.netIncome),
+          p.bookings?.toString() || '0'
+        ]);
+
+        autoTable(pdf, {
+          startY: yPos,
+          head: [propertyTableHead],
+          body: propertyTableBody,
+          theme: 'striped',
+          headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9 },
+          bodyStyles: { fontSize: 8 },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { halign: 'right' },
+            2: { halign: 'right' },
+            3: { halign: 'right' },
+            4: { halign: 'center' }
+          },
+          margin: { left: margin, right: margin },
+        });
+
+        yPos = (pdf as any).lastAutoTable.finalY + 12;
+      }
+
+      // === OWNER BREAKDOWN TABLE ===
+      checkNewPage(60);
+
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Owner Breakdown', margin, yPos);
+      yPos += 8;
+
+      if (ownerData && ownerData.length > 0) {
+        const ownerTableHead = ['Owner', 'Revenue', 'Payout', 'PM Commission', 'Statements'];
+        const ownerTableBody = ownerData.slice(0, 10).map((o: OwnerData) => [
+          o.ownerName?.substring(0, 25) || 'Unknown',
+          formatFullCurrency(o.totalRevenue),
+          formatFullCurrency(o.ownerPayout),
+          formatFullCurrency(o.pmCommission),
+          o.statementCount?.toString() || '0'
+        ]);
+
+        autoTable(pdf, {
+          startY: yPos,
+          head: [ownerTableHead],
+          body: ownerTableBody,
+          theme: 'striped',
+          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+          bodyStyles: { fontSize: 8 },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { halign: 'right' },
+            2: { halign: 'right' },
+            3: { halign: 'center' },
+            4: { halign: 'center' }
+          },
+          margin: { left: margin, right: margin },
+        });
+
+        yPos = (pdf as any).lastAutoTable.finalY + 12;
+      }
+
+      // === RECENT STATEMENTS TABLE ===
+      checkNewPage(60);
+
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Recent Statements', margin, yPos);
+      yPos += 8;
+
+      if (recentStatementsData && recentStatementsData.length > 0) {
+        const statementsTableHead = ['Property', 'Period', 'Revenue', 'Payout', 'Status'];
+        const statementsTableBody = recentStatementsData.slice(0, 15).map((s: any) => [
+          s.propertyName?.substring(0, 25) || 'Unknown',
+          `${s.weekStartDate} - ${s.weekEndDate}`,
+          formatFullCurrency(s.totalRevenue),
+          formatFullCurrency(s.ownerPayout),
+          s.status || 'draft'
+        ]);
+
+        autoTable(pdf, {
+          startY: yPos,
+          head: [statementsTableHead],
+          body: statementsTableBody,
+          theme: 'striped',
+          headStyles: { fillColor: [139, 92, 246], textColor: 255, fontSize: 9 },
+          bodyStyles: { fontSize: 8 },
+          columnStyles: {
+            0: { cellWidth: 45 },
+            1: { cellWidth: 45 },
+            2: { halign: 'right' },
+            3: { halign: 'right' },
+            4: { halign: 'center' }
+          },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // === FOOTER ===
+      const totalPages = pdf.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(128, 128, 128);
+        pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+        pdf.text('Luxury Lodging Analytics', margin, pageHeight - 8);
+      }
+
+      // Save the PDF
+      const fileName = `analytics-report-${dateRange.start}-to-${dateRange.end}.pdf`;
+      pdf.save(fileName);
+
+    } catch (error) {
+      console.error('PDF export error:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Fetch filter options
@@ -293,9 +643,18 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const { data: statementStatusData, loading: statementStatusLoading } = useStatementStatus({
     startDate: dateRange.start,
     endDate: dateRange.end,
+    ownerId: selectedOwnerId,
+    propertyId: selectedPropertyId,
+    groupId: selectedGroupId,
   });
 
-  const { data: recentStatementsData, loading: recentStatementsLoading } = useRecentStatements();
+  const { data: recentStatementsData, loading: recentStatementsLoading } = useRecentStatements({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+    ownerId: selectedOwnerId,
+    propertyId: selectedPropertyId,
+    groupId: selectedGroupId,
+  });
 
   // Format currency
   const formatCurrency = (amount: number | null | undefined) => {
@@ -925,48 +1284,38 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Financial overview and trends</p>
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <h1 className="text-lg font-semibold text-gray-900 whitespace-nowrap">Analytics</h1>
+            <div className="w-px h-6 bg-gray-200" />
+            <FilterDropdown
+              label="Owners"
+              options={filtersData?.owners || []}
+              value={selectedOwnerId}
+              onChange={setSelectedOwnerId}
+            />
+            <FilterDropdown
+              label="Properties"
+              options={filtersData?.properties || []}
+              value={selectedPropertyId}
+              onChange={setSelectedPropertyId}
+            />
+            <FilterDropdown
+              label="Groups"
+              options={filtersData?.groups || []}
+              value={selectedGroupId}
+              onChange={setSelectedGroupId}
+            />
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {/* Owner Filter */}
-            <select
-              value={selectedOwnerId || ''}
-              onChange={(e) => setSelectedOwnerId(e.target.value || undefined)}
-              className="px-3 py-1.5 text-sm bg-gray-100 border-0 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              disabled={filtersLoading}
-            >
-              <option value="">All Owners</option>
-              {filtersData?.owners?.map((owner) => (
-                <option key={owner.id} value={owner.id}>
-                  {owner.name}
-                </option>
-              ))}
-            </select>
-            {/* Property Filter */}
-            <select
-              value={selectedPropertyId || ''}
-              onChange={(e) => setSelectedPropertyId(e.target.value || undefined)}
-              className="px-3 py-1.5 text-sm bg-gray-100 border-0 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              disabled={filtersLoading}
-            >
-              <option value="">All Properties</option>
-              {filtersData?.properties?.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
-            {/* Period Selector */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-1 overflow-x-auto">
+          <div className="flex-1 min-w-0" />
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
               {periodOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handlePeriodChange(option.value)}
-                  className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                  className={`px-2 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                     selectedPeriod === option.value
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
@@ -976,16 +1325,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </button>
               ))}
             </div>
-            {/* Custom Date Picker */}
             {showCustomPicker && (
-              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-2">
+              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1.5">
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
                   className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="text-gray-400">to</span>
+                <span className="text-gray-400 text-sm">to</span>
                 <input
                   type="date"
                   value={customEndDate}
@@ -994,55 +1342,53 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 />
                 <button
                   onClick={handleCustomDateApply}
-                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                  className="px-2 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                 >
                   Apply
                 </button>
               </div>
             )}
-            {/* Export Dropdown */}
             <div className="relative" ref={exportMenuRef}>
-              <button
-                onClick={() => setShowExportMenu(!showExportMenu)}
-                disabled={isExporting}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 flex-shrink-0 print:hidden"
-              >
-                <Download className={`w-4 h-4 ${isExporting ? 'animate-pulse' : ''}`} />
-                <span className="hidden sm:inline">Export</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {showExportMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                  <button
-                    onClick={handleExportCSV}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                    Export to CSV
-                  </button>
-                  <button
-                    onClick={handleExportExcel}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                    Export to Excel
-                  </button>
-                  <div className="border-t border-gray-100 my-1" />
-                  <button
-                    onClick={handleExportPDF}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    <Printer className="w-4 h-4 text-blue-600" />
-                    Download PDF Report
-                  </button>
-                </div>
-              )}
-            </div>
-            {/* Refresh Button */}
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={isExporting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 print:hidden"
+            >
+              <Download className={`w-4 h-4 ${isExporting ? 'animate-pulse' : ''}`} />
+              <span>Export</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                  Export to CSV
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                  Export to Excel
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <Printer className="w-4 h-4 text-blue-600" />
+                  Download PDF Report
+                </button>
+              </div>
+            )}
+          </div>
             <button
               onClick={() => refetchSummary()}
               disabled={isLoading}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0 print:hidden"
+              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 print:hidden"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
@@ -1174,7 +1520,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* Revenue Trend - Takes 2 columns */}
-          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4">
+          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4" data-chart="revenue-trend">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-gray-400" />

@@ -10,9 +10,16 @@ interface Property {
   name: string;
 }
 
+interface Group {
+  id: number | string;
+  name: string;
+}
+
 interface AnalyticsFiltersData {
   owners: Owner[];
   properties: Property[];
+  tags: string[];
+  groups: Group[];
 }
 
 interface UseAnalyticsFiltersReturn {

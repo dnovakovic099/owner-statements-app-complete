@@ -7,8 +7,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { Statement, Listing, sequelize } = require('../models');
+const { Statement, Listing, ListingGroup, sequelize } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
+const FileDataService = require('../services/FileDataService');
 
 /**
  * Helper: Parse a date string safely
@@ -124,10 +125,8 @@ router.get('/summary', async (req, res) => {
                 [fn('COUNT', col('id')), 'statementCount']
             ],
             where: {
-                // Overlap condition: statement starts before range ends AND statement ends after range starts
                 weekStartDate: { [Op.lte]: end },
                 weekEndDate: { [Op.gte]: start },
-                // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
                     { ownerPayout: { [Op.ne]: 0 } }
@@ -136,16 +135,44 @@ router.get('/summary', async (req, res) => {
             raw: true
         });
 
+        // Get additional metrics separately
+        const negativePayoutResult = await Statement.count({
+            where: {
+                weekStartDate: { [Op.lte]: end },
+                weekEndDate: { [Op.gte]: start },
+                ownerPayout: { [Op.lt]: 0 }
+            }
+        });
+
+        const propertyCountResult = await Statement.count({
+            distinct: true,
+            col: 'property_id',
+            where: {
+                weekStartDate: { [Op.lte]: end },
+                weekEndDate: { [Op.gte]: start },
+                [Op.or]: [
+                    { totalRevenue: { [Op.ne]: 0 } },
+                    { ownerPayout: { [Op.ne]: 0 } }
+                ]
+            }
+        });
+
+        const statementCount = parseInt(currentResult?.statementCount) || 0;
+        const ownerPayout = parseFloat(currentResult?.ownerPayout) || 0;
+
         const current = {
             totalRevenue: parseFloat(currentResult?.totalRevenue) || 0,
-            ownerPayout: parseFloat(currentResult?.ownerPayout) || 0,
+            ownerPayout: ownerPayout,
             pmCommission: parseFloat(currentResult?.pmCommission) || 0,
             totalExpenses: parseFloat(currentResult?.totalExpenses) || 0,
             techFees: parseFloat(currentResult?.techFees) || 0,
             insuranceFees: parseFloat(currentResult?.insuranceFees) || 0,
             totalCleaningFee: parseFloat(currentResult?.totalCleaningFee) || 0,
             adjustments: parseFloat(currentResult?.adjustments) || 0,
-            statementCount: parseInt(currentResult?.statementCount) || 0
+            statementCount: statementCount,
+            negativePayoutCount: negativePayoutResult || 0,
+            propertyCount: propertyCountResult || 0,
+            avgPayoutPerStatement: statementCount > 0 ? ownerPayout / statementCount : 0
         };
 
         // Get detailed breakdown from reservations JSON (exclude $0 activity)
@@ -164,9 +191,11 @@ router.get('/summary', async (req, res) => {
 
         // Parse reservations to get detailed breakdown
         let baseRate = 0, guestFees = 0, platformFees = 0, taxes = 0, grossPayout = 0;
+        let reservationCount = 0;
 
         for (const stmt of statementsWithReservations) {
             const reservations = stmt.reservations || [];
+            reservationCount += reservations.length;
             for (const res of reservations) {
                 // baseRate is the accommodation base rate
                 baseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
@@ -186,6 +215,7 @@ router.get('/summary', async (req, res) => {
         current.platformFees = platformFees;
         current.taxes = taxes;
         current.grossPayout = grossPayout;
+        current.reservationCount = reservationCount;
 
         let previous = null;
         let percentChange = {};
@@ -209,10 +239,8 @@ router.get('/summary', async (req, res) => {
                         [fn('COUNT', col('id')), 'statementCount']
                     ],
                     where: {
-                        // Overlap condition
                         weekStartDate: { [Op.lte]: compEnd },
                         weekEndDate: { [Op.gte]: compStart },
-                        // Exclude $0 activity statements
                         [Op.or]: [
                             { totalRevenue: { [Op.ne]: 0 } },
                             { ownerPayout: { [Op.ne]: 0 } }
@@ -221,16 +249,43 @@ router.get('/summary', async (req, res) => {
                     raw: true
                 });
 
+                const prevNegativePayoutResult = await Statement.count({
+                    where: {
+                        weekStartDate: { [Op.lte]: compEnd },
+                        weekEndDate: { [Op.gte]: compStart },
+                        ownerPayout: { [Op.lt]: 0 }
+                    }
+                });
+
+                const prevPropertyCountResult = await Statement.count({
+                    distinct: true,
+                    col: 'property_id',
+                    where: {
+                        weekStartDate: { [Op.lte]: compEnd },
+                        weekEndDate: { [Op.gte]: compStart },
+                        [Op.or]: [
+                            { totalRevenue: { [Op.ne]: 0 } },
+                            { ownerPayout: { [Op.ne]: 0 } }
+                        ]
+                    }
+                });
+
+                const prevStatementCount = parseInt(previousResult?.statementCount) || 0;
+                const prevOwnerPayout = parseFloat(previousResult?.ownerPayout) || 0;
+
                 previous = {
                     totalRevenue: parseFloat(previousResult?.totalRevenue) || 0,
-                    ownerPayout: parseFloat(previousResult?.ownerPayout) || 0,
+                    ownerPayout: prevOwnerPayout,
                     pmCommission: parseFloat(previousResult?.pmCommission) || 0,
                     totalExpenses: parseFloat(previousResult?.totalExpenses) || 0,
                     techFees: parseFloat(previousResult?.techFees) || 0,
                     insuranceFees: parseFloat(previousResult?.insuranceFees) || 0,
                     totalCleaningFee: parseFloat(previousResult?.totalCleaningFee) || 0,
                     adjustments: parseFloat(previousResult?.adjustments) || 0,
-                    statementCount: parseInt(previousResult?.statementCount) || 0
+                    statementCount: prevStatementCount,
+                    negativePayoutCount: prevNegativePayoutResult || 0,
+                    propertyCount: prevPropertyCountResult || 0,
+                    avgPayoutPerStatement: prevStatementCount > 0 ? prevOwnerPayout / prevStatementCount : 0
                 };
 
                 // Get previous period detailed breakdown (exclude $0 activity)
@@ -248,8 +303,10 @@ router.get('/summary', async (req, res) => {
                 });
 
                 let prevBaseRate = 0, prevGuestFees = 0, prevPlatformFees = 0, prevTaxes = 0, prevGrossPayout = 0;
+                let prevReservationCount = 0;
                 for (const stmt of prevStatementsWithReservations) {
                     const reservations = stmt.reservations || [];
+                    prevReservationCount += reservations.length;
                     for (const res of reservations) {
                         prevBaseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
                         prevGuestFees += parseFloat(res.cleaningAndOtherFees || res.cleaningFee || 0);
@@ -264,6 +321,7 @@ router.get('/summary', async (req, res) => {
                 previous.platformFees = prevPlatformFees;
                 previous.taxes = prevTaxes;
                 previous.grossPayout = prevGrossPayout;
+                previous.reservationCount = prevReservationCount;
 
                 // Calculate percent changes
                 percentChange = {
@@ -279,7 +337,11 @@ router.get('/summary', async (req, res) => {
                     platformFees: calculatePercentChange(current.platformFees, previous.platformFees),
                     taxes: calculatePercentChange(current.taxes, previous.taxes),
                     grossPayout: calculatePercentChange(current.grossPayout, previous.grossPayout),
-                    statementCount: calculatePercentChange(current.statementCount, previous.statementCount)
+                    statementCount: calculatePercentChange(current.statementCount, previous.statementCount),
+                    reservationCount: calculatePercentChange(current.reservationCount, previous.reservationCount),
+                    propertyCount: calculatePercentChange(current.propertyCount, previous.propertyCount),
+                    avgPayoutPerStatement: calculatePercentChange(current.avgPayoutPerStatement, previous.avgPayoutPerStatement),
+                    negativePayoutCount: calculatePercentChange(current.negativePayoutCount, previous.negativePayoutCount)
                 };
             }
         }
@@ -766,7 +828,7 @@ router.get('/owner-breakdown', async (req, res) => {
  */
 router.get('/statement-status', async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, ownerId, propertyId, tag, groupId } = req.query;
 
         // Validate required params
         if (!startDate || !endDate) {
@@ -786,22 +848,40 @@ router.get('/statement-status', async (req, res) => {
             });
         }
 
+        // Build where clause with optional filters
+        const whereClause = {
+            // Overlap condition
+            weekStartDate: { [Op.lte]: end },
+            weekEndDate: { [Op.gte]: start },
+            // Exclude $0 activity statements
+            [Op.or]: [
+                { totalRevenue: { [Op.ne]: 0 } },
+                { ownerPayout: { [Op.ne]: 0 } }
+            ]
+        };
+
+        // Add optional filters
+        // Skip ownerId filter if it's "default" (special virtual owner, not in database)
+        if (ownerId && ownerId !== 'default') {
+            whereClause.ownerId = ownerId;
+        }
+        if (propertyId) {
+            whereClause.propertyId = propertyId;
+        }
+        if (tag) {
+            whereClause.groupTags = { [Op.like]: `%${tag}%` };
+        }
+        if (groupId) {
+            whereClause.groupId = groupId;
+        }
+
         // Aggregate by status (using overlap logic, exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
                 'status',
                 [fn('COUNT', col('id')), 'count']
             ],
-            where: {
-                // Overlap condition
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
-                // Exclude $0 activity statements
-                [Op.or]: [
-                    { totalRevenue: { [Op.ne]: 0 } },
-                    { ownerPayout: { [Op.ne]: 0 } }
-                ]
-            },
+            where: whereClause,
             group: ['status'],
             raw: true
         });
@@ -825,6 +905,13 @@ router.get('/statement-status', async (req, res) => {
  *
  * Returns the most recent statements (limit 10).
  *
+ * Query params:
+ *   - startDate: Optional start of date range (YYYY-MM-DD)
+ *   - endDate: Optional end of date range (YYYY-MM-DD)
+ *   - ownerId: Optional owner ID filter
+ *   - propertyId: Optional property ID filter
+ *   - tag: Optional tag filter
+ *
  * Response: [
  *   { id: 1, propertyName: "Beach House", weekStartDate: "2025-01-01", weekEndDate: "2025-01-07", totalRevenue: 5000, ownerPayout: 4000, status: "sent" },
  *   ...
@@ -832,6 +919,42 @@ router.get('/statement-status', async (req, res) => {
  */
 router.get('/recent-statements', async (req, res) => {
     try {
+        const { startDate, endDate, ownerId, propertyId, tag, groupId } = req.query;
+
+        // Build where clause with optional filters
+        const whereClause = {
+            // Exclude $0 activity statements
+            [Op.or]: [
+                { totalRevenue: { [Op.ne]: 0 } },
+                { ownerPayout: { [Op.ne]: 0 } }
+            ]
+        };
+
+        // Add date range filter if provided
+        if (startDate && endDate) {
+            const start = parseDate(startDate);
+            const end = parseDate(endDate);
+            if (start && end) {
+                whereClause.weekStartDate = { [Op.lte]: end };
+                whereClause.weekEndDate = { [Op.gte]: start };
+            }
+        }
+
+        // Add optional filters
+        // Skip ownerId filter if it's "default" (special virtual owner, not in database)
+        if (ownerId && ownerId !== 'default') {
+            whereClause.ownerId = ownerId;
+        }
+        if (propertyId) {
+            whereClause.propertyId = propertyId;
+        }
+        if (tag) {
+            whereClause.groupTags = { [Op.like]: `%${tag}%` };
+        }
+        if (groupId) {
+            whereClause.groupId = groupId;
+        }
+
         // Fetch the 10 most recent statements (exclude $0 activity)
         const statements = await Statement.findAll({
             attributes: [
@@ -843,14 +966,8 @@ router.get('/recent-statements', async (req, res) => {
                 'ownerPayout',
                 'status'
             ],
-            where: {
-                // Exclude $0 activity statements
-                [Op.or]: [
-                    { totalRevenue: { [Op.ne]: 0 } },
-                    { ownerPayout: { [Op.ne]: 0 } }
-                ]
-            },
-            order: [['createdAt', 'DESC']],
+            where: whereClause,
+            order: [['created_at', 'DESC']],
             limit: 10,
             raw: true
         });
@@ -1224,6 +1341,96 @@ router.get('/export', async (req, res) => {
     } catch (error) {
         console.error('Analytics export error:', error);
         res.status(500).json({ error: 'Failed to export analytics data' });
+    }
+});
+
+/**
+ * GET /api/analytics/filters
+ *
+ * Returns available filter options for the analytics dashboard.
+ *
+ * Response: {
+ *   owners: [{ id: "...", name: "John Doe" }, ...],
+ *   properties: [{ id: 1, name: "Beach House" }, ...],
+ *   tags: ["WEEKLY", "BI-WEEKLY_A", "BI-WEEKLY_B", "MONTHLY"]
+ * }
+ */
+router.get('/filters', async (req, res) => {
+    try {
+        // Get properties from Listing model
+        const listings = await Listing.findAll({
+            attributes: ['id', 'name', 'displayName', 'nickname'],
+            order: [['displayName', 'ASC'], ['name', 'ASC']],
+            raw: true
+        });
+
+        const properties = listings.map(l => ({
+            id: l.id,
+            name: l.displayName || l.nickname || l.name
+        }));
+
+        // Get owners from FileDataService
+        // Filter to match the specific owners shown in GenerateModal
+        const ownersData = await FileDataService.getOwners();
+
+        // Allowed owner IDs - matching GenerateModal's owner list
+        const allowedOwnerIds = new Set([
+            'default',
+            300004593,  // Darko Novakovic
+            300004594,  // Angelica Chua
+            300004597,  // Ferdy
+            300004599,  // Prasanna KB
+        ]);
+
+        const owners = ownersData
+            .filter(o => allowedOwnerIds.has(o.id))
+            .map(o => ({ id: o.id, name: o.name }))
+            .sort((a, b) => {
+                // Keep Default at top
+                if (a.id === 'default') return -1;
+                if (b.id === 'default') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+        // Get unique tags from Listings
+        const listingsWithTags = await Listing.findAll({
+            attributes: ['tags'],
+            where: {
+                tags: { [Op.ne]: null }
+            },
+            raw: true
+        });
+
+        // Parse and deduplicate tags
+        const tagSet = new Set();
+        listingsWithTags.forEach(l => {
+            if (l.tags) {
+                l.tags.split(',').forEach(tag => {
+                    const trimmed = tag.trim();
+                    if (trimmed) tagSet.add(trimmed);
+                });
+            }
+        });
+        const tags = Array.from(tagSet).sort();
+
+        // Get groups from ListingGroup model
+        const groupsData = await ListingGroup.findAll({
+            attributes: ['id', 'name'],
+            order: [['name', 'ASC']],
+            raw: true
+        });
+        const groups = groupsData.map(g => ({ id: g.id, name: g.name }));
+
+        res.json({
+            owners,
+            properties,
+            tags,
+            groups
+        });
+
+    } catch (error) {
+        console.error('Analytics filters error:', error);
+        res.status(500).json({ error: 'Failed to fetch analytics filters' });
     }
 });
 
