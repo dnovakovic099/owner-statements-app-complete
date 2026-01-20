@@ -50,7 +50,14 @@ const TagSchedule = sequelize.define('TagSchedule', {
         type: DataTypes.ENUM('A', 'B'),
         allowNull: true,
         field: 'biweekly_week',
-        comment: 'For biweekly: A=odd weeks, B=even weeks'
+        comment: 'DEPRECATED: For biweekly A/B system (no longer used)'
+    },
+    biweeklyStartDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        field: 'biweekly_start_date',
+        defaultValue: '2026-01-19',
+        comment: 'Reference start date for bi-weekly schedule (runs every 2 weeks from this date)'
     },
     lastNotifiedAt: {
         type: DataTypes.DATE,

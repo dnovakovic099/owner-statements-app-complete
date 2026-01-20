@@ -12,6 +12,7 @@ const logger = require('./utils/logger');
 // Database initialization
 const { syncDatabase } = require('./models');
 const ListingService = require('./services/ListingService');
+const TagScheduleService = require('./services/TagScheduleService');
 
 // Authentication middleware
 const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
@@ -330,6 +331,11 @@ async function startServer() {
             .catch(err => {
                 logger.warn('Listing sync failed (will retry later)', { error: err.message });
             });
+
+        // Start TagScheduleService for auto-generating statements
+        logger.info('Starting TagScheduleService for automatic statement generation...');
+        TagScheduleService.start();
+        logger.info('TagScheduleService started - checking schedules every minute at 8:00 AM EST');
 
         // Start server
         app.listen(PORT, () => {

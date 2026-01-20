@@ -402,11 +402,29 @@ class ListingGroupService {
                 return groups;
             }
 
-            const tagLower = tag.toLowerCase().trim();
+            const tagUpper = tag.toUpperCase().trim();
 
+            // Pattern matching for WEEKLY, BI-WEEKLY, MONTHLY tags
             return groups.filter(group => {
-                const groupTags = group.tags ? group.tags.split(',').map(t => t.trim().toLowerCase()) : [];
-                return groupTags.includes(tagLower);
+                const groupTags = group.tags ? group.tags.split(',').map(t => t.trim().toUpperCase()) : [];
+
+                // For BI-WEEKLY schedule, match any group tag containing "BI-WEEKLY"
+                if (tagUpper.includes('BI-WEEKLY') || tagUpper.includes('BIWEEKLY')) {
+                    return groupTags.some(t => t.includes('BI-WEEKLY') || t.includes('BIWEEKLY'));
+                }
+
+                // For WEEKLY schedule, match tags with "WEEKLY" but NOT "BI-WEEKLY"
+                if (tagUpper === 'WEEKLY') {
+                    return groupTags.some(t => t.includes('WEEKLY') && !t.includes('BI-WEEKLY') && !t.includes('BIWEEKLY'));
+                }
+
+                // For MONTHLY schedule, match any tag containing "MONTHLY"
+                if (tagUpper.includes('MONTHLY')) {
+                    return groupTags.some(t => t.includes('MONTHLY'));
+                }
+
+                // Default: exact match
+                return groupTags.includes(tagUpper);
             });
         } catch (error) {
             console.error(`[ListingGroupService] Error getting groups by tag "${tag}":`, error);

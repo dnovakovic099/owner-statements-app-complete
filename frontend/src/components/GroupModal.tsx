@@ -46,7 +46,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Base schedule tags for groups
-  const availableTags = ['WEEKLY', 'BI-WEEKLY A', 'BI-WEEKLY B', 'MONTHLY'];
+  const availableTags = ['WEEKLY', 'BI-WEEKLY', 'MONTHLY'];
 
   // Filter listings based on search query
   const filteredListings = useMemo(() => {

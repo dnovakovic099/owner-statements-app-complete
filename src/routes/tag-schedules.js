@@ -36,7 +36,7 @@ router.get('/schedules/:tagName', async (req, res) => {
 // Create or update a schedule
 router.post('/schedules', async (req, res) => {
     try {
-        const { tagName, frequencyType, dayOfWeek, dayOfMonth, timeOfDay, biweeklyWeek, isEnabled } = req.body;
+        const { tagName, frequencyType, dayOfWeek, dayOfMonth, timeOfDay, biweeklyStartDate, isEnabled } = req.body;
 
         if (!tagName) {
             return res.status(400).json({ success: false, error: 'tagName is required' });
@@ -55,9 +55,7 @@ router.post('/schedules', async (req, res) => {
             if (dayOfWeek === undefined || dayOfWeek < 0 || dayOfWeek > 6) {
                 return res.status(400).json({ success: false, error: 'dayOfWeek (0-6) is required for biweekly schedules' });
             }
-            if (!biweeklyWeek || !['A', 'B'].includes(biweeklyWeek)) {
-                return res.status(400).json({ success: false, error: 'biweeklyWeek (A or B) is required for biweekly schedules' });
-            }
+            // biweeklyStartDate is optional, defaults to '2026-01-19' in the model
         }
 
         if (frequencyType === 'monthly' && (dayOfMonth === undefined || dayOfMonth < 1 || dayOfMonth > 31)) {
@@ -69,7 +67,7 @@ router.post('/schedules', async (req, res) => {
             dayOfWeek: frequencyType !== 'monthly' ? dayOfWeek : null,
             dayOfMonth: frequencyType === 'monthly' ? dayOfMonth : null,
             timeOfDay: timeOfDay || '09:00',
-            biweeklyWeek: frequencyType === 'biweekly' ? biweeklyWeek : null,
+            biweeklyStartDate: frequencyType === 'biweekly' ? (biweeklyStartDate || '2026-01-19') : null,
             isEnabled: isEnabled !== false
         });
 

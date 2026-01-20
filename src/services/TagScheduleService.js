@@ -125,11 +125,15 @@ class TagScheduleService {
 
             case 'biweekly':
                 if (currentDay !== schedule.dayOfWeek) return false;
-                // A = odd weeks, B = even weeks
-                const isOddWeek = currentWeek % 2 === 1;
-                if (schedule.biweeklyWeek === 'A') return isOddWeek;
-                if (schedule.biweeklyWeek === 'B') return !isOddWeek;
-                return false;
+                // Bi-weekly runs every 2 weeks from the reference start date (Jan 19, 2026)
+                // This replaces the old A/B week system
+                const biweeklyStartDate = schedule.biweeklyStartDate
+                    ? new Date(schedule.biweeklyStartDate)
+                    : new Date('2026-01-19'); // Default reference: Jan 19, 2026
+                const daysSinceStart = Math.floor((now - biweeklyStartDate) / (1000 * 60 * 60 * 24));
+                const weeksSinceStart = Math.floor(daysSinceStart / 7);
+                // Run on weeks 0, 2, 4, 6... (every 2 weeks)
+                return weeksSinceStart >= 0 && weeksSinceStart % 2 === 0;
 
             case 'monthly':
                 return currentDate === schedule.dayOfMonth;
@@ -281,21 +285,45 @@ class TagScheduleService {
 
         try {
             // Get all listings with this tag that are NOT in any group
-            // Use case-insensitive matching with ILIKE for PostgreSQL
-            const listings = await Listing.findAll({
-                where: {
-                    isActive: true,
-                    groupId: null, // Only non-grouped listings
-                    tags: {
-                        [Op.or]: [
-                            { [Op.iLike]: tagName },
-                            { [Op.iLike]: `${tagName},%` },
-                            { [Op.iLike]: `%,${tagName}` },
-                            { [Op.iLike]: `%,${tagName},%` }
-                        ]
+            // Use pattern matching for WEEKLY, BI-WEEKLY, MONTHLY tags
+            const pattern = this.buildTagMatchPattern(tagName);
+            const upperTag = (tagName || '').toUpperCase();
+
+            let listings;
+            if (pattern) {
+                // Use pattern matching
+                listings = await Listing.findAll({
+                    where: {
+                        isActive: true,
+                        groupId: null, // Only non-grouped listings
+                        tags: { [Op.iLike]: pattern }
                     }
+                });
+
+                // For WEEKLY, filter out BI-WEEKLY matches
+                if (upperTag === 'WEEKLY') {
+                    listings = listings.filter(l => {
+                        const tags = (l.tags || '').toUpperCase();
+                        return tags.includes('WEEKLY') && !tags.includes('BI-WEEKLY') && !tags.includes('BIWEEKLY');
+                    });
                 }
-            });
+            } else {
+                // Exact match for other tags
+                listings = await Listing.findAll({
+                    where: {
+                        isActive: true,
+                        groupId: null, // Only non-grouped listings
+                        tags: {
+                            [Op.or]: [
+                                { [Op.iLike]: tagName },
+                                { [Op.iLike]: `${tagName},%` },
+                                { [Op.iLike]: `%,${tagName}` },
+                                { [Op.iLike]: `%,${tagName},%` }
+                            ]
+                        }
+                    }
+                });
+            }
 
             if (listings.length === 0) {
                 console.log(`[TagScheduleService] No non-grouped listings found with tag "${tagName}"`);
@@ -412,22 +440,73 @@ class TagScheduleService {
     }
 
     /**
-     * Get all listings with a specific tag (case-insensitive)
+     * Build tag matching pattern for SQL ILIKE queries
+     * Uses pattern matching: WEEKLY matches any tag containing "WEEKLY" (but not BI-WEEKLY)
+     * BI-WEEKLY matches any tag containing "BI-WEEKLY" (like BI-WEEKLY A, BI-WEEKLY B)
+     */
+    buildTagMatchPattern(tagName) {
+        const upperTag = (tagName || '').toUpperCase();
+
+        // For BI-WEEKLY, match any tag containing "BI-WEEKLY"
+        if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
+            return '%BI-WEEKLY%';
+        }
+
+        // For WEEKLY (not BI-WEEKLY), we need to match WEEKLY but exclude BI-WEEKLY
+        // This is tricky with ILIKE, so we'll handle it in code after fetching
+        if (upperTag === 'WEEKLY') {
+            return '%WEEKLY%';
+        }
+
+        // For MONTHLY, match any tag containing "MONTHLY"
+        if (upperTag.includes('MONTHLY')) {
+            return '%MONTHLY%';
+        }
+
+        // Default: exact match patterns
+        return null;
+    }
+
+    /**
+     * Get all listings with a specific tag (case-insensitive, pattern matching)
      */
     async getListingsWithTag(tagName) {
-        const listings = await Listing.findAll({
-            where: {
-                isActive: true,
-                tags: {
-                    [Op.or]: [
-                        { [Op.iLike]: tagName },
-                        { [Op.iLike]: `${tagName},%` },
-                        { [Op.iLike]: `%,${tagName}` },
-                        { [Op.iLike]: `%,${tagName},%` }
-                    ]
+        const pattern = this.buildTagMatchPattern(tagName);
+        const upperTag = (tagName || '').toUpperCase();
+
+        let listings;
+        if (pattern) {
+            // Use pattern matching
+            listings = await Listing.findAll({
+                where: {
+                    isActive: true,
+                    tags: { [Op.iLike]: pattern }
                 }
+            });
+
+            // For WEEKLY, filter out BI-WEEKLY matches
+            if (upperTag === 'WEEKLY') {
+                listings = listings.filter(l => {
+                    const tags = (l.tags || '').toUpperCase();
+                    return tags.includes('WEEKLY') && !tags.includes('BI-WEEKLY') && !tags.includes('BIWEEKLY');
+                });
             }
-        });
+        } else {
+            // Exact match for other tags
+            listings = await Listing.findAll({
+                where: {
+                    isActive: true,
+                    tags: {
+                        [Op.or]: [
+                            { [Op.iLike]: tagName },
+                            { [Op.iLike]: `${tagName},%` },
+                            { [Op.iLike]: `%,${tagName}` },
+                            { [Op.iLike]: `%,${tagName},%` }
+                        ]
+                    }
+                }
+            });
+        }
         return listings;
     }
 

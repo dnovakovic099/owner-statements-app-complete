@@ -80,27 +80,26 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
         end: lastMonday.toISOString().split('T')[0]
       };
     } else if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
-      // BI-WEEKLY A/B: Monday to Monday (14 days), alternating
+      // BI-WEEKLY: Monday to Monday (14 days), every 2 weeks from reference date
+      // Reference start date: Jan 19, 2026 (a Monday)
+      const referenceDate = new Date('2026-01-19');
+
       // Find most recent Monday
       const lastMonday = new Date(today);
       const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       lastMonday.setDate(today.getDate() - daysToMonday);
 
-      // Calculate week number to determine A or B
-      const startOfYear = new Date(lastMonday.getFullYear(), 0, 1);
-      const weekNumber = Math.ceil(((lastMonday.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-      const isWeekA = weekNumber % 2 === 1; // Odd weeks = A, Even weeks = B
+      // Calculate weeks since reference date
+      const msSinceReference = lastMonday.getTime() - referenceDate.getTime();
+      const daysSinceReference = Math.floor(msSinceReference / (1000 * 60 * 60 * 24));
+      const weeksSinceReference = Math.floor(daysSinceReference / 7);
 
-      // Determine if this tag is A or B
-      const isTagA = upperTag.includes(' A');
-      const isTagB = upperTag.includes(' B');
-
+      // Find the most recent bi-weekly Monday (every 2 weeks from reference)
+      // If we're on an even week number from reference, this Monday is a bi-weekly date
+      // Otherwise, go back 1 week to find the last bi-weekly Monday
       let endMonday = new Date(lastMonday);
-
-      // If current week matches the tag (A/B), use previous 2-week period
-      // If not, offset by 1 week to get the correct alternating period
-      if ((isTagA && !isWeekA) || (isTagB && isWeekA)) {
-        // Offset by 1 week
+      if (weeksSinceReference % 2 !== 0) {
+        // Not a bi-weekly week, go back 1 week
         endMonday.setDate(lastMonday.getDate() - 7);
       }
 

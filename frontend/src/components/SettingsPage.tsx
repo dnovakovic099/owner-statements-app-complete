@@ -21,7 +21,12 @@ import {
   Settings,
   Link,
   ExternalLink,
-  CheckCircle
+  CheckCircle,
+  Calendar,
+  Play,
+  Pause,
+  CalendarDays,
+  Plus
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
@@ -41,9 +46,26 @@ const SETTINGS_ALLOWED_EMAILS = [
   'devendravariya73@gmail.com'
 ];
 
+// Schedule type for managing auto-generation schedules
+interface TagSchedule {
+  id: number;
+  tagName: string;
+  isEnabled: boolean;
+  frequencyType: 'weekly' | 'biweekly' | 'monthly';
+  dayOfWeek: number | null;
+  dayOfMonth: number | null;
+  timeOfDay: string;
+  biweeklyStartDate: string | null;
+  lastNotifiedAt: string | null;
+  nextScheduledAt: string | null;
+  periodDays: number | null;
+  calculationType: 'checkout' | 'calendar' | null;
+  skipDates: string[];
+}
+
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, currentUserEmail, hideSidebar = false }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'quickbooks'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'quickbooks' | 'schedules'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +80,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     refreshToken: ''
   });
   const [savingTokens, setSavingTokens] = useState(false);
+
+  // Schedules state
+  const [schedules, setSchedules] = useState<TagSchedule[]>([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<TagSchedule | null>(null);
+  const [isAddScheduleOpen, setIsAddScheduleOpen] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    tagName: '',
+    frequencyType: 'weekly' as 'weekly' | 'biweekly' | 'monthly',
+    dayOfWeek: 1,
+    dayOfMonth: 1,
+    timeOfDay: '08:00',
+    biweeklyStartDate: '2026-01-19'
+  });
 
   // Activity log state
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
@@ -112,6 +148,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     if (activeTab === 'quickbooks') {
       checkQuickBooksConnection();
     }
+  }, [activeTab]);
+
+  // Load schedules when tab changes
+  useEffect(() => {
+    if (activeTab === 'schedules') {
+      loadSchedules();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const checkQuickBooksConnection = async () => {
@@ -188,6 +232,154 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     } finally {
       setSavingTokens(false);
     }
+  };
+
+  // Schedule management functions
+  const getAuthHeaders = (): Record<string, string> => {
+    const authData = localStorage.getItem('luxury-lodging-auth');
+    if (authData) {
+      const { token } = JSON.parse(authData);
+      return { 'Authorization': `Bearer ${token}` };
+    }
+    return {};
+  };
+
+  const loadSchedules = async () => {
+    try {
+      setSchedulesLoading(true);
+      const response = await fetch('/api/tag-schedules/schedules', {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setSchedules(data.schedules || []);
+      }
+    } catch (err) {
+      console.error('Failed to load schedules:', err);
+      showToast('Failed to load schedules', 'error');
+    } finally {
+      setSchedulesLoading(false);
+    }
+  };
+
+  const handleToggleSchedule = async (schedule: TagSchedule) => {
+    try {
+      const response = await fetch('/api/tag-schedules/schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          tagName: schedule.tagName,
+          frequencyType: schedule.frequencyType,
+          dayOfWeek: schedule.dayOfWeek,
+          dayOfMonth: schedule.dayOfMonth,
+          timeOfDay: schedule.timeOfDay,
+          isEnabled: !schedule.isEnabled
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast(`Schedule ${!schedule.isEnabled ? 'enabled' : 'disabled'}`, 'success');
+        loadSchedules();
+      } else {
+        showToast(data.error || 'Failed to update schedule', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to update schedule', 'error');
+    }
+  };
+
+  const handleUpdateSchedule = async () => {
+    if (!editingSchedule) return;
+
+    try {
+      const response = await fetch('/api/tag-schedules/schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          tagName: editingSchedule.tagName,
+          frequencyType: editingSchedule.frequencyType,
+          dayOfWeek: editingSchedule.frequencyType !== 'monthly' ? scheduleForm.dayOfWeek : null,
+          dayOfMonth: editingSchedule.frequencyType === 'monthly' ? scheduleForm.dayOfMonth : null,
+          timeOfDay: scheduleForm.timeOfDay,
+          biweeklyStartDate: editingSchedule.frequencyType === 'biweekly' ? scheduleForm.biweeklyStartDate : null,
+          isEnabled: editingSchedule.isEnabled
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast('Schedule updated successfully', 'success');
+        setEditingSchedule(null);
+        loadSchedules();
+      } else {
+        showToast(data.error || 'Failed to update schedule', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to update schedule', 'error');
+    }
+  };
+
+  const handleAddSchedule = async () => {
+    if (!scheduleForm.tagName.trim()) {
+      showToast('Please enter a tag name', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/tag-schedules/schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          tagName: scheduleForm.tagName.trim().toUpperCase(),
+          frequencyType: scheduleForm.frequencyType,
+          dayOfWeek: scheduleForm.frequencyType !== 'monthly' ? scheduleForm.dayOfWeek : null,
+          dayOfMonth: scheduleForm.frequencyType === 'monthly' ? scheduleForm.dayOfMonth : null,
+          timeOfDay: scheduleForm.timeOfDay,
+          biweeklyStartDate: scheduleForm.frequencyType === 'biweekly' ? scheduleForm.biweeklyStartDate : null,
+          isEnabled: true
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast('Schedule created successfully', 'success');
+        setIsAddScheduleOpen(false);
+        setScheduleForm({
+          tagName: '',
+          frequencyType: 'weekly',
+          dayOfWeek: 1,
+          dayOfMonth: 1,
+          timeOfDay: '08:00',
+          biweeklyStartDate: '2026-01-19'
+        });
+        loadSchedules();
+      } else {
+        showToast(data.error || 'Failed to create schedule', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to create schedule', 'error');
+    }
+  };
+
+  const getDayName = (dayOfWeek: number | null) => {
+    if (dayOfWeek === null) return '-';
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[dayOfWeek];
+  };
+
+  const formatTimeDisplay = (time: string) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
   };
 
   useEffect(() => {
@@ -483,7 +675,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Settings</h1>
-            <p className="text-gray-500 text-sm mt-0.5">User management and activity logs</p>
+            <p className="text-gray-500 text-sm mt-0.5">User management, activity logs, and schedules</p>
           </div>
         </div>
       </div>
@@ -524,6 +716,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             >
               <Link className="w-4 h-4 mr-2" />
               QuickBooks
+            </button>
+            <button
+              onClick={() => setActiveTab('schedules')}
+              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'schedules'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Schedules
             </button>
           </div>
 
@@ -940,7 +1143,381 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             </div>
           </div>
           )}
+
+          {/* Schedules Section */}
+          {activeTab === 'schedules' && (
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center">
+                <Calendar className="w-5 h-5 text-gray-600 mr-2" />
+                <h2 className="text-lg font-semibold text-gray-900">Auto-Generation Schedules</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setScheduleForm({
+                      tagName: '',
+                      frequencyType: 'weekly',
+                      dayOfWeek: 1,
+                      dayOfMonth: 1,
+                      timeOfDay: '08:00',
+                      biweeklyStartDate: '2026-01-19'
+                    });
+                    setIsAddScheduleOpen(true);
+                  }}
+                  className="flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Add Schedule
+                </button>
+                <button
+                  onClick={loadSchedules}
+                  disabled={schedulesLoading}
+                  className="flex items-center px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1.5 ${schedulesLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm text-gray-500 mb-6">
+                Configure automatic statement generation schedules. Statements will be auto-generated at 8:00 AM EST on the configured days for listings/groups with matching tags.
+              </p>
+
+              {schedulesLoading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-2" />
+                  <p className="text-gray-500">Loading schedules...</p>
+                </div>
+              ) : schedules.length === 0 ? (
+                <div className="text-center py-8">
+                  <CalendarDays className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No schedules configured</p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Schedules are created automatically when listings or groups are assigned tags.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {schedules.map((schedule) => (
+                    <div
+                      key={schedule.id}
+                      className={`border rounded-lg p-4 transition-colors ${
+                        schedule.isEnabled ? 'border-green-200 bg-green-50/50' : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            schedule.isEnabled ? 'bg-green-100' : 'bg-gray-200'
+                          }`}>
+                            <CalendarDays className={`w-5 h-5 ${schedule.isEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{schedule.tagName}</h3>
+                            <p className="text-sm text-gray-500">
+                              {schedule.frequencyType === 'weekly' && `Every ${getDayName(schedule.dayOfWeek)}`}
+                              {schedule.frequencyType === 'biweekly' && `Every other ${getDayName(schedule.dayOfWeek)} (from ${schedule.biweeklyStartDate || '2026-01-19'})`}
+                              {schedule.frequencyType === 'monthly' && `Monthly on day ${schedule.dayOfMonth}`}
+                              {' at '}{formatTimeDisplay(schedule.timeOfDay)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingSchedule(schedule);
+                              setScheduleForm({
+                                tagName: schedule.tagName,
+                                frequencyType: schedule.frequencyType,
+                                dayOfWeek: schedule.dayOfWeek ?? 1,
+                                dayOfMonth: schedule.dayOfMonth ?? 1,
+                                timeOfDay: schedule.timeOfDay,
+                                biweeklyStartDate: schedule.biweeklyStartDate || '2026-01-19'
+                              });
+                            }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit Schedule"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleSchedule(schedule)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              schedule.isEnabled
+                                ? 'text-amber-600 hover:bg-amber-50'
+                                : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title={schedule.isEnabled ? 'Disable Schedule' : 'Enable Schedule'}
+                          >
+                            {schedule.isEnabled ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Status indicator */}
+                      <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between text-xs">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full ${
+                          schedule.isEnabled
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {schedule.isEnabled ? (
+                            <>
+                              <Check className="w-3 h-3 mr-1" />
+                              Active
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-3 h-3 mr-1" />
+                              Disabled
+                            </>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-4">
+                          {schedule.nextScheduledAt && schedule.isEnabled && (
+                            <span className="text-blue-600 font-medium">
+                              Next run: {new Date(schedule.nextScheduledAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          )}
+                          {schedule.lastNotifiedAt && (
+                            <span className="text-gray-500">
+                              Last run: {new Date(schedule.lastNotifiedAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          )}
         </div>
+
+      {/* Edit Schedule Modal */}
+      {editingSchedule && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Edit Schedule</h2>
+              <p className="text-sm text-gray-500">{editingSchedule.tagName}</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {editingSchedule.frequencyType !== 'monthly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Day of Week
+                  </label>
+                  <select
+                    value={scheduleForm.dayOfWeek}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday</option>
+                    <option value={2}>Tuesday</option>
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                    <option value={6}>Saturday</option>
+                  </select>
+                </div>
+              )}
+              {editingSchedule.frequencyType === 'monthly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Day of Month
+                  </label>
+                  <select
+                    value={scheduleForm.dayOfMonth}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfMonth: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time of Day (EST)
+                </label>
+                <input
+                  type="time"
+                  value={scheduleForm.timeOfDay}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, timeOfDay: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {editingSchedule.frequencyType === 'biweekly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bi-weekly Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleForm.biweeklyStartDate}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, biweeklyStartDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The schedule will run every 2 weeks starting from this date
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => setEditingSchedule(null)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateSchedule}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Schedule Modal */}
+      {isAddScheduleOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Add New Schedule</h2>
+              <p className="text-sm text-gray-500">Create a new auto-generation schedule</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tag Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={scheduleForm.tagName}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, tagName: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., WEEKLY, BI-WEEKLY, MONTHLY"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Will match listings/groups with tags containing this text
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Frequency Type
+                </label>
+                <select
+                  value={scheduleForm.frequencyType}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, frequencyType: e.target.value as 'weekly' | 'biweekly' | 'monthly' })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Bi-Weekly (every 2 weeks)</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+              {scheduleForm.frequencyType !== 'monthly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Day of Week
+                  </label>
+                  <select
+                    value={scheduleForm.dayOfWeek}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday</option>
+                    <option value={2}>Tuesday</option>
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                    <option value={6}>Saturday</option>
+                  </select>
+                </div>
+              )}
+              {scheduleForm.frequencyType === 'monthly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Day of Month
+                  </label>
+                  <select
+                    value={scheduleForm.dayOfMonth}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfMonth: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time of Day (EST)
+                </label>
+                <input
+                  type="time"
+                  value={scheduleForm.timeOfDay}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, timeOfDay: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {scheduleForm.frequencyType === 'biweekly' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bi-weekly Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleForm.biweeklyStartDate}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, biweeklyStartDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The schedule will run every 2 weeks starting from this date
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => setIsAddScheduleOpen(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddSchedule}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Create Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Invite User Modal */}
       {isInviteModalOpen && (
