@@ -335,21 +335,33 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         return false;
       };
 
-      // === HEADER ===
-      pdf.setFillColor(51, 65, 85); // slate-700
-      pdf.rect(0, 0, pageWidth, 35, 'F');
+      // === HEADER WITH LUXURY LODGING BRANDING ===
+      // Navy background
+      pdf.setFillColor(30, 58, 95); // luxury-navy #1e3a5f
+      pdf.rect(0, 0, pageWidth, 45, 'F');
 
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(22);
+      // Gold accent line
+      pdf.setFillColor(212, 175, 55); // luxury-gold #d4af37
+      pdf.rect(0, 45, pageWidth, 2, 'F');
+
+      // Company name
+      pdf.setTextColor(212, 175, 55); // Gold text
+      pdf.setFontSize(24);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('Analytics Report', margin, 18);
+      pdf.text('LUXURY LODGING', margin, 18);
 
-      pdf.setFontSize(10);
+      // Report title
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(14);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Period: ${dateRange.start} to ${dateRange.end}`, margin, 28);
-      pdf.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth - margin - 45, 28);
+      pdf.text('Analytics Report', margin, 28);
 
-      yPos = 45;
+      // Period and date
+      pdf.setFontSize(10);
+      pdf.text(`Period: ${dateRange.start} to ${dateRange.end}`, margin, 38);
+      pdf.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth - margin - 45, 38);
+
+      yPos = 55;
 
       // === METRICS BAR ===
       pdf.setTextColor(51, 65, 85);
@@ -376,7 +388,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         head: [metricsData[0]],
         body: [metricsData[1]],
         theme: 'grid',
-        headStyles: { fillColor: [71, 85, 105], textColor: 255, fontSize: 8, halign: 'center' },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 8, halign: 'center' }, // Navy
         bodyStyles: { fontSize: 10, halign: 'center', fontStyle: 'bold' },
         margin: { left: margin, right: margin },
       });
@@ -411,7 +423,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         head: [kpiTableData[0]],
         body: [kpiTableData[1]],
         theme: 'grid',
-        headStyles: { fillColor: [100, 116, 139], textColor: 255, fontSize: 9, halign: 'center' },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9, halign: 'center' },
         bodyStyles: { fontSize: 11, halign: 'center', fontStyle: 'bold' },
         margin: { left: margin, right: margin },
       });
@@ -423,7 +435,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         head: [kpiTableData[2]],
         body: [kpiTableData[3]],
         theme: 'grid',
-        headStyles: { fillColor: [100, 116, 139], textColor: 255, fontSize: 9, halign: 'center' },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9, halign: 'center' },
         bodyStyles: { fontSize: 11, halign: 'center', fontStyle: 'bold' },
         margin: { left: margin, right: margin },
       });
@@ -431,29 +443,57 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       yPos = (pdf as any).lastAutoTable.finalY + 12;
 
       // === CHARTS SECTION ===
-      checkNewPage(100);
+      // Helper function to capture and add chart to PDF
+      const captureChart = async (selector: string, title: string, maxHeight: number = 70) => {
+        const chartEl = document.querySelector(selector);
+        if (chartEl) {
+          checkNewPage(maxHeight + 20);
+          pdf.setFontSize(14);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(30, 58, 95); // Navy
+          pdf.text(title, margin, yPos);
+          yPos += 5;
+
+          try {
+            const canvas = await html2canvas(chartEl as HTMLElement, {
+              scale: 2,
+              backgroundColor: '#ffffff',
+              logging: false
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = pageWidth - (margin * 2);
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const finalHeight = Math.min(imgHeight, maxHeight);
+
+            pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, finalHeight);
+            yPos += finalHeight + 12;
+          } catch (e) {
+            console.error(`Failed to capture ${title}:`, e);
+            yPos += 10;
+          }
+        }
+      };
 
       // Capture Revenue Trend Chart
-      const revenueChartEl = document.querySelector('[data-chart="revenue-trend"]');
-      if (revenueChartEl) {
-        pdf.setFontSize(14);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Revenue Trend', margin, yPos);
-        yPos += 5;
+      await captureChart('[data-chart="revenue-trend"]', 'Revenue Trend', 70);
 
-        try {
-          const canvas = await html2canvas(revenueChartEl as HTMLElement, { scale: 2, backgroundColor: '#ffffff' });
-          const imgData = canvas.toDataURL('image/png');
-          const imgWidth = pageWidth - (margin * 2);
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // Capture Expense Breakdown Chart
+      await captureChart('[data-chart="expense-breakdown"]', 'Expense Breakdown', 80);
 
-          checkNewPage(imgHeight + 10);
-          pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, Math.min(imgHeight, 60));
-          yPos += Math.min(imgHeight, 60) + 10;
-        } catch (e) {
-          console.error('Failed to capture revenue chart:', e);
-        }
-      }
+      // Capture Payout Trend Chart
+      await captureChart('[data-chart="payout-trend"]', 'Payout Trend', 70);
+
+      // Capture Property Performance Chart
+      await captureChart('[data-chart="property-performance"]', 'Top Properties by Revenue', 100);
+
+      // Capture Owner Breakdown Chart
+      await captureChart('[data-chart="owner-breakdown"]', 'Revenue by Owner', 80);
+
+      // Capture Monthly Comparison Chart
+      await captureChart('[data-chart="monthly-comparison"]', 'Monthly Comparison', 90);
+
+      // Capture Statement Status Chart
+      await captureChart('[data-chart="statement-status"]', 'Statement Status', 80);
 
       // === PROPERTY PERFORMANCE TABLE ===
       checkNewPage(60);
@@ -478,7 +518,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           head: [propertyTableHead],
           body: propertyTableBody,
           theme: 'striped',
-          headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9 }, // Navy
           bodyStyles: { fontSize: 8 },
           columnStyles: {
             0: { cellWidth: 60 },
@@ -516,7 +556,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           head: [ownerTableHead],
           body: ownerTableBody,
           theme: 'striped',
-          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9 }, // Navy
           bodyStyles: { fontSize: 8 },
           columnStyles: {
             0: { cellWidth: 60 },
@@ -554,7 +594,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           head: [statementsTableHead],
           body: statementsTableBody,
           theme: 'striped',
-          headStyles: { fillColor: [139, 92, 246], textColor: 255, fontSize: 9 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9 }, // Navy
           bodyStyles: { fontSize: 8 },
           columnStyles: {
             0: { cellWidth: 45 },
@@ -567,14 +607,28 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         });
       }
 
-      // === FOOTER ===
+      // === FOOTER WITH BRANDING ===
       const totalPages = pdf.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         pdf.setPage(i);
+
+        // Footer line
+        pdf.setDrawColor(212, 175, 55); // Gold
+        pdf.setLineWidth(0.5);
+        pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+
+        // Company info
         pdf.setFontSize(8);
+        pdf.setTextColor(30, 58, 95); // Navy
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Luxury Lodging', margin, pageHeight - 10);
+
+        pdf.setFont('helvetica', 'normal');
         pdf.setTextColor(128, 128, 128);
-        pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-        pdf.text('Luxury Lodging Analytics', margin, pageHeight - 8);
+        pdf.text('support@luxurylodgingpm.com | +1 (813) 594-8882', margin, pageHeight - 6);
+
+        // Page number
+        pdf.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
       }
 
       // Save the PDF
@@ -1568,7 +1622,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Expense Breakdown */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="expense-breakdown">
             <div className="flex items-center gap-2 mb-4">
               <PieChart className="w-4 h-4 text-gray-400" />
               <h3 className="text-sm font-medium text-gray-900">Expense Breakdown</h3>
@@ -1607,7 +1661,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Payout Trend Chart */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6" data-chart="payout-trend">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-gray-400" />
@@ -1655,7 +1709,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Property Performance */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="property-performance">
           <div className="flex items-center gap-2 mb-4">
             <Building2 className="w-4 h-4 text-gray-400" />
             <h3 className="text-sm font-medium text-gray-900">Top Properties by Revenue</h3>
@@ -1681,7 +1735,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Owner Breakdown Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
           {/* Owner Revenue Distribution Pie Chart */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="owner-breakdown">
             <div className="flex items-center gap-2 mb-4">
               <Users className="w-4 h-4 text-gray-400" />
               <h3 className="text-sm font-medium text-gray-900">Revenue by Owner</h3>
@@ -1777,7 +1831,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Monthly Comparison Chart */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6" data-chart="monthly-comparison">
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="w-4 h-4 text-gray-400" />
             <h3 className="text-sm font-medium text-gray-900">Monthly Comparison (Last 6 Months)</h3>
@@ -1803,7 +1857,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Statement Status and Recent Statements Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
           {/* Statement Status Donut Chart */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="statement-status">
             <div className="flex items-center gap-2 mb-4">
               <PieChart className="w-4 h-4 text-gray-400" />
               <h3 className="text-sm font-medium text-gray-900">Statement Status</h3>
