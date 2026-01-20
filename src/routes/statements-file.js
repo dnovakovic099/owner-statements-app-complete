@@ -36,6 +36,7 @@ router.get('/', async (req, res) => {
             startDate,
             endDate,
             hideZeroActivity, // Hide statements with $0 revenue AND $0 payout
+            search, // Search by propertyName, groupName, or ownerName
             limit = 50,
             offset = 0
         } = req.query;
@@ -49,6 +50,21 @@ router.get('/', async (req, res) => {
                 const payout = parseFloat(s.ownerPayout) || 0;
                 // Keep if either revenue OR payout is non-zero
                 return revenue !== 0 || payout !== 0;
+            });
+        }
+
+        // Search filter - case-insensitive search across propertyName, groupName, ownerName
+        if (search && search.trim()) {
+            const searchLower = search.toLowerCase().trim();
+            statements = statements.filter(s => {
+                const propertyName = (s.propertyName || '').toLowerCase();
+                const groupName = (s.groupName || '').toLowerCase();
+                const ownerName = (s.ownerName || '').toLowerCase();
+                const propertyNames = (s.propertyNames || '').toLowerCase();
+                return propertyName.includes(searchLower) ||
+                       groupName.includes(searchLower) ||
+                       ownerName.includes(searchLower) ||
+                       propertyNames.includes(searchLower);
             });
         }
 

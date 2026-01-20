@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -73,6 +73,8 @@ interface StatementsTableProps {
   bulkProcessing?: boolean;
   pagination: PaginationState;
   onPaginationChange: (pageIndex: number, pageSize: number) => void;
+  onSearchChange?: (search: string) => void; // Callback for server-side search
+  initialSearch?: string; // Initial search value from parent
 }
 
 const formatCurrency = (amount: number) => {
@@ -176,6 +178,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   bulkProcessing = false,
   pagination,
   onPaginationChange,
+  onSearchChange,
+  initialSearch = '',
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
   const COLUMN_ORDER_KEY = 'statements-table-column-order';
@@ -259,10 +263,35 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     { id: 'createdAt', desc: true }
   ]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
+  const [globalFilter, setGlobalFilter] = useState(initialSearch);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isRowsDropdownOpen, setIsRowsDropdownOpen] = useState(false);
   const [markerFilter, setMarkerFilter] = useState<string[]>([]);
+
+  // Debounce search to avoid too many API calls
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle search change with debounce for server-side search
+  const handleSearchChange = useCallback((value: string) => {
+    setGlobalFilter(value);
+
+    // Debounce the server-side search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      onSearchChange?.(value);
+    }, 300); // 300ms debounce
+  }, [onSearchChange]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get selected statement IDs
   const selectedIds = React.useMemo(() => {
@@ -788,7 +817,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               <Input
                 placeholder="Search..."
                 value={globalFilter ?? ''}
-                onChange={(e) => setGlobalFilter(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9 w-full sm:w-56 h-9 bg-white border-gray-200 focus:border-blue-300 focus:ring-blue-200"
               />
             </div>
@@ -965,7 +994,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {globalFilter && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md border border-blue-100">
                 Search: "{globalFilter}"
-                <button onClick={() => setGlobalFilter('')} className="hover:text-blue-900 ml-0.5">×</button>
+                <button onClick={() => handleSearchChange('')} className="hover:text-blue-900 ml-0.5">×</button>
               </span>
             )}
             {columnFilters.map((filter) => (
@@ -989,7 +1018,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             )}
             <button
               onClick={() => {
-                setGlobalFilter('');
+                handleSearchChange('');
                 setColumnFilters([]);
                 setMarkerFilter([]);
               }}

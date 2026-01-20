@@ -135,6 +135,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     startDate: '',
     endDate: '',
     hideZeroActivity: true, // Default: hide statements with $0 revenue AND $0 payout
+    search: '', // Search by propertyName, groupName, or ownerName
   });
 
   // Property search state
@@ -1367,6 +1368,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           bulkProcessing={bulkProcessing}
           pagination={pagination}
           onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
+          onSearchChange={(search) => {
+            setFilters(prev => ({ ...prev, search }));
+            setPagination(prev => ({ ...prev, pageIndex: 0 })); // Reset to first page on search
+          }}
+          initialSearch={filters.search}
         />
         </div>
       </div>
