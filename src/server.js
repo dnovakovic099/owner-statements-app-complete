@@ -2,9 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+
+const logger = require('./utils/logger');
 
 // Database initialization
 const { syncDatabase } = require('./models');
@@ -68,6 +71,38 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Rate limiting configuration
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500, // Limit each IP to 500 requests per window
+    message: { error: 'Too many requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // Limit login attempts to 10 per window
+    message: { error: 'Too many login attempts, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const statementGenerationLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20, // Limit statement generation to 20 per minute
+    message: { error: 'Too many statement generation requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Apply general rate limiter to all API routes
+app.use('/api/', generalLimiter);
+// Stricter limits for auth endpoints
+app.use('/api/auth/login', authLimiter);
+// Limit statement generation (expensive operation)
+app.use('/api/statements/generate', statementGenerationLimiter);
+
 // Static files - serve React build and public files
 const reactBuildPath = path.join(__dirname, '../frontend/build');
 if (fs.existsSync(reactBuildPath)) {
@@ -89,7 +124,7 @@ const quickBooksService = new QuickBooksService();
 
 app.get('/api/quickbooks/auth/callback', async (req, res) => {
     try {
-        console.log('QuickBooks callback received:', req.url);
+        logger.info('QuickBooks callback received', { url: req.url });
 
         const tokens = await quickBooksService.exchangeCodeForTokens(req.url);
 
@@ -100,7 +135,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
         try {
             envContent = fs.readFileSync(envPath, 'utf8');
         } catch (error) {
-            console.log('Creating new .env file');
+            logger.info('Creating new .env file');
         }
 
         const updates = {
@@ -128,7 +163,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
 
         quickBooksService.initializeClient(tokens.accessToken, tokens.refreshToken, tokens.realmId);
 
-        console.log('QuickBooks connected successfully!');
+        logger.info('QuickBooks connected successfully');
 
         res.send(`
             <!DOCTYPE html>
@@ -155,7 +190,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
             </html>
         `);
     } catch (error) {
-        console.error('OAuth error:', error);
+        logger.error('OAuth error', { error: error.message });
         res.status(500).send(`
             <!DOCTYPE html>
             <html>
@@ -260,7 +295,7 @@ app.use((req, res, next) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err.stack);
+    logger.error('Unhandled error', { error: err.message, stack: err.stack });
 
     // Don't leak error details in production
     const errorResponse = {
@@ -282,32 +317,30 @@ app.use((err, req, res, next) => {
 async function startServer() {
     try {
         // Initialize database
-        console.log('Initializing database...');
+        logger.info('Initializing database...');
         await syncDatabase();
-        console.log('Database initialized successfully');
+        logger.info('Database initialized successfully');
 
         // Sync listings from Hostify on startup (runs in background)
-        console.log('Syncing listings from Hostify...');
+        logger.info('Syncing listings from Hostify...');
         ListingService.syncListingsFromHostify()
             .then(result => {
-                console.log(`Synced ${result.synced} listings from Hostify`);
+                logger.info('Synced listings from Hostify', { synced: result.synced });
             })
             .catch(err => {
-                console.warn('Listing sync failed (will retry later):', err.message);
+                logger.warn('Listing sync failed (will retry later)', { error: err.message });
             });
 
         // Start server
         app.listen(PORT, () => {
-            console.log(`\n========================================`);
-            console.log(`Owner Statements Server`);
-            console.log(`========================================`);
-            console.log(`Port: ${PORT}`);
-            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`Dashboard: http://localhost:${PORT}`);
-            console.log(`========================================\n`);
+            logger.info('Owner Statements Server started', {
+                port: PORT,
+                environment: process.env.NODE_ENV || 'development',
+                dashboard: `http://localhost:${PORT}`
+            });
         });
     } catch (error) {
-        console.error('Failed to start server:', error);
+        logger.error('Failed to start server', { error: error.message, stack: error.stack });
         process.exit(1);
     }
 }

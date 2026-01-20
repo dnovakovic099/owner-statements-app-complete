@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { Check, Calendar, Clock, Send, Trash2, ChevronDown, ChevronUp, History, RefreshCw, CheckCircle, XCircle, AlertCircle, FileText, Plus, Edit2, Eye, Star, Copy, Megaphone, X, Users, Image, Link2 } from 'lucide-react';
 import { listingsAPI, statementsAPI, emailAPI, EmailLog, EmailStats, emailTemplatesAPI, EmailTemplate, EmailTemplateVariable } from '../services/api';
 import { Listing, Statement } from '../types';
@@ -1611,7 +1612,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                           </div>
                           <div
                             className="text-sm prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ __html: templatePreview.htmlBody }}
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(templatePreview.htmlBody) }}
                           />
                         </div>
                       </div>
@@ -2053,11 +2054,13 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                       <div className="p-4 bg-white" style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.5', color: '#333' }}>
                         <div
                           dangerouslySetInnerHTML={{
-                            __html: announcementBody
-                              ? replaceImagePlaceholders(announcementBody)
-                                  .replace(/\n/g, '<br/>')
-                                  .replace(/{{ownerGreeting}}/g, '<span style="background:#e9d5ff;padding:0 4px;border-radius:2px;">John</span>')
-                              : '<span style="color:#999;font-style:italic;">Your message will appear here...</span>'
+                            __html: DOMPurify.sanitize(
+                              announcementBody
+                                ? replaceImagePlaceholders(announcementBody)
+                                    .replace(/\n/g, '<br/>')
+                                    .replace(/{{ownerGreeting}}/g, '<span style="background:#e9d5ff;padding:0 4px;border-radius:2px;">John</span>')
+                                : '<span style="color:#999;font-style:italic;">Your message will appear here...</span>'
+                            )
                           }}
                         />
                         <div style={{ marginTop: '30px', borderTop: '1px solid #ccc', paddingTop: '15px' }}>

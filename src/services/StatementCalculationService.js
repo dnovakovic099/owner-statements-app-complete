@@ -116,52 +116,56 @@ class StatementCalculationService {
 
     /**
      * Process expenses - filter, categorize, and calculate totals
+     * OPTIMIZED: Single-pass categorization instead of multiple filter operations
      */
     processExpenses(expenses, propertyIds, periodStart, periodEnd, listingInfoMap, periodReservations) {
-        const parsedPropertyIds = propertyIds.map(id => parseInt(id));
+        const parsedPropertyIds = new Set(propertyIds.map(id => parseInt(id)));
         const duplicateWarnings = expenses.duplicateWarnings || [];
 
-        // Filter expenses by date and property
-        const periodExpensesAll = expenses.filter(exp => {
-            if (exp.propertyId !== null && !parsedPropertyIds.includes(parseInt(exp.propertyId))) {
-                return false;
-            }
-            const expenseDate = new Date(exp.date);
-            return expenseDate >= periodStart && expenseDate <= periodEnd;
-        });
-
-        // Separate LL Cover expenses
-        const llCoverExpenses = periodExpensesAll.filter(exp => this.isLlCoverExpense(exp));
-        const periodExpenses = periodExpensesAll.filter(exp => !this.isLlCoverExpense(exp));
-
-        // Identify cleaning expenses
-        const cleaningExpenses = periodExpenses.filter(exp => {
-            const category = (exp.category || '').toLowerCase();
-            const type = (exp.type || '').toLowerCase();
-            const description = (exp.description || '').toLowerCase();
-            return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
-        });
-
-        // Filter out cleaning expenses for properties with cleaningFeePassThrough enabled
-        const filteredExpenses = periodExpenses.filter(exp => {
-            const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
-            const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
-
-            if (hasCleaningPassThrough) {
-                return !cleaningExpenses.includes(exp);
-            }
-            return true;
-        });
-
-        // Calculate totals - separate actual costs from upsells
+        // Single-pass categorization of all expenses
+        const llCoverExpenses = [];
+        const filteredExpenses = [];
         let totalExpenses = 0;
         let totalUpsells = 0;
 
-        for (const exp of filteredExpenses) {
+        for (const exp of expenses) {
+            // Check property filter
+            if (exp.propertyId !== null && !parsedPropertyIds.has(parseInt(exp.propertyId))) {
+                continue;
+            }
+
+            // Check date filter
+            const expenseDate = new Date(exp.date);
+            if (expenseDate < periodStart || expenseDate > periodEnd) {
+                continue;
+            }
+
+            // Check if LL Cover expense
+            if (this.isLlCoverExpense(exp)) {
+                llCoverExpenses.push(exp);
+                continue;
+            }
+
+            // Check if cleaning expense
+            const category = (exp.category || '').toLowerCase();
+            const type = (exp.type || '').toLowerCase();
+            const description = (exp.description || '').toLowerCase();
+            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+
+            // Skip cleaning expenses for properties with cleaningFeePassThrough enabled
+            const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
+            const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
+            if (isCleaning && hasCleaningPassThrough) {
+                continue;
+            }
+
+            // Add to filtered expenses and calculate totals
+            filteredExpenses.push(exp);
+
             const amount = parseFloat(exp.amount) || 0;
             const isUpsell = amount > 0 ||
-                (exp.type && exp.type.toLowerCase() === 'upsell') ||
-                (exp.category && exp.category.toLowerCase() === 'upsell');
+                type === 'upsell' ||
+                category === 'upsell';
 
             if (isUpsell) {
                 totalUpsells += amount;

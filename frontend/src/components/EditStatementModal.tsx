@@ -124,6 +124,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Pagination state for large lists
+  const ITEMS_PER_PAGE = 50;
+  const [reservationsDisplayCount, setReservationsDisplayCount] = useState(ITEMS_PER_PAGE);
+  const [expensesDisplayCount, setExpensesDisplayCount] = useState(ITEMS_PER_PAGE);
+
   // Internal notes state
   const [internalNotes, setInternalNotes] = useState('');
   const [notesModified, setNotesModified] = useState(false);
@@ -200,6 +205,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setEditedExpense(null);
       setEditingUpsellIndex(null);
       setEditedUpsell(null);
+      // Reset pagination
+      setReservationsDisplayCount(ITEMS_PER_PAGE);
+      setExpensesDisplayCount(ITEMS_PER_PAGE);
       // Initialize statement period & settings
       setEditStartDate(response.weekStartDate || '');
       setEditEndDate(response.weekEndDate || '');
@@ -1268,7 +1276,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {expenses.map((expense, index) => {
+                    {expenses.slice(0, expensesDisplayCount).map((expense, index) => {
                       const isSelected = selectedExpenseIndices.includes(index);
                       const isEditing = editingExpenseIndex === index;
 
@@ -1445,6 +1453,30 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           </div>
                         );
                       })}
+                      {/* Show More / Show Less buttons for expenses */}
+                      {expenses.length > ITEMS_PER_PAGE && (
+                        <div className="flex justify-center gap-2 pt-4">
+                          {expensesDisplayCount < expenses.length && (
+                            <button
+                              onClick={() => setExpensesDisplayCount(prev => Math.min(prev + ITEMS_PER_PAGE, expenses.length))}
+                              className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                            >
+                              Show More ({Math.min(ITEMS_PER_PAGE, expenses.length - expensesDisplayCount)} more)
+                            </button>
+                          )}
+                          {expensesDisplayCount > ITEMS_PER_PAGE && (
+                            <button
+                              onClick={() => setExpensesDisplayCount(ITEMS_PER_PAGE)}
+                              className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                            >
+                              Show Less
+                            </button>
+                          )}
+                          <span className="px-4 py-2 text-sm text-gray-500">
+                            Showing {Math.min(expensesDisplayCount, expenses.length)} of {expenses.length}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1804,7 +1836,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {reservations.map((reservation) => {
+                    {reservations.slice(0, reservationsDisplayCount).map((reservation) => {
                       const resId = reservation.hostifyId || reservation.id;
                       const isSelected = selectedReservationIdsToRemove.includes(resId);
                       const resIdStr = String(resId);
@@ -1884,6 +1916,30 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         </div>
                       );
                     })}
+                    {/* Show More / Show Less buttons for reservations */}
+                    {reservations.length > ITEMS_PER_PAGE && (
+                      <div className="flex justify-center gap-2 pt-4">
+                        {reservationsDisplayCount < reservations.length && (
+                          <button
+                            onClick={() => setReservationsDisplayCount(prev => Math.min(prev + ITEMS_PER_PAGE, reservations.length))}
+                            className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                          >
+                            Show More ({Math.min(ITEMS_PER_PAGE, reservations.length - reservationsDisplayCount)} more)
+                          </button>
+                        )}
+                        {reservationsDisplayCount > ITEMS_PER_PAGE && (
+                          <button
+                            onClick={() => setReservationsDisplayCount(ITEMS_PER_PAGE)}
+                            className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                          >
+                            Show Less
+                          </button>
+                        )}
+                        <span className="px-4 py-2 text-sm text-gray-500">
+                          Showing {Math.min(reservationsDisplayCount, reservations.length)} of {reservations.length}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

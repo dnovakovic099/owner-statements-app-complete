@@ -666,9 +666,13 @@ function generateStatementHTML(statement, id) {
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
                         const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                         const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
-                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        // Use stored value for custom reservations, otherwise calculate
+                        const luxuryFee = (res.isCustom && res.luxuryLodgingFee !== undefined)
+                            ? res.luxuryLodgingFee
+                            : rawClientRevenue * (statement.pmPercentage / 100);
                         const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
-                        const grossPayout = clientRevenue - pmFeeToDeduct;
+                        // For custom reservations, use stored grossAmount
+                        const grossPayout = res.isCustom ? res.grossAmount : (clientRevenue - pmFeeToDeduct);
                         return sum + grossPayout;
                     }, 0) || 0;
                     return totalGrossPayout >= 0 ? '#059669' : '#dc2626';
@@ -686,10 +690,13 @@ function generateStatementHTML(statement, id) {
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
                         const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                         const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
-                        // PM fee calculated on raw revenue (charged even for co-host)
-                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        // Use stored value for custom reservations, otherwise calculate
+                        const luxuryFee = (res.isCustom && res.luxuryLodgingFee !== undefined)
+                            ? res.luxuryLodgingFee
+                            : rawClientRevenue * (statement.pmPercentage / 100);
                         const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
-                        const grossPayout = clientRevenue - pmFeeToDeduct;
+                        // For custom reservations, use stored grossAmount
+                        const grossPayout = res.isCustom ? res.grossAmount : (clientRevenue - pmFeeToDeduct);
                         return sum + grossPayout;
                     }, 0) || 0;
                     return (totalGrossPayout >= 0 ? '$' : '-$') + Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -733,10 +740,13 @@ function generateStatementHTML(statement, id) {
                         const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
                         const rawClientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                         const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
-                        // PM fee calculated on raw revenue (charged even for co-host)
-                        const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                        // PM fee: use stored value for custom reservations, otherwise calculate
+                        const luxuryFee = (res.isCustom && res.luxuryLodgingFee !== undefined)
+                            ? res.luxuryLodgingFee
+                            : rawClientRevenue * (statement.pmPercentage / 100);
                         const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
-                        const grossPayout = clientRevenue - pmFeeToDeduct;
+                        // For custom reservations, use stored grossAmount
+                        const grossPayout = res.isCustom ? res.grossAmount : (clientRevenue - pmFeeToDeduct);
                         return sum + grossPayout;
                     }, 0) || 0;
                     const upsells = statement.items?.filter(item => item.type === 'upsell' && !item.hidden).reduce((sum, item) => sum + item.amount, 0) || 0;
@@ -787,8 +797,10 @@ function generateStatementHTML(statement, id) {
                     const rawClientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
                     // For co-host Airbnb, revenue is $0 (Airbnb pays owner directly)
                     const clientRevenue = isCohostAirbnb ? 0 : rawClientRevenue;
-                    // PM Commission is calculated based on raw revenue (for display), but may be waived
-                    const luxuryFee = rawClientRevenue * (statement.pmPercentage / 100);
+                    // PM Commission: use stored value for custom reservations, otherwise calculate
+                    const luxuryFee = reservation.isCustom && reservation.luxuryLodgingFee !== undefined
+                        ? reservation.luxuryLodgingFee
+                        : rawClientRevenue * (statement.pmPercentage / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
                     // Check if PM commission is waived
@@ -811,8 +823,9 @@ function generateStatementHTML(statement, id) {
                     // For co-hosted Airbnb: Revenue is $0, so Gross Payout = -PM Commission (unless waived)
                     // When waiver is active: PM fee is displayed but NOT deducted
                     const pmFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
-                    const grossPayout = clientRevenue - pmFeeToDeduct;
-                    const clientPayout = grossPayout + taxToAdd;
+                    // For custom reservations, use the stored grossAmount exactly as entered
+                    const grossPayout = reservation.isCustom ? reservation.grossAmount : (clientRevenue - pmFeeToDeduct);
+                    const clientPayout = reservation.isCustom ? reservation.grossAmount : (grossPayout + taxToAdd);
                     
                     return `
                     <tr>
@@ -859,6 +872,10 @@ function generateStatementHTML(statement, id) {
                                 new Date(statement.weekEndDate + 'T00:00:00') <= new Date(statement.waiveCommissionUntil + 'T23:59:59'));
                         if (isWaiverActive) return '0.00';
                         return Math.abs(statement.reservations?.reduce((sum, res) => {
+                            // Use stored value for custom reservations, otherwise calculate
+                            if (res.isCustom && res.luxuryLodgingFee !== undefined) {
+                                return sum + res.luxuryLodgingFee;
+                            }
                             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                             return sum + (clientRevenue * (statement.pmPercentage / 100));
                         }, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -880,8 +897,11 @@ function generateStatementHTML(statement, id) {
                             const rawRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                             return sum + (isCohostAirbnb ? 0 : rawRevenue);
                         }, 0) || 0;
-                        // PM Commission calculated on raw revenue (for display purposes)
+                        // PM Commission: use stored value for custom reservations, otherwise calculate
                         const totalPmCommission = statement.reservations?.reduce((sum, res) => {
+                            if (res.isCustom && res.luxuryLodgingFee !== undefined) {
+                                return sum + res.luxuryLodgingFee;
+                            }
                             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
                             return sum + (clientRevenue * (statement.pmPercentage / 100));
                         }, 0) || 0;
@@ -895,7 +915,24 @@ function generateStatementHTML(statement, id) {
                             const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
                             return sum + (shouldAddTax ? taxAmount : 0);
                         }, 0) || 0;
-                        return (totalRevenue - pmFeeToDeduct + totalTaxToAdd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        // For custom reservations, use stored grossAmount; for others, calculate
+                        const totalGrossPayout = statement.reservations?.reduce((sum, res) => {
+                            if (res.isCustom) {
+                                // Custom reservation: use stored grossAmount exactly as entered
+                                return sum + res.grossAmount;
+                            }
+                            // Regular reservation: calculate
+                            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                            const isCohostAirbnb = isAirbnb && statement.isCohostOnAirbnb;
+                            const rawRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                            const revenue = isCohostAirbnb ? 0 : rawRevenue;
+                            const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : res.grossAmount;
+                            const pmFee = isWaiverActive ? 0 : (clientRevenue * (statement.pmPercentage / 100));
+                            const taxAmount = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
+                            const shouldAddTax = !statement.disregardTax && (!isAirbnb || statement.airbnbPassThroughTax);
+                            return sum + revenue - pmFee + (shouldAddTax ? taxAmount : 0);
+                        }, 0) || 0;
+                        return totalGrossPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     })()}</strong></td>
                 </tr>
             </tbody>

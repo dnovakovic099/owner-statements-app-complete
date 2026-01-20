@@ -911,8 +911,15 @@ This is an auto-generated email. If you have any questions or need clarification
         // Prepare template data for variable replacement
         const ownerPayout = parseFloat(statement.ownerPayout) || 0;
         const formattedPayout = Math.abs(ownerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Sanitize owner name - exclude generic/internal names
+        const rawOwnerName = (statement.ownerName || '').trim();
+        const genericNames = ['operations', 'default', 'admin', 'owner', 'test', 'n/a', 'na', 'none', 'unknown'];
+        const isGenericName = !rawOwnerName || genericNames.includes(rawOwnerName.toLowerCase());
+        const sanitizedOwnerName = isGenericName ? '' : rawOwnerName;
+
         const templateData = {
-            ownerName: (statement.ownerName || '').trim(),
+            ownerName: sanitizedOwnerName,
             propertyName: statement.propertyName || 'Multiple Properties',
             periodStart: statement.weekStartDate,
             periodEnd: statement.weekEndDate,

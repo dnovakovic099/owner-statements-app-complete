@@ -1,6 +1,7 @@
 const { Listing } = require('../models');
 const HostifyService = require('./HostifyService');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 // Lazy load ListingGroup to avoid circular dependency issues
 let ListingGroup = null;
@@ -39,7 +40,7 @@ class ListingService {
             if (tag.endsWith('%') && nextTag === 'pm') {
                 const percentValue = parseFloat(tag.replace('%', ''));
                 if (!isNaN(percentValue) && percentValue > 0 && percentValue <= 100) {
-                    console.log(`[PM-FEE] Extracted ${percentValue}% PM fee from tags`);
+                    logger.debug('Extracted PM fee from tags', { pmFee: percentValue });
                     return percentValue;
                 }
             }
@@ -51,15 +52,16 @@ class ListingService {
     /**
      * Sync listings from Hostify to database
      * Preserves PM fees, updates other listing info
+     * OPTIMIZED: Batch fetch existing listing IDs to avoid N+1 queries
      */
     async syncListingsFromHostify() {
-        console.log('Syncing listings from Hostify to database...');
+        logger.info('Syncing listings from Hostify to database');
 
         try {
             const response = await HostifyService.getAllProperties();
 
             if (!response || !response.result || !Array.isArray(response.result)) {
-                console.error('No listings received from Hostify');
+                logger.warn('No listings received from Hostify');
                 return { synced: 0, errors: 0 };
             }
 
@@ -69,11 +71,18 @@ class ListingService {
             let created = 0;
             let errors = 0;
 
+            // OPTIMIZATION: Batch fetch all existing listing IDs in one query
+            const existingListings = await Listing.findAll({
+                attributes: ['id'],
+                raw: true
+            });
+            const existingIds = new Set(existingListings.map(l => l.id));
+
             for (const hostifyListing of hostifyListings) {
                 try {
-                    const existingListing = await Listing.findByPk(hostifyListing.id);
+                    const listingExists = existingIds.has(hostifyListing.id);
 
-                    if (existingListing) {
+                    if (listingExists) {
                         await sequelize.query(`
                             UPDATE listings SET
                                 name = :name,
@@ -116,11 +125,11 @@ class ListingService {
                                 const extractedPmFee = this.extractPmFeeFromTags(tags);
                                 if (extractedPmFee !== null) {
                                     pmFeePercentage = extractedPmFee;
-                                    console.log(`[NEW-LISTING] ${hostifyListing.nickname || hostifyListing.name}: PM fee from tags = ${pmFeePercentage}%`);
+                                    logger.info('New listing PM fee from tags', { listing: hostifyListing.nickname || hostifyListing.name, pmFee: pmFeePercentage });
                                 }
                             }
                         } catch (detailError) {
-                            console.log(`[WARN] Could not fetch detailed listing ${hostifyListing.id} for PM fee: ${detailError.message}`);
+                            logger.warn('Could not fetch detailed listing for PM fee', { listingId: hostifyListing.id, error: detailError.message });
                         }
 
                         // Fetch owner email from contract endpoint
@@ -129,10 +138,10 @@ class ListingService {
                             if (contractResponse.success && contractResponse.ownerEmail) {
                                 ownerEmail = contractResponse.ownerEmail;
                                 ownerName = contractResponse.ownerFirstName || contractResponse.ownerName;  // Use first name for greeting
-                                console.log(`[NEW-LISTING] ${hostifyListing.nickname || hostifyListing.name}: Owner email = ${ownerEmail}, Greeting = ${ownerName}`);
+                                logger.info('New listing owner info', { listing: hostifyListing.nickname || hostifyListing.name, ownerEmail, ownerGreeting: ownerName });
                             }
                         } catch (contractError) {
-                            console.log(`[WARN] Could not fetch contract for listing ${hostifyListing.id}: ${contractError.message}`);
+                            logger.warn('Could not fetch contract for listing', { listingId: hostifyListing.id, error: contractError.message });
                         }
 
                         await Listing.create({
@@ -150,19 +159,19 @@ class ListingService {
                             ownerGreeting: ownerName
                         });
                         created++;
-                        console.log(`Created new listing: ${hostifyListing.nickname || hostifyListing.name} (ID: ${hostifyListing.id}) - PM Fee: ${pmFeePercentage}%${ownerEmail ? `, Owner: ${ownerEmail}` : ''}`);
+                        logger.info('Created new listing', { name: hostifyListing.nickname || hostifyListing.name, id: hostifyListing.id, pmFee: pmFeePercentage, ownerEmail });
                     }
                 } catch (error) {
-                    console.error(`Error syncing listing ${hostifyListing.id}:`, error.message);
+                    logger.error('Error syncing listing', { listingId: hostifyListing.id, error: error.message });
                     errors++;
                 }
             }
 
-            console.log(`Synced ${synced} listings, created ${created} new (${errors} errors)`);
+            logger.info('Listing sync completed', { synced, created, errors });
             return { synced, created, errors };
 
         } catch (error) {
-            console.error('Error syncing listings from Hostify:', error);
+            logger.error('Error syncing listings from Hostify', { error: error.message, stack: error.stack });
             throw error;
         }
     }
@@ -175,7 +184,7 @@ class ListingService {
             const listing = await Listing.findByPk(listingId);
             return listing ? listing.toJSON() : null;
         } catch (error) {
-            console.error(`Error fetching listing ${listingId}:`, error);
+            logger.error('Error fetching listing', { listingId, error: error.message });
             return null;
         }
     }
@@ -224,7 +233,7 @@ class ListingService {
 
             return listings.map(l => ({ ...l.toJSON(), group: null }));
         } catch (error) {
-            console.error('Error fetching listings:', error);
+            logger.error('Error fetching listings', { error: error.message });
             return [];
         }
     }
@@ -239,7 +248,7 @@ class ListingService {
             });
             return listings.map(l => l.toJSON());
         } catch (error) {
-            console.error('Error fetching listing names:', error);
+            logger.error('Error fetching listing names', { error: error.message });
             return [];
         }
     }
@@ -256,11 +265,11 @@ class ListingService {
             }
 
             await listing.update({ pmFeePercentage });
-            console.log(`Updated PM fee for listing ${listingId}: ${pmFeePercentage}%`);
+            logger.info('Updated PM fee', { listingId, pmFeePercentage });
             
             return listing.toJSON();
         } catch (error) {
-            console.error(`Error updating PM fee for listing ${listingId}:`, error);
+            logger.error('Error updating PM fee', { listingId, error: error.message });
             throw error;
         }
     }
@@ -283,7 +292,7 @@ class ListingService {
 
             return results;
         } catch (error) {
-            console.error('Error bulk updating PM fees:', error);
+            logger.error('Error bulk updating PM fees', { error: error.message });
             throw error;
         }
     }
@@ -305,7 +314,7 @@ class ListingService {
 
             return listings.map(l => l.toJSON());
         } catch (error) {
-            console.error('Error fetching listings with missing PM fees:', error);
+            logger.error('Error fetching listings with missing PM fees', { error: error.message });
             return [];
         }
     }
@@ -322,11 +331,11 @@ class ListingService {
             }
 
             await listing.update({ displayName });
-            console.log(`Updated display name for listing ${listingId}: ${displayName}`);
+            logger.info('Updated display name', { listingId, displayName });
             
             return listing.toJSON();
         } catch (error) {
-            console.error(`Error updating display name for listing ${listingId}:`, error);
+            logger.error('Error updating display name', { listingId, error: error.message });
             throw error;
         }
     }
@@ -343,11 +352,11 @@ class ListingService {
             }
 
             await listing.update({ isCohostOnAirbnb });
-            console.log(`Updated co-host status for listing ${listingId}: ${isCohostOnAirbnb}`);
+            logger.info('Updated co-host status', { listingId, isCohostOnAirbnb });
             
             return listing.toJSON();
         } catch (error) {
-            console.error(`Error updating co-host status for listing ${listingId}:`, error);
+            logger.error('Error updating co-host status', { listingId, error: error.message });
             throw error;
         }
     }
@@ -357,7 +366,7 @@ class ListingService {
      */
     async updateListingConfig(listingId, config) {
         try {
-            console.log(`[UPDATE-CONFIG] Listing ${listingId} received config:`, JSON.stringify(config));
+            logger.debug('Listing config update received', { listingId, config });
 
             const listing = await Listing.findByPk(listingId);
 
@@ -387,11 +396,11 @@ class ListingService {
 
             await listing.update(updates);
             await listing.reload(); // Reload to get fresh data from DB
-            console.log(`Updated listing ${listingId} configuration:`, JSON.stringify(updates));
+            logger.info('Updated listing configuration', { listingId, updates });
 
             return listing.toJSON();
         } catch (error) {
-            console.error(`Error updating listing ${listingId} configuration:`, error);
+            logger.error('Error updating listing configuration', { listingId, error: error.message });
             throw error;
         }
     }
@@ -434,7 +443,7 @@ class ListingService {
                 displayName: l.displayName || l.nickname || l.name
             }));
         } catch (error) {
-            console.error('Error fetching newly added listings:', error);
+            logger.error('Error fetching newly added listings', { error: error.message });
             return [];
         }
     }
@@ -446,13 +455,13 @@ class ListingService {
      * @returns {Promise<{updated: number, skipped: number, errors: number}>}
      */
     async syncOwnerEmails(onlyMissing = true) {
-        console.log(`[SYNC-OWNER-EMAILS] Starting sync (onlyMissing: ${onlyMissing})...`);
+        logger.info('Starting owner email sync', { onlyMissing });
 
         try {
             // Step 1: Get all owners from /users API (bulk, efficient)
             const { success, ownerMap } = await HostifyService.getAllOwners();
             if (!success) {
-                console.warn('[SYNC-OWNER-EMAILS] Failed to fetch owners from /users API, falling back to contract endpoint');
+                logger.warn('Failed to fetch owners from /users API, falling back to contract endpoint');
             }
 
             // Step 2: Get listings to update
@@ -464,7 +473,7 @@ class ListingService {
             } : {};
 
             const listings = await Listing.findAll({ where });
-            console.log(`[SYNC-OWNER-EMAILS] Found ${listings.length} listings to process`);
+            logger.info('Found listings to process for owner email sync', { count: listings.length });
 
             let updated = 0;
             let skipped = 0;
@@ -496,22 +505,22 @@ class ListingService {
                             ownerEmail: ownerEmail,
                             ownerGreeting: ownerGreeting
                         });
-                        console.log(`[SYNC-OWNER-EMAILS] Updated ${listing.nickname || listing.name}: ${ownerEmail} (Greeting: ${ownerGreeting})`);
+                        logger.info('Updated owner email', { listing: listing.nickname || listing.name, ownerEmail, ownerGreeting });
                         updated++;
                     } else {
-                        console.log(`[SYNC-OWNER-EMAILS] No owner found for ${listing.nickname || listing.name}`);
+                        logger.debug('No owner found for listing', { listing: listing.nickname || listing.name });
                         skipped++;
                     }
                 } catch (error) {
-                    console.error(`[SYNC-OWNER-EMAILS] Error for listing ${listing.id}: ${error.message}`);
+                    logger.error('Error syncing owner email for listing', { listingId: listing.id, error: error.message });
                     errors++;
                 }
             }
 
-            console.log(`[SYNC-OWNER-EMAILS] Done: ${updated} updated, ${skipped} skipped, ${errors} errors`);
+            logger.info('Owner email sync completed', { updated, skipped, errors });
             return { updated, skipped, errors };
         } catch (error) {
-            console.error('[SYNC-OWNER-EMAILS] Error:', error);
+            logger.error('Owner email sync failed', { error: error.message, stack: error.stack });
             throw error;
         }
     }

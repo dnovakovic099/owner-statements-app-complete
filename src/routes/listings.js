@@ -3,32 +3,23 @@ const router = express.Router();
 const ListingService = require('../services/ListingService');
 const FileDataService = require('../services/FileDataService');
 const { ActivityLog } = require('../models');
+const asyncHandler = require('../middleware/asyncHandler');
 
 // GET /api/listings - Get all listings with PM fees
-router.get('/', async (req, res) => {
-    try {
-        const { ids } = req.query;
-        const listingIds = ids ? ids.split(',').map(id => parseInt(id)) : [];
-        
-        const listings = await ListingService.getListingsWithPmFees(listingIds);
-        res.json({ success: true, listings });
-    } catch (error) {
-        console.error('Error fetching listings:', error);
-        res.status(500).json({ error: 'Failed to fetch listings' });
-    }
-});
+router.get('/', asyncHandler(async (req, res) => {
+    const { ids } = req.query;
+    const listingIds = ids ? ids.split(',').map(id => parseInt(id)) : [];
+
+    const listings = await ListingService.getListingsWithPmFees(listingIds);
+    res.json({ success: true, listings });
+}));
 
 // GET /api/listings/missing-pm-fees - Get listings without PM fees set
 // NOTE: This must come BEFORE /:id route to avoid being caught by it
-router.get('/status/missing-pm-fees', async (req, res) => {
-    try {
-        const listings = await ListingService.getListingsWithMissingPmFees();
-        res.json({ success: true, count: listings.length, listings });
-    } catch (error) {
-        console.error('Error fetching listings with missing PM fees:', error);
-        res.status(500).json({ error: 'Failed to fetch listings' });
-    }
-});
+router.get('/status/missing-pm-fees', asyncHandler(async (req, res) => {
+    const listings = await ListingService.getListingsWithMissingPmFees();
+    res.json({ success: true, count: listings.length, listings });
+}));
 
 // POST /api/listings/bulk-update-pm-fees - Bulk update PM fees
 // NOTE: This must come BEFORE /:id routes
@@ -66,67 +57,49 @@ router.post('/bulk-update-pm-fees', async (req, res) => {
 
 // GET /api/listings/names - Get lightweight listing names for lookups (id, name, displayName, nickname only)
 // NOTE: This must come BEFORE /:id routes
-router.get('/names', async (req, res) => {
-    try {
-        const listings = await ListingService.getListingNames();
-        res.json({ success: true, listings });
-    } catch (error) {
-        console.error('Error fetching listing names:', error);
-        res.status(500).json({ error: 'Failed to fetch listing names' });
-    }
-});
+router.get('/names', asyncHandler(async (req, res) => {
+    // Cache listing names for 10 minutes - rarely changes
+    res.set('Cache-Control', 'private, max-age=600');
+    const listings = await ListingService.getListingNames();
+    res.json({ success: true, listings });
+}));
 
 // GET /api/listings/newly-added - Get newly added listings (for notifications)
 // NOTE: This must come BEFORE /:id routes
-router.get('/newly-added', async (req, res) => {
-    try {
-        const { days = 7 } = req.query;
-        const listings = await ListingService.getNewlyAddedListings(parseInt(days));
-        res.json({
-            success: true,
-            count: listings.length,
-            listings
-        });
-    } catch (error) {
-        console.error('Error fetching newly added listings:', error);
-        res.status(500).json({ error: 'Failed to fetch newly added listings' });
-    }
-});
+router.get('/newly-added', asyncHandler(async (req, res) => {
+    const { days = 7 } = req.query;
+    const listings = await ListingService.getNewlyAddedListings(parseInt(days));
+    res.json({
+        success: true,
+        count: listings.length,
+        listings
+    });
+}));
 
 // POST /api/listings/sync - Sync listings from Hostify
 // NOTE: This must come BEFORE /:id routes
-router.post('/sync', async (req, res) => {
-    try {
-        const result = await ListingService.syncListingsFromHostify();
-        res.json({ 
-            success: true, 
-            message: 'Listings synced from Hostify',
-            synced: result.synced,
-            errors: result.errors
-        });
-    } catch (error) {
-        console.error('Error syncing listings:', error);
-        res.status(500).json({ error: 'Failed to sync listings' });
-    }
-});
+router.post('/sync', asyncHandler(async (req, res) => {
+    const result = await ListingService.syncListingsFromHostify();
+    res.json({
+        success: true,
+        message: 'Listings synced from Hostify',
+        synced: result.synced,
+        errors: result.errors
+    });
+}));
 
 // GET /api/listings/:id - Get single listing with PM fee
 // NOTE: This must come AFTER all specific routes (sync, bulk-update, etc)
-router.get('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const listing = await ListingService.getListingWithPmFee(parseInt(id));
-        
-        if (!listing) {
-            return res.status(404).json({ error: 'Listing not found' });
-        }
-        
-        res.json({ success: true, listing });
-    } catch (error) {
-        console.error('Error fetching listing:', error);
-        res.status(500).json({ error: 'Failed to fetch listing' });
+router.get('/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const listing = await ListingService.getListingWithPmFee(parseInt(id));
+
+    if (!listing) {
+        return res.status(404).json({ error: 'Listing not found' });
     }
-});
+
+    res.json({ success: true, listing });
+}));
 
 // PUT /api/listings/:id/pm-fee - Update PM fee for a listing
 router.put('/:id/pm-fee', async (req, res) => {

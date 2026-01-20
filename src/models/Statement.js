@@ -207,7 +207,16 @@ const Statement = sequelize.define('Statement', {
         { fields: ['owner_id'] },
         { fields: ['status'] },
         { fields: ['week_start_date', 'week_end_date'] },
-        { fields: ['property_id', 'week_start_date', 'week_end_date'] }
+        { fields: ['property_id', 'week_start_date', 'week_end_date'] },
+        // Composite indexes for analytics queries (overlap conditions)
+        { fields: ['week_start_date', 'property_id'] },
+        { fields: ['group_id', 'week_start_date'] },
+        { fields: ['status', 'week_start_date'] },
+        // For owner payment queries and reporting
+        { fields: ['owner_id', 'week_start_date'] },
+        // For filtering by total_revenue/owner_payout (excludes $0 activity)
+        { fields: ['week_start_date', 'total_revenue'] },
+        { fields: ['week_start_date', 'owner_payout'] }
     ]
 });
 

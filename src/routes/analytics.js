@@ -12,6 +12,16 @@ const { Op, fn, col, literal } = require('sequelize');
 const FileDataService = require('../services/FileDataService');
 
 /**
+ * Cache control middleware for analytics endpoints
+ * Sets appropriate cache headers to reduce database load
+ */
+const setCacheHeaders = (maxAge = 300) => (req, res, next) => {
+    // Cache for 5 minutes by default (300 seconds)
+    res.set('Cache-Control', `private, max-age=${maxAge}`);
+    next();
+};
+
+/**
  * Helper: Parse a date string safely
  */
 function parseDate(dateStr) {
@@ -88,7 +98,7 @@ function formatPeriodLabel(date, granularity) {
  *   percentChange: { totalRevenue, ownerPayout, pmCommission, totalExpenses, statementCount }
  * }
  */
-router.get('/summary', async (req, res) => {
+router.get('/summary', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate, compareStart, compareEnd } = req.query;
 
@@ -373,7 +383,7 @@ router.get('/summary', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/revenue-trend', async (req, res) => {
+router.get('/revenue-trend', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate, granularity = 'month' } = req.query;
 
@@ -454,7 +464,7 @@ router.get('/revenue-trend', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/payout-trend', async (req, res) => {
+router.get('/payout-trend', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate, granularity = 'month' } = req.query;
 
@@ -533,7 +543,7 @@ router.get('/payout-trend', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/expense-breakdown', async (req, res) => {
+router.get('/expense-breakdown', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
@@ -628,7 +638,7 @@ router.get('/expense-breakdown', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/property-performance', async (req, res) => {
+router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate, sortBy = 'revenue' } = req.query;
 
@@ -746,7 +756,7 @@ router.get('/property-performance', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/owner-breakdown', async (req, res) => {
+router.get('/owner-breakdown', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
@@ -826,7 +836,7 @@ router.get('/owner-breakdown', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/statement-status', async (req, res) => {
+router.get('/statement-status', setCacheHeaders(300), async (req, res) => {
     try {
         const { startDate, endDate, ownerId, propertyId, tag, groupId } = req.query;
 
@@ -1004,7 +1014,7 @@ router.get('/recent-statements', async (req, res) => {
  *   ...
  * ]
  */
-router.get('/monthly-comparison', async (req, res) => {
+router.get('/monthly-comparison', setCacheHeaders(300), async (req, res) => {
     try {
         const { months = 6 } = req.query;
         const numMonths = parseInt(months) || 6;
@@ -1355,7 +1365,7 @@ router.get('/export', async (req, res) => {
  *   tags: ["WEEKLY", "BI-WEEKLY_A", "BI-WEEKLY_B", "MONTHLY"]
  * }
  */
-router.get('/filters', async (req, res) => {
+router.get('/filters', setCacheHeaders(600), async (req, res) => {
     try {
         // Get properties from Listing model
         const listings = await Listing.findAll({
