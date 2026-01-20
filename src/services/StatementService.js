@@ -151,13 +151,9 @@ class StatementService {
             const owners = await FileDataService.getOwners();
             const owner = owners[0] || { id: 1, name: groupName };
 
-            // Generate unique ID for file-based storage
-            const existingStatements = await FileDataService.getStatements();
-            const newId = FileDataService.generateId(existingStatements);
-
             // Create statement object (matching manual generation structure)
+            // ID will be assigned by database
             const statementData = {
-                id: newId,
                 ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
                 ownerName: owner.name,
                 propertyId: null,
@@ -193,11 +189,14 @@ class StatementService {
                 items: []
             };
 
-            // Save to file (same storage as manual generation)
-            existingStatements.push(statementData);
-            await FileDataService.saveStatements(existingStatements);
+            // Save to database (same storage as manual generation)
+            console.log(`[StatementService] Saving statement for group "${groupName}" (groupId=${groupId})...`);
+            console.log(`[StatementService] Statement data: totalRevenue=${financials.totalRevenue}, ownerPayout=${financials.ownerPayout}, listingCount=${parsedPropertyIds.length}`);
 
-            console.log(`[StatementService] Created draft statement ID: ${statementData.id} for group "${groupName}"`);
+            const savedStatement = await FileDataService.saveStatement(statementData);
+            statementData.id = savedStatement.id;
+
+            console.log(`[StatementService] SUCCESS - Created draft statement ID: ${statementData.id} for group "${groupName}"`);
 
             // Log to activity log
             await ActivityLog.logSystem('AUTO_GENERATE', 'statement', statementData.id, {
@@ -214,7 +213,8 @@ class StatementService {
 
             return statementData;
         } catch (error) {
-            console.error(`[StatementService] Error generating group statement:`, error);
+            console.error(`[StatementService] FAILED - Error generating group statement for "${groupName}" (groupId=${groupId}):`, error.message);
+            console.error(`[StatementService] Full error:`, error);
             throw error;
         }
     }

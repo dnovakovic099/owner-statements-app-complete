@@ -396,36 +396,58 @@ class ListingGroupService {
      */
     async getGroupsByTag(tag) {
         try {
+            console.log(`[ListingGroupService] getGroupsByTag() called with tag: "${tag}"`);
             const groups = await this.getAllGroups();
+            console.log(`[ListingGroupService] Total groups in database: ${groups.length}`);
 
             if (!tag) {
+                console.log(`[ListingGroupService] No tag filter, returning all groups`);
                 return groups;
             }
 
             const tagUpper = tag.toUpperCase().trim();
+            console.log(`[ListingGroupService] Filtering for tag: "${tagUpper}"`);
 
             // Pattern matching for WEEKLY, BI-WEEKLY, MONTHLY tags
-            return groups.filter(group => {
-                const groupTags = group.tags ? group.tags.split(',').map(t => t.trim().toUpperCase()) : [];
+            const matchedGroups = groups.filter(group => {
+                // Handle tags as either array or comma-separated string
+                let groupTags = [];
+                if (Array.isArray(group.tags)) {
+                    groupTags = group.tags.map(t => String(t).trim().toUpperCase());
+                } else if (typeof group.tags === 'string' && group.tags) {
+                    groupTags = group.tags.split(',').map(t => t.trim().toUpperCase());
+                }
+
+                let isMatch = false;
+                let matchReason = '';
 
                 // For BI-WEEKLY schedule, match any group tag containing "BI-WEEKLY"
                 if (tagUpper.includes('BI-WEEKLY') || tagUpper.includes('BIWEEKLY')) {
-                    return groupTags.some(t => t.includes('BI-WEEKLY') || t.includes('BIWEEKLY'));
+                    isMatch = groupTags.some(t => t.includes('BI-WEEKLY') || t.includes('BIWEEKLY'));
+                    matchReason = isMatch ? 'bi-weekly match' : 'no bi-weekly tag';
                 }
-
                 // For WEEKLY schedule, match tags with "WEEKLY" but NOT "BI-WEEKLY"
-                if (tagUpper === 'WEEKLY') {
-                    return groupTags.some(t => t.includes('WEEKLY') && !t.includes('BI-WEEKLY') && !t.includes('BIWEEKLY'));
+                else if (tagUpper === 'WEEKLY') {
+                    isMatch = groupTags.some(t => t.includes('WEEKLY') && !t.includes('BI-WEEKLY') && !t.includes('BIWEEKLY'));
+                    matchReason = isMatch ? 'weekly match (excluding bi-weekly)' : 'no weekly tag or is bi-weekly';
                 }
-
                 // For MONTHLY schedule, match any tag containing "MONTHLY"
-                if (tagUpper.includes('MONTHLY')) {
-                    return groupTags.some(t => t.includes('MONTHLY'));
+                else if (tagUpper.includes('MONTHLY')) {
+                    isMatch = groupTags.some(t => t.includes('MONTHLY'));
+                    matchReason = isMatch ? 'monthly match' : 'no monthly tag';
+                }
+                // Default: exact match
+                else {
+                    isMatch = groupTags.includes(tagUpper);
+                    matchReason = isMatch ? 'exact match' : 'no exact match';
                 }
 
-                // Default: exact match
-                return groupTags.includes(tagUpper);
+                console.log(`[ListingGroupService] Group "${group.name}" (ID: ${group.id}) - tags: [${groupTags.join(', ')}] - ${isMatch ? 'MATCH' : 'NO MATCH'} (${matchReason})`);
+                return isMatch;
             });
+
+            console.log(`[ListingGroupService] Found ${matchedGroups.length} groups matching tag "${tag}": [${matchedGroups.map(g => g.name).join(', ')}]`);
+            return matchedGroups;
         } catch (error) {
             console.error(`[ListingGroupService] Error getting groups by tag "${tag}":`, error);
             throw error;

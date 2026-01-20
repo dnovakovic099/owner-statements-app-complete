@@ -114,12 +114,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     message: string;
     type: 'danger' | 'warning' | 'info';
     onConfirm: () => void;
+    showCancelButton?: boolean;
+    confirmText?: string;
   }>({
     isOpen: false,
     title: '',
     message: '',
     type: 'warning',
     onConfirm: () => {},
+    showCancelButton: true,
+    confirmText: undefined,
   });
 
   // Filter states
@@ -627,8 +631,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           isOpen: true,
           title: 'Cannot Delete',
           message: 'None of the selected statements can be deleted. Only draft statements can be deleted. Please return finalized statements to draft status first.',
-          type: 'danger',
+          type: 'info',
           onConfirm: () => {},
+          showCancelButton: false,
+          confirmText: 'OK',
         });
         return;
       }
@@ -1428,7 +1434,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
-        confirmText={confirmDialog.type === 'danger' ? 'Delete' : 'Confirm'}
+        confirmText={confirmDialog.confirmText || (confirmDialog.type === 'danger' ? 'Delete' : 'Confirm')}
+        showCancelButton={confirmDialog.showCancelButton !== false}
       />
     </Layout>
   );

@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info';
+  showCancelButton?: boolean; // Set to false for info-only alerts with just OK button
 }
 
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -21,7 +22,8 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  type = 'warning'
+  type = 'warning',
+  showCancelButton = true
 }) => {
   if (!isOpen) return null;
 
@@ -82,12 +84,14 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
         {/* Actions */}
         <div className="flex justify-end space-x-3 mt-6">
-          <Button
-            variant="outline"
-            onClick={onClose}
-          >
-            {cancelText}
-          </Button>
+          {showCancelButton && (
+            <Button
+              variant="outline"
+              onClick={onClose}
+            >
+              {cancelText}
+            </Button>
+          )}
           <Button
             className={getConfirmButtonClass()}
             onClick={() => {

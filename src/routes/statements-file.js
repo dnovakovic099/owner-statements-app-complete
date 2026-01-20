@@ -5888,21 +5888,118 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         console.log(`[Bulk Gen] Properties after isActive/tags filter: ${activeListings.length} (active: ${listings.filter(l => l.isActive).length}, tagged: ${listings.filter(l => l.tags && l.tags.length > 0).length})`);
 
         // Apply tag filter if specified (case-insensitive)
+        // STEP 3.5: If tag is specified, first generate GROUP statements, then individual non-grouped listings
+        let groupResults = { generated: 0, skipped: 0, errors: 0, groups: [] };
+        let groupedListingIds = new Set(); // Track listings that belong to groups
+
         if (tag) {
             const tagLower = tag.toLowerCase().trim();
+
+            // First, find groups with this tag and generate combined statements for them
+            console.log(`[Bulk Gen] ========== GROUP GENERATION START ==========`);
+            console.log(`[Bulk Gen] Checking for groups with tag "${tag}" (normalized: "${tagLower}")...`);
+            const ListingGroupService = require('../services/ListingGroupService');
+            const StatementService = require('../services/StatementService');
+
+            try {
+                const taggedGroups = await ListingGroupService.getGroupsByTag(tag);
+                console.log(`[Bulk Gen] Found ${taggedGroups.length} groups with tag "${tag}"`);
+
+                if (taggedGroups.length > 0) {
+                    console.log(`[Bulk Gen] Groups to process:`, taggedGroups.map(g => ({ id: g.id, name: g.name, tags: g.tags })));
+                    BackgroundJobService.updateProgress(jobId, 0, `Generating statements for ${taggedGroups.length} groups with tag "${tag}"...`);
+
+                    for (let i = 0; i < taggedGroups.length; i++) {
+                        const group = taggedGroups[i];
+                        console.log(`[Bulk Gen] ---------- Processing group ${i + 1}/${taggedGroups.length}: "${group.name}" (ID: ${group.id}) ----------`);
+
+                        try {
+                            // Get group details with member listings
+                            console.log(`[Bulk Gen] Fetching group details for ID: ${group.id}...`);
+                            const groupDetails = await ListingGroupService.getGroupById(group.id);
+                            console.log(`[Bulk Gen] Group "${group.name}" has ${groupDetails.members?.length || 0} member listings`);
+
+                            if (!groupDetails.members || groupDetails.members.length === 0) {
+                                console.log(`[Bulk Gen] SKIP - Group "${group.name}" has no member listings`);
+                                continue;
+                            }
+
+                            // Track listing IDs that belong to this group
+                            const memberIds = groupDetails.members.map(m => m.id);
+                            console.log(`[Bulk Gen] Member listing IDs: [${memberIds.join(', ')}]`);
+                            groupDetails.members.forEach(m => groupedListingIds.add(m.id));
+
+                            // Generate combined draft statement for the group
+                            console.log(`[Bulk Gen] Calling StatementService.generateGroupStatement() for "${group.name}"...`);
+                            console.log(`[Bulk Gen] Params: groupId=${group.id}, startDate=${startDate}, endDate=${endDate}, calculationType=${group.calculationType || calculationType}`);
+
+                            const statement = await StatementService.generateGroupStatement({
+                                groupId: group.id,
+                                groupName: group.name,
+                                listingIds: memberIds,
+                                startDate,
+                                endDate,
+                                calculationType: group.calculationType || calculationType
+                            });
+
+                            // Check if statement was skipped (duplicate)
+                            if (statement?.skipped) {
+                                groupResults.skipped++;
+                                console.log(`[Bulk Gen] SKIPPED - Group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
+                                continue;
+                            }
+
+                            groupResults.generated++;
+                            groupResults.groups.push({
+                                groupId: group.id,
+                                groupName: group.name,
+                                statementId: statement?.id,
+                                memberCount: groupDetails.members.length
+                            });
+
+                            console.log(`[Bulk Gen] SUCCESS - Generated statement ID: ${statement?.id} for group "${group.name}" (${groupDetails.members.length} listings)`);
+                        } catch (groupError) {
+                            console.error(`[Bulk Gen] FAILED - Error generating statement for group "${group.name}" (ID: ${group.id}):`);
+                            console.error(`[Bulk Gen] Error name: ${groupError.name}`);
+                            console.error(`[Bulk Gen] Error message: ${groupError.message}`);
+                            console.error(`[Bulk Gen] Error stack:`, groupError.stack);
+                            groupResults.errors++;
+                        }
+                    }
+
+                    console.log(`[Bulk Gen] ========== GROUP GENERATION COMPLETE ==========`);
+                    console.log(`[Bulk Gen] Summary: ${groupResults.generated} created, ${groupResults.skipped} skipped, ${groupResults.errors} errors`);
+                    console.log(`[Bulk Gen] Successfully created groups:`, groupResults.groups.map(g => ({ name: g.groupName, statementId: g.statementId })));
+                } else {
+                    console.log(`[Bulk Gen] No groups found with tag "${tag}" - skipping group generation`);
+                }
+            } catch (groupServiceError) {
+                console.error(`[Bulk Gen] CRITICAL ERROR fetching groups by tag:`, groupServiceError.message);
+                console.error(`[Bulk Gen] Error stack:`, groupServiceError.stack);
+            }
+
+            // Now filter listings: only include those with the tag AND not in any group
             activeListings = activeListings.filter(l => {
                 const listingTags = l.tags || [];
-                return listingTags.some(t => t.toLowerCase().trim() === tagLower);
+                const hasTag = listingTags.some(t => t.toLowerCase().trim() === tagLower);
+                const isInGroup = groupedListingIds.has(l.id) || l.groupId;
+
+                if (hasTag && isInGroup) {
+                    console.log(`[Bulk Gen] Listing ${l.id} (${l.name || l.nickname}) is in a group, skipping individual generation`);
+                }
+
+                return hasTag && !isInGroup;
             });
-            console.log(`[Bulk Gen] After tag filter "${tag}": ${activeListings.length} properties`);
+            console.log(`[Bulk Gen] After tag filter "${tag}" (excluding grouped): ${activeListings.length} individual properties`);
         }
 
-        BackgroundJobService.startJob(jobId, activeListings.length);
+        BackgroundJobService.startJob(jobId, activeListings.length + groupResults.generated);
 
         const results = {
             generated: [],
             skipped: [],
-            errors: []
+            errors: [],
+            groupResults // Include group generation results
         };
 
         let processedCount = 0;
@@ -6358,12 +6455,26 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         }
         console.log(`[Bulk Gen] ====================================`);
 
+        // Calculate totals including groups
+        const totalGenerated = results.generated.length + (results.groupResults?.generated || 0);
+        const totalSkipped = results.skipped.length + (results.groupResults?.skipped || 0);
+        const totalErrors = results.errors.length + (results.groupResults?.errors || 0);
+
+        if (results.groupResults && results.groupResults.generated > 0) {
+            console.log(`[Bulk Gen] Group statements generated: ${results.groupResults.generated}`);
+            results.groupResults.groups.forEach(g => {
+                console.log(`[Bulk Gen]   - Group "${g.groupName}" (${g.memberCount} listings): Statement ID ${g.statementId}`);
+            });
+        }
+
         BackgroundJobService.completeJob(jobId, {
             summary: {
-                generated: results.generated.length,
-                skipped: results.skipped.length,
-                errors: results.errors.length,
-                shouldConvertToCalendar: shouldConvertCount
+                generated: totalGenerated,
+                skipped: totalSkipped,
+                errors: totalErrors,
+                shouldConvertToCalendar: shouldConvertCount,
+                groupsGenerated: results.groupResults?.generated || 0,
+                individualGenerated: results.generated.length
             },
             results
         });
