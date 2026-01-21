@@ -170,6 +170,32 @@ const Listing = sequelize.define('Listing', {
         field: 'group_id',
         comment: 'Foreign key to listing_groups table (null = ungrouped)'
     },
+    payoutStatus: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'missing',
+        field: 'payout_status',
+        comment: 'Payout info status for this listing (missing, pending, on_file)'
+    },
+    payoutNotes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'payout_notes',
+        comment: 'Notes about payout collection/status'
+    },
+    stripeAccountId: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'stripe_account_id',
+        comment: 'Stripe Connect account ID for owner payouts'
+    },
+    stripeOnboardingStatus: {
+        type: DataTypes.STRING(30),
+        allowNull: false,
+        defaultValue: 'missing',
+        field: 'stripe_onboarding_status',
+        comment: 'Stripe onboarding status: missing, pending, verified, requires_action'
+    },
     lastSyncedAt: {
         type: DataTypes.DATE,
         allowNull: true,
@@ -193,4 +219,3 @@ const Listing = sequelize.define('Listing', {
 });
 
 module.exports = Listing;
-

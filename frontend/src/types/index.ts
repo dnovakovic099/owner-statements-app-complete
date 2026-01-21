@@ -179,6 +179,10 @@ export interface Listing {
   ownerGreeting?: string | null;
   autoSendStatements?: boolean;
   internalNotes?: string | null;
+  payoutStatus?: 'missing' | 'pending' | 'on_file';
+  payoutNotes?: string | null;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   isActive: boolean;
   lastSyncedAt?: string;
   syncedAt?: string;

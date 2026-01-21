@@ -419,11 +419,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'view') {
-        const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-        // Get auth token for PDF viewing
-        const authData = localStorage.getItem('luxury-lodging-auth');
-        const token = authData ? JSON.parse(authData).token : '';
-        window.open(`${baseUrl}/api/statements/${id}/view?token=${token}`, '_blank');
+        const viewWindow = window.open('', '_blank');
+        if (!viewWindow) {
+          showToast('Please allow pop-ups to view the statement', 'error');
+          return;
+        }
+
+        try {
+          const html = await statementsAPI.viewStatementHtml(id);
+          const blob = new Blob([html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          viewWindow.location.href = url;
+
+          // Revoke the object URL after the window loads to avoid leaks
+          viewWindow.addEventListener('load', () => {
+            URL.revokeObjectURL(url);
+          });
+        } catch (err) {
+          viewWindow.close();
+          showToast(`Failed to open statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
       } else if (action === 'download') {
         // Show loading toast
         const toastId = showToast('Preparing PDF download...', 'loading');

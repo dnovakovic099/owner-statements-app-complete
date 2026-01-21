@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown } from 'lucide-react';
-import { listingsAPI, tagScheduleAPI, groupsAPI } from '../services/api';
+import { listingsAPI, tagScheduleAPI, groupsAPI, payoutsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
@@ -58,6 +58,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [cohostFilter, setCohostFilter] = useState<'all' | 'cohost' | 'not-cohost'>('all');
   const [ownerEmailFilter, setOwnerEmailFilter] = useState<'all' | 'has-email' | 'no-email'>('all');
   const [autoSendFilter, setAutoSendFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [payoutFilter, setPayoutFilter] = useState<'all' | 'missing' | 'pending' | 'on_file'>('all');
 
   // Settings flags filters
   const [passThroughTaxFilter, setPassThroughTaxFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
@@ -104,13 +105,74 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [ownerGreeting, setOwnerGreeting] = useState('');
   const [autoSendStatements, setAutoSendStatements] = useState(true);
   const [internalNotes, setInternalNotes] = useState('');
+  const [payoutStatus, setPayoutStatus] = useState<'missing' | 'pending' | 'on_file'>('missing');
+  const [payoutNotes, setPayoutNotes] = useState('');
+  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [stripeOnboardingStatus, setStripeOnboardingStatus] = useState<'missing' | 'pending' | 'verified' | 'requires_action'>('missing');
+  const [refreshingPayout, setRefreshingPayout] = useState(false);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
+  const [payoutLastChecked, setPayoutLastChecked] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  const payoutLabel = (status: 'missing' | 'pending' | 'on_file') => {
+    switch (status) {
+      case 'on_file':
+        return 'Verified';
+      case 'pending':
+        return 'Requested';
+      default:
+        return 'Not Collected';
+    }
+  };
 
   useEffect(() => {
-    loadListings();
+    loadListings(false, undefined, true);
     loadTagSchedules();
     loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debounce search to reduce API calls
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(handle);
+  }, [searchTerm]);
+
+  // Reload listings on filter changes (server-side filtering)
+  useEffect(() => {
+    const filters = {
+      search: debouncedSearch,
+      cities: selectedCities,
+      tags: selectedFilterTags,
+      freqTags: selectedFrequencyTags.filter(t => t !== 'NO TAG'),
+      includeNoTag: selectedFrequencyTags.includes('NO TAG'),
+      cohost: cohostFilter,
+      ownerEmail: ownerEmailFilter,
+      autoSend: autoSendFilter,
+      passThroughTax: passThroughTaxFilter,
+      disregardTax: disregardTaxFilter,
+      cleaningFeePassThrough: cleaningFeeFilter,
+      guestPaidDamageCoverage: guestPaidDamageFilter,
+      waiveCommission: waiveCommissionFilter,
+      payoutStatus: payoutFilter !== 'all' ? payoutFilter : undefined
+    };
+    loadListings(false, filters, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    debouncedSearch,
+    selectedCities,
+    selectedFilterTags,
+    selectedFrequencyTags,
+    cohostFilter,
+    ownerEmailFilter,
+    autoSendFilter,
+    passThroughTaxFilter,
+    disregardTaxFilter,
+    cleaningFeeFilter,
+    guestPaidDamageFilter,
+    waiveCommissionFilter,
+    payoutFilter
+  ]);
 
   // Load all tag schedules
   const loadTagSchedules = async () => {
@@ -252,7 +314,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   useEffect(() => {
     if (selectedListingId) {
-      const listing = listings.find(l => l.id === selectedListingId);
+    const listing = listings.find(l => l.id === selectedListingId);
       if (listing) {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
@@ -268,41 +330,55 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setOwnerGreeting(listing.ownerGreeting || '');
         setAutoSendStatements(listing.autoSendStatements !== false);
         setInternalNotes(listing.internalNotes || '');
+        setPayoutStatus((listing.payoutStatus as any) || 'missing');
+        setPayoutNotes(listing.payoutNotes || '');
+        setStripeAccountId((listing.stripeAccountId as any) || null);
+        setStripeOnboardingStatus((listing.stripeOnboardingStatus as any) || 'missing');
       }
     } else {
       resetForm();
     }
   }, [selectedListingId, listings]);
 
-  const loadListings = async () => {
+  const loadListings = async (force = false, filtersOverride?: any, updateOptions = true) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await listingsAPI.getListings();
-      setListings(response.listings);
-
-      // Extract all unique tags and cities for filters
-      const allTags = new Set<string>();
-      const frequencyTags = new Set<string>();
-      const allCities = new Set<string>();
-
-      response.listings.forEach((listing: Listing) => {
-        // Extract tags
-        if (listing.tags && listing.tags.length > 0) {
-          listing.tags.forEach((tag: string) => {
-            const upperTag = tag.toUpperCase();
-            frequencyTags.add(upperTag);
-          });
-        }
-        // Extract cities
-        if (listing.city) {
-          allCities.add(listing.city);
-        }
+      const response = await listingsAPI.getListings(undefined, {
+        force,
+        filters: filtersOverride
       });
+      setListings(response.listings.map((l: Listing) => ({
+        ...l,
+        payoutStatus: (l as any).payoutStatus || 'missing',
+        payoutNotes: l.payoutNotes || '',
+        stripeAccountId: (l as any).stripeAccountId || null,
+        stripeOnboardingStatus: (l as any).stripeOnboardingStatus || 'missing'
+      })));
 
-      setAvailableTags(Array.from(allTags).sort());
-      setAvailableFrequencyTags(Array.from(frequencyTags).sort());
-      setAvailableCities(Array.from(allCities).sort());
+      if (updateOptions) {
+        const allTags = new Set<string>();
+        const frequencyTags = new Set<string>();
+        const allCities = new Set<string>();
+
+        response.listings.forEach((listing: Listing) => {
+          if (listing.tags && listing.tags.length > 0) {
+            listing.tags.forEach((tag: string) => {
+              const upperTag = tag.toUpperCase();
+              frequencyTags.add(upperTag);
+              // Keep raw tag too for custom tags
+              allTags.add(tag);
+            });
+          }
+          if (listing.city) {
+            allCities.add(listing.city);
+          }
+        });
+
+        setAvailableTags(Array.from(allTags).sort());
+        setAvailableFrequencyTags(Array.from(frequencyTags).sort());
+        setAvailableCities(Array.from(allCities).sort());
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load listings');
     } finally {
@@ -319,7 +395,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         type: 'success', 
         text: `Synced ${response.synced} listings from Hostify` 
       });
-      await loadListings();
+      await loadListings(true);
       setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
       setSaveMessage({ 
@@ -346,6 +422,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setOwnerGreeting('');
     setAutoSendStatements(true);
     setInternalNotes('');
+    setPayoutStatus('missing');
+    setPayoutNotes('');
+    setStripeAccountId(null);
+    setStripeOnboardingStatus('missing');
   };
 
   const handleSave = async () => {
@@ -370,6 +450,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         ownerGreeting: ownerGreeting.trim() || null,
         autoSendStatements,
         internalNotes: internalNotes.trim() || null,
+        payoutStatus,
+        payoutNotes: payoutNotes.trim() || null,
+        stripeAccountId: stripeAccountId || undefined,
+        stripeOnboardingStatus
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -429,80 +513,58 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   };
 
+  // Generate Stripe onboarding link for payouts
+  const handleCreatePayoutLink = async () => {
+    if (!selectedListingId) return;
+    try {
+      const response = await payoutsAPI.createOnboardingLink(selectedListingId);
+      const { stripeAccountId: accountId } = response;
+
+      const nextPayoutStatus = payoutStatus === 'on_file' ? 'on_file' : 'pending';
+
+      setStripeAccountId(accountId);
+      setStripeOnboardingStatus('pending');
+      setPayoutStatus(nextPayoutStatus);
+
+      setListings(prev => prev.map(l => l.id === selectedListingId
+        ? { ...l, stripeAccountId: accountId, stripeOnboardingStatus: 'pending', payoutStatus: nextPayoutStatus }
+        : l));
+
+      window.open(response.url, '_blank', 'noopener');
+      showToast('Onboarding link created', 'success');
+    } catch (err) {
+      console.error('Failed to create onboarding link:', err);
+      showToast(err instanceof Error ? err.message : 'Failed to create onboarding link', 'error');
+    }
+  };
+
+  // Refresh status from Stripe
+  const handleRefreshPayoutStatus = async () => {
+    if (!selectedListingId) return;
+    try {
+      setRefreshingPayout(true);
+      setPayoutError(null);
+      const response = await payoutsAPI.refreshStatus(selectedListingId);
+      const { status, payoutStatus: updatedPayoutStatus } = response;
+      setStripeOnboardingStatus(status as any);
+      setPayoutStatus(updatedPayoutStatus as any);
+      setPayoutLastChecked(new Date().toISOString());
+
+      setListings(prev => prev.map(l => l.id === selectedListingId
+        ? { ...l, stripeOnboardingStatus: status as any, payoutStatus: updatedPayoutStatus as any }
+        : l));
+
+      showToast('Payout status refreshed', 'success');
+    } catch (err) {
+      console.error('Failed to refresh payout status:', err);
+      setPayoutError(err instanceof Error ? err.message : 'Failed to refresh payout status');
+    } finally {
+      setRefreshingPayout(false);
+    }
+  };
+
   // Filter listings based on all filter criteria
-  const filteredListings = listings.filter(listing => {
-    // Text search filter
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = (
-        listing.name.toLowerCase().includes(searchLower) ||
-        listing.displayName?.toLowerCase().includes(searchLower) ||
-        listing.nickname?.toLowerCase().includes(searchLower) ||
-        listing.id.toString().includes(searchLower) ||
-        listing.city?.toLowerCase().includes(searchLower)
-      );
-      if (!matchesSearch) return false;
-    }
-
-    // Tag filter (custom tags, not frequency)
-    if (selectedFilterTags.length > 0) {
-      const listingTags = listing.tags || [];
-      const hasMatchingTag = selectedFilterTags.some(filterTag =>
-        listingTags.some(tag => tag.toLowerCase() === filterTag.toLowerCase())
-      );
-      if (!hasMatchingTag) return false;
-    }
-
-    // Tag filter
-    if (selectedFrequencyTags.length > 0) {
-      const listingTags = (listing.tags || []).map(t => t.toUpperCase());
-      const hasNoTag = listingTags.length === 0;
-      const selectedActualTags = selectedFrequencyTags.filter(t => t !== 'NO TAG');
-      const noTagSelected = selectedFrequencyTags.includes('NO TAG');
-
-      const hasMatchingTag = selectedActualTags.some(freq => listingTags.includes(freq));
-      const matchesNoTag = noTagSelected && hasNoTag;
-
-      if (!hasMatchingTag && !matchesNoTag) return false;
-    }
-
-    // City filter
-    if (selectedCities.length > 0) {
-      if (!listing.city || !selectedCities.includes(listing.city)) {
-        return false;
-      }
-    }
-
-    // Co-host filter
-    if (cohostFilter === 'cohost' && !listing.isCohostOnAirbnb) return false;
-    if (cohostFilter === 'not-cohost' && listing.isCohostOnAirbnb) return false;
-
-    // Owner email filter
-    if (ownerEmailFilter === 'has-email' && !listing.ownerEmail) return false;
-    if (ownerEmailFilter === 'no-email' && listing.ownerEmail) return false;
-
-    // Auto-send filter
-    if (autoSendFilter === 'enabled' && listing.autoSendStatements === false) return false;
-    if (autoSendFilter === 'disabled' && listing.autoSendStatements !== false) return false;
-
-    // Settings flags filters
-    if (passThroughTaxFilter === 'enabled' && !listing.airbnbPassThroughTax) return false;
-    if (passThroughTaxFilter === 'disabled' && listing.airbnbPassThroughTax) return false;
-
-    if (disregardTaxFilter === 'enabled' && !listing.disregardTax) return false;
-    if (disregardTaxFilter === 'disabled' && listing.disregardTax) return false;
-
-    if (cleaningFeeFilter === 'enabled' && !listing.cleaningFeePassThrough) return false;
-    if (cleaningFeeFilter === 'disabled' && listing.cleaningFeePassThrough) return false;
-
-    if (guestPaidDamageFilter === 'enabled' && !listing.guestPaidDamageCoverage) return false;
-    if (guestPaidDamageFilter === 'disabled' && listing.guestPaidDamageCoverage) return false;
-
-    if (waiveCommissionFilter === 'enabled' && !listing.waiveCommission) return false;
-    if (waiveCommissionFilter === 'disabled' && listing.waiveCommission) return false;
-
-    return true;
-  });
+  const filteredListings = listings;
 
   // Toggle a tag in the filter
   const toggleFilterTag = (tag: string) => {
@@ -533,6 +595,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     (cohostFilter !== 'all' ? 1 : 0) +
     (ownerEmailFilter !== 'all' ? 1 : 0) +
     (autoSendFilter !== 'all' ? 1 : 0) +
+    (payoutFilter !== 'all' ? 1 : 0) +
     (passThroughTaxFilter !== 'all' ? 1 : 0) +
     (disregardTaxFilter !== 'all' ? 1 : 0) +
     (cleaningFeeFilter !== 'all' ? 1 : 0) +
@@ -549,6 +612,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setCohostFilter('all');
     setOwnerEmailFilter('all');
     setAutoSendFilter('all');
+    setPayoutFilter('all');
     setPassThroughTaxFilter('all');
     setDisregardTaxFilter('all');
     setCleaningFeeFilter('all');
@@ -595,6 +659,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       'Tags',
       'Owner Email',
       'Owner Greeting',
+      'Payout Status',
+      'Payout Notes',
       'Auto-Send Statements',
       'Internal Notes',
       'Is Active',
@@ -648,6 +714,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       escapeCSV((listing.tags || []).join(', ')),
       escapeCSV(listing.ownerEmail || ''),
       escapeCSV(listing.ownerGreeting || ''),
+      payoutLabel(((listing.payoutStatus as any) || 'missing') as 'missing' | 'pending' | 'on_file'),
+      escapeCSV(listing.payoutNotes || ''),
       listing.autoSendStatements !== false ? 'Yes' : 'No',
       escapeCSV(listing.internalNotes || ''),
       listing.isActive ? 'Yes' : 'No',
@@ -932,6 +1000,31 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
                   </div>
 
+                  {/* Payout Info Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Payout Info</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'missing', label: 'Not Collected' },
+                        { value: 'pending', label: 'Requested' },
+                        { value: 'on_file', label: 'Verified' }
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setPayoutFilter(opt.value as typeof payoutFilter)}
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                            payoutFilter === opt.value
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Auto-send Filter */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Auto-send Statements</label>
@@ -1109,8 +1202,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-medium text-gray-900 truncate text-sm">
-                      {getListingDisplayName(listing)}
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-gray-900 truncate text-sm">
+                        {getListingDisplayName(listing)}
+                      </div>
+                      <span
+                        className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                          (listing.payoutStatus || 'missing') === 'on_file'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : (listing.payoutStatus || 'missing') === 'pending'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
+                      </span>
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       ID: {listing.id}
@@ -1445,6 +1551,95 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </p>
                   </div>
 
+                  {/* Payout Info */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Payout Info</p>
+                          <p className="text-xs text-slate-600">Track Stripe onboarding and our internal marker.</p>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          <span className="px-3 py-1 text-xs rounded-full border border-slate-200 text-slate-800 bg-slate-50">
+                            Stripe: {stripeOnboardingStatus === 'verified' ? 'Verified' : stripeOnboardingStatus === 'pending' ? 'Requested' : 'Not Started'}
+                          </span>
+                          {stripeAccountId && (
+                            <span className="px-3 py-1 text-[11px] rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                              {stripeAccountId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                          {[
+                            { value: 'missing', label: 'Not Collected' },
+                            { value: 'pending', label: 'Requested' },
+                            { value: 'on_file', label: 'Verified' }
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setPayoutStatus(opt.value as typeof payoutStatus)}
+                              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                                payoutStatus === opt.value
+                                  ? 'bg-emerald-600 text-white border-emerald-700'
+                                  : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCreatePayoutLink}
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                        >
+                          Generate Stripe Link
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRefreshPayoutStatus}
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-emerald-300 text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                          disabled={!stripeAccountId || refreshingPayout}
+                        >
+                          {refreshingPayout ? 'Refreshing...' : 'Refresh Status'}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium text-emerald-900">
+                          Payout Notes
+                        </label>
+                        <div className="flex items-center justify-between text-xs text-slate-600">
+                          <span>
+                            Internal-only marker to track whether we have payout details verified for this owner.
+                          </span>
+                          {payoutLastChecked && (
+                            <span className="text-slate-500">
+                              Last checked: {new Date(payoutLastChecked).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <textarea
+                          value={payoutNotes}
+                          onChange={(e) => setPayoutNotes(e.target.value)}
+                          rows={3}
+                          placeholder="Add context, e.g. 'Waiting for bank form from owner'"
+                          className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        {payoutError && (
+                          <p className="text-xs text-red-600">
+                            {payoutError}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Tags */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -1770,4 +1965,3 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 };
 
 export default ListingsPage;
-

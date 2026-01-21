@@ -35,20 +35,6 @@ import {
   TableRow,
 } from './ui/table';
 
-// Helper to get auth token for PDF viewing
-const getAuthToken = (): string | null => {
-  try {
-    const stored = localStorage.getItem('luxury-lodging-auth');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return parsed.token || null;
-    }
-  } catch {
-    // Ignore
-  }
-  return null;
-};
-
 // Lightweight listing type for name lookups
 interface ListingName {
   id: number;
@@ -577,7 +563,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         return (
           <div className="flex items-center justify-center">
             <ActionButton
-              href={`${process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : ''}/api/statements/${statement.id}/view?token=${getAuthToken() || ''}`}
+              onClick={() => onAction(statement.id, 'view')}
               tooltip="View Statement"
               icon={<Eye className="w-[18px] h-[18px]" />}
               color="text-blue-600"

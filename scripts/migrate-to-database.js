@@ -18,6 +18,7 @@ async function migrateStatements() {
     const statementsDir = path.join(__dirname, '../statements');
     
     try {
+        await fs.mkdir(statementsDir, { recursive: true });
         const files = await fs.readdir(statementsDir);
         const jsonFiles = files.filter(file => file.endsWith('.json'));
         
@@ -69,6 +70,7 @@ async function migrateUploadedExpenses() {
     const uploadsDir = path.join(__dirname, '../uploads/expenses');
     
     try {
+        await fs.mkdir(uploadsDir, { recursive: true });
         const files = await fs.readdir(uploadsDir);
         const jsonFiles = files.filter(file => file.endsWith('.json'));
         
@@ -103,11 +105,25 @@ async function migrateUploadedExpenses() {
                 }
                 
                 // Add upload metadata to each expense
-                const expensesWithMetadata = expenseData.expenses.map(expense => ({
-                    ...expense,
-                    uploadFilename,
-                    source: expense.source || 'manual'
-                }));
+                const expensesWithMetadata = expenseData.expenses.map(expense => {
+                    // Whitelist fields that exist on the UploadedExpense model
+                    const safeExpense = {
+                        propertyId: expense.propertyId ?? null,
+                        type: expense.type || 'expense',
+                        description: expense.description || '',
+                        amount: expense.amount ?? 0,
+                        date: expense.date,
+                        source: expense.source || 'manual',
+                        sourceId: expense.sourceId || null,
+                        invoiceNumber: expense.invoiceNumber || null,
+                        vendor: expense.vendor || null,
+                        category: expense.category || null,
+                        notes: expense.notes || null,
+                        listing: expense.listing || null,
+                        uploadFilename
+                    };
+                    return safeExpense;
+                }).filter(e => e.date && e.description);
                 
                 // Bulk create expenses
                 await UploadedExpense.bulkCreate(expensesWithMetadata);
@@ -169,4 +185,3 @@ async function main() {
 
 // Run migration
 main();
-

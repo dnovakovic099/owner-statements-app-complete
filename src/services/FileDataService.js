@@ -119,6 +119,10 @@ class FileDataService {
                         listing.waiveCommission = Boolean(dbListing.waiveCommission);
                         listing.waiveCommissionUntil = dbListing.waiveCommissionUntil || null;
                         listing.internalNotes = dbListing.internalNotes || null;
+                        listing.payoutStatus = dbListing.payoutStatus || 'missing';
+                        listing.payoutNotes = dbListing.payoutNotes || null;
+                        listing.stripeAccountId = dbListing.stripeAccountId || null;
+                        listing.stripeOnboardingStatus = dbListing.stripeOnboardingStatus || 'missing';
                     } else {
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
@@ -130,6 +134,10 @@ class FileDataService {
                         listing.waiveCommission = false;
                         listing.waiveCommissionUntil = null;
                         listing.internalNotes = null;
+                        listing.payoutStatus = 'missing';
+                        listing.payoutNotes = null;
+                        listing.stripeAccountId = null;
+                        listing.stripeOnboardingStatus = 'missing';
                     }
                 });
             } catch (dbError) {
@@ -144,6 +152,10 @@ class FileDataService {
                     listing.waiveCommission = false;
                     listing.waiveCommissionUntil = null;
                     listing.internalNotes = null;
+                    listing.payoutStatus = 'missing';
+                    listing.payoutNotes = null;
+                    listing.stripeAccountId = null;
+                    listing.stripeOnboardingStatus = 'missing';
                 });
             }
 

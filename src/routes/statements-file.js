@@ -5209,8 +5209,19 @@ router.get('/:id/view', async (req, res) => {
                 calculationType: '${statement.calculationType || 'checkout'}'
             };
 
-            // Get auth token from URL query parameter
+            // Get auth token from localStorage (preferred) or legacy URL query parameter
             function getAuthToken() {
+                try {
+                    const stored = localStorage.getItem('luxury-lodging-auth');
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (parsed.token) {
+                            return parsed.token;
+                        }
+                    }
+                } catch (e) {
+                    // Ignore parsing errors and fall back to legacy query param
+                }
                 const params = new URLSearchParams(window.location.search);
                 return params.get('token') || '';
             }
@@ -5223,6 +5234,27 @@ router.get('/:id/view', async (req, res) => {
                     headers['Authorization'] = 'Bearer ' + authToken;
                 }
                 return headers;
+            }
+
+            // Reload the statement view by fetching HTML with Authorization header
+            async function loadStatementView(targetId) {
+                try {
+                    const response = await fetch('/api/statements/' + targetId + '/view', {
+                        headers: getAuthHeaders()
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || 'Unable to load statement view');
+                    }
+
+                    const html = await response.text();
+                    document.open();
+                    document.write(html);
+                    document.close();
+                } catch (error) {
+                    alert('Failed to load statement view. Please return to the dashboard and try again.');
+                }
             }
 
             // Custom Modal Functions
@@ -5424,7 +5456,7 @@ router.get('/:id/view', async (req, res) => {
                     const result = await response.json();
                     if (response.ok && result.statement) {
                         // Redirect to new statement
-                        window.location.href = '/api/statements/' + result.statement.id + '/view?token=' + authToken;
+                        loadStatementView(result.statement.id);
                     } else {
                         throw new Error(result.error || 'Failed to regenerate statement');
                     }
@@ -5483,7 +5515,7 @@ router.get('/:id/view', async (req, res) => {
                     // Redirect to the new statement's view page
                     const newId = result.statement?.id || result.id;
                     if (newId) {
-                        window.location.href = '/api/statements/' + newId + '/view?token=' + authToken;
+                        loadStatementView(newId);
                     } else {
                         await showAlert('Success', 'Statement regenerated successfully!', 'success');
                         window.location.href = '/';
@@ -5494,8 +5526,32 @@ router.get('/:id/view', async (req, res) => {
                 }
             }
 
-            function downloadStatement() {
-                window.open('/api/statements/' + statementId + '/download?token=' + authToken, '_blank');
+            async function downloadStatement() {
+                try {
+                    const response = await fetch('/api/statements/' + statementId + '/download', {
+                        headers: getAuthHeaders()
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Download failed');
+                    }
+
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    const filename = match && match[1] ? match[1] : ('statement-' + statementId + '.pdf');
+
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    alert('Failed to download statement. Please try again.');
+                }
             }
 
             async function finalizeStatement() {

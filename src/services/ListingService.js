@@ -2,6 +2,7 @@ const { Listing } = require('../models');
 const HostifyService = require('./HostifyService');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption');
 
 // Lazy load ListingGroup to avoid circular dependency issues
 let ListingGroup = null;
@@ -192,11 +193,74 @@ class ListingService {
     /**
      * Get multiple listings with PM fees and group data
      */
-    async getListingsWithPmFees(listingIds = []) {
+    async getListingsWithPmFees(listingIds = [], filters = {}) {
         try {
-            const where = listingIds.length > 0
-                ? { id: { [Op.in]: listingIds } }
-                : {};
+            const where = {};
+
+            if (listingIds.length > 0) {
+                where.id = { [Op.in]: listingIds };
+            }
+
+            if (filters.search) {
+                const term = `%${filters.search}%`;
+                where[Op.or] = [
+                    { name: { [Op.iLike]: term } },
+                    { displayName: { [Op.iLike]: term } },
+                    { nickname: { [Op.iLike]: term } },
+                    { city: { [Op.iLike]: term } }
+                ];
+                const searchNum = parseInt(filters.search, 10);
+                if (!isNaN(searchNum)) {
+                    where[Op.or].push({ id: searchNum });
+                }
+            }
+
+            if (filters.cities && Array.isArray(filters.cities) && filters.cities.length > 0) {
+                where.city = { [Op.in]: filters.cities };
+            }
+
+            if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
+                const tagConds = filters.tags.map(tag => ({
+                    tags: { [Op.iLike]: `%${tag}%` }
+                }));
+                where[Op.or] = where[Op.or] ? [...where[Op.or], ...tagConds] : tagConds;
+            }
+
+            if (filters.noTag) {
+                const noTagCond = {
+                    [Op.or]: [
+                        { tags: null },
+                        { tags: '' }
+                    ]
+                };
+                where[Op.and] = where[Op.and] ? [...where[Op.and], noTagCond] : [noTagCond];
+            }
+
+            const addBoolFilter = (field, value) => {
+                if (value === 'enabled') where[field] = true;
+                if (value === 'disabled') where[field] = false;
+            };
+
+            if (filters.cohost === 'cohost') where.isCohostOnAirbnb = true;
+            if (filters.cohost === 'not-cohost') where.isCohostOnAirbnb = false;
+
+            if (filters.ownerEmail === 'has-email') where.ownerEmail = { [Op.ne]: null };
+            if (filters.ownerEmail === 'no-email') where[Op.or] = where[Op.or]
+                ? [...where[Op.or], { ownerEmail: null }, { ownerEmail: '' }]
+                : [{ ownerEmail: null }, { ownerEmail: '' }];
+
+            if (filters.autoSend === 'enabled') where.autoSendStatements = true;
+            if (filters.autoSend === 'disabled') where.autoSendStatements = false;
+
+            addBoolFilter('airbnbPassThroughTax', filters.passThroughTax);
+            addBoolFilter('disregardTax', filters.disregardTax);
+            addBoolFilter('cleaningFeePassThrough', filters.cleaningFeePassThrough);
+            addBoolFilter('guestPaidDamageCoverage', filters.guestPaidDamageCoverage);
+            addBoolFilter('waiveCommission', filters.waiveCommission);
+
+            if (filters.payoutStatus) {
+                where.payoutStatus = filters.payoutStatus;
+            }
 
             const listings = await Listing.findAll({ where });
 
@@ -231,7 +295,15 @@ class ListingService {
                 }
             }
 
-            return listings.map(l => ({ ...l.toJSON(), group: null }));
+            return listings.map(l => {
+                const json = { ...l.toJSON(), group: null };
+                try {
+                    json.stripeAccountId = decryptOptional(json.stripeAccountId);
+                } catch (e) {
+                    json.stripeAccountId = null;
+                }
+                return json;
+            });
         } catch (error) {
             logger.error('Error fetching listings', { error: error.message });
             return [];
@@ -244,9 +316,18 @@ class ListingService {
     async getListingNames() {
         try {
             const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags']
+                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'stripeAccountId', 'stripeOnboardingStatus']
             });
-            return listings.map(l => l.toJSON());
+            return listings.map(l => {
+                const json = l.toJSON();
+                try {
+                    json.stripeAccountId = decryptOptional(json.stripeAccountId);
+                } catch (e) {
+                    logger.warn('Failed to decrypt stripeAccountId for listing', { id: json.id });
+                    json.stripeAccountId = null;
+                }
+                return json;
+            });
         } catch (error) {
             logger.error('Error fetching listing names', { error: error.message });
             return [];
@@ -391,6 +472,12 @@ class ListingService {
             if (config.ownerGreeting !== undefined) updates.ownerGreeting = config.ownerGreeting;
             if (config.autoSendStatements !== undefined) updates.autoSendStatements = config.autoSendStatements;
             if (config.internalNotes !== undefined) updates.internalNotes = config.internalNotes;
+            if (config.payoutStatus !== undefined) updates.payoutStatus = config.payoutStatus;
+            if (config.payoutNotes !== undefined) updates.payoutNotes = config.payoutNotes;
+            if (config.stripeAccountId !== undefined) {
+                updates.stripeAccountId = encryptOptional(config.stripeAccountId);
+            }
+            if (config.stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = config.stripeOnboardingStatus;
             // Support groupId assignment (null to remove from group, number to assign to group)
             if (config.groupId !== undefined) updates.groupId = config.groupId;
 
@@ -527,4 +614,3 @@ class ListingService {
 }
 
 module.exports = new ListingService();
-

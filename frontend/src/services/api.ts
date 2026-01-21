@@ -199,6 +199,22 @@ export const statementsAPI = {
     };
   },
 
+  viewStatementHtml: async (id: number, options?: { pdf?: boolean }): Promise<string> => {
+    const query = options?.pdf ? '?pdf=true' : '';
+    const response = await api.get(`/statements/${id}/view${query}`, { responseType: 'text' });
+    const rawHtml = response.data as string;
+
+    // Ensure relative assets work when rendering HTML from a blob/blank window
+    const apiBase = (api.defaults.baseURL || '').replace(/\/api\/?$/, '') || window.location.origin;
+    const normalizedBase = apiBase.endsWith('/') ? apiBase : `${apiBase}/`;
+
+    if (rawHtml.includes('<head>')) {
+      return rawHtml.replace('<head>', `<head><base href="${normalizedBase}">`);
+    }
+
+    return `<base href="${normalizedBase}">${rawHtml}`;
+  },
+
   deleteStatement: async (id: number): Promise<void> => {
     await api.delete(`/statements/${id}`);
   },
@@ -430,16 +446,71 @@ export const quickBooksAPI = {
 };
 
 // Listings API
+// Simple in-memory cache for listings (frontend session)
+let listingsCache: { data: Listing[]; timestamp: number } | null = null;
+const LISTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export const listingsAPI = {
-  getListings: async (listingIds?: number[]): Promise<{ success: boolean; listings: Listing[] }> => {
-    const params = listingIds && listingIds.length > 0
-      ? `?ids=${listingIds.join(',')}`
-      : '';
-    const response = await api.get(`/listings${params}`);
+  getListings: async (listingIds?: number[], options?: {
+    force?: boolean;
+    filters?: {
+      search?: string;
+      cities?: string[];
+      tags?: string[];
+      freqTags?: string[];
+      includeNoTag?: boolean;
+      cohost?: 'all' | 'cohost' | 'not-cohost';
+      ownerEmail?: 'all' | 'has-email' | 'no-email';
+      autoSend?: 'all' | 'enabled' | 'disabled';
+      passThroughTax?: 'all' | 'enabled' | 'disabled';
+      disregardTax?: 'all' | 'enabled' | 'disabled';
+      cleaningFeePassThrough?: 'all' | 'enabled' | 'disabled';
+      guestPaidDamageCoverage?: 'all' | 'enabled' | 'disabled';
+      waiveCommission?: 'all' | 'enabled' | 'disabled';
+      payoutStatus?: 'missing' | 'pending' | 'on_file';
+    };
+  }): Promise<{ success: boolean; listings: Listing[] }> => {
+    const force = options?.force || false;
+    const filters = options?.filters || {};
+    const hasFilters = filters && Object.values(filters).some((v) => {
+      if (Array.isArray(v)) return v.length > 0;
+      return v !== undefined && v !== null && v !== '' && v !== 'all';
+    });
+
+    if (!force && !hasFilters && listingsCache && Date.now() - listingsCache.timestamp < LISTINGS_CACHE_TTL && (!listingIds || listingIds.length === 0)) {
+      return { success: true, listings: listingsCache.data };
+    }
+
+    const params = new URLSearchParams();
+    if (listingIds && listingIds.length > 0) {
+      params.append('ids', listingIds.join(','));
+    }
+    if (filters.search) params.append('search', filters.search);
+    if (filters.cities && filters.cities.length > 0) params.append('cities', filters.cities.join(','));
+    if (filters.tags && filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+    if (filters.freqTags && filters.freqTags.length > 0) params.append('freqTags', filters.freqTags.join(','));
+    if (filters.includeNoTag) params.append('includeNoTag', 'true');
+    if (filters.cohost && filters.cohost !== 'all') params.append('cohost', filters.cohost);
+    if (filters.ownerEmail && filters.ownerEmail !== 'all') params.append('ownerEmail', filters.ownerEmail);
+    if (filters.autoSend && filters.autoSend !== 'all') params.append('autoSend', filters.autoSend);
+    if (filters.passThroughTax && filters.passThroughTax !== 'all') params.append('passThroughTax', filters.passThroughTax);
+    if (filters.disregardTax && filters.disregardTax !== 'all') params.append('disregardTax', filters.disregardTax);
+    if (filters.cleaningFeePassThrough && filters.cleaningFeePassThrough !== 'all') params.append('cleaningFeePassThrough', filters.cleaningFeePassThrough);
+    if (filters.guestPaidDamageCoverage && filters.guestPaidDamageCoverage !== 'all') params.append('guestPaidDamageCoverage', filters.guestPaidDamageCoverage);
+    if (filters.waiveCommission && filters.waiveCommission !== 'all') params.append('waiveCommission', filters.waiveCommission);
+    if (filters.payoutStatus) params.append('payoutStatus', filters.payoutStatus);
+
+    const query = params.toString();
+    const response = await api.get(`/listings${query ? `?${query}` : ''}`);
+
+    // Cache only when fetching all listings without IDs and without filters
+    if (!hasFilters && (!listingIds || listingIds.length === 0)) {
+      listingsCache = { data: response.data.listings, timestamp: Date.now() };
+    }
     return response.data;
   },
 
-  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes' | 'ownerEmail' | 'tags'>[] }> => {
+  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes' | 'ownerEmail' | 'tags' | 'payoutStatus' | 'payoutNotes'>[] }> => {
     const response = await api.get('/listings/names');
     return response.data;
   },
@@ -466,6 +537,10 @@ export const listingsAPI = {
     ownerGreeting?: string | null;
     autoSendStatements?: boolean;
     internalNotes?: string | null;
+    payoutStatus?: 'missing' | 'pending' | 'on_file';
+    payoutNotes?: string | null;
+    stripeAccountId?: string | null;
+    stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   }): Promise<{ success: boolean; message: string; listing: Listing }> => {
     const response = await api.put(`/listings/${id}/config`, config);
     return response.data;
@@ -506,6 +581,19 @@ export const listingsAPI = {
     }>;
   }> => {
     const response = await api.get(`/listings/newly-added?days=${days}`);
+    return response.data;
+  },
+};
+
+// Payouts (Stripe Connect)
+export const payoutsAPI = {
+  createOnboardingLink: async (listingId: number): Promise<{ success: boolean; url: string; stripeAccountId: string; status: string }> => {
+    const response = await api.post(`/payouts/listings/${listingId}/onboarding-link`);
+    return response.data;
+  },
+
+  refreshStatus: async (listingId: number): Promise<{ success: boolean; status: string; payoutStatus: string }> => {
+    const response = await api.get(`/payouts/listings/${listingId}/status`);
     return response.data;
   },
 };

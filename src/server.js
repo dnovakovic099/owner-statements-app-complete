@@ -252,6 +252,9 @@ app.use('/api/financials', authenticate, require('./routes/financials'));
 app.use('/api/email', authenticate, require('./routes/email'));
 app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
 
+// Payouts - Stripe Connect onboarding and status
+app.use('/api/payouts', authenticate, require('./routes/payouts'));
+
 // Tag Schedules - Editors/Admins
 app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
 
