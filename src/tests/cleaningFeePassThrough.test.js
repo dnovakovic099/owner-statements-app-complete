@@ -193,7 +193,7 @@ function calculateGrossPayout(reservation, listing) {
     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
     const cleaningFeeForPassThrough = listing.cleaningFeePassThrough
-        ? (reservation.cleaningFee || listing.cleaningFee || 0)
+        ? (reservation.cleaningFee ?? listing.cleaningFee ?? 0)
         : 0;
 
     const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
@@ -216,7 +216,7 @@ function calculateGrossPayout(reservation, listing) {
         taxResponsibility,
         shouldAddTax,
         isCohostAirbnb,
-        usedListingDefault: listing.cleaningFeePassThrough && !reservation.cleaningFee && listing.cleaningFee > 0
+        usedListingDefault: listing.cleaningFeePassThrough && reservation.cleaningFee == null && listing.cleaningFee > 0
     };
 }
 
@@ -288,11 +288,11 @@ describe('Single Property - PassThrough ENABLED', () => {
         expect(filtered[0].id).toBe('exp-other-a');
     });
 
-    test('1.4 Reservation with $0 cleaning fee should use listing default', () => {
+    test('1.4 Reservation with $0 cleaning fee should NOT use listing default', () => {
         const result = calculateGrossPayout(mockReservations.resA2, mockListings.propertyA);
-        const expected = 400 - (400 * 0.15) + 40 - 300;
-        expect(result.cleaningFeeForPassThrough).toBe(300);
-        expect(result.usedListingDefault).toBe(true);
+        const expected = 400 - (400 * 0.15) + 40;
+        expect(result.cleaningFeeForPassThrough).toBe(0);
+        expect(result.usedListingDefault).toBe(false);
         expect(result.grossPayout).toBe(Math.round(expected * 100) / 100);
     });
 });
@@ -538,14 +538,14 @@ describe('Listing Default Cleaning Fee Fallback', () => {
         expect(result.usedListingDefault).toBe(false);
     });
 
-    test('9.2 Reservation with $0 cleaning fee should use listing default', () => {
+    test('9.2 Reservation with $0 cleaning fee should NOT use listing default', () => {
         const reservation = {
             ...mockReservations.resA1,
             cleaningFee: 0
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
-        expect(result.cleaningFeeForPassThrough).toBe(300);
-        expect(result.usedListingDefault).toBe(true);
+        expect(result.cleaningFeeForPassThrough).toBe(0);
+        expect(result.usedListingDefault).toBe(false);
     });
 
     test('9.3 Reservation with undefined cleaning fee should use listing default', () => {
@@ -572,7 +572,7 @@ describe('Listing Default Cleaning Fee Fallback', () => {
     test('9.5 Mixed reservations: some with own fee, some using default', () => {
         const reservations = [
             mockReservations.resA1,
-            { ...mockReservations.resA2, cleaningFee: 0 }
+            { ...mockReservations.resA2, cleaningFee: null }
         ];
         const result1 = calculateGrossPayout(reservations[0], mockListings.propertyA);
         const result2 = calculateGrossPayout(reservations[1], mockListings.propertyA);
@@ -658,7 +658,7 @@ describe('Cleaning Mismatch Warning Logic', () => {
 // ============================================================================
 describe('Net Payout with Listing Default', () => {
     test('11.1 Net payout should account for listing default cleaning fee', () => {
-        const reservation = { ...mockReservations.resA2, cleaningFee: 0 };
+        const reservation = { ...mockReservations.resA2, cleaningFee: null };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
         const listingInfoMap = { 100001: mockListings.propertyA };
         const expenses = [mockExpenses.otherExpA];
@@ -674,7 +674,7 @@ describe('Net Payout with Listing Default', () => {
     test('11.2 Combined statement with mixed defaults should calculate correctly', () => {
         const reservations = [
             mockReservations.resA1,
-            { ...mockReservations.resA2, cleaningFee: 0 }
+            { ...mockReservations.resA2, cleaningFee: null }
         ];
         const result1 = calculateGrossPayout(reservations[0], mockListings.propertyA);
         const result2 = calculateGrossPayout(reservations[1], mockListings.propertyA);
@@ -691,8 +691,8 @@ describe('Net Payout with Listing Default', () => {
 // ============================================================================
 describe('Bulk Generation Scenarios', () => {
     test('12.1 Multiple properties with different default cleaning fees', () => {
-        const resForA = { ...mockReservations.resA2, cleaningFee: 0 };
-        const resForD = { ...mockReservations.resA2, propertyId: 100004, cleaningFee: 0 };
+        const resForA = { ...mockReservations.resA2, cleaningFee: null };
+        const resForD = { ...mockReservations.resA2, propertyId: 100004, cleaningFee: null };
         const resultA = calculateGrossPayout(resForA, mockListings.propertyA);
         const resultD = calculateGrossPayout(resForD, mockListings.propertyD);
         expect(resultA.cleaningFeeForPassThrough).toBe(300);
@@ -708,7 +708,7 @@ describe('Bulk Generation Scenarios', () => {
     });
 
     test('12.3 Same period, different properties with different passthrough settings', () => {
-        const resA = { ...mockReservations.resA2, cleaningFee: 0 };
+        const resA = { ...mockReservations.resA2, cleaningFee: null };
         const resB = { ...mockReservations.resB1, cleaningFee: 0 };
         const resultA = calculateGrossPayout(resA, mockListings.propertyA);
         const resultB = calculateGrossPayout(resB, mockListings.propertyB);
@@ -723,7 +723,7 @@ describe('Bulk Generation Scenarios', () => {
 describe('Rounding and Precision Edge Cases', () => {
     test('13.1 Very small cleaning fee ($0.01) should be handled correctly', () => {
         const listing = { ...mockListings.propertyA, cleaningFee: 0.01 };
-        const reservation = { ...mockReservations.resA2, cleaningFee: 0 };
+        const reservation = { ...mockReservations.resA2, cleaningFee: null };
         const result = calculateGrossPayout(reservation, listing);
         expect(result.cleaningFeeForPassThrough).toBe(0.01);
         expect(result.usedListingDefault).toBe(true);
@@ -731,14 +731,14 @@ describe('Rounding and Precision Edge Cases', () => {
 
     test('13.2 Very large cleaning fee ($9999.99) should be handled correctly', () => {
         const listing = { ...mockListings.propertyA, cleaningFee: 9999.99 };
-        const reservation = { ...mockReservations.resA2, cleaningFee: 0 };
+        const reservation = { ...mockReservations.resA2, cleaningFee: null };
         const result = calculateGrossPayout(reservation, listing);
         expect(result.cleaningFeeForPassThrough).toBe(9999.99);
     });
 
     test('13.3 Cleaning fee with many decimal places should round to 2 places', () => {
         const listing = { ...mockListings.propertyA, cleaningFee: 123.456789 };
-        const reservation = { ...mockReservations.resA2, cleaningFee: 0 };
+        const reservation = { ...mockReservations.resA2, cleaningFee: null };
         const result = calculateGrossPayout(reservation, listing);
         const decimalPlaces = (result.grossPayout.toString().split('.')[1] || '').length;
         expect(decimalPlaces <= 2).toBe(true);
@@ -748,7 +748,7 @@ describe('Rounding and Precision Edge Cases', () => {
         const listing = { ...mockListings.propertyA, pmFeePercentage: 15.5, cleaningFee: 300 };
         const reservation = {
             ...mockReservations.resA1,
-            cleaningFee: 0,
+            cleaningFee: null,
             clientRevenue: 1000
         };
         const result = calculateGrossPayout(reservation, listing);
@@ -759,7 +759,7 @@ describe('Rounding and Precision Edge Cases', () => {
     test('13.5 Edge case: clientRevenue equals cleaning fee', () => {
         const reservation = {
             ...mockReservations.resA2,
-            cleaningFee: 0,
+            cleaningFee: null,
             clientRevenue: 300
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
@@ -769,7 +769,7 @@ describe('Rounding and Precision Edge Cases', () => {
 
     test('13.6 Edge case: negative gross payout due to high cleaning fee', () => {
         const listing = { ...mockListings.propertyA, cleaningFee: 2000 };
-        const reservation = { ...mockReservations.resA2, cleaningFee: 0 };
+        const reservation = { ...mockReservations.resA2, cleaningFee: null };
         const result = calculateGrossPayout(reservation, listing);
         const expected = 400 - (400 * 0.15) + 40 - 2000;
         expect(result.grossPayout).toBe(Math.round(expected * 100) / 100);
@@ -785,7 +785,7 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
         const reservation = {
             ...mockReservations.resA1,
             source: 'Airbnb',
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
         const expected = 1030 - (1030 * 0.15) - 300;
@@ -799,7 +799,7 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
             ...mockReservations.resB1,
             propertyId: 100001,
             source: 'VRBO',
-            cleaningFee: 0,
+            cleaningFee: null,
             clientRevenue: 760,
             clientTaxResponsibility: 80
         };
@@ -813,7 +813,7 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
         const reservation = {
             ...mockReservations.resA2,
             source: 'Direct',
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
         const expected = 400 - (400 * 0.15) + 40 - 300;
@@ -826,7 +826,7 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
         const reservation = {
             ...mockReservations.resA1,
             source: 'Booking.com',
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, listing);
         const expected = 1030 - (1030 * 0.15) + 100 - 150;
@@ -842,7 +842,7 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
         const reservation = {
             ...mockReservations.resA1,
             source: 'Airbnb',
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, listing);
         const expected = 1030 - (1030 * 0.15) + 100 - 200;
@@ -851,9 +851,9 @@ describe('Source-Based Logic with Cleaning Passthrough', () => {
     });
 
     test('14.6 Case-insensitive source detection', () => {
-        const reservation1 = { ...mockReservations.resA1, source: 'AIRBNB', cleaningFee: 0 };
-        const reservation2 = { ...mockReservations.resA1, source: 'airbnb', cleaningFee: 0 };
-        const reservation3 = { ...mockReservations.resA1, source: 'AirBnB', cleaningFee: 0 };
+        const reservation1 = { ...mockReservations.resA1, source: 'AIRBNB', cleaningFee: null };
+        const reservation2 = { ...mockReservations.resA1, source: 'airbnb', cleaningFee: null };
+        const reservation3 = { ...mockReservations.resA1, source: 'AirBnB', cleaningFee: null };
         const result1 = calculateGrossPayout(reservation1, mockListings.propertyA);
         const result2 = calculateGrossPayout(reservation2, mockListings.propertyA);
         const result3 = calculateGrossPayout(reservation3, mockListings.propertyA);
@@ -872,7 +872,7 @@ describe('Non-Detailed Finance with Passthrough', () => {
             ...mockReservations.resA1,
             hasDetailedFinance: false,
             grossAmount: 1150,
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
         const expected = 1150 - (1150 * 0.15) - 300;
@@ -885,7 +885,7 @@ describe('Non-Detailed Finance with Passthrough', () => {
             hasDetailedFinance: false,
             grossAmount: 440,
             source: 'Direct',
-            cleaningFee: 0
+            cleaningFee: null
         };
         const result = calculateGrossPayout(reservation, mockListings.propertyA);
         const expected = 440 - (440 * 0.15) - 300;

@@ -243,7 +243,7 @@ router.get('/', async (req, res) => {
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
                         // Reverse-engineer actual cleaning fee from guest-paid amount
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const guestPaidCleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
                             ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                             : 0;
@@ -824,7 +824,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = res.cleaningFee || resListingInfo.cleaningFee || 0;
+            const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
@@ -1312,7 +1312,7 @@ router.post('/generate', async (req, res) => {
         if (cleaningFeePassThrough && periodReservations.length > 0) {
             const pmPctForExpenses = listingInfo?.pmFeePercentage || 15;
             for (const res of periodReservations) {
-                const guestPaidCleaningFee = res.cleaningFee || listingInfo?.cleaningFee || 0;
+                const guestPaidCleaningFee = res.cleaningFee ?? listingInfo?.cleaningFee ?? 0;
                 const calculatedCleaningFee = guestPaidCleaningFee > 0
                     ? Math.ceil((guestPaidCleaningFee / (1 + pmPctForExpenses / 100)) / 5) * 5
                     : 0;
@@ -1426,7 +1426,7 @@ router.post('/generate', async (req, res) => {
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = res.cleaningFee || resListingInfo?.cleaningFee || listingInfo?.cleaningFee || 0;
+            const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo?.cleaningFee ?? listingInfo?.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
@@ -1950,7 +1950,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             totalRevenue += revenue;
             if (cleaningFeePassThrough) {
                 // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
-                const guestPaidCleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+                const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
                 const calculatedFee = guestPaidCleaningFee > 0
                     ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                     : 0;
@@ -1984,7 +1984,7 @@ router.put('/:id/reconfigure', async (req, res) => {
         const allExpenses = [...filteredExpenses];
         if (cleaningFeePassThrough && periodReservations.length > 0) {
             for (const res of periodReservations) {
-                const cleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+                const cleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
                 if (cleaningFee > 0) {
                     allExpenses.push({
                         description: `Cleaning Fee - ${res.guestName}`,
@@ -2026,7 +2026,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = res.cleaningFee || listing.cleaningFee || 0;
+            const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                 : 0;
@@ -2848,7 +2848,7 @@ router.get('/:id/view', async (req, res) => {
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
                 : 0;
@@ -4599,7 +4599,7 @@ router.get('/:id/view', async (req, res) => {
 
                                 // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                                 // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                                const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
                                 const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
                                     ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
                                     : 0;
@@ -4706,7 +4706,7 @@ router.get('/:id/view', async (req, res) => {
 
                                     // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                                     // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                                    const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+                                    const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
                                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
                                         ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
                                         : 0;
@@ -4963,7 +4963,7 @@ router.get('/:id/view', async (req, res) => {
 
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = reservation.cleaningFee || propSettings.cleaningFee || 0;
+            const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
                 : 0;
@@ -6250,7 +6250,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const cleaningFeeExpenses = [];
                     if (cleaningFeePassThrough && periodReservations.length > 0) {
                         for (const res of periodReservations) {
-                            const cleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                            const cleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
                             if (cleaningFee > 0) {
                                 cleaningFeeExpenses.push({
                                     id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
@@ -6290,7 +6290,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                        const guestPaidCleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                        const guestPaidCleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
                             ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                             : 0;
@@ -6673,7 +6673,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     const cleaningFeeExpenses = [];
                     if (cleaningFeePassThrough && periodReservations.length > 0) {
                         for (const res of periodReservations) {
-                            const cleaningFee = res.cleaningFee || listing?.cleaningFee || 0;
+                            const cleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
                             if (cleaningFee > 0) {
                                 cleaningFeeExpenses.push({
                                     id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
@@ -6713,7 +6713,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                        const guestPaidCleaningFee = res.cleaningFee || property.cleaningFee || 0;
+                        const guestPaidCleaningFee = res.cleaningFee ?? property.cleaningFee ?? 0;
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
                             ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                             : 0;

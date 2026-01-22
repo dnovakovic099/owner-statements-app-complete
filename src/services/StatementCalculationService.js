@@ -309,7 +309,7 @@ class StatementCalculationService {
 
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = res.cleaningFee || resListingInfo.cleaningFee || 0;
+            const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
