@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const FileDataService = require('../services/FileDataService');
 const BackgroundJobService = require('../services/BackgroundJobService');
 const ListingService = require('../services/ListingService');
@@ -13,14 +14,14 @@ router.get('/jobs/:jobId', async (req, res) => {
     try {
         const { jobId } = req.params;
         const job = BackgroundJobService.getJob(jobId);
-        
+
         if (!job) {
             return res.status(404).json({ error: 'Job not found' });
         }
-        
+
         res.json(job);
     } catch (error) {
-        console.error('Error fetching job status:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'fetchJobStatus' });
         res.status(500).json({ error: 'Failed to fetch job status' });
     }
 });
@@ -62,9 +63,9 @@ router.get('/', async (req, res) => {
                 const ownerName = (s.ownerName || '').toLowerCase();
                 const propertyNames = (s.propertyNames || '').toLowerCase();
                 return propertyName.includes(searchLower) ||
-                       groupName.includes(searchLower) ||
-                       ownerName.includes(searchLower) ||
-                       propertyNames.includes(searchLower);
+                    groupName.includes(searchLower) ||
+                    ownerName.includes(searchLower) ||
+                    propertyNames.includes(searchLower);
             });
         }
 
@@ -102,18 +103,18 @@ router.get('/', async (req, res) => {
                 return false;
             });
         }
-        
+
         if (status) {
             statements = statements.filter(s => s.status === status);
         }
-        
+
         if (startDate && endDate) {
             statements = statements.filter(s => {
                 const statementStart = new Date(s.weekStartDate);
                 const statementEnd = new Date(s.weekEndDate);
                 const filterStart = new Date(startDate);
                 const filterEnd = new Date(endDate);
-                
+
                 // Check if statement period overlaps with filter period
                 return statementStart <= filterEnd && statementEnd >= filterStart;
             });
@@ -362,7 +363,7 @@ router.get('/', async (req, res) => {
             offset: parseInt(offset)
         });
     } catch (error) {
-        console.error('Statements get error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'getStatements' });
         res.status(500).json({ error: 'Failed to get statements' });
     }
 });
@@ -434,7 +435,7 @@ router.post('/cancelled-counts', async (req, res) => {
             const allReservations = apiResponse.result || [];
             allCancelledReservations = allReservations.filter(r => r.status === 'cancelled');
         } catch (fetchError) {
-            console.warn('Cancelled counts fetch timeout, returning partial data');
+            logger.warn('Cancelled counts fetch timeout, returning partial data', { context: 'StatementsFile' });
             // Return what we have, set missing to 0
             for (const { id, cacheKey } of missingIds) {
                 counts[id] = 0;
@@ -464,7 +465,7 @@ router.post('/cancelled-counts', async (req, res) => {
 
         res.json({ counts });
     } catch (error) {
-        console.error('Get cancelled counts error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'getCancelledCounts' });
         res.status(500).json({ error: 'Failed to get cancelled counts' });
     }
 });
@@ -588,7 +589,7 @@ router.get('/:id', async (req, res) => {
 
         res.json(statement);
     } catch (error) {
-        console.error('Statement get error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'getStatement' });
         res.status(500).json({ error: 'Failed to get statement' });
     }
 });
@@ -996,7 +997,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             }
         });
     } catch (error) {
-        console.error('Combined statement generation error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'generateCombinedStatement' });
         res.status(500).json({ error: 'Failed to generate combined statement' });
     }
 }
@@ -1016,7 +1017,7 @@ router.post('/generate', async (req, res) => {
 
         // Handle group-based COMBINED statement generation
         if (groupId) {
-            console.log(`[Group Combined] Generating combined statement for group ID: ${groupId}`);
+            logger.debug('Generating combined statement for group', { context: 'StatementsFile', groupId });
 
             // Fetch group and its member listings
             const ListingGroupService = require('../services/ListingGroupService');
@@ -1030,7 +1031,7 @@ router.post('/generate', async (req, res) => {
                 return res.status(400).json({ error: `Group "${group.name}" has no member listings` });
             }
 
-            console.log(`[Group Combined] Found ${group.members.length} listings in group "${group.name}"`);
+            logger.debug('Found listings in group', { context: 'StatementsFile', groupName: group.name, count: group.members.length });
 
             // Generate combined statement using the existing function with group's listing IDs
             const groupPropertyIds = group.members.map(m => m.id.toString());
@@ -1044,7 +1045,7 @@ router.post('/generate', async (req, res) => {
 
         // Handle tag-based COMBINED statement generation
         if (tag && !propertyId && generateCombined === true) {
-            console.log(`[Tag Combined] Generating combined statement for tag "${tag}"`);
+            logger.debug('Generating combined statement for tag', { context: 'StatementsFile', tag });
 
             // Get all listings with this tag
             const listings = await FileDataService.getListings();
@@ -1058,7 +1059,7 @@ router.post('/generate', async (req, res) => {
                 return res.status(404).json({ error: `No properties found with tag: ${tag}` });
             }
 
-            console.log(`[Tag Combined] Found ${taggedListings.length} listings with tag "${tag}"`);
+            logger.debug('Found listings with tag', { context: 'StatementsFile', tag, count: taggedListings.length });
 
             // Generate combined statement using the existing function
             const taggedPropertyIds = taggedListings.map(l => l.id.toString());
@@ -1067,7 +1068,7 @@ router.post('/generate', async (req, res) => {
 
         // Handle "Generate All" option or tag-based SEPARATE statement generation - run in background
         if (ownerId === 'all' || (tag && !propertyId)) {
-            
+
             const jobId = await BackgroundJobService.runInBackground(
                 'bulk_statement_generation',
                 async (jobId) => {
@@ -1075,7 +1076,7 @@ router.post('/generate', async (req, res) => {
                 },
                 { startDate, endDate, calculationType, tag }
             );
-            
+
             return res.status(202).json({
                 message: tag ? `Tag-based statement generation started for "${tag}"` : 'Bulk statement generation started in background',
                 jobId,
@@ -1111,11 +1112,11 @@ router.post('/generate', async (req, res) => {
         const results = await Promise.all(fetchPromises);
         const [listings, reservations, expenses, owners] = results;
         const calendarReservations = calculationType === 'checkout' && propertyId ? results[4] : null;
-        
+
         // Check for duplicate warnings
         const duplicateWarnings = expenses.duplicateWarnings || [];
         if (duplicateWarnings.length > 0) {
-            console.warn(`[Warning]  Found ${duplicateWarnings.length} potential duplicate expenses in statement`);
+            logger.warn('Found potential duplicate expenses in statement', { context: 'StatementsFile', count: duplicateWarnings.length });
         }
 
         let targetListings, owner;
@@ -1135,24 +1136,24 @@ router.post('/generate', async (req, res) => {
 
             // Debug: Log all listings with tags for troubleshooting
             const listingsWithTags = listings.filter(l => l.tags && l.tags.length > 0);
-            console.log(`[Tag Filter] Looking for tag: "${tag}" (normalized: "${tagLower}")`);
-            console.log(`[Tag Filter] Total listings: ${listings.length}, Listings with tags: ${listingsWithTags.length}`);
+            logger.debug('Tag filter looking for tag', { context: 'StatementsFile', tag, normalizedTag: tagLower });
+            logger.debug('Tag filter listings stats', { context: 'StatementsFile', totalListings: listings.length, listingsWithTags: listingsWithTags.length });
 
             const taggedListings = listings.filter(l => {
                 const listingTags = l.tags || [];
                 const matches = listingTags.some(t => t.toLowerCase().trim() === tagLower);
                 if (listingTags.length > 0) {
-                    console.log(`[Tag Filter] Listing ${l.id} (${l.name}): tags=[${listingTags.join(', ')}], matches=${matches}`);
+                    logger.debug('Tag filter listing check', { context: 'StatementsFile', listingId: l.id, listingName: l.name, tags: listingTags, matches });
                 }
                 return matches;
             });
 
-            console.log(`[Tag Filter] Found ${taggedListings.length} listings matching tag "${tag}"`);
+            logger.debug('Tag filter found matching listings', { context: 'StatementsFile', tag, count: taggedListings.length });
 
             if (taggedListings.length === 0) {
                 return res.status(404).json({ error: `No properties found with tag: ${tag}` });
             }
-            
+
             targetListings = taggedListings;
             owner = owners.find(o => {
                 if (ownerId === 'default' || ownerId === 1 || ownerId === '1') {
@@ -1280,7 +1281,7 @@ router.post('/generate', async (req, res) => {
             const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             return sum + revenue;
         }, 0);
-        
+
         // Calculate total cleaning fee from reservations (for pass-through feature)
         // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
         let totalCleaningFeeFromReservations = 0;
@@ -1303,7 +1304,7 @@ router.post('/generate', async (req, res) => {
                 const description = (exp.description || '').toLowerCase();
                 // Exclude if categorized as cleaning
                 return !category.includes('cleaning') && !type.includes('cleaning') && !description.startsWith('cleaning');
-              })
+            })
             : periodExpenses;
 
         // Generate cleaning fee expenses from reservations when pass-through is enabled
@@ -1351,7 +1352,7 @@ router.post('/generate', async (req, res) => {
         // For co-hosted properties, only calculate PM commission on non-Airbnb reservations
         let pmCommission = 0;
         let pmPercentage = 15; // For display purposes
-        
+
         if (propertyId) {
             // Single property - use its PM fee for revenue (excluding co-hosted Airbnb)
             if (listingInfo && listingInfo.pmFeePercentage !== null) {
@@ -1510,7 +1511,7 @@ router.post('/generate', async (req, res) => {
                 // Use filteredExpenses to exclude cleaning expenses when pass-through is enabled
                 ...filteredExpenses.map(exp => {
                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
-                    
+
                     return {
                         type: isUpsell ? 'upsell' : 'expense',
                         description: exp.description,
@@ -1568,7 +1569,7 @@ router.post('/generate', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Statement generation error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'generateStatement' });
         res.status(500).json({ error: 'Failed to generate statement' });
     }
 });
@@ -1612,7 +1613,7 @@ router.put('/:id/status', async (req, res) => {
 
         res.json({ message: 'Statement status updated successfully' });
     } catch (error) {
-        console.error('Statement status update error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'updateStatementStatus' });
         res.status(500).json({ error: 'Failed to update statement status' });
     }
 });
@@ -1680,7 +1681,7 @@ router.get('/:id/cancelled-reservations', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Get cancelled reservations error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'getCancelledReservations' });
         res.status(500).json({ error: 'Failed to get cancelled reservations' });
     }
 });
@@ -1690,7 +1691,7 @@ router.get('/:id/available-reservations', async (req, res) => {
     try {
         const { id } = req.params;
         const statement = await FileDataService.getStatementById(id);
-        
+
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
@@ -1707,13 +1708,13 @@ router.get('/:id/available-reservations', async (req, res) => {
         const includedReservationIds = new Set(
             (statement.reservations || []).map(r => r.hostifyId || r.id)
         );
-        
+
         const availableReservations = reservations.filter(res => {
             const resId = res.hostifyId || res.id;
             return !includedReservationIds.has(resId);
         });
 
-        res.json({ 
+        res.json({
             availableReservations,
             count: availableReservations.length,
             statementPeriod: {
@@ -1724,7 +1725,7 @@ router.get('/:id/available-reservations', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Get available reservations error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'getAvailableReservations' });
         res.status(500).json({ error: 'Failed to get available reservations' });
     }
 });
@@ -2127,7 +2128,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             preserved: { customReservations: customReservations.length }
         });
     } catch (error) {
-        console.error('Statement reconfigure error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'reconfigureStatement' });
         res.status(500).json({ error: 'Failed to reconfigure statement' });
     }
 });
@@ -2165,12 +2166,12 @@ router.put('/:id', async (req, res) => {
             for (const update of itemVisibilityUpdates) {
                 const { globalIndex, hidden } = update || {};
                 if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
-                    console.warn(`Invalid globalIndex ${globalIndex} for visibility update, skipping`);
+                    logger.warn('Invalid globalIndex for visibility update, skipping', { context: 'StatementsFile', globalIndex });
                     continue;
                 }
                 const item = statement.items[globalIndex];
                 if (!item || (item.type !== 'expense' && item.type !== 'upsell')) {
-                    console.warn(`Item at globalIndex ${globalIndex} is not a hideable item, skipping`);
+                    logger.warn('Item at globalIndex is not a hideable item, skipping', { context: 'StatementsFile', globalIndex });
                     continue;
                 }
                 if (typeof hidden === 'boolean') {
@@ -2192,7 +2193,7 @@ router.put('/:id', async (req, res) => {
 
                 // Validate globalIndex is within bounds
                 if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
-                    console.warn(`Invalid globalIndex ${globalIndex} for expense update, skipping`);
+                    logger.warn('Invalid globalIndex for expense update, skipping', { context: 'StatementsFile', globalIndex });
                     continue;
                 }
 
@@ -2200,7 +2201,7 @@ router.put('/:id', async (req, res) => {
 
                 // Verify the item is an expense type
                 if (item.type !== 'expense') {
-                    console.warn(`Item at globalIndex ${globalIndex} is not an expense (type: ${item.type}), skipping`);
+                    logger.warn('Item at globalIndex is not an expense, skipping', { context: 'StatementsFile', globalIndex, type: item.type });
                     continue;
                 }
 
@@ -2221,7 +2222,7 @@ router.put('/:id', async (req, res) => {
 
                 // Validate globalIndex is within bounds
                 if (typeof globalIndex !== 'number' || globalIndex < 0 || globalIndex >= statement.items.length) {
-                    console.warn(`Invalid globalIndex ${globalIndex} for upsell update, skipping`);
+                    logger.warn('Invalid globalIndex for upsell update, skipping', { context: 'StatementsFile', globalIndex });
                     continue;
                 }
 
@@ -2229,7 +2230,7 @@ router.put('/:id', async (req, res) => {
 
                 // Verify the item is an upsell type
                 if (item.type !== 'upsell') {
-                    console.warn(`Item at globalIndex ${globalIndex} is not an upsell (type: ${item.type}), skipping`);
+                    logger.warn('Item at globalIndex is not an upsell, skipping', { context: 'StatementsFile', globalIndex, type: item.type });
                     continue;
                 }
 
@@ -2287,7 +2288,7 @@ router.put('/:id', async (req, res) => {
                 statement.propertyId,
                 statement.calculationType || 'checkout'
             );
-            
+
             const reservationsToAdd = allReservations.filter(res => {
                 const resId = res.hostifyId || res.id;
                 return reservationIdsToAdd.includes(resId);
@@ -2461,7 +2462,7 @@ router.put('/:id', async (req, res) => {
                 statement.propertyId,
                 statement.calculationType || 'checkout'
             );
-            
+
             const reservationsToAdd = allReservations.filter(res => {
                 const resId = res.hostifyId || res.id;
                 return cancelledReservationIdsToAdd.includes(resId) && res.status === 'cancelled';
@@ -2547,16 +2548,16 @@ router.put('/:id', async (req, res) => {
 
             // Update the statement status (only if not already sent)
             if (statement.status !== 'sent') {
-            statement.status = 'modified';
+                statement.status = 'modified';
             }
-            
+
             // Save updated statement (Sequelize will automatically update the timestamp)
             const updatedStatement = await FileDataService.saveStatement(statement);
-            
+
             // Use the updated statement data from database
             statement.updatedAt = updatedStatement.updatedAt || updatedStatement.updated_at;
 
-            res.json({ 
+            res.json({
                 message: 'Statement updated successfully',
                 statement: {
                     id: statement.id,
@@ -2576,7 +2577,7 @@ router.put('/:id', async (req, res) => {
             res.json({ message: 'No changes made to statement' });
         }
     } catch (error) {
-        console.error('Statement edit error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'editStatement' });
         res.status(500).json({ error: 'Failed to edit statement' });
     }
 });
@@ -2619,16 +2620,16 @@ router.delete('/:id', async (req, res) => {
             id: parseInt(id)
         });
     } catch (error) {
-        console.error('Statement delete error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'deleteStatement' });
         res.status(500).json({ error: 'Failed to delete statement' });
     }
 });
 // GET /api/statements-file/:id/view - get
 router.get('/:id/view/data', async (req, res) => {
-      try {
+    try {
         const { id } = req.params;
         const statement = await FileDataService.getStatementById(id);
-        console.log("statement-",statement);
+        logger.debug('Statement data', { context: 'StatementsFile', statement });
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
         }
@@ -2689,7 +2690,7 @@ router.get('/:id/view/data', async (req, res) => {
             data: statement
         });
     } catch (error) {
-        console.error('Statement delete error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'deleteStatement' });
         res.status(500).json({ error: 'Failed to delete statement' });
     }
 });
@@ -2734,7 +2735,7 @@ router.get('/:id/view', async (req, res) => {
                     nickname: listing.nickname || listing.displayName || listing.name || ''
                 };
             });
-            console.log('Combined statement - loaded settings for properties:', Object.keys(listingSettingsMap));
+            logger.debug('Combined statement - loaded settings for properties', { context: 'StatementsFile', properties: Object.keys(listingSettingsMap) });
         } else if (statement.propertyId) {
             // SINGLE PROPERTY STATEMENT: Fetch settings for just that property
             const currentListing = await ListingService.getListingWithPmFee(parseInt(statement.propertyId));
@@ -2918,9 +2919,9 @@ router.get('/:id/view', async (req, res) => {
                 await FileDataService.updateStatement(id, valuesToUpdate);
                 // Update local statement object for HTML generation
                 Object.assign(statement, valuesToUpdate);
-                console.log(`[SYNC] Updated statement ${id} with recalculated values: payout ${valuesToUpdate.ownerPayout}, revenue ${valuesToUpdate.totalRevenue}`);
+                logger.debug('Updated statement with recalculated values', { context: 'StatementsFile', statementId: id, payout: valuesToUpdate.ownerPayout, revenue: valuesToUpdate.totalRevenue });
             } catch (updateError) {
-                console.error(`[WARN] Failed to sync statement values: ${updateError.message}`);
+                logger.warn('Failed to sync statement values', { context: 'StatementsFile', error: updateError.message });
             }
         }
 
@@ -4452,6 +4453,15 @@ router.get('/:id/view', async (req, res) => {
             page-break-before: avoid !important;
             break-before: avoid !important;
         }
+        .action-btn.pay-owner {
+            color: #059669;
+            background: #ecfdf5;
+            border: 1px solid #d1fae5;
+        }
+        .action-btn.pay-owner:hover:not(:disabled) {
+            background: #d1fae5;
+            color: #047857;
+        }
     </style>
 </head>
 <body class="${bodyClass}">
@@ -4506,10 +4516,10 @@ router.get('/:id/view', async (req, res) => {
             <span class="calendar-notice-title">Calendar Conversion Recommended</span>
         </div>
         <div class="calendar-notice-message">${statement.calendarConversionNotice || (
-            statement.calculationType === 'checkout'
-                ? 'This property has reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.'
-                : 'This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.'
-        )}</div>
+                    statement.calculationType === 'checkout'
+                        ? 'This property has reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.'
+                        : 'This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.'
+                )}</div>
         ${statement.overlappingReservations && statement.overlappingReservations.length > 0 ? `
         <div class="overlapping-reservations">
             <div class="overlapping-reservations-title">Reservations during this period:</div>
@@ -4536,13 +4546,13 @@ router.get('/:id/view', async (req, res) => {
     <div class="section">
                 <h2 class="section-title">RENTAL ACTIVITY</h2>
                 ${(() => {
-                    // Check if ANY property has cleaningFeePassThrough enabled (for column display)
-                    const anyCleaningFeePassThrough = statement.cleaningFeePassThrough ||
-                        (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.cleaningFeePassThrough));
-                    // Check if ANY property has guestPaidDamageCoverage enabled (for column display)
-                    const anyGuestPaidDamageCoverage = statement.guestPaidDamageCoverage ||
-                        (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.guestPaidDamageCoverage));
-                    return `
+                // Check if ANY property has cleaningFeePassThrough enabled (for column display)
+                const anyCleaningFeePassThrough = statement.cleaningFeePassThrough ||
+                    (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.cleaningFeePassThrough));
+                // Check if ANY property has guestPaidDamageCoverage enabled (for column display)
+                const anyGuestPaidDamageCoverage = statement.guestPaidDamageCoverage ||
+                    (statement._listingSettingsMap && Object.values(statement._listingSettingsMap).some(s => s.guestPaidDamageCoverage));
+                return `
                 <div class="rental-table-container">
                     <table class="rental-table">
             <thead>
@@ -4561,96 +4571,96 @@ router.get('/:id/view', async (req, res) => {
             </thead>
             <tbody>
                             ${statement.reservations?.map(reservation => {
-                                // Get per-property settings from the map, fall back to statement-level settings
-                                const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
-                                    isCohostOnAirbnb: statement.isCohostOnAirbnb,
-                                    disregardTax: statement.disregardTax,
-                                    airbnbPassThroughTax: statement.airbnbPassThroughTax,
-                                    cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                                    pmFeePercentage: statement.pmPercentage,
-                                    waiveCommission: statement.waiveCommission || false,
-                                    waiveCommissionUntil: statement.waiveCommissionUntil || null,
-                                    cleaningFee: 0
-                                };
+                    // Get per-property settings from the map, fall back to statement-level settings
+                    const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
+                        isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                        disregardTax: statement.disregardTax,
+                        airbnbPassThroughTax: statement.airbnbPassThroughTax,
+                        cleaningFeePassThrough: statement.cleaningFeePassThrough,
+                        pmFeePercentage: statement.pmPercentage,
+                        waiveCommission: statement.waiveCommission || false,
+                        waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                        cleaningFee: 0
+                    };
 
-                                // Check if this is an Airbnb reservation on a co-hosted property
-                                const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
-                                const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
+                    // Check if this is an Airbnb reservation on a co-hosted property
+                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                    const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
 
-                                // Use detailed financial data if available, otherwise fall back to calculated values
-                                const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
-                                const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
-                                const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
-                                const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                                // PM Commission: use stored value for custom reservations, otherwise calculate
-                                // Use per-property PM fee percentage for regular reservations
-                                const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
-                                    ? reservation.luxuryLodgingFee
-                                    : clientRevenue * (propSettings.pmFeePercentage / 100);
-                                const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
+                    // Use detailed financial data if available, otherwise fall back to calculated values
+                    const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
+                    const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
+                    const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
+                    const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                    // PM Commission: use stored value for custom reservations, otherwise calculate
+                    // Use per-property PM fee percentage for regular reservations
+                    const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
+                        ? reservation.luxuryLodgingFee
+                        : clientRevenue * (propSettings.pmFeePercentage / 100);
+                    const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-                                // Tax calculation priority (uses per-property settings):
-                                // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
-                                // 2. For co-hosted Airbnb: Gross Payout is negative PM commission only
-                                // 3. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
-                                // 4. For non-Airbnb OR Airbnb with pass-through: include tax responsibility
-                                let grossPayout;
-                                const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
+                    // Tax calculation priority (uses per-property settings):
+                    // 1. If disregardTax is true: NEVER add tax (company remits on behalf of owner)
+                    // 2. For co-hosted Airbnb: Gross Payout is negative PM commission only
+                    // 3. For Airbnb without pass-through: no tax added (Airbnb remits taxes)
+                    // 4. For non-Airbnb OR Airbnb with pass-through: include tax responsibility
+                    let grossPayout;
+                    const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
-                                // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                                const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-                                const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                                    ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
-                                    : 0;
+                    // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                    // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                    const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
+                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                        : 0;
 
-                                // Check if PM commission waiver is active for this property
-                                const resWaiveCommission = propSettings.waiveCommission || false;
-                                const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
-                                const isWaiverActive = (() => {
-                                    if (!resWaiveCommission) return false;
-                                    if (!resWaiveCommissionUntil) return true; // Indefinite waiver
-                                    const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
-                                    const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
-                                    return stmtEnd <= waiverEnd;
-                                })();
-                                const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                    // Check if PM commission waiver is active for this property
+                    const resWaiveCommission = propSettings.waiveCommission || false;
+                    const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+                    const isWaiverActive = (() => {
+                        if (!resWaiveCommission) return false;
+                        if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                        const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
+                    const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
 
-                                // For custom reservations, use stored grossAmount exactly as entered
-                                if (reservation.isCustom) {
-                                    grossPayout = reservation.grossAmount;
-                                } else if (isCohostAirbnb) {
-                                    grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
-                                } else if (shouldAddTax) {
-                                    // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
-                                    grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
-                                } else {
-                                    // No tax: Airbnb without pass-through OR disregardTax is enabled
-                                    grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
-                                }
+                    // For custom reservations, use stored grossAmount exactly as entered
+                    if (reservation.isCustom) {
+                        grossPayout = reservation.grossAmount;
+                    } else if (isCohostAirbnb) {
+                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                    } else if (shouldAddTax) {
+                        // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
+                        grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
+                    } else {
+                        // No tax: Airbnb without pass-through OR disregardTax is enabled
+                        grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                    }
 
-                                // Get property nickname for combined statements
-                                const propertyNickname = propSettings.nickname || '';
-                                const isCombined = statement.propertyIds && statement.propertyIds.length > 1;
+                    // Get property nickname for combined statements
+                    const propertyNickname = propSettings.nickname || '';
+                    const isCombined = statement.propertyIds && statement.propertyIds.length > 1;
 
-                                return `
+                    return `
                                 <tr>
                                     <td class="guest-details-cell">
                                         <div class="guest-name">${reservation.guestName}</div>
                                         ${isCombined && propertyNickname ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyNickname}</div>` : ''}
                                         <div class="guest-info">${(() => {
-                                            const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
-                                            const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
-                                            const checkIn = new Date(yearIn, monthIn - 1, dayIn).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                            const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                            return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
-                                        })()}</div>
+                            const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
+                            const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
+                            const checkIn = new Date(yearIn, monthIn - 1, dayIn).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                            const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                            return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
+                        })()}</div>
                                         <div class="channel-badge">${reservation.source}</div>
                                         ${reservation.prorationNote ?
-                                            `<div class="proration-info" style="font-size: 10px; color: #007bff; margin-top: 2px;">
+                            `<div class="proration-info" style="font-size: 10px; color: #007bff; margin-top: 2px;">
                                                 ${reservation.prorationNote}
                                             </div>` : ''
-                                        }
+                        }
                                     </td>
                                     ${anyGuestPaidDamageCoverage ? `<td class="amount-cell info-amount">$${(reservation.resortFee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : ''}
                                     <td class="amount-cell revenue-amount">$${baseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -4663,90 +4673,90 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                                 `;
-                            }).join('') || `<tr><td colspan="${8 + (anyGuestPaidDamageCoverage ? 1 : 0) + (anyCleaningFeePassThrough ? 1 : 0)}" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>`}
+                }).join('') || `<tr><td colspan="${8 + (anyGuestPaidDamageCoverage ? 1 : 0) + (anyCleaningFeePassThrough ? 1 : 0)}" style="text-align: center; color: var(--luxury-gray); font-style: italic;">No rental activity found</td></tr>`}
                             ${(() => {
-                                // Calculate totals using the same logic as individual rows
-                                let totalBaseRate = 0;
-                                let totalCleaningFees = 0;
-                                let totalPlatformFees = 0;
-                                let totalClientRevenue = 0;
-                                let totalLuxuryFee = 0;
-                                let totalCleaningExpense = 0; // For cleaning fee pass-through
-                                let totalTaxResponsibility = 0;
-                                let totalGrossPayout = 0;
-                                let totalResortFee = 0; // For Guest Paid Damage Coverage
+                        // Calculate totals using the same logic as individual rows
+                        let totalBaseRate = 0;
+                        let totalCleaningFees = 0;
+                        let totalPlatformFees = 0;
+                        let totalClientRevenue = 0;
+                        let totalLuxuryFee = 0;
+                        let totalCleaningExpense = 0; // For cleaning fee pass-through
+                        let totalTaxResponsibility = 0;
+                        let totalGrossPayout = 0;
+                        let totalResortFee = 0; // For Guest Paid Damage Coverage
 
-                                statement.reservations?.forEach(reservation => {
-                                    // Get per-property settings from the map, fall back to statement-level settings
-                                    const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
-                                        isCohostOnAirbnb: statement.isCohostOnAirbnb,
-                                        disregardTax: statement.disregardTax,
-                                        airbnbPassThroughTax: statement.airbnbPassThroughTax,
-                                        cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                                        pmFeePercentage: statement.pmPercentage,
-                                        waiveCommission: statement.waiveCommission || false,
-                                        waiveCommissionUntil: statement.waiveCommissionUntil || null,
-                                        cleaningFee: 0
-                                    };
+                        statement.reservations?.forEach(reservation => {
+                            // Get per-property settings from the map, fall back to statement-level settings
+                            const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
+                                isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                                disregardTax: statement.disregardTax,
+                                airbnbPassThroughTax: statement.airbnbPassThroughTax,
+                                cleaningFeePassThrough: statement.cleaningFeePassThrough,
+                                pmFeePercentage: statement.pmPercentage,
+                                waiveCommission: statement.waiveCommission || false,
+                                waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                                cleaningFee: 0
+                            };
 
-                                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
-                                    const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
+                            const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                            const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
 
-                                    const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
-                                    const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
-                                    const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
-                                    const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-                                    // PM Commission: use stored value for custom reservations, otherwise calculate
-                                    const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
-                                        ? reservation.luxuryLodgingFee
-                                        : clientRevenue * (propSettings.pmFeePercentage / 100);
-                                    const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
+                            const baseRate = reservation.hasDetailedFinance ? reservation.baseRate : (reservation.grossAmount * 0.85);
+                            const cleaningFees = reservation.hasDetailedFinance ? reservation.cleaningAndOtherFees : (reservation.grossAmount * 0.15);
+                            const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
+                            const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                            // PM Commission: use stored value for custom reservations, otherwise calculate
+                            const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
+                                ? reservation.luxuryLodgingFee
+                                : clientRevenue * (propSettings.pmFeePercentage / 100);
+                            const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-                                    const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
+                            const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
 
-                                    // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
-                                    // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-                                    const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-                                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
-                                        : 0;
+                            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                            const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
+                            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                                : 0;
 
-                                    // Check if PM commission waiver is active for this property
-                                    const resWaiveCommission = propSettings.waiveCommission || false;
-                                    const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
-                                    const isWaiverActive = (() => {
-                                        if (!resWaiveCommission) return false;
-                                        if (!resWaiveCommissionUntil) return true; // Indefinite waiver
-                                        const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
-                                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
-                                        return stmtEnd <= waiverEnd;
-                                    })();
-                                    const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                            // Check if PM commission waiver is active for this property
+                            const resWaiveCommission = propSettings.waiveCommission || false;
+                            const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+                            const isWaiverActive = (() => {
+                                if (!resWaiveCommission) return false;
+                                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                                const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                                return stmtEnd <= waiverEnd;
+                            })();
+                            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
 
-                                    let grossPayout;
-                                    // For custom reservations, use stored grossAmount exactly as entered
-                                    if (reservation.isCustom) {
-                                        grossPayout = reservation.grossAmount;
-                                    } else if (isCohostAirbnb) {
-                                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
-                                    } else if (shouldAddTax) {
-                                        grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
-                                    } else {
-                                        grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
-                                    }
+                            let grossPayout;
+                            // For custom reservations, use stored grossAmount exactly as entered
+                            if (reservation.isCustom) {
+                                grossPayout = reservation.grossAmount;
+                            } else if (isCohostAirbnb) {
+                                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                            } else if (shouldAddTax) {
+                                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
+                            } else {
+                                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                            }
 
-                                    totalBaseRate += baseRate;
-                                    totalCleaningFees += cleaningFees;
-                                    totalPlatformFees += platformFees;
-                                    totalClientRevenue += clientRevenue;
-                                    totalLuxuryFee += luxuryFeeToDeduct;
-                                    totalCleaningExpense += cleaningFeeForPassThrough;
-                                    totalTaxResponsibility += taxResponsibility;
-                                    totalGrossPayout += grossPayout;
-                                    totalResortFee += (reservation.resortFee || 0);
-                                });
+                            totalBaseRate += baseRate;
+                            totalCleaningFees += cleaningFees;
+                            totalPlatformFees += platformFees;
+                            totalClientRevenue += clientRevenue;
+                            totalLuxuryFee += luxuryFeeToDeduct;
+                            totalCleaningExpense += cleaningFeeForPassThrough;
+                            totalTaxResponsibility += taxResponsibility;
+                            totalGrossPayout += grossPayout;
+                            totalResortFee += (reservation.resortFee || 0);
+                        });
 
-                                return `
+                        return `
                             <tr class="totals-row">
                                 <td><strong>TOTALS</strong></td>
                                 ${anyGuestPaidDamageCoverage ? `<td class="amount-cell"><strong>$${totalResortFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>` : ''}
@@ -4759,12 +4769,12 @@ router.get('/:id/view', async (req, res) => {
                                 <td class="amount-cell"><strong>$${totalTaxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                                 <td class="amount-cell payout-cell"><strong>${totalGrossPayout >= 0 ? '$' : '-$'}${Math.abs(totalGrossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                             </tr>`;
-                            })()}
+                    })()}
             </tbody>
         </table>
             </div>
             </div>`;
-                })()}
+            })()}
 
     ${statement.duplicateWarnings && statement.duplicateWarnings.length > 0 ? `
     <!-- Duplicate Warnings Section -->
@@ -4805,18 +4815,18 @@ router.get('/:id/view', async (req, res) => {
 
     <!-- Expenses Section - only show if there are expenses (excluding cleaning when pass-through enabled) -->
     ${statement.items?.filter(item => {
-        if (item.type !== 'expense') return false;
-        if (isHiddenItem(item)) return false;
-        // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-        if (statement.cleaningFeePassThrough) {
-            const category = (item.category || '').toLowerCase();
-            const description = (item.description || '').toLowerCase();
-            if (category.includes('cleaning') || description.startsWith('cleaning')) {
-                return false;
-            }
-        }
-        return true;
-    }).length > 0 ? `
+                if (item.type !== 'expense') return false;
+                if (isHiddenItem(item)) return false;
+                // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                if (statement.cleaningFeePassThrough) {
+                    const category = (item.category || '').toLowerCase();
+                    const description = (item.description || '').toLowerCase();
+                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        return false;
+                    }
+                }
+                return true;
+            }).length > 0 ? `
     <div class="section">
         <h2 class="section-title">EXPENSES</h2>
         <div class="expenses-container">
@@ -4832,36 +4842,36 @@ router.get('/:id/view', async (req, res) => {
             </thead>
             <tbody>
                     ${statement.items?.filter(item => {
-                        if (item.type !== 'expense') return false;
-                        if (isHiddenItem(item)) return false;
-                        // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
-                        if (statement.cleaningFeePassThrough) {
-                            const category = (item.category || '').toLowerCase();
-                            const description = (item.description || '').toLowerCase();
-                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    }).map(expense => {
-                        // Check if this expense is part of a duplicate warning
-                        const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
-                            const matchesExpense1 = dup.expense1.description === expense.description &&
-                                                   Math.abs(dup.expense1.amount - expense.amount) < 0.01 &&
-                                                   dup.expense1.date === expense.date;
-                            const matchesExpense2 = dup.expense2.description === expense.description &&
-                                                   Math.abs(dup.expense2.amount - expense.amount) < 0.01 &&
-                                                   dup.expense2.date === expense.date;
-                            return matchesExpense1 || matchesExpense2;
-                        });
+                if (item.type !== 'expense') return false;
+                if (isHiddenItem(item)) return false;
+                // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
+                if (statement.cleaningFeePassThrough) {
+                    const category = (item.category || '').toLowerCase();
+                    const description = (item.description || '').toLowerCase();
+                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        return false;
+                    }
+                }
+                return true;
+            }).map(expense => {
+                // Check if this expense is part of a duplicate warning
+                const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
+                    const matchesExpense1 = dup.expense1.description === expense.description &&
+                        Math.abs(dup.expense1.amount - expense.amount) < 0.01 &&
+                        dup.expense1.date === expense.date;
+                    const matchesExpense2 = dup.expense2.description === expense.description &&
+                        Math.abs(dup.expense2.amount - expense.amount) < 0.01 &&
+                        dup.expense2.date === expense.date;
+                    return matchesExpense1 || matchesExpense2;
+                });
 
-                        return `
+                return `
                         <tr${isDuplicate ? ' style="background-color: #fff3cd; border-left: 4px solid #ffc107;"' : ''}>
                             <td class="date-cell">
                                 ${(() => {
-                                    const [year, month, day] = expense.date.split('-').map(Number);
-                                    return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                })()}
+                        const [year, month, day] = expense.date.split('-').map(Number);
+                        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                    })()}
                                 ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">Duplicate</span>' : ''}
                             </td>
                             <td class="description-cell">${expense.description}</td>
@@ -4870,22 +4880,22 @@ router.get('/:id/view', async (req, res) => {
                             <td class="amount-cell expense-amount">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     `;
-                    }).join('')}
+            }).join('')}
                     <tr class="totals-row">
                         <td colspan="4"><strong>TOTAL EXPENSES</strong></td>
                         <td class="amount-cell expense-amount"><strong>$${(statement.items?.filter(item => {
-                            if (item.type !== 'expense') return false;
-                            if (isHiddenItem(item)) return false;
-                            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-                            if (statement.cleaningFeePassThrough) {
-                                const category = (item.category || '').toLowerCase();
-                                const description = (item.description || '').toLowerCase();
-                                if (category.includes('cleaning') || description.startsWith('cleaning')) {
-                                    return false;
-                                }
-                            }
-                            return true;
-                        }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                if (item.type !== 'expense') return false;
+                if (isHiddenItem(item)) return false;
+                // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                if (statement.cleaningFeePassThrough) {
+                    const category = (item.category || '').toLowerCase();
+                    const description = (item.description || '').toLowerCase();
+                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        return false;
+                    }
+                }
+                return true;
+            }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                     </tr>
             </tbody>
         </table>
@@ -4913,9 +4923,9 @@ router.get('/:id/view', async (req, res) => {
                         <tr>
                             <td class="date-cell">
                                 ${(() => {
-                                    const [year, month, day] = upsell.date.split('-').map(Number);
-                                    return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-                                })()}
+                    const [year, month, day] = upsell.date.split('-').map(Number);
+                    return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                })()}
                             </td>
                             <td class="description-cell">${upsell.description}</td>
                             <td class="listing-cell">${upsell.listing || '-'}</td>
@@ -4935,84 +4945,84 @@ router.get('/:id/view', async (req, res) => {
 
     <!-- Summary Section -->
     ${(() => {
-        // Calculate summary values from reservations (same as TOTALS row)
-        let summaryGrossPayout = 0;
+                // Calculate summary values from reservations (same as TOTALS row)
+                let summaryGrossPayout = 0;
 
-        statement.reservations?.forEach(reservation => {
-            // Get per-property settings from the map, fall back to statement-level settings
-            const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
-                isCohostOnAirbnb: statement.isCohostOnAirbnb,
-                disregardTax: statement.disregardTax,
-                airbnbPassThroughTax: statement.airbnbPassThroughTax,
-                cleaningFeePassThrough: statement.cleaningFeePassThrough,
-                pmFeePercentage: statement.pmPercentage,
-                waiveCommission: statement.waiveCommission || false,
-                waiveCommissionUntil: statement.waiveCommissionUntil || null,
-                cleaningFee: 0
-            };
+                statement.reservations?.forEach(reservation => {
+                    // Get per-property settings from the map, fall back to statement-level settings
+                    const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
+                        isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                        disregardTax: statement.disregardTax,
+                        airbnbPassThroughTax: statement.airbnbPassThroughTax,
+                        cleaningFeePassThrough: statement.cleaningFeePassThrough,
+                        pmFeePercentage: statement.pmPercentage,
+                        waiveCommission: statement.waiveCommission || false,
+                        waiveCommissionUntil: statement.waiveCommissionUntil || null,
+                        cleaningFee: 0
+                    };
 
-            const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
-            const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
+                    const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
+                    const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
 
-            const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-            // PM Commission: use stored value for custom reservations, otherwise calculate
-            const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
-                ? reservation.luxuryLodgingFee
-                : clientRevenue * (propSettings.pmFeePercentage / 100);
-            const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
+                    const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                    // PM Commission: use stored value for custom reservations, otherwise calculate
+                    const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
+                        ? reservation.luxuryLodgingFee
+                        : clientRevenue * (propSettings.pmFeePercentage / 100);
+                    const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
-            // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
-            // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
-            const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
-                : 0;
+                    // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
+                    // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+                    const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
+                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                        : 0;
 
-            // Check if PM commission waiver is active for this property
-            const resWaiveCommission = propSettings.waiveCommission || false;
-            const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
-            const isWaiverActive = (() => {
-                if (!resWaiveCommission) return false;
-                if (!resWaiveCommissionUntil) return true; // Indefinite waiver
-                const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
-                const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
-                return stmtEnd <= waiverEnd;
-            })();
-            const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
+                    // Check if PM commission waiver is active for this property
+                    const resWaiveCommission = propSettings.waiveCommission || false;
+                    const resWaiveCommissionUntil = propSettings.waiveCommissionUntil || null;
+                    const isWaiverActive = (() => {
+                        if (!resWaiveCommission) return false;
+                        if (!resWaiveCommissionUntil) return true; // Indefinite waiver
+                        const waiverEnd = new Date(resWaiveCommissionUntil + 'T23:59:59');
+                        const stmtEnd = new Date(statement.weekEndDate + 'T00:00:00');
+                        return stmtEnd <= waiverEnd;
+                    })();
+                    const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
 
-            const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
-            let grossPayout;
-            // For custom reservations, use stored grossAmount exactly as entered
-            if (reservation.isCustom) {
-                grossPayout = reservation.grossAmount;
-            } else if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
-            } else if (shouldAddTax) {
-                grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
-            } else {
-                grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
-            }
+                    const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
+                    let grossPayout;
+                    // For custom reservations, use stored grossAmount exactly as entered
+                    if (reservation.isCustom) {
+                        grossPayout = reservation.grossAmount;
+                    } else if (isCohostAirbnb) {
+                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                    } else if (shouldAddTax) {
+                        grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
+                    } else {
+                        grossPayout = clientRevenue - luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                    }
 
-            summaryGrossPayout += grossPayout;
-        });
+                    summaryGrossPayout += grossPayout;
+                });
 
-        const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
-        const totalExpenses = statement.items?.filter(item => {
-            if (item.type !== 'expense') return false;
-            if (isHiddenItem(item)) return false;
-            // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-            if (statement.cleaningFeePassThrough) {
-                const category = (item.category || '').toLowerCase();
-                const description = (item.description || '').toLowerCase();
-                if (category.includes('cleaning') || description.startsWith('cleaning')) {
-                    return false;
-                }
-            }
-            return true;
-        }).reduce((sum, item) => sum + item.amount, 0) || 0;
-        const netPayout = summaryGrossPayout + totalUpsells - totalExpenses;
+                const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
+                const totalExpenses = statement.items?.filter(item => {
+                    if (item.type !== 'expense') return false;
+                    if (isHiddenItem(item)) return false;
+                    // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                    if (statement.cleaningFeePassThrough) {
+                        const category = (item.category || '').toLowerCase();
+                        const description = (item.description || '').toLowerCase();
+                        if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }).reduce((sum, item) => sum + item.amount, 0) || 0;
+                const netPayout = summaryGrossPayout + totalUpsells - totalExpenses;
 
-        return `
+                return `
     <div class="section">
                 <div class="statement-summary">
                     <div class="summary-box">
@@ -5039,19 +5049,19 @@ router.get('/:id/view', async (req, res) => {
                     </div>
                 </div>
             </div>`;
-    })()}
+            })()}
 
         ${isPdf ? '' : `<div class="footer">
             <div class="footer-content">
                 <div class="generated-info">
                     Statement generated on ${new Date().toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    })}
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })}
                 </div>
                 <div class="action-buttons">
                     <button onclick="editStatement()" class="action-btn edit" ${statement.status === 'final' ? 'disabled title="Cannot edit finalized statement"' : ''}>
@@ -5066,6 +5076,14 @@ router.get('/:id/view', async (req, res) => {
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Download
                     </button>
+                    ${statement.ownerPayout > 0 ? `
+                        <button onclick="payOwner()" class="action-btn pay-owner" id="pay-owner-btn" 
+                                ${statement.status !== 'final' ? 'disabled title="Statement must be finalized first"' :
+                        (statement.payoutStatus === 'paid' ? 'disabled title="Already paid"' : '')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                            ${statement.payoutStatus === 'paid' ? 'Paid' : 'Pay Owner'}
+                        </button>
+                    ` : ''}
                     <button onclick="finalizeStatement()" class="action-btn finalize" id="finalize-btn" ${statement.status === 'final' ? 'disabled title="Already finalized"' : ''}>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                         Finalize
@@ -5200,6 +5218,8 @@ router.get('/:id/view', async (req, res) => {
         <script>
             const statementId = ${id};
             const statementStatus = '${statement.status}';
+            const statementOwnerPayout = ${statement.ownerPayout || 0};
+            const statementPayoutStatus = '${statement.payoutStatus || 'unpaid'}';
             const statementData = {
                 ownerId: '${statement.ownerId}',
                 propertyId: '${statement.propertyId || ''}',
@@ -5415,6 +5435,34 @@ router.get('/:id/view', async (req, res) => {
                     alert('Error saving notes: ' + error.message);
                     btn.textContent = originalText;
                     btn.disabled = false;
+                }
+            }
+
+            async function payOwner() {
+                const confirmed = await showConfirm('Pay Owner', 'Transfer $' + parseFloat(statementOwnerPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' to owner?', 'success');
+                if (!confirmed) return;
+
+                showLoading('pay-owner-btn');
+                try {
+                    const response = await fetch('/api/payouts/statements/' + statementId + '/transfer', {
+                        method: 'POST',
+                        headers: getAuthHeaders()
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        await showAlert('Success', 'Payment sent successfully!', 'success');
+                        window.location.reload();
+                    } else {
+                        throw new Error(data.error || 'Transfer failed');
+                    }
+                } catch (error) {
+                    const btn = document.getElementById('pay-owner-btn');
+                    if (btn) {
+                        btn.classList.remove('loading');
+                        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg> Pay Owner';
+                    }
+                    showAlert('Error', error.message || 'Failed to process payment', 'danger');
                 }
             }
 
@@ -5648,7 +5696,7 @@ router.get('/:id/view', async (req, res) => {
 
         res.send(statementHTML);
     } catch (error) {
-        console.error('Statement view error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'viewStatement' });
         res.status(500).json({ error: 'Failed to view statement' });
     }
 });
@@ -5728,7 +5776,7 @@ router.post('/bulk-download', async (req, res) => {
             try {
                 const statement = await FileDataService.getStatementById(id);
                 if (!statement) {
-                    console.warn(`Statement ${id} not found, skipping`);
+                    logger.warn('Statement not found, skipping', { context: 'StatementsFile', statementId: id });
                     continue;
                 }
 
@@ -5748,7 +5796,7 @@ router.post('/bulk-download', async (req, res) => {
                             propertyNickname = listing.nickname;
                         }
                     } catch (err) {
-                        console.error('Error fetching listing for filename:', err);
+                        logger.logError(err, { context: 'StatementsFile', action: 'fetchListingForFilename' });
                     }
                 }
 
@@ -5766,7 +5814,7 @@ router.post('/bulk-download', async (req, res) => {
                 archive.append(pdfBuffer, { name: filename });
 
             } catch (err) {
-                console.error(`Error processing statement ${id}:`, err);
+                logger.logError(err, { context: 'StatementsFile', action: 'processStatement', statementId: id });
                 // Continue with other statements
             }
         }
@@ -5775,7 +5823,7 @@ router.post('/bulk-download', async (req, res) => {
         await archive.finalize();
 
     } catch (error) {
-        console.error('Bulk download error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'bulkDownload' });
         res.status(500).json({ error: 'Failed to create ZIP file' });
     }
 });
@@ -5858,7 +5906,7 @@ router.get('/:id/download', async (req, res) => {
                     propertyNickname = listing.nickname;
                 }
             } catch (err) {
-                console.error('Error fetching listing for filename:', err);
+                logger.logError(err, { context: 'StatementsFile', action: 'fetchListingForFilename' });
             }
         }
 
@@ -5899,7 +5947,7 @@ router.get('/:id/download', async (req, res) => {
         res.send(pdfBuffer);
 
     } catch (error) {
-        console.error('Statement PDF download error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'downloadPDF' });
         res.status(500).json({ error: 'Failed to download statement PDF' });
     }
 });
@@ -5918,14 +5966,14 @@ router.get('/:id/download', async (req, res) => {
  */
 async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, calculationType, tag = null) {
     try {
-        console.log(`[Bulk Gen] Starting bulk generation for period ${startDate} to ${endDate}`);
-        console.log(`[Bulk Gen] Calculation type: ${calculationType}, Tag filter: ${tag || 'none'}`);
+        logger.info('Starting bulk generation', { context: 'StatementsFile', startDate, endDate });
+        logger.info('Bulk generation parameters', { context: 'StatementsFile', calculationType, tag: tag || 'none' });
 
         // Mark job as processing immediately
         BackgroundJobService.updateJob(jobId, { status: 'processing' });
 
         // STEP 1: Bulk fetch ALL reservations (past 365 days, handles pagination & child listings)
-        console.log('[Bulk Gen] Step 1: Bulk fetching all reservations...');
+        logger.debug('Bulk fetching all reservations', { context: 'StatementsFile', step: 1 });
         BackgroundJobService.updateProgress(jobId, 0, 'Fetching all reservations (this may take several minutes)...');
 
         const hostifyService = require('../services/HostifyService');
@@ -5934,18 +5982,18 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         });
 
         const allReservations = bulkData.reservations;
-        console.log(`[Bulk Gen] Bulk fetch complete: ${allReservations.length} reservations, ${bulkData.listings.length} listings`);
-        console.log(`[Bulk Gen] Child-to-parent mappings: ${bulkData.childToParentMap.size}`);
+        logger.debug('Bulk fetch complete', { context: 'StatementsFile', reservations: allReservations.length, listings: bulkData.listings.length });
+        logger.debug('Child-to-parent mappings', { context: 'StatementsFile', count: bulkData.childToParentMap.size });
 
         // STEP 2: Get listings with local database info (tags, PM fees, etc.)
-        console.log('[Bulk Gen] Step 2: Loading listing configurations...');
+        logger.debug('Loading listing configurations', { context: 'StatementsFile', step: 2 });
         const listings = await FileDataService.getListings();
-        console.log(`[Bulk Gen] Total listings from database: ${listings.length}`);
+        logger.debug('Total listings from database', { context: 'StatementsFile', count: listings.length });
 
         // STEP 3: Fetch expenses
-        console.log('[Bulk Gen] Step 3: Fetching expenses...');
+        logger.debug('Fetching expenses', { context: 'StatementsFile', step: 3 });
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
-        console.log(`[Bulk Gen] Loaded ${allExpenses.length} expenses`);
+        logger.debug('Loaded expenses', { context: 'StatementsFile', count: allExpenses.length });
 
         // Filter listings:
         // - If property has tags, include it (don't skip based on isActive)
@@ -5957,7 +6005,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             }
             return l.isActive; // Properties without tags must be active
         });
-        console.log(`[Bulk Gen] Properties after isActive/tags filter: ${activeListings.length} (active: ${listings.filter(l => l.isActive).length}, tagged: ${listings.filter(l => l.tags && l.tags.length > 0).length})`);
+        logger.debug('Properties after isActive/tags filter', { context: 'StatementsFile', activeListings: activeListings.length, totalActive: listings.filter(l => l.isActive).length, tagged: listings.filter(l => l.tags && l.tags.length > 0).length });
 
         // Apply tag filter if specified (case-insensitive)
         // STEP 3.5: If tag is specified, first generate GROUP statements, then individual non-grouped listings
@@ -5968,42 +6016,42 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             const tagLower = tag.toLowerCase().trim();
 
             // First, find groups with this tag and generate combined statements for them
-            console.log(`[Bulk Gen] ========== GROUP GENERATION START ==========`);
-            console.log(`[Bulk Gen] Checking for groups with tag "${tag}" (normalized: "${tagLower}")...`);
+            logger.debug('GROUP GENERATION START', { context: 'StatementsFile' });
+            logger.debug('Checking for groups with tag', { context: 'StatementsFile', tag, normalizedTag: tagLower });
             const ListingGroupService = require('../services/ListingGroupService');
             const StatementService = require('../services/StatementService');
 
             try {
                 const taggedGroups = await ListingGroupService.getGroupsByTag(tag);
-                console.log(`[Bulk Gen] Found ${taggedGroups.length} groups with tag "${tag}"`);
+                logger.debug('Found groups with tag', { context: 'StatementsFile', tag, count: taggedGroups.length });
 
                 if (taggedGroups.length > 0) {
-                    console.log(`[Bulk Gen] Groups to process:`, taggedGroups.map(g => ({ id: g.id, name: g.name, tags: g.tags })));
+                    logger.debug('Groups to process', { context: 'StatementsFile', groups: taggedGroups.map(g => ({ id: g.id, name: g.name, tags: g.tags })) });
                     BackgroundJobService.updateProgress(jobId, 0, `Generating statements for ${taggedGroups.length} groups with tag "${tag}"...`);
 
                     for (let i = 0; i < taggedGroups.length; i++) {
                         const group = taggedGroups[i];
-                        console.log(`[Bulk Gen] ---------- Processing group ${i + 1}/${taggedGroups.length}: "${group.name}" (ID: ${group.id}) ----------`);
+                        logger.debug('Processing group', { context: 'StatementsFile', progress: `${i + 1}/${taggedGroups.length}`, groupName: group.name, groupId: group.id });
 
                         try {
                             // Get group details with member listings
-                            console.log(`[Bulk Gen] Fetching group details for ID: ${group.id}...`);
+                            logger.debug('Fetching group details', { context: 'StatementsFile', groupId: group.id });
                             const groupDetails = await ListingGroupService.getGroupById(group.id);
-                            console.log(`[Bulk Gen] Group "${group.name}" has ${groupDetails.members?.length || 0} member listings`);
+                            logger.debug('Group member listings', { context: 'StatementsFile', groupName: group.name, memberCount: groupDetails.members?.length || 0 });
 
                             if (!groupDetails.members || groupDetails.members.length === 0) {
-                                console.log(`[Bulk Gen] SKIP - Group "${group.name}" has no member listings`);
+                                logger.debug('SKIP - Group has no member listings', { context: 'StatementsFile', groupName: group.name });
                                 continue;
                             }
 
                             // Track listing IDs that belong to this group
                             const memberIds = groupDetails.members.map(m => m.id);
-                            console.log(`[Bulk Gen] Member listing IDs: [${memberIds.join(', ')}]`);
+                            logger.debug('Member listing IDs', { context: 'StatementsFile', memberIds });
                             groupDetails.members.forEach(m => groupedListingIds.add(m.id));
 
                             // Generate combined draft statement for the group
-                            console.log(`[Bulk Gen] Calling StatementService.generateGroupStatement() for "${group.name}"...`);
-                            console.log(`[Bulk Gen] Params: groupId=${group.id}, startDate=${startDate}, endDate=${endDate}, calculationType=${group.calculationType || calculationType}`);
+                            logger.debug('Calling StatementService.generateGroupStatement()', { context: 'StatementsFile', groupName: group.name });
+                            logger.debug('Group statement params', { context: 'StatementsFile', groupId: group.id, startDate, endDate, calculationType: group.calculationType || calculationType });
 
                             const statement = await StatementService.generateGroupStatement({
                                 groupId: group.id,
@@ -6017,7 +6065,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             // Check if statement was skipped (duplicate)
                             if (statement?.skipped) {
                                 groupResults.skipped++;
-                                console.log(`[Bulk Gen] SKIPPED - Group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
+                                logger.debug('SKIPPED - Group statement already exists', { context: 'StatementsFile', groupName: group.name, existingId: statement.existingId });
                                 continue;
                             }
 
@@ -6029,25 +6077,21 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                 memberCount: groupDetails.members.length
                             });
 
-                            console.log(`[Bulk Gen] SUCCESS - Generated statement ID: ${statement?.id} for group "${group.name}" (${groupDetails.members.length} listings)`);
+                            logger.debug('SUCCESS - Generated group statement', { context: 'StatementsFile', statementId: statement?.id, groupName: group.name, memberCount: groupDetails.members.length });
                         } catch (groupError) {
-                            console.error(`[Bulk Gen] FAILED - Error generating statement for group "${group.name}" (ID: ${group.id}):`);
-                            console.error(`[Bulk Gen] Error name: ${groupError.name}`);
-                            console.error(`[Bulk Gen] Error message: ${groupError.message}`);
-                            console.error(`[Bulk Gen] Error stack:`, groupError.stack);
+                            logger.logError(groupError, { context: 'StatementsFile', action: 'generateGroupStatement', groupName: group.name, groupId: group.id });
                             groupResults.errors++;
                         }
                     }
 
-                    console.log(`[Bulk Gen] ========== GROUP GENERATION COMPLETE ==========`);
-                    console.log(`[Bulk Gen] Summary: ${groupResults.generated} created, ${groupResults.skipped} skipped, ${groupResults.errors} errors`);
-                    console.log(`[Bulk Gen] Successfully created groups:`, groupResults.groups.map(g => ({ name: g.groupName, statementId: g.statementId })));
+                    logger.debug('GROUP GENERATION COMPLETE', { context: 'StatementsFile' });
+                    logger.debug('Group generation summary', { context: 'StatementsFile', generated: groupResults.generated, skipped: groupResults.skipped, errors: groupResults.errors });
+                    logger.debug('Successfully created groups', { context: 'StatementsFile', groups: groupResults.groups.map(g => ({ name: g.groupName, statementId: g.statementId })) });
                 } else {
-                    console.log(`[Bulk Gen] No groups found with tag "${tag}" - skipping group generation`);
+                    logger.debug('No groups found with tag - skipping group generation', { context: 'StatementsFile', tag });
                 }
             } catch (groupServiceError) {
-                console.error(`[Bulk Gen] CRITICAL ERROR fetching groups by tag:`, groupServiceError.message);
-                console.error(`[Bulk Gen] Error stack:`, groupServiceError.stack);
+                logger.logError(groupServiceError, { context: 'StatementsFile', action: 'fetchGroupsByTag', tag });
             }
 
             // Now filter listings: only include those with the tag AND not in any group
@@ -6057,12 +6101,12 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 const isInGroup = groupedListingIds.has(l.id) || l.groupId;
 
                 if (hasTag && isInGroup) {
-                    console.log(`[Bulk Gen] Listing ${l.id} (${l.name || l.nickname}) is in a group, skipping individual generation`);
+                    logger.debug('Listing is in a group, skipping individual generation', { context: 'StatementsFile', listingId: l.id, listingName: l.name || l.nickname });
                 }
 
                 return hasTag && !isInGroup;
             });
-            console.log(`[Bulk Gen] After tag filter "${tag}" (excluding grouped): ${activeListings.length} individual properties`);
+            logger.debug('After tag filter (excluding grouped)', { context: 'StatementsFile', tag, count: activeListings.length });
         }
 
         BackgroundJobService.startJob(jobId, activeListings.length + groupResults.generated);
@@ -6078,14 +6122,14 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
 
-        console.log(`[Bulk Gen] Step 4: Generating statements for ${activeListings.length} properties (PARALLEL MODE)...`);
+        logger.debug('Generating statements in parallel', { context: 'StatementsFile', step: 4, count: activeListings.length });
 
         // Log all unique propertyIds in the reservation pool for debugging
         const uniquePropertyIds = [...new Set(allReservations.map(r => r.propertyId))];
-        console.log(`[Bulk Gen] Unique propertyIds in reservation pool: ${uniquePropertyIds.length}`);
+        logger.debug('Unique propertyIds in reservation pool', { context: 'StatementsFile', count: uniquePropertyIds.length });
 
         // Pre-fetch all listing configs in parallel for speed
-        console.log(`[Bulk Gen] Pre-fetching listing configurations...`);
+        logger.debug('Pre-fetching listing configurations', { context: 'StatementsFile' });
         const listingConfigs = new Map();
         // Create a map of Hostify listings for cleaningFee lookup
         const hostifyListingMap = new Map(activeListings.map(l => [l.id, l]));
@@ -6103,7 +6147,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             }));
             configs.forEach(({ id, config }) => listingConfigs.set(id, config));
         }
-        console.log(`[Bulk Gen] Pre-fetched ${listingConfigs.size} listing configurations`);
+        logger.debug('Pre-fetched listing configurations', { context: 'StatementsFile', count: listingConfigs.size });
 
         // STEP 4: Generate statements in PARALLEL batches
         const BATCH_SIZE = 100; // Process 100 properties at a time
@@ -6166,7 +6210,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         // For checkout mode: flag if there are overlapping reservations but no checkouts in period
                         if (overlappingReservations.length > 0 && periodReservations.length === 0) {
                             shouldConvertToCalendar = true;
-                            console.log(`[BULK-FLAG] Property ${property.id}: Has ${overlappingReservations.length} overlapping reservation(s) but 0 checkouts - recommend calendar mode`);
+                            logger.debug('BULK-FLAG: Property has overlapping reservations but 0 checkouts - recommend calendar mode', { context: 'StatementsFile', propertyId: property.id, overlappingCount: overlappingReservations.length });
                         }
                     } else {
                         // For calendar mode: flag if any reservation spans beyond the period AND is 14+ nights (long stay)
@@ -6179,7 +6223,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         });
                         if (longStayReservations.length > 0) {
                             shouldConvertToCalendar = true;
-                            console.log(`[BULK-FLAG] Property ${property.id}: Has ${longStayReservations.length} long-stay reservation(s) (14+ nights) spanning beyond period - prorated calendar calculation applied`);
+                            logger.debug('BULK-FLAG: Property has long-stay reservations - prorated calendar calculation applied', { context: 'StatementsFile', propertyId: property.id, longStayCount: longStayReservations.length });
                         }
                     }
 
@@ -6194,7 +6238,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
                     const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
                     if (llCoverExpenses.length > 0) {
-                        console.log(`[LL-COVER] Marking ${llCoverExpenses.length} LL Cover expense(s) as hidden for property ${property.id}`);
+                        logger.debug('Marking LL Cover expenses as hidden', { context: 'StatementsFile', propertyId: property.id, count: llCoverExpenses.length });
                     }
 
                     // NEW LOGIC: If there's ANY overlapping reservation, create the statement
@@ -6436,7 +6480,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         propertyName: result.propertyName,
                         reason: result.reason || 'No activity in period'
                     });
-                    console.log(`[Bulk Gen] SKIPPED Property ${result.property.id} "${result.propertyName}": ${result.reason}`);
+                    logger.debug('SKIPPED Property', { context: 'StatementsFile', propertyId: result.property.id, propertyName: result.propertyName, reason: result.reason });
                     processedCount++;
                     continue;
                 }
@@ -6455,10 +6499,10 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             propertyName: result.property.nickname || result.property.displayName || result.property.name,
                             reason: 'No revenue and no expenses'
                         });
-                        console.log(`[Bulk Gen] SKIPPED Property ${result.property.id} "${result.propertyName}": No revenue and no expenses`);
+                        logger.debug('SKIPPED Property - No revenue and no expenses', { context: 'StatementsFile', propertyId: result.property.id, propertyName: result.propertyName });
                     } else if (result.shouldConvertToCalendar) {
                         // Property has overlapping reservations but no checkouts - generate with $0 and flag
-                        console.log(`[Bulk Gen] FLAGGED Property ${result.property.id} "${result.propertyName}": Has ${result.overlappingReservations.length} overlapping reservation(s) but 0 checkouts - SHOULD CONVERT TO CALENDAR`);
+                        logger.debug('FLAGGED Property - Should convert to calendar', { context: 'StatementsFile', propertyId: result.property.id, propertyName: result.propertyName, overlappingCount: result.overlappingReservations.length });
                         allStatements.push(result);
                     } else {
                         allStatements.push(result);
@@ -6475,7 +6519,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         }
 
         // STEP 5: Save all statements sequentially (to avoid ID conflicts)
-        console.log(`[Bulk Gen] Step 5: Saving ${allStatements.length} statements...`);
+        logger.debug('Saving statements', { context: 'StatementsFile', step: 5, count: allStatements.length });
         BackgroundJobService.updateProgress(jobId, processedCount, `Saving ${allStatements.length} statements to database...`);
 
         const existingStatements = await FileDataService.getStatements();
@@ -6503,29 +6547,29 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             });
 
             const calendarFlag = result.shouldConvertToCalendar ? ' [SHOULD CONVERT TO CALENDAR]' : '';
-            console.log(`[Bulk Gen] SAVED Property ${result.property.id} "${result.propertyName}": ${result.periodReservations.length} reservations, $${statement.totalRevenue} revenue${calendarFlag}`);
+            logger.debug('SAVED Property', { context: 'StatementsFile', propertyId: result.property.id, propertyName: result.propertyName, reservations: result.periodReservations.length, revenue: statement.totalRevenue, calendarFlag });
             nextId++;
         }
 
         // Count statements that should convert to calendar
         const shouldConvertCount = results.generated.filter(g => g.shouldConvertToCalendar).length;
 
-        console.log(`[Bulk Gen] ========== FINAL SUMMARY ==========`);
-        console.log(`[Bulk Gen] Total properties processed: ${processedCount}`);
-        console.log(`[Bulk Gen] Statements generated: ${results.generated.length}`);
-        console.log(`[Bulk Gen] Skipped (no activity): ${results.skipped ? results.skipped.length : 0}`);
-        console.log(`[Bulk Gen] Errors: ${results.errors.length}`);
+        logger.info('BULK GENERATION FINAL SUMMARY', { context: 'StatementsFile' });
+        logger.info('Total properties processed', { context: 'StatementsFile', count: processedCount });
+        logger.info('Statements generated', { context: 'StatementsFile', count: results.generated.length });
+        logger.info('Skipped (no activity)', { context: 'StatementsFile', count: results.skipped ? results.skipped.length : 0 });
+        logger.info('Errors', { context: 'StatementsFile', count: results.errors.length });
         if (shouldConvertCount > 0) {
-            console.log(`[Bulk Gen] Statements needing calendar conversion: ${shouldConvertCount}`);
+            logger.info('Statements needing calendar conversion', { context: 'StatementsFile', count: shouldConvertCount });
             const flaggedProperties = results.generated.filter(g => g.shouldConvertToCalendar);
             flaggedProperties.forEach(p => {
-                console.log(`[Bulk Gen]   - ${p.propertyName} (ID: ${p.propertyId}): ${p.overlappingReservationCount} overlapping reservation(s), $0 revenue`);
+                logger.info('Property needing calendar conversion', { context: 'StatementsFile', propertyName: p.propertyName, propertyId: p.propertyId, overlappingCount: p.overlappingReservationCount });
             });
         }
         if (results.errors.length > 0) {
-            console.log(`[Bulk Gen] Error properties: ${results.errors.map(e => `${e.propertyId} (${e.propertyName}): ${e.error}`).join(', ')}`);
+            logger.warn('Error properties', { context: 'StatementsFile', errors: results.errors.map(e => ({ propertyId: e.propertyId, propertyName: e.propertyName, error: e.error })) });
         }
-        console.log(`[Bulk Gen] ====================================`);
+        logger.debug('Bulk generation complete', { context: 'StatementsFile' });
 
         // Calculate totals including groups
         const totalGenerated = results.generated.length + (results.groupResults?.generated || 0);
@@ -6533,9 +6577,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const totalErrors = results.errors.length + (results.groupResults?.errors || 0);
 
         if (results.groupResults && results.groupResults.generated > 0) {
-            console.log(`[Bulk Gen] Group statements generated: ${results.groupResults.generated}`);
+            logger.info('Group statements generated', { context: 'StatementsFile', count: results.groupResults.generated });
             results.groupResults.groups.forEach(g => {
-                console.log(`[Bulk Gen]   - Group "${g.groupName}" (${g.memberCount} listings): Statement ID ${g.statementId}`);
+                logger.info('Group statement', { context: 'StatementsFile', groupName: g.groupName, memberCount: g.memberCount, statementId: g.statementId });
             });
         }
 
@@ -6861,7 +6905,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
         });
 
     } catch (error) {
-        console.error('Bulk statement generation error:', error);
+        logger.logError(error, { context: 'StatementsFile', action: 'bulkGenerate' });
         res.status(500).json({ error: 'Failed to generate statements for all owners' });
     }
 }

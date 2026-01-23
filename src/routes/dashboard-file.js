@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const FileDataService = require('../services/FileDataService');
 
 // GET /api/dashboard-file - Get dashboard data from files
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
         
         res.json(dashboardData);
     } catch (error) {
-        console.error('Dashboard data error:', error);
+        logger.logError(error, { context: 'DashboardFile', action: 'getDashboardData' });
         res.status(500).json({ error: 'Failed to load dashboard data' });
     }
 });
@@ -106,7 +107,7 @@ router.get('/properties', async (req, res) => {
 
         res.json(properties);
     } catch (error) {
-        console.error('Properties get error:', error);
+        logger.logError(error, { context: 'DashboardFile', action: 'getProperties' });
         res.status(500).json({ error: 'Failed to load properties' });
     }
 });
@@ -117,7 +118,7 @@ router.get('/owners', async (req, res) => {
         const owners = await FileDataService.getOwners();
         res.json(owners);
     } catch (error) {
-        console.error('Owners get error:', error);
+        logger.logError(error, { context: 'DashboardFile', action: 'getOwners' });
         res.status(500).json({ error: 'Failed to load owners' });
     }
 });

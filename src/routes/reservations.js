@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const csv = require('csv-parser');
 const { createObjectCsvWriter } = require('csv-writer');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -104,16 +105,16 @@ router.get('/template', async (req, res) => {
             try {
                 await fs.unlink(templatePath);
             } catch (cleanupErr) {
-                console.warn('Failed to cleanup template file:', cleanupErr.message);
+                logger.warn('Failed to cleanup template file', { context: 'Reservations', error: cleanupErr.message });
             }
-            
+
             if (err) {
-                console.error('Error sending template:', err);
+                logger.logError(err, { context: 'Reservations', action: 'sendTemplate' });
             }
         });
-        
+
     } catch (error) {
-        console.error('Error generating template:', error);
+        logger.logError(error, { context: 'Reservations', action: 'generateTemplate' });
         res.status(500).json({
             success: false,
             error: 'Failed to generate template'
@@ -131,7 +132,7 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
             });
         }
 
-        console.log(`Processing uploaded reservation file: ${req.file.originalname}`);
+        logger.info('Processing uploaded reservation file', { context: 'Reservations', filename: req.file.originalname });
         
         // Parse CSV file
         const reservations = [];
@@ -266,17 +267,17 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error uploading reservations:', error);
-        
+        logger.logError(error, { context: 'Reservations', action: 'uploadReservations' });
+
         // Clean up temp file on error
         if (req.file && req.file.path) {
             try {
                 await fs.unlink(req.file.path);
             } catch (cleanupError) {
-                console.warn('Failed to cleanup temp file:', cleanupError.message);
+                logger.warn('Failed to cleanup temp file', { context: 'Reservations', error: cleanupError.message });
             }
         }
-        
+
         res.status(400).json({
             success: false,
             error: error.message || 'Failed to process uploaded file'

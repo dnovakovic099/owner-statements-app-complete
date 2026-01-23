@@ -1,5 +1,6 @@
 const sequelize = require('../config/database');
 const { QueryTypes, Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 /**
  * FinancialDataService
@@ -50,10 +51,10 @@ class FinancialDataService {
                 type: QueryTypes.SELECT
             });
 
-            console.log(`Assigned property ${propertyId} to category ${homeCategory}`);
+            logger.info(`Assigned property ${propertyId} to category ${homeCategory}`, { context: 'FinancialDataService', action: 'assignPropertyCategory' });
             return result;
         } catch (error) {
-            console.error(`Error assigning property category for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'assignPropertyCategory', propertyId });
             throw error;
         }
     }
@@ -74,7 +75,7 @@ class FinancialDataService {
 
             return result || null;
         } catch (error) {
-            console.error(`Error getting property category for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getPropertyCategory', propertyId });
             throw error;
         }
     }
@@ -106,7 +107,7 @@ class FinancialDataService {
 
             return results;
         } catch (error) {
-            console.error('Error getting all property categories:', error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getAllPropertyCategories' });
             throw error;
         }
     }
@@ -126,11 +127,11 @@ class FinancialDataService {
 
             const deleted = metadata.rowCount > 0;
             if (deleted) {
-                console.log(`Deleted property category for property ${propertyId}`);
+                logger.info(`Deleted property category for property ${propertyId}`, { context: 'FinancialDataService', action: 'deletePropertyCategory' });
             }
             return deleted;
         } catch (error) {
-            console.error(`Error deleting property category for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'deletePropertyCategory', propertyId });
             throw error;
         }
     }
@@ -187,10 +188,10 @@ class FinancialDataService {
                 type: QueryTypes.SELECT
             });
 
-            console.log(`Mapped QB account ${qbAccountId} (${qbAccountName}) to category ${expenseCategory}`);
+            logger.info(`Mapped QB account ${qbAccountId} (${qbAccountName}) to category ${expenseCategory}`, { context: 'FinancialDataService', action: 'mapQBCategory' });
             return result;
         } catch (error) {
-            console.error(`Error mapping QB category for account ${qbAccountId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'mapQBCategory', qbAccountId });
             throw error;
         }
     }
@@ -220,7 +221,7 @@ class FinancialDataService {
 
             return result || null;
         } catch (error) {
-            console.error(`Error getting QB category mapping for account ${qbAccountId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getQBCategoryMapping', qbAccountId });
             throw error;
         }
     }
@@ -267,7 +268,7 @@ class FinancialDataService {
 
             return results;
         } catch (error) {
-            console.error('Error getting all QB category mappings:', error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getAllQBCategoryMappings' });
             throw error;
         }
     }
@@ -289,11 +290,11 @@ class FinancialDataService {
 
             const updated = metadata.rowCount > 0;
             if (updated) {
-                console.log(`Deactivated QB category mapping ${mappingId}`);
+                logger.info(`Deactivated QB category mapping ${mappingId}`, { context: 'FinancialDataService', action: 'deactivateQBCategoryMapping' });
             }
             return updated;
         } catch (error) {
-            console.error(`Error deactivating QB category mapping ${mappingId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'deactivateQBCategoryMapping', mappingId });
             throw error;
         }
     }
@@ -381,10 +382,10 @@ class FinancialDataService {
                 type: QueryTypes.SELECT
             });
 
-            console.log(`Cached financial data for property ${propertyId}, month ${monthStr}`);
+            logger.debug(`Cached financial data for property ${propertyId}, month ${monthStr}`, { context: 'FinancialDataService', action: 'cacheFinancialData' });
             return this._parseFinancialCacheResult(result);
         } catch (error) {
-            console.error(`Error caching financial data for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'cacheFinancialData', propertyId });
             throw error;
         }
     }
@@ -430,7 +431,7 @@ class FinancialDataService {
 
             return results.map(r => this._parseFinancialCacheResult(r));
         } catch (error) {
-            console.error(`Error getting financial cache for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getFinancialCache', propertyId });
             throw error;
         }
     }
@@ -458,7 +459,7 @@ class FinancialDataService {
 
             return result ? this._parseFinancialCacheResult(result) : null;
         } catch (error) {
-            console.error(`Error getting financial cache for property ${propertyId}, month ${month}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getFinancialCacheForMonth', propertyId, month });
             throw error;
         }
     }
@@ -487,10 +488,10 @@ class FinancialDataService {
 
             const [, metadata] = await this.sequelize.query(query, { replacements });
 
-            console.log(`Invalidated ${metadata.rowCount} cache entries for property ${propertyId}`);
+            logger.info(`Invalidated ${metadata.rowCount} cache entries for property ${propertyId}`, { context: 'FinancialDataService', action: 'invalidateFinancialCache' });
             return metadata.rowCount;
         } catch (error) {
-            console.error(`Error invalidating financial cache for property ${propertyId}:`, error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'invalidateFinancialCache', propertyId });
             throw error;
         }
     }

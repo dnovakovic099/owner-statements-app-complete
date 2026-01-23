@@ -14,6 +14,7 @@ const path = require('path');
 const http = require('http');
 const EmailLog = require('../models/EmailLog');
 const { EmailTemplate } = require('../models');
+const logger = require('../utils/logger');
 
 class EmailService {
     constructor() {
@@ -42,8 +43,7 @@ class EmailService {
 
         // Check if SMTP host is configured
         if (!smtpConfig.host) {
-            console.warn('[EmailService] SMTP not configured. Email sending disabled.');
-            console.warn('[EmailService] Required env var: SMTP_HOST');
+            logger.warn('SMTP not configured. Email sending disabled. Required env var: SMTP_HOST', { context: 'EmailService', action: 'initializeTransporter' });
             this.isConfigured = false;
             return;
         }
@@ -51,10 +51,9 @@ class EmailService {
         try {
             this.transporter = nodemailer.createTransport(smtpConfig);
             this.isConfigured = true;
-            console.log('[EmailService] SMTP transporter initialized');
-            console.log(`[EmailService] Host: ${smtpConfig.host}:${smtpConfig.port}`);
+            logger.info(`SMTP transporter initialized - Host: ${smtpConfig.host}:${smtpConfig.port}`, { context: 'EmailService', action: 'initializeTransporter' });
         } catch (error) {
-            console.error('[EmailService] Failed to initialize SMTP:', error.message);
+            logger.logError(error, { context: 'EmailService', action: 'initializeTransporter' });
             this.isConfigured = false;
         }
     }
@@ -168,7 +167,7 @@ class EmailService {
                 }
 
                 if (template) {
-                    console.log(`[EmailService] Found template for '${calculationType}': ${template.name}`);
+                    logger.debug(`Found template for '${calculationType}': ${template.name}`, { context: 'EmailService', action: 'getTemplateFromDatabase' });
                 }
             }
 
@@ -181,7 +180,7 @@ class EmailService {
                     }
                 });
                 if (template) {
-                    console.log(`[EmailService] Using default template: ${template.name}`);
+                    logger.debug(`Using default template: ${template.name}`, { context: 'EmailService', action: 'getTemplateFromDatabase' });
                 }
             }
 
@@ -201,7 +200,7 @@ class EmailService {
                 templateName: template.name
             };
         } catch (error) {
-            console.error('[EmailService] Error fetching template from database:', error);
+            logger.logError(error, { context: 'EmailService', action: 'getTemplateFromDatabase' });
             return null;
         }
     }
@@ -877,7 +876,7 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // CRITICAL: PDF attachment is REQUIRED - no email without statement PDF
         if (!pdfAttachment) {
-            console.error(`[EmailService] BLOCKED: No PDF attachment for statement ${statement?.id} - email cannot be sent without statement`);
+            logger.error(`BLOCKED: No PDF attachment for statement ${statement?.id} - email cannot be sent without statement`, { context: 'EmailService', action: 'sendStatementEmail' });
             return {
                 success: false,
                 error: 'PDF_REQUIRED',
@@ -897,7 +896,7 @@ This is an auto-generated email. If you have any questions or need clarification
         // Guardrail Check (negative balance, zero activity, etc.)
         const guardrailCheck = this.checkNegativeBalanceGuardrail(statement);
         if (!guardrailCheck.canSend) {
-            console.log(`[EmailService] BLOCKED: Statement ${statement.id} - ${guardrailCheck.message}`);
+            logger.info(`BLOCKED: Statement ${statement.id} - ${guardrailCheck.message}`, { context: 'EmailService', action: 'sendStatementEmail' });
             return {
                 success: false,
                 error: guardrailCheck.reason === 'ZERO_ACTIVITY' ? 'ZERO_ACTIVITY_BLOCKED' : 'NEGATIVE_BALANCE_BLOCKED',
@@ -944,7 +943,7 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // Fall back to hardcoded template if no database template found
         if (!template) {
-            console.log(`[EmailService] No database template found for '${statementCalcType}', using hardcoded template`);
+            logger.debug(`No database template found for '${statementCalcType}', using hardcoded template`, { context: 'EmailService', action: 'sendStatementEmail' });
             template = this.getEmailTemplate(frequencyTag, templateData, statementCalcType);
         }
 
@@ -983,14 +982,14 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // Add PDF attachment if provided
         if (pdfAttachment) {
-            console.log(`[EmailService] PDF attachment type: ${typeof pdfAttachment}, isBuffer: ${Buffer.isBuffer(pdfAttachment)}, size: ${pdfAttachment.length || 'N/A'}`);
+            logger.debug(`PDF attachment type: ${typeof pdfAttachment}, isBuffer: ${Buffer.isBuffer(pdfAttachment)}, size: ${pdfAttachment.length || 'N/A'}`, { context: 'EmailService', action: 'sendStatementEmail' });
             if (Buffer.isBuffer(pdfAttachment)) {
                 mailOptions.attachments.push({
                     filename: pdfFilename || `statement-${statement.id}.pdf`,
                     content: pdfAttachment,
                     contentType: 'application/pdf'
                 });
-                console.log(`[EmailService] Attached PDF: ${pdfFilename}, size: ${pdfAttachment.length} bytes`);
+                logger.debug(`Attached PDF: ${pdfFilename}, size: ${pdfAttachment.length} bytes`, { context: 'EmailService', action: 'sendStatementEmail' });
             } else if (typeof pdfAttachment === 'string') {
                 mailOptions.attachments.push({
                     filename: pdfFilename || path.basename(pdfAttachment),
@@ -999,12 +998,12 @@ This is an auto-generated email. If you have any questions or need clarification
                 });
             }
         } else {
-            console.log(`[EmailService] No PDF attachment provided`);
+            logger.debug('No PDF attachment provided', { context: 'EmailService', action: 'sendStatementEmail' });
         }
 
         try {
             const result = await this.transporter.sendMail(mailOptions);
-            console.log(`[EmailService] Email sent successfully to ${to} for statement ${statement.id}`);
+            logger.info(`Email sent successfully to ${to} for statement ${statement.id}`, { context: 'EmailService', action: 'sendStatementEmail' });
 
             // Log successful email
             await this.logEmailAttempt({
@@ -1029,7 +1028,7 @@ This is an auto-generated email. If you have any questions or need clarification
                 sentAt: new Date().toISOString()
             };
         } catch (error) {
-            console.error(`[EmailService] Failed to send email to ${to}:`, error.message);
+            logger.logError(error, { context: 'EmailService', action: 'sendStatementEmail', to, statementId: statement.id });
 
             // Log failed email
             await this.logEmailAttempt({
@@ -1078,9 +1077,9 @@ This is an auto-generated email. If you have any questions or need clarification
                 sentAt: data.sentAt,
                 metadata: data.metadata
             });
-            console.log(`[EmailService] Logged email ${data.status} for statement ${data.statementId}`);
+            logger.debug(`Logged email ${data.status} for statement ${data.statementId}`, { context: 'EmailService', action: 'logEmailAttempt' });
         } catch (error) {
-            console.error(`[EmailService] Failed to log email:`, error.message);
+            logger.logError(error, { context: 'EmailService', action: 'logEmailAttempt' });
             // Don't throw - logging failure shouldn't break email sending
         }
     }
@@ -1270,7 +1269,7 @@ This is an auto-generated email. If you have any questions or need clarification
             const statementPeriod = `${startDate} to ${endDate}`;
             const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
 
-            console.log(`[EmailService] Generated PDF for statement ${statementId}: ${filename}`);
+            logger.debug(`Generated PDF for statement ${statementId}: ${filename}`, { context: 'EmailService', action: 'generateStatementPdf' });
 
             return {
                 success: true,
@@ -1278,7 +1277,7 @@ This is an auto-generated email. If you have any questions or need clarification
                 filename
             };
         } catch (error) {
-            console.error(`[EmailService] Failed to generate PDF for statement ${statementId}:`, error.message);
+            logger.logError(error, { context: 'EmailService', action: 'generateStatementPdf', statementId });
             return {
                 success: false,
                 error: error.message
@@ -1317,15 +1316,15 @@ This is an auto-generated email. If you have any questions or need clarification
                         const refreshed = await refetchStatement(statement.id);
                         if (refreshed) {
                             updatedStatement = refreshed;
-                            console.log(`[EmailService] Refreshed statement ${statement.id}: payout ${updatedStatement.ownerPayout}`);
+                            logger.debug(`Refreshed statement ${statement.id}: payout ${updatedStatement.ownerPayout}`, { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
                         }
                     } catch (err) {
-                        console.warn(`[EmailService] Failed to refresh statement, using original values`);
+                        logger.warn('Failed to refresh statement, using original values', { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
                     }
                 }
             } else {
                 // BLOCK: Do not send email without PDF statement attached
-                console.error(`[EmailService] PDF generation failed for statement ${statement.id} - email blocked`);
+                logger.error(`PDF generation failed for statement ${statement.id} - email blocked`, { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
                 return {
                     success: false,
                     error: 'PDF_GENERATION_FAILED',
@@ -1336,7 +1335,7 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // Verify PDF is attached before sending
         if (attachPdf && !pdfAttachment) {
-            console.error(`[EmailService] No PDF attachment for statement ${statement.id} - email blocked`);
+            logger.error(`No PDF attachment for statement ${statement.id} - email blocked`, { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
             return {
                 success: false,
                 error: 'NO_PDF_ATTACHMENT',
@@ -1431,7 +1430,7 @@ ${companyName}
         };
 
         const result = await this.transporter.sendMail(mailOptions);
-        console.log(`[EmailService] Invite email sent to ${email} for user ${username}`);
+        logger.info(`Invite email sent to ${email} for user ${username}`, { context: 'EmailService', action: 'sendInviteEmail' });
         return result;
     }
 
@@ -1471,7 +1470,7 @@ ${companyName}
         }
 
         if (attachments.length > 0) {
-            console.log(`[EmailService] Converted ${attachments.length} inline image(s) to CID attachments`);
+            logger.debug(`Converted ${attachments.length} inline image(s) to CID attachments`, { context: 'EmailService', action: 'sendAnnouncementEmail' });
         }
 
         const mailOptions = {
@@ -1497,7 +1496,7 @@ This is an auto-generated email. If you have any questions or need clarification
         };
 
         const result = await this.transporter.sendMail(mailOptions);
-        console.log(`[EmailService] Announcement email sent to ${recipientEmail}`);
+        logger.info(`Announcement email sent to ${recipientEmail}`, { context: 'EmailService', action: 'sendAnnouncementEmail' });
         return result;
     }
 }

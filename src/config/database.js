@@ -1,4 +1,5 @@
 const { Sequelize } = require('sequelize');
+const logger = require('../utils/logger');
 
 // Railway provides DATABASE_URL automatically when PostgreSQL is provisioned
 // For local development, use SQLite
@@ -9,9 +10,9 @@ let sequelize;
 
 if (databaseUrl && databaseUrl.startsWith('postgres')) {
     // PostgreSQL connection
-    // Mask the password in the URL for logging
+    // PostgreSQL connection
     const maskedUrl = databaseUrl.replace(/:([^:@]+)@/, ':****@');
-    console.log(`[DB] Connecting to PostgreSQL database: ${maskedUrl}`);
+    logger.info('Connecting to PostgreSQL database', { context: 'DB' });
 
     // Check if connecting to localhost (no SSL needed)
     const isLocalhost = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
@@ -37,7 +38,7 @@ if (databaseUrl && databaseUrl.startsWith('postgres')) {
 } else if (databaseUrl && databaseUrl.startsWith('sqlite')) {
     // SQLite from DATABASE_URL
     const sqlitePath = databaseUrl.replace('sqlite:', '');
-    console.log(`[DB] Connecting to SQLite database: ${sqlitePath}`);
+    logger.info('Connecting to SQLite database', { context: 'DB', path: sqlitePath });
     sequelize = new Sequelize({
         dialect: 'sqlite',
         storage: sqlitePath,
@@ -45,7 +46,7 @@ if (databaseUrl && databaseUrl.startsWith('postgres')) {
     });
 } else {
     // Fallback: Use default SQLite location
-    console.log('[DB] Using default SQLite database: ./database.sqlite');
+    logger.info('Using default SQLite database', { context: 'DB', path: './database.sqlite' });
     sequelize = new Sequelize({
         dialect: 'sqlite',
         storage: './database.sqlite',
@@ -56,10 +57,10 @@ if (databaseUrl && databaseUrl.startsWith('postgres')) {
 // Test connection
 sequelize.authenticate()
     .then(() => {
-        console.log('[DB] Connection established successfully');
+        logger.info('Connection established successfully', { context: 'DB' });
     })
     .catch(err => {
-        console.error('[DB] Error: Unable to connect to database:', err.message);
+        logger.error('Unable to connect to database', { context: 'DB', error: err.message });
     });
 
 module.exports = sequelize;

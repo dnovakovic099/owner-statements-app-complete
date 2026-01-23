@@ -1,4 +1,5 @@
 const sequelize = require('../config/database');
+const logger = require('../utils/logger');
 const Statement = require('./Statement');
 const UploadedExpense = require('./UploadedExpense');
 const Listing = require('./Listing');
@@ -47,9 +48,9 @@ async function syncDatabase() {
     try {
         // Just verify connection, don't sync models
         await sequelize.authenticate();
-        console.log('Database connection verified');
+        logger.info('Database connection verified', { context: 'Models' });
     } catch (error) {
-        console.error('Error connecting to database:', error);
+        logger.logError(error, { context: 'Models', action: 'syncDatabase' });
         throw error;
     }
 }

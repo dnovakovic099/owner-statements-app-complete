@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const ListingGroupService = require('../services/ListingGroupService');
 const { ActivityLog } = require('../models');
 
@@ -27,7 +28,7 @@ router.get('/', async (req, res) => {
             groups
         });
     } catch (error) {
-        console.error('Error fetching groups:', error);
+        logger.logError(error, { context: 'Groups', action: 'fetchGroups' });
         res.status(500).json({ error: 'Failed to fetch groups' });
     }
 });
@@ -57,7 +58,7 @@ router.post('/', async (req, res) => {
             group
         });
     } catch (error) {
-        console.error('Error creating group:', error);
+        logger.logError(error, { context: 'Groups', action: 'createGroup' });
 
         // Handle duplicate name error
         if (error.message.includes('already exists')) {
@@ -83,7 +84,7 @@ router.get('/:id', async (req, res) => {
             group
         });
     } catch (error) {
-        console.error(`Error fetching group ${req.params.id}:`, error);
+        logger.logError(error, { context: 'Groups', action: 'fetchGroup', groupId: req.params.id });
         res.status(500).json({ error: 'Failed to fetch group' });
     }
 });
@@ -117,7 +118,7 @@ router.put('/:id', async (req, res) => {
             group
         });
     } catch (error) {
-        console.error(`Error updating group ${req.params.id}:`, error);
+        logger.logError(error, { context: 'Groups', action: 'updateGroup', groupId: req.params.id });
 
         if (error.message.includes('not found')) {
             return res.status(404).json({ error: error.message });
@@ -151,7 +152,7 @@ router.delete('/:id', async (req, res) => {
             ...result
         });
     } catch (error) {
-        console.error(`Error deleting group ${req.params.id}:`, error);
+        logger.logError(error, { context: 'Groups', action: 'deleteGroup', groupId: req.params.id });
 
         if (error.message.includes('not found')) {
             return res.status(404).json({ error: error.message });
@@ -194,7 +195,7 @@ router.post('/:id/listings', async (req, res) => {
             ...result
         });
     } catch (error) {
-        console.error(`Error adding listings to group ${req.params.id}:`, error);
+        logger.logError(error, { context: 'Groups', action: 'addListingsToGroup', groupId: req.params.id });
 
         if (error.message.includes('not found')) {
             return res.status(404).json({ error: error.message });
@@ -237,7 +238,7 @@ router.delete('/:id/listings/:listingId', async (req, res) => {
             ...result
         });
     } catch (error) {
-        console.error(`Error removing listing ${req.params.listingId} from group ${req.params.id}:`, error);
+        logger.logError(error, { context: 'Groups', action: 'removeListingFromGroup', groupId: req.params.id, listingId: req.params.listingId });
 
         if (error.message.includes('not found')) {
             return res.status(404).json({ error: error.message });

@@ -1,4 +1,5 @@
 const express = require('express');
+const logger = require('../utils/logger');
 const QuickBooksService = require('../services/QuickBooksService');
 const FileDataService = require('../services/FileDataService');
 const statementsFinancialService = require('../services/StatementsFinancialService');
@@ -299,7 +300,7 @@ router.get('/comparison', async (req, res) => {
             currentSummary = extractPLTotals(currentPL);
             previousSummary = extractPLTotals(previousPL);
         } catch (qbError) {
-            console.error('QuickBooks P&L fetch failed for comparison:', qbError.message);
+            logger.error('QuickBooks P&L fetch failed for comparison', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -369,7 +370,7 @@ router.get('/comparison', async (req, res) => {
 
         res.json(response);
     } catch (error) {
-        console.error('Error fetching financial comparison:', error);
+        logger.logError(error, { context: 'Financials', action: 'financialComparison' });
 
         res.status(500).json({
             success: false,
@@ -399,8 +400,8 @@ router.get('/summary', async (req, res) => {
 
                 // Debug: Log the full P&L report structure (first 5000 chars to avoid log overflow)
                 const reportJson = JSON.stringify(plReport, null, 2);
-                console.log('[Financials] P&L Report Structure (truncated):', reportJson.substring(0, 5000));
-                console.log('[Financials] P&L Report total length:', reportJson.length);
+                logger.debug('[Financials] P&L Report Structure (truncated):', reportJson.substring(0, 5000));
+                logger.debug('[Financials] P&L Report total length:', reportJson.length);
 
                 // Parse the P&L report to extract totals
                 // QuickBooks P&L report structure has these main sections (group values):
@@ -458,12 +459,12 @@ router.get('/summary', async (req, res) => {
                     let otherIncomeTotal = 0;
 
                     // Log all sections found
-                    console.log('[Financials] P&L Sections found:');
+                    logger.debug('[Financials] P&L Sections found:');
                     for (const section of plReport.Rows.Row) {
                         const groupName = (section.group || '').toLowerCase();
                         const headerValue = section.Header?.ColData?.[0]?.value || '';
                         const summaryValue = getSummaryTotal(section);
-                        console.log(`  - group="${section.group}", header="${headerValue}", summary=${summaryValue}`);
+                        logger.debug(`  - group="${section.group}", header="${headerValue}", summary=${summaryValue}`);
                     }
 
                     for (const section of plReport.Rows.Row) {
@@ -473,7 +474,7 @@ router.get('/summary', async (req, res) => {
                         // Income section
                         if (groupName === 'income') {
                             totalIncome = getSummaryTotal(section);
-                            console.log(`[Financials] Income section total: ${totalIncome}`);
+                            logger.debug(`[Financials] Income section total: ${totalIncome}`);
                             if (section.Rows && section.Rows.Row) {
                                 extractRowAmounts(section.Rows.Row, incomeBreakdown);
                             }
@@ -482,7 +483,7 @@ router.get('/summary', async (req, res) => {
                         // Cost of Goods Sold section (QuickBooks uses CostOfGoodsSold as group name)
                         if (groupName === 'costofgoodssold' || groupName === 'cogs') {
                             cogsTotal = getSummaryTotal(section);
-                            console.log(`[Financials] COGS section total: ${cogsTotal}`);
+                            logger.debug(`[Financials] COGS section total: ${cogsTotal}`);
                             expenseBreakdown['Cost of Goods Sold'] = cogsTotal;
                             if (section.Rows && section.Rows.Row) {
                                 extractRowAmounts(section.Rows.Row, expenseBreakdown, 'COGS');
@@ -492,7 +493,7 @@ router.get('/summary', async (req, res) => {
                         // Expenses section (operating expenses)
                         if (groupName === 'expenses') {
                             expensesTotal = getSummaryTotal(section);
-                            console.log(`[Financials] Expenses section total: ${expensesTotal}`);
+                            logger.debug(`[Financials] Expenses section total: ${expensesTotal}`);
                             if (section.Rows && section.Rows.Row) {
                                 extractRowAmounts(section.Rows.Row, expenseBreakdown);
                             }
@@ -501,7 +502,7 @@ router.get('/summary', async (req, res) => {
                         // Other Income section (non-operating income)
                         if (groupName === 'otherincome') {
                             otherIncomeTotal = getSummaryTotal(section);
-                            console.log(`[Financials] Other Income section total: ${otherIncomeTotal}`);
+                            logger.debug(`[Financials] Other Income section total: ${otherIncomeTotal}`);
                             if (section.Rows && section.Rows.Row) {
                                 extractRowAmounts(section.Rows.Row, incomeBreakdown, 'Other Income');
                             }
@@ -510,7 +511,7 @@ router.get('/summary', async (req, res) => {
                         // Other Expenses section (non-operating expenses)
                         if (groupName === 'otherexpenses') {
                             otherExpensesTotal = getSummaryTotal(section);
-                            console.log(`[Financials] Other Expenses section total: ${otherExpensesTotal}`);
+                            logger.debug(`[Financials] Other Expenses section total: ${otherExpensesTotal}`);
                             expenseBreakdown['Other Expenses'] = otherExpensesTotal;
                             if (section.Rows && section.Rows.Row) {
                                 extractRowAmounts(section.Rows.Row, expenseBreakdown, 'Other');
@@ -520,7 +521,7 @@ router.get('/summary', async (req, res) => {
                         // Net Income section - use for validation
                         if (groupName === 'netincome') {
                             qbNetIncome = getSummaryTotal(section);
-                            console.log(`[Financials] QuickBooks Net Income from report: ${qbNetIncome}`);
+                            logger.debug(`[Financials] QuickBooks Net Income from report: ${qbNetIncome}`);
                         }
                     }
 
@@ -530,30 +531,30 @@ router.get('/summary', async (req, res) => {
                     // Total Expenses = COGS + Expenses + Other Expenses
                     totalExpenses = cogsTotal + expensesTotal + otherExpensesTotal;
 
-                    console.log(`[Financials] Calculated totals:`);
-                    console.log(`  Income: ${totalIncome} (base + other: ${totalIncome - otherIncomeTotal} + ${otherIncomeTotal})`);
-                    console.log(`  Expenses: ${totalExpenses} (COGS + Expenses + Other: ${cogsTotal} + ${expensesTotal} + ${otherExpensesTotal})`);
-                    console.log(`  Net Income: ${totalIncome - totalExpenses}`);
+                    logger.debug(`[Financials] Calculated totals:`);
+                    logger.debug(`  Income: ${totalIncome} (base + other: ${totalIncome - otherIncomeTotal} + ${otherIncomeTotal})`);
+                    logger.debug(`  Expenses: ${totalExpenses} (COGS + Expenses + Other: ${cogsTotal} + ${expensesTotal} + ${otherExpensesTotal})`);
+                    logger.debug(`  Net Income: ${totalIncome - totalExpenses}`);
 
                     // ENFORCE QuickBooks Net Income - adjust expenses if needed
                     if (qbNetIncome !== null) {
                         const calculatedNet = totalIncome - totalExpenses;
                         const diff = Math.abs(calculatedNet - qbNetIncome);
                         if (diff > 1) {
-                            console.log(`[Financials] WARNING: Calculated Net (${calculatedNet}) differs from QB Net (${qbNetIncome}) by ${diff}`);
-                            console.log(`[Financials] ADJUSTING: Using QB Net Income and back-calculating expenses`);
+                            logger.debug(`[Financials] WARNING: Calculated Net (${calculatedNet}) differs from QB Net (${qbNetIncome}) by ${diff}`);
+                            logger.debug(`[Financials] ADJUSTING: Using QB Net Income and back-calculating expenses`);
                             // Back-calculate expenses to match QB Net Income exactly
                             totalExpenses = totalIncome - qbNetIncome;
-                            console.log(`[Financials] Adjusted expenses to: ${totalExpenses}`);
+                            logger.debug(`[Financials] Adjusted expenses to: ${totalExpenses}`);
                         } else {
-                            console.log(`[Financials] SUCCESS: Calculated Net matches QB Net Income`);
+                            logger.debug(`[Financials] SUCCESS: Calculated Net matches QB Net Income`);
                         }
                     }
                 }
 
-            console.log(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
+            logger.debug(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
         } catch (qbError) {
-            console.error('QuickBooks P&L fetch failed:', qbError.message);
+            logger.error('QuickBooks P&L fetch failed', { context: 'Financials', error: qbError.message });
             // Check if it's a token/auth issue
             const errorMsg = qbError.message || '';
             const isAuthError = errorMsg.includes('refresh') || errorMsg.includes('token') ||
@@ -593,7 +594,7 @@ router.get('/summary', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching financial summary:', error);
+        logger.logError(error, { context: 'Financials', action: 'financialSummary' });
 
         res.status(500).json({
             success: false,
@@ -675,7 +676,7 @@ router.get('/debug-pl', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching P&L debug:', error);
+        logger.logError(error, { context: 'Financials', action: 'plDebug' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch P&L debug data'
@@ -700,7 +701,7 @@ router.get('/time-series', async (req, res) => {
         };
         res.json(response);
     } catch (error) {
-        console.error('Error fetching financial time series:', error);
+        logger.logError(error, { context: 'Financials', action: 'timeSeries' });
 
         res.status(500).json({
             success: false,
@@ -738,7 +739,7 @@ router.get('/by-category', async (req, res) => {
 
         // Try to fetch from QuickBooks directly (like /summary does)
         try {
-            console.log('[by-category] Fetching from QuickBooks...');
+            logger.debug('[by-category] Fetching from QuickBooks...');
             const results = await Promise.all([
                 quickBooksService.getAllIncome(startDate, endDate),
                 quickBooksService.getAllExpenses(startDate, endDate)
@@ -746,9 +747,9 @@ router.get('/by-category', async (req, res) => {
             income = results[0] || [];
             expenses = results[1] || [];
             usingQuickBooks = true;
-            console.log(`[by-category] Fetched ${income.length} income and ${expenses.length} expense transactions from QuickBooks`);
+            logger.debug(`[by-category] Fetched ${income.length} income and ${expenses.length} expense transactions from QuickBooks`);
         } catch (qbError) {
-            console.warn('[by-category] QuickBooks fetch failed:', qbError.message);
+            logger.warn('QuickBooks fetch failed', { context: 'Financials', endpoint: 'by-category', error: qbError.message });
         }
 
         // If QuickBooks data available, group by mapped or raw categories
@@ -758,7 +759,7 @@ router.get('/by-category', async (req, res) => {
 
             if (useMappedCategories) {
                 // Use category mapping to standardize QuickBooks account names
-                console.log('[by-category] Using category mapping to standardize accounts');
+                logger.debug('[by-category] Using category mapping to standardize accounts');
 
                 // Get expense summary with mapped categories
                 const expenseSummary = getCategorySummary(expenses, 'expense');
@@ -772,9 +773,9 @@ router.get('/by-category', async (req, res) => {
                 }));
 
                 // Log the top expense categories with their original accounts for debugging
-                console.log('[by-category] Top 5 expense categories with transactions:');
+                logger.debug('[by-category] Top 5 expense categories with transactions:');
                 expenseCategories.slice(0, 5).forEach(cat => {
-                    console.log(`  - ${cat.name}: $${cat.total.toFixed(2)} (${cat.count} txns, ${cat.transactions?.length || 0} in array)`);
+                    logger.debug(`  - ${cat.name}: $${cat.total.toFixed(2)} (${cat.count} txns, ${cat.transactions?.length || 0} in array)`);
                 });
 
                 // Get income summary with mapped categories
@@ -795,7 +796,7 @@ router.get('/by-category', async (req, res) => {
                 ].filter((v, i, a) => a.indexOf(v) === i); // dedupe
 
                 if (unmappedAccounts.length > 0) {
-                    console.log('[by-category] Unmapped QuickBooks accounts:', unmappedAccounts);
+                    logger.debug('[by-category] Unmapped QuickBooks accounts:', unmappedAccounts);
                 }
             } else {
                 // Group by raw QuickBooks account/category names (original behavior)
@@ -871,7 +872,7 @@ router.get('/by-category', async (req, res) => {
         }
 
         // QuickBooks not available - return error instead of fallback
-        console.log('[by-category] QuickBooks not available, returning error');
+        logger.debug('[by-category] QuickBooks not available, returning error');
         return res.status(503).json({
             success: false,
             error: 'QuickBooks not connected',
@@ -879,7 +880,7 @@ router.get('/by-category', async (req, res) => {
             authUrl: '/api/quickbooks/auth-url'
         });
     } catch (error) {
-        console.error('Error fetching financials by category:', error);
+        logger.logError(error, { context: 'Financials', action: 'byCategory' });
 
         // Return proper error for QuickBooks issues
         const isQBError = error.message && (
@@ -939,7 +940,7 @@ router.get('/by-home-category', async (req, res) => {
             attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage', 'ownerEmail', 'tags', 'isActive']
         });
         const listings = dbListings.map(l => l.toJSON());
-        console.log(`[by-home-category] Found ${listings.length} listings from database`);
+        logger.debug(`[by-home-category] Found ${listings.length} listings from database`);
 
         // Initialize categories
         const categories = {
@@ -962,7 +963,7 @@ router.get('/by-home-category', async (req, res) => {
             }
         });
 
-        console.log(`[by-home-category] Categorized: PM=${categories.pm.propertyCount}, Arb=${categories.arbitrage.propertyCount}, Owned=${categories.owned.propertyCount}, Shared=${categories.shared.propertyCount}, Uncategorized=${categories.uncategorized.propertyCount}`);
+        logger.debug(`[by-home-category] Categorized: PM=${categories.pm.propertyCount}, Arb=${categories.arbitrage.propertyCount}, Owned=${categories.owned.propertyCount}, Shared=${categories.shared.propertyCount}, Uncategorized=${categories.uncategorized.propertyCount}`);
 
         // Use StatementsFinancialService to get property financials (total and monthly)
         const [{ byProperty: financialsByProperty }, monthlyByProperty] = await Promise.all([
@@ -1065,7 +1066,7 @@ router.get('/by-home-category', async (req, res) => {
         };
         res.json(response);
     } catch (error) {
-        console.error('Error fetching financials by home category:', error);
+        logger.logError(error, { context: 'Financials', action: 'byHomeCategory' });
 
         res.status(500).json({
             success: false,
@@ -1182,7 +1183,7 @@ router.get('/by-property', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching financials by property:', error);
+        logger.logError(error, { context: 'Financials', action: 'byProperty' });
 
         res.status(500).json({
             success: false,
@@ -1300,7 +1301,7 @@ router.get('/property/:id/details', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching property financial details:', error);
+        logger.logError(error, { context: 'Financials', action: 'propertyDetails' });
 
         res.status(500).json({
             success: false,
@@ -1330,7 +1331,7 @@ router.get('/metrics', async (req, res) => {
         };
         res.json(response);
     } catch (error) {
-        console.error('Error fetching financial metrics:', error);
+        logger.logError(error, { context: 'Financials', action: 'metrics' });
 
         res.status(500).json({
             success: false,
@@ -1354,7 +1355,7 @@ router.get('/transactions-by-account', async (req, res) => {
         const { startDate, endDate } = parseDateRange(req.query);
         const includeDebug = req.query.debug === 'true';
 
-        console.log(`[transactions-by-account] Fetching for ${startDate} to ${endDate}`);
+        logger.debug(`[transactions-by-account] Fetching for ${startDate} to ${endDate}`);
 
         const data = await quickBooksService.getTransactionListByAccount(startDate, endDate);
 
@@ -1372,7 +1373,7 @@ router.get('/transactions-by-account', async (req, res) => {
 
         res.json(response);
     } catch (error) {
-        console.error('Error fetching transactions by account:', error);
+        logger.logError(error, { context: 'Financials', action: 'transactionsByAccount' });
 
         const isQBError = error.message && (
             error.message.includes('Not connected') ||
@@ -1437,10 +1438,10 @@ router.get('/account-transactions/:accountName', async (req, res) => {
             });
         }
 
-        console.log(`[account-transactions] Fetching transactions for "${accountName}"`);
-        console.log(`[account-transactions] Accounts to search:`, accountsToSearch);
-        console.log(`[account-transactions] Date range: ${startDate} to ${endDate}`);
-        console.log(`[account-transactions] Type: ${transactionType}, Source: ${source}`);
+        logger.debug(`[account-transactions] Fetching transactions for "${accountName}"`);
+        logger.debug(`[account-transactions] Accounts to search:`, accountsToSearch);
+        logger.debug(`[account-transactions] Date range: ${startDate} to ${endDate}`);
+        logger.debug(`[account-transactions] Type: ${transactionType}, Source: ${source}`);
 
         let data;
         if (source === 'gl') {
@@ -1455,7 +1456,7 @@ router.get('/account-transactions/:accountName', async (req, res) => {
                 transactionType
             );
         }
-        console.log(`[account-transactions] Found ${data.transactionCount} transactions, total: ${data.total}`);
+        logger.debug(`[account-transactions] Found ${data.transactionCount} transactions, total: ${data.total}`);
 
         res.json({
             success: true,
@@ -1488,7 +1489,7 @@ router.get('/account-transactions/:accountName', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching account transactions:', error);
+        logger.logError(error, { context: 'Financials', action: 'accountTransactions' });
 
         const isQBError = error.message && (
             error.message.includes('Not connected') ||
@@ -1527,16 +1528,16 @@ router.get('/transactions', async (req, res) => {
         let income = [];
         let expenses = [];
         try {
-            console.log('[transactions] Fetching from QuickBooks...');
+            logger.debug('[transactions] Fetching from QuickBooks...');
             const results = await Promise.all([
                 quickBooksService.getAllIncome(startDate, endDate),
                 quickBooksService.getAllExpenses(startDate, endDate)
             ]);
             income = results[0] || [];
             expenses = results[1] || [];
-            console.log(`[transactions] Fetched ${income.length} income and ${expenses.length} expense transactions`);
+            logger.debug(`[transactions] Fetched ${income.length} income and ${expenses.length} expense transactions`);
         } catch (qbError) {
-            console.error('QuickBooks fetch error:', qbError);
+            logger.logError(qbError, { context: 'Financials', action: 'qbFetch' });
             // Return empty data on any QB error
             return res.json({
                 success: true,
@@ -1650,7 +1651,7 @@ router.get('/transactions', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching transactions:', error);
+        logger.logError(error, { context: 'Financials', action: 'transactions' });
 
         // Return empty data if QuickBooks not connected or any QB error
         const isQBError = error.message && (
@@ -1698,7 +1699,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching invoices:', err);
+                            logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { Invoice: [] } });
                             return;
                         }
@@ -1708,7 +1709,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findPayments({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching payments:', err);
+                            logger.error('Error fetching payments', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { Payment: [] } });
                             return;
                         }
@@ -1718,7 +1719,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching sales receipts:', err);
+                            logger.error('Error fetching sales receipts', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { SalesReceipt: [] } });
                             return;
                         }
@@ -1729,7 +1730,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findDeposits({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching deposits:', err);
+                            logger.error('Error fetching deposits', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { Deposit: [] } });
                             return;
                         }
@@ -1743,8 +1744,8 @@ router.get('/payment-status', async (req, res) => {
             const salesReceipts = salesReceiptsData.QueryResponse?.SalesReceipt || [];
             const deposits = depositsData.QueryResponse?.Deposit || [];
 
-            console.log(`[payment-status] Date range: ${startDate} to ${endDate}`);
-            console.log(`[payment-status] Fetched: ${invoices.length} invoices, ${payments.length} payments, ${salesReceipts.length} sales receipts, ${deposits.length} deposits`);
+            logger.debug(`[payment-status] Date range: ${startDate} to ${endDate}`);
+            logger.debug(`[payment-status] Fetched: ${invoices.length} invoices, ${payments.length} payments, ${salesReceipts.length} sales receipts, ${deposits.length} deposits`);
 
             // Calculate payment status matching QuickBooks exactly
             let notPaidAmount = 0;
@@ -1777,7 +1778,7 @@ router.get('/payment-status', async (req, res) => {
                 }
             });
 
-            console.log(`[payment-status] Found ${notPaidCount} unpaid invoices, ${paidCount} will be set after payments`);
+            logger.debug(`[payment-status] Found ${notPaidCount} unpaid invoices, ${paidCount} will be set after payments`);
 
             // PAID: Payment transactions + SalesReceipts in the date range
             // QB "Paid" includes all cash received (payments on invoices + direct sales)
@@ -1800,7 +1801,7 @@ router.get('/payment-status', async (req, res) => {
                 }
             });
 
-            console.log(`[payment-status] Found ${paidCount} paid transactions (payments + sales receipts) totaling $${paidAmount.toFixed(2)}`);
+            logger.debug(`[payment-status] Found ${paidCount} paid transactions (payments + sales receipts) totaling $${paidAmount.toFixed(2)}`);
 
             // DEPOSITED: Use actual Deposit transactions from QuickBooks
             // A Deposit is a bank deposit that groups payments/sales receipts
@@ -1813,7 +1814,7 @@ router.get('/payment-status', async (req, res) => {
                 }
             });
 
-            console.log(`[payment-status] Found ${depositedCount} deposited payments totaling $${depositedAmount.toFixed(2)}`);
+            logger.debug(`[payment-status] Found ${depositedCount} deposited payments totaling $${depositedAmount.toFixed(2)}`);
 
             const response = {
                 success: true,
@@ -1837,7 +1838,7 @@ router.get('/payment-status', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            console.error('QuickBooks error in payment-status:', qbError.message);
+            logger.error('QuickBooks error in payment-status', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -1846,7 +1847,7 @@ router.get('/payment-status', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error fetching payment status:', error);
+        logger.logError(error, { context: 'Financials', action: 'paymentStatus' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch payment status'
@@ -1869,7 +1870,7 @@ router.get('/invoices-summary', async (req, res) => {
             const invoicesData = await new Promise((resolve) => {
                 qbo.findInvoices({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        console.error('Error fetching invoices:', err);
+                        logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
                         resolve({ QueryResponse: { Invoice: [] } });
                         return;
                     }
@@ -1933,7 +1934,7 @@ router.get('/invoices-summary', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            console.error('QuickBooks error in invoices-summary:', qbError.message);
+            logger.error('QuickBooks error in invoices-summary', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -1942,7 +1943,7 @@ router.get('/invoices-summary', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error fetching invoice summary:', error);
+        logger.logError(error, { context: 'Financials', action: 'invoiceSummary' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch invoice summary'
@@ -1964,7 +1965,7 @@ router.get('/deposits', async (req, res) => {
             const paymentsData = await new Promise((resolve) => {
                 qbo.findPayments({ limit: 500 }, (err, data) => {
                     if (err) {
-                        console.error('Error fetching payments:', err);
+                        logger.error('Error fetching payments', { context: 'Financials', error: err?.message || err });
                         resolve({ QueryResponse: { Payment: [] } });
                         return;
                     }
@@ -2010,7 +2011,7 @@ router.get('/deposits', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            console.error('QuickBooks error in deposits:', qbError.message);
+            logger.error('QuickBooks error in deposits', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -2019,7 +2020,7 @@ router.get('/deposits', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error fetching deposits:', error);
+        logger.logError(error, { context: 'Financials', action: 'deposits' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch deposit data'
@@ -2044,7 +2045,7 @@ router.get('/sales-chart', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching invoices:', err);
+                            logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { Invoice: [] } });
                             return;
                         }
@@ -2054,7 +2055,7 @@ router.get('/sales-chart', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            console.error('Error fetching sales receipts:', err);
+                            logger.error('Error fetching sales receipts', { context: 'Financials', error: err?.message || err });
                             resolve({ QueryResponse: { SalesReceipt: [] } });
                             return;
                         }
@@ -2105,7 +2106,7 @@ router.get('/sales-chart', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            console.error('QuickBooks error in sales-chart:', qbError.message);
+            logger.error('QuickBooks error in sales-chart', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -2114,7 +2115,7 @@ router.get('/sales-chart', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error fetching sales chart:', error);
+        logger.logError(error, { context: 'Financials', action: 'salesChart' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch sales chart data'
@@ -2137,7 +2138,7 @@ router.get('/owner-distributions', async (req, res) => {
             const purchasesData = await new Promise((resolve) => {
                 qbo.findPurchases({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        console.error('Error fetching purchases:', err);
+                        logger.error('Error fetching purchases', { context: 'Financials', error: err?.message || err });
                         resolve({ QueryResponse: { Purchase: [] } });
                         return;
                     }
@@ -2149,7 +2150,7 @@ router.get('/owner-distributions', async (req, res) => {
             const transfersData = await new Promise((resolve) => {
                 qbo.findTransfers({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        console.error('Error fetching transfers:', err);
+                        logger.error('Error fetching transfers', { context: 'Financials', error: err?.message || err });
                         resolve({ QueryResponse: { Transfer: [] } });
                         return;
                     }
@@ -2160,8 +2161,8 @@ router.get('/owner-distributions', async (req, res) => {
             const purchases = purchasesData.QueryResponse?.Purchase || [];
             const transfers = transfersData.QueryResponse?.Transfer || [];
 
-            console.log(`[owner-distributions] Date range: ${startDate} to ${endDate}`);
-            console.log(`[owner-distributions] Fetched: ${purchases.length} purchases, ${transfers.length} transfers`);
+            logger.debug(`[owner-distributions] Date range: ${startDate} to ${endDate}`);
+            logger.debug(`[owner-distributions] Fetched: ${purchases.length} purchases, ${transfers.length} transfers`);
 
             // Track distributions by owner
             const distributions = {
@@ -2249,8 +2250,8 @@ router.get('/owner-distributions', async (req, res) => {
                 }
             });
 
-            console.log(`[owner-distributions] Darko: $${distributions.darko.amount.toFixed(2)} (${distributions.darko.count} transactions)`);
-            console.log(`[owner-distributions] Louis: $${distributions.louis.amount.toFixed(2)} (${distributions.louis.count} transactions)`);
+            logger.debug(`[owner-distributions] Darko: $${distributions.darko.amount.toFixed(2)} (${distributions.darko.count} transactions)`);
+            logger.debug(`[owner-distributions] Louis: $${distributions.louis.amount.toFixed(2)} (${distributions.louis.count} transactions)`);
 
             const response = {
                 success: true,
@@ -2276,7 +2277,7 @@ router.get('/owner-distributions', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            console.error('QuickBooks error in owner-distributions:', qbError.message);
+            logger.error('QuickBooks error in owner-distributions', { context: 'Financials', error: qbError.message });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -2285,7 +2286,7 @@ router.get('/owner-distributions', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error fetching owner distributions:', error);
+        logger.logError(error, { context: 'Financials', action: 'ownerDistributions' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch owner distributions'

@@ -10,6 +10,7 @@ const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const { createReadStream } = require('fs');
 const DatabaseService = require('./DatabaseService');
+const logger = require('../utils/logger');
 
 class ExpenseUploadService {
     constructor() {
@@ -47,12 +48,12 @@ class ExpenseUploadService {
 
             // Validate and standardize the parsed data
             const standardizedExpenses = expenses.map((expense, index) => this.standardizeExpense(expense, index, originalName));
-            
-            console.log(`Parsed ${standardizedExpenses.length} expenses from ${originalName}`);
+
+            logger.info(`Parsed ${standardizedExpenses.length} expenses from ${originalName}`, { context: 'ExpenseUploadService', action: 'parseExpenseFile' });
             return standardizedExpenses;
-            
+
         } catch (error) {
-            console.error(`Error parsing ${originalName}:`, error.message);
+            logger.logError(error, { context: 'ExpenseUploadService', action: 'parseExpenseFile', filename: originalName });
             throw error;
         }
     }
@@ -221,8 +222,8 @@ class ExpenseUploadService {
 
         // Save to database
         const savedExpenses = await DatabaseService.saveUploadedExpenses(expensesWithMetadata);
-        console.log(`Saved ${savedExpenses.length} expenses to database with filename: ${uploadFilename}`);
-        
+        logger.info(`Saved ${savedExpenses.length} expenses to database with filename: ${uploadFilename}`, { context: 'ExpenseUploadService', action: 'saveExpensesToDatabase' });
+
         return savedExpenses;
     }
 
@@ -238,10 +239,10 @@ class ExpenseUploadService {
     async getAllUploadedExpenses() {
         try {
             const expenses = await DatabaseService.getUploadedExpenses();
-            console.log(`Loaded ${expenses.length} uploaded expenses from database`);
+            logger.debug(`Loaded ${expenses.length} uploaded expenses from database`, { context: 'ExpenseUploadService', action: 'getAllUploadedExpenses' });
             return expenses;
         } catch (error) {
-            console.warn('Error fetching uploaded expenses from database:', error.message);
+            logger.warn(`Error fetching uploaded expenses from database: ${error.message}`, { context: 'ExpenseUploadService', action: 'getAllUploadedExpenses' });
             return [];
         }
     }
@@ -254,7 +255,7 @@ class ExpenseUploadService {
         try {
             return await DatabaseService.getUploadFilenames();
         } catch (error) {
-            console.warn('Error fetching upload filenames:', error.message);
+            logger.warn(`Error fetching upload filenames: ${error.message}`, { context: 'ExpenseUploadService', action: 'getUploadFilenames' });
             return [];
         }
     }
@@ -267,10 +268,10 @@ class ExpenseUploadService {
     async deleteExpensesByFilename(filename) {
         try {
             const count = await DatabaseService.deleteUploadedExpensesByFilename(filename);
-            console.log(`Deleted ${count} expenses with filename: ${filename}`);
+            logger.info(`Deleted ${count} expenses with filename: ${filename}`, { context: 'ExpenseUploadService', action: 'deleteExpensesByFilename' });
             return count;
         } catch (error) {
-            console.error('Error deleting expenses:', error.message);
+            logger.logError(error, { context: 'ExpenseUploadService', action: 'deleteExpensesByFilename', filename });
             throw error;
         }
     }
@@ -332,9 +333,9 @@ class ExpenseUploadService {
     async cleanupUploadedFile(filePath) {
         try {
             await fs.unlink(filePath);
-            console.log(`Cleaned up original uploaded file: ${path.basename(filePath)}`);
+            logger.debug(`Cleaned up original uploaded file: ${path.basename(filePath)}`, { context: 'ExpenseUploadService', action: 'cleanupUploadedFile' });
         } catch (error) {
-            console.warn(`Failed to cleanup file ${filePath}:`, error.message);
+            logger.warn(`Failed to cleanup file ${filePath}: ${error.message}`, { context: 'ExpenseUploadService', action: 'cleanupUploadedFile' });
         }
     }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Plus, AlertCircle, Search, Check, ChevronDown } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI } from '../services/api';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
@@ -121,7 +121,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     title: '',
     message: '',
     type: 'warning',
-    onConfirm: () => {},
+    onConfirm: () => { },
     showCancelButton: true,
     confirmText: undefined,
   });
@@ -476,7 +476,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             title: 'Error',
             message: 'Statement not found',
             type: 'danger',
-            onConfirm: () => {},
+            onConfirm: () => { },
           });
           return;
         }
@@ -563,7 +563,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             title: 'Cannot Delete',
             message: 'Cannot delete finalized statement. Please return to draft status first.',
             type: 'danger',
-            onConfirm: () => {},
+            onConfirm: () => { },
           });
           return;
         }
@@ -585,8 +585,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 title: 'Error',
                 message: `Failed to delete statement: ${errorMessage}`,
                 type: 'danger',
-                onConfirm: () => {},
+                onConfirm: () => { },
               });
+            }
+          },
+        });
+        return;
+      } else if (action === 'pay-owner') {
+        // Find the statement to get its info
+        const statement = statements.find(s => s.id === id);
+        if (!statement) {
+          showToast('Statement not found', 'error');
+          return;
+        }
+
+        if (statement.ownerPayout <= 0) {
+          showToast('No payout amount to transfer', 'error');
+          return;
+        }
+
+        if ((statement as any).payoutStatus === 'paid') {
+          showToast('This statement has already been paid', 'error');
+          return;
+        }
+
+        // Show confirmation dialog
+        setConfirmDialog({
+          isOpen: true,
+          title: 'Pay Owner via Stripe',
+          message: `Transfer $${statement.ownerPayout.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
+          type: 'info',
+          onConfirm: async () => {
+            const toastId = showToast('Processing Stripe transfer...', 'loading');
+            try {
+              const response = await payoutsAPI.transferToOwner(id);
+              if (response.success) {
+                updateToast(toastId, `Payment of $${statement.ownerPayout.toFixed(2)} sent successfully!`, 'success');
+                await loadStatements();
+              } else {
+                updateToast(toastId, response.error || 'Transfer failed', 'error');
+              }
+            } catch (err: any) {
+              const errorMessage = err?.response?.data?.error || err?.message || 'Transfer failed';
+              updateToast(toastId, errorMessage, 'error');
             }
           },
         });
@@ -606,7 +647,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   }, [pendingRegenerateId, statements, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email') => {
+  const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email' | 'pay-owner') => {
     if (ids.length === 0) return;
 
     setBulkProcessing(true);
@@ -648,7 +689,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           title: 'Cannot Delete',
           message: 'None of the selected statements can be deleted. Only draft statements can be deleted. Please return finalized statements to draft status first.',
           type: 'info',
-          onConfirm: () => {},
+          onConfirm: () => { },
           showCancelButton: false,
           confirmText: 'OK',
         });
@@ -924,6 +965,74 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       showToast(`Exported ${selectedStatements.length} statement(s) to CSV`, 'success');
       setBulkProcessing(false);
       return;
+    } else if (action === 'pay-owner') {
+      const selectedStatements = statements.filter(s => ids.includes(s.id));
+
+      // Filter for valid payouts
+      const validPayouts = selectedStatements.filter(s =>
+        s.ownerPayout > 0 && (s as any).payoutStatus !== 'paid'
+      );
+
+      const skippedCount = selectedStatements.length - validPayouts.length;
+
+      if (validPayouts.length === 0) {
+        setConfirmDialog({
+          isOpen: true,
+          title: 'No Statements to Pay',
+          message: skippedCount > 0
+            ? `None of the selected statements can be paid. They either have $0 payout or are already paid.`
+            : 'No statements selected.',
+          type: 'info',
+          onConfirm: () => { },
+          showCancelButton: false,
+          confirmText: 'OK',
+        });
+        setBulkProcessing(false);
+        return;
+      }
+
+      const totalAmount = validPayouts.reduce((sum, s) => sum + s.ownerPayout, 0);
+
+      const message = `Are you sure you want to pay ${validPayouts.length} owners via Stripe?\n\n` +
+        `Total Payout: $${totalAmount.toFixed(2)}\n\n` +
+        (skippedCount > 0 ? `(${skippedCount} statements skipped - $0 or already paid)` : '');
+
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Bulk Pay Owners',
+        message: message,
+        type: 'info',
+        onConfirm: async () => {
+          const toastId = showToast(`Processing ${validPayouts.length} payments...`, 'loading');
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const statement of validPayouts) {
+            try {
+              const response = await payoutsAPI.transferToOwner(statement.id);
+              if (response.success) {
+                successCount++;
+              } else {
+                failCount++;
+                console.error(`Failed to pay statement ${statement.id}:`, response.error);
+              }
+            } catch (err: any) {
+              failCount++;
+              console.error(`Failed to pay statement ${statement.id}:`, err);
+            }
+          }
+
+          if (failCount === 0) {
+            updateToast(toastId, `Successfully paid ${successCount} owners`, 'success');
+          } else {
+            updateToast(toastId, `Paid ${successCount} owners, failed ${failCount}`, 'error');
+          }
+
+          await loadStatements();
+          setBulkProcessing(false);
+        },
+      });
+      return; // Wait for dialog
     } else if (action === 'send-email') {
       // Send emails to owners for selected statements
       const selectedStatements = statements.filter(s => ids.includes(s.id));
@@ -1153,242 +1262,240 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         {/* Scrollable Content */}
         <div className="flex-1 overflow-auto p-4 sm:p-6">
 
-        {/* File Uploads */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Expense Upload */}
-          <Suspense fallback={<div className="bg-gray-50 rounded-lg p-6 animate-pulse h-32" />}>
-            <ExpenseUpload onUploadSuccess={loadInitialData} />
-          </Suspense>
+          {/* File Uploads */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Expense Upload */}
+            <Suspense fallback={<div className="bg-gray-50 rounded-lg p-6 animate-pulse h-32" />}>
+              <ExpenseUpload onUploadSuccess={loadInitialData} />
+            </Suspense>
 
-          {/* Reservation Upload */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
-            <h3 className="text-lg font-semibold text-purple-900 mb-2">Import Reservations</h3>
-            <p className="text-sm text-purple-700 mb-4">Upload a CSV file with manual reservations</p>
-            <button
-              onClick={() => {
-                setUploadModalType('reservations');
-                setIsUploadModalOpen(true);
-              }}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium"
-            >
-              Upload Reservations CSV
-            </button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[160px_1fr_auto_auto] gap-4 items-end">
-            <div className="w-full">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
-              <div className="relative" ref={ownerDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
-                >
-                  <span className="text-gray-900 truncate">
-                    {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
-                  </span>
-                  <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isOwnerDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    <div
-                      onClick={() => {
-                        setFilters({ ...filters, ownerId: '' });
-                        setIsOwnerDropdownOpen(false);
-                      }}
-                      className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === '' ? 'bg-blue-50' : ''}`}
-                    >
-                      <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === '' ? 'border-blue-600' : 'border-gray-300'}`}>
-                        {filters.ownerId === '' && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                      </div>
-                      <span className="text-sm text-gray-900">All Owners</span>
-                    </div>
-                    {owners.map((owner) => (
-                      <div
-                        key={owner.id}
-                        onClick={() => {
-                          setFilters({ ...filters, ownerId: owner.id.toString() });
-                          setIsOwnerDropdownOpen(false);
-                        }}
-                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === owner.id.toString() ? 'bg-blue-50' : ''}`}
-                      >
-                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === owner.id.toString() ? 'border-blue-600' : 'border-gray-300'}`}>
-                          {filters.ownerId === owner.id.toString() && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                        </div>
-                        <span className="text-sm text-gray-900">{owner.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* Reservation Upload */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
+              <h3 className="text-lg font-semibold text-purple-900 mb-2">Import Reservations</h3>
+              <p className="text-sm text-purple-700 mb-4">Upload a CSV file with manual reservations</p>
+              <button
+                onClick={() => {
+                  setUploadModalType('reservations');
+                  setIsUploadModalOpen(true);
+                }}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium"
+              >
+                Upload Reservations CSV
+              </button>
             </div>
-            <div className="w-full sm:col-span-2 lg:col-span-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
-              <div className="space-y-2">
-                {/* Search Input */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Search by property name, nickname, or ID..."
-                    value={propertySearch}
-                    onChange={(e) => setPropertySearch(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {propertySearch && (
-                    <button
-                      onClick={() => setPropertySearch('')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      x
-                    </button>
-                  )}
-                </div>
+          </div>
 
-                {/* Property Dropdown - Multi-select */}
-                <div className="relative" ref={propertyDropdownRef}>
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[160px_1fr_auto_auto] gap-4 items-end">
+              <div className="w-full">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
+                <div className="relative" ref={ownerDropdownRef}>
                   <button
                     type="button"
-                    onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
+                    onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
                   >
                     <span className="text-gray-900 truncate">
-                      {filters.propertyIds.length > 0
-                        ? `${filters.propertyIds.length} properties selected`
-                        : `All Properties (${filteredProperties.length})`}
+                      {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
-                  {/* Custom Dropdown Popup */}
-                  {isPropertyDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg flex flex-col">
-                      {/* Action buttons */}
-                      <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-                        <span className="text-xs text-gray-600">
-                          {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
-                        </span>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setFilters({ ...filters, propertyIds: filteredProperties.map(p => p.id.toString()), propertyId: '' })}
-                            className="text-xs text-blue-600 hover:text-blue-800"
-                          >
-                            Select All
-                          </button>
-                          <span className="text-gray-300">|</span>
-                          <button
-                            type="button"
-                            onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
-                            className="text-xs text-gray-600 hover:text-gray-800"
-                          >
-                            Clear
-                          </button>
+                  {isOwnerDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      <div
+                        onClick={() => {
+                          setFilters({ ...filters, ownerId: '' });
+                          setIsOwnerDropdownOpen(false);
+                        }}
+                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === '' ? 'bg-blue-50' : ''}`}
+                      >
+                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === '' ? 'border-blue-600' : 'border-gray-300'}`}>
+                          {filters.ownerId === '' && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
                         </div>
+                        <span className="text-sm text-gray-900">All Owners</span>
                       </div>
-
-                      {/* Property List */}
-                      <div className="max-h-60 overflow-y-auto flex-1">
-                        {filteredProperties.map((property) => {
-                          const isSelected = filters.propertyIds.includes(property.id.toString());
-                          return (
-                            <div
-                              key={property.id}
-                              onClick={() => {
-                                const newIds = isSelected
-                                  ? filters.propertyIds.filter(id => id !== property.id.toString())
-                                  : [...filters.propertyIds, property.id.toString()];
-                                setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
-                              }}
-                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center border-b border-gray-100 last:border-b-0 ${
-                                isSelected ? 'bg-blue-50' : ''
-                              }`}
-                            >
-                              <div className={`w-4 h-4 border rounded mr-3 flex items-center justify-center flex-shrink-0 ${
-                                isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
-                              }`}>
-                                {isSelected && <Check className="w-3 h-3 text-white" />}
-                              </div>
-                              <span className="text-sm text-gray-900 truncate flex-1">
-                                {property.nickname || property.displayName || property.name}
-                              </span>
-                              <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                                ID: {property.id}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Done button */}
-                      <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setIsPropertyDropdownOpen(false)}
-                          className="w-full px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      {owners.map((owner) => (
+                        <div
+                          key={owner.id}
+                          onClick={() => {
+                            setFilters({ ...filters, ownerId: owner.id.toString() });
+                            setIsOwnerDropdownOpen(false);
+                          }}
+                          className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === owner.id.toString() ? 'bg-blue-50' : ''}`}
                         >
-                          Done
-                        </button>
-                      </div>
+                          <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === owner.id.toString() ? 'border-blue-600' : 'border-gray-300'}`}>
+                            {filters.ownerId === owner.id.toString() && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                          </div>
+                          <span className="text-sm text-gray-900">{owner.name}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-            <div className="w-full sm:w-auto">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-              <input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="w-full sm:w-auto">
-              <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
-              <input
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-          {/* Hide $0 Activity Toggle */}
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <label className="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filters.hideZeroActivity}
-                onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="ml-2 text-sm text-gray-600">Hide $0 activity statements</span>
-              <span className="ml-1 text-xs text-gray-400">(no revenue & no payout)</span>
-            </label>
-          </div>
-        </div>
+              <div className="w-full sm:col-span-2 lg:col-span-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
+                <div className="space-y-2">
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Search by property name, nickname, or ID..."
+                      value={propertySearch}
+                      onChange={(e) => setPropertySearch(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {propertySearch && (
+                      <button
+                        onClick={() => setPropertySearch('')}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        x
+                      </button>
+                    )}
+                  </div>
 
-        {/* Statements Table */}
-        <StatementsTable
-          statements={statements}
-          listings={listings}
-          onAction={handleStatementAction}
-          onBulkAction={handleBulkAction}
-          regeneratingId={regeneratingStatementId}
-          bulkProcessing={bulkProcessing}
-          pagination={pagination}
-          onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
-          onSearchChange={(search) => {
-            setFilters(prev => ({ ...prev, search }));
-            setPagination(prev => ({ ...prev, pageIndex: 0 })); // Reset to first page on search
-          }}
-          initialSearch={filters.search}
-        />
+                  {/* Property Dropdown - Multi-select */}
+                  <div className="relative" ref={propertyDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                    >
+                      <span className="text-gray-900 truncate">
+                        {filters.propertyIds.length > 0
+                          ? `${filters.propertyIds.length} properties selected`
+                          : `All Properties (${filteredProperties.length})`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Custom Dropdown Popup */}
+                    {isPropertyDropdownOpen && (
+                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg flex flex-col">
+                        {/* Action buttons */}
+                        <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
+                          <span className="text-xs text-gray-600">
+                            {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setFilters({ ...filters, propertyIds: filteredProperties.map(p => p.id.toString()), propertyId: '' })}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
+                              className="text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Property List */}
+                        <div className="max-h-60 overflow-y-auto flex-1">
+                          {filteredProperties.map((property) => {
+                            const isSelected = filters.propertyIds.includes(property.id.toString());
+                            return (
+                              <div
+                                key={property.id}
+                                onClick={() => {
+                                  const newIds = isSelected
+                                    ? filters.propertyIds.filter(id => id !== property.id.toString())
+                                    : [...filters.propertyIds, property.id.toString()];
+                                  setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
+                                }}
+                                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''
+                                  }`}
+                              >
+                                <div className={`w-4 h-4 border rounded mr-3 flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                                  }`}>
+                                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <span className="text-sm text-gray-900 truncate flex-1">
+                                  {property.nickname || property.displayName || property.name}
+                                </span>
+                                <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                                  ID: {property.id}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Done button */}
+                        <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setIsPropertyDropdownOpen(false)}
+                            className="w-full px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                  className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                  className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            {/* Hide $0 Activity Toggle */}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <label className="inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filters.hideZeroActivity}
+                  onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-600">Hide $0 activity statements</span>
+                <span className="ml-1 text-xs text-gray-400">(no revenue & no payout)</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Statements Table */}
+          <StatementsTable
+            statements={statements}
+            listings={listings}
+            onAction={handleStatementAction}
+            onBulkAction={handleBulkAction}
+            regeneratingId={regeneratingStatementId}
+            bulkProcessing={bulkProcessing}
+            pagination={pagination}
+            onPaginationChange={(pageIndex, pageSize) => setPagination(prev => ({ ...prev, pageIndex, pageSize }))}
+            onSearchChange={(search) => {
+              setFilters(prev => ({ ...prev, search }));
+              setPagination(prev => ({ ...prev, pageIndex: 0 })); // Reset to first page on search
+            }}
+            initialSearch={filters.search}
+          />
         </div>
       </div>
     );

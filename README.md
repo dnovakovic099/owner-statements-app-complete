@@ -41,6 +41,7 @@ This system automates the process of:
 - **QuickBooks Online** - Expenses, income, P&L reports
 - **SecureStay** - Expense tracking with LL Cover support
 - **SendGrid/SMTP** - Email delivery
+- **Stripe Connect** - Owner payouts and onboarding
 
 ### Edit Statement
 - Hide/show individual expenses and upsells
@@ -48,6 +49,12 @@ This system automates the process of:
 - Add/remove reservations from statement period
 - Edit expense amounts and categories inline
 - Cleaning fee pass-through configuration
+
+### Stripe Payouts
+- **Manual Payouts** - Pay owners directly via Stripe Connect with one click
+- **Onboarding Links** - Generate setup links for owners to connect their bank accounts
+- **Status Tracking** - Track payout status from "unpaid" to "paid" with full audit trail
+- **Secure Transfers** - Funds move directly from your platform account to the connected owner account
 
 ### Listing Groups
 - Group multiple listings for combined statements
@@ -410,7 +417,85 @@ When generating statements manually:
 3. Calculation type auto-fills from group settings
 4. Statement is created as combined for all group members
 
-## Troubleshooting
+## Stripe Payouts Feature
+
+Pay property owners directly via Stripe Connect transfers.
+
+### Prerequisites
+
+1. **Stripe Account** with Connect enabled
+2. **Restricted API Key** with the following permissions:
+   - `Connect > Account Links > Write` - for generating onboarding links
+   - `Connect > Transfers > Write` - for sending payouts
+3. Add to `.env`:
+   ```env
+   STRIPE_SECRET_KEY=rk_live_XXXXXXXXX
+   ```
+
+### Setup (One-time per Listing)
+
+1. **Enter Stripe Account ID** in the Listing's "Payout Info" section
+   - Format: `acct_XXXXXXXXX` (provided by the owner or created via Stripe Connect)
+   - Auto-saves when you click away from the input field
+
+2. **Generate Onboarding Link** (if owner hasn't completed Stripe setup)
+   - Click "Generate Stripe Onboarding Link"
+   - Share the link with the owner
+   - Owner completes Stripe's identity verification & bank setup
+   - Status updates: `missing` → `pending` → `verified`
+
+### Triggering a Payout
+
+1. Open a Statement in the Edit Statement Modal OR view the Statement page
+2. Click **"Pay Owner"** button (next to Current Payout amount)
+   - Only enabled if:
+     - Statement status is `final`
+     - Payout status is `unpaid`
+     - Amount is > $0
+3. Confirm the transfer in the confirmation dialog
+4. Funds are transferred via Stripe to the owner's connected account
+
+### Payout Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `unpaid` | Default - no payout attempted |
+| `pending` | Transfer initiated, waiting for Stripe |
+| `paid` | Transfer completed successfully |
+| `failed` | Transfer failed (error stored in database) |
+
+### Payouts API
+
+```bash
+# Generate Stripe onboarding link for a listing
+POST /api/payouts/listings/:id/onboarding-link
+Returns: { success: true, url: "https://connect.stripe.com/...", stripeAccountId: "acct_XXX" }
+
+# Initiate payout transfer for a statement
+POST /api/payouts/statements/:id/transfer
+Returns: { success: true, transferId: "tr_XXX", paidAt: "2025-01-23T10:00:00Z" }
+```
+
+### Payouts Database Migration
+
+```bash
+# Run migration to add payout tracking fields
+psql -d owner_statements_local -f migrations/20260123-add-payout-tracking-to-statements.sql
+```
+
+This adds to the `statements` table:
+- `payout_transfer_id` - Stripe transfer ID (tr_XXX)
+- `payout_status` - unpaid/pending/paid/failed
+- `paid_at` - Timestamp when payout completed
+- `payout_error` - Error message if transfer failed
+
+### Important Notes
+
+- **Manual Payout Only**: Payouts are triggered manually by the admin. No automatic transfers.
+- **Stripe Account ID**: Must belong to the **same Stripe platform** as your API key.
+- **Permission Required**: The specific Restricted Key permission `Connect > Transfers > Write` is CRITICAL. Without it, transfers will fail with a 403 error.
+- **Currency**: Supports USD transfers (default).
+- **Metadata**: Transfers are logged in Stripe Dashboard with the Statement ID and Period for reconciliation.
 
 ### QuickBooks Connection Issues
 

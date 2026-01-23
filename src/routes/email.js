@@ -10,6 +10,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const EmailService = require('../services/EmailService');
 const { Statement, Listing, EmailLog, ScheduledEmail, ActivityLog } = require('../models');
 const { Op } = require('sequelize');
@@ -33,7 +34,7 @@ router.get('/status', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error checking email status:', error);
+        logger.logError(error, { context: 'Email', action: 'checkStatus' });
         res.status(500).json({ error: 'Failed to check email status' });
     }
 });
@@ -162,7 +163,7 @@ router.post('/send/:statementId', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error sending statement email:', error);
+        logger.logError(error, { context: 'Email', action: 'sendStatementEmail' });
         res.status(500).json({ error: 'Failed to send statement email' });
     }
 });
@@ -226,7 +227,7 @@ router.post('/send-bulk', async (req, res) => {
             results
         });
     } catch (error) {
-        console.error('Error sending bulk emails:', error);
+        logger.logError(error, { context: 'Email', action: 'sendBulkEmails' });
         res.status(500).json({ error: 'Failed to send bulk emails' });
     }
 });
@@ -272,7 +273,7 @@ router.get('/flagged', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Error fetching flagged statements:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchFlaggedStatements' });
         res.status(500).json({ error: 'Failed to fetch flagged statements' });
     }
 });
@@ -312,7 +313,7 @@ router.post('/review/:statementId', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error reviewing statement:', error);
+        logger.logError(error, { context: 'Email', action: 'reviewStatement' });
         res.status(500).json({ error: 'Failed to review statement' });
     }
 });
@@ -447,7 +448,7 @@ router.post('/force-send/:statementId', async (req, res) => {
             ownerPayout
         });
     } catch (error) {
-        console.error('Error force sending email:', error);
+        logger.logError(error, { context: 'Email', action: 'forceSendEmail' });
 
         // Log failed force-send attempt
         try {
@@ -467,7 +468,7 @@ router.post('/force-send/:statementId', async (req, res) => {
                 });
             }
         } catch (logError) {
-            console.error('Error logging failed email:', logError);
+            logger.logError(logError, { context: 'Email', action: 'logFailedEmail' });
         }
 
         res.status(500).json({ error: 'Failed to force send email' });
@@ -534,7 +535,7 @@ router.get('/queue', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Error fetching email queue:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchEmailQueue' });
         res.status(500).json({ error: 'Failed to fetch email queue' });
     }
 });
@@ -584,7 +585,7 @@ router.get('/summary', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching email summary:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchEmailSummary' });
         res.status(500).json({ error: 'Failed to fetch email summary' });
     }
 });
@@ -661,7 +662,7 @@ router.get('/logs', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Error fetching email logs:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchEmailLogs' });
         res.status(500).json({ error: 'Failed to fetch email logs' });
     }
 });
@@ -714,7 +715,7 @@ router.get('/logs/stats', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Error fetching email stats:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchEmailStats' });
         res.status(500).json({ error: 'Failed to fetch email stats' });
     }
 });
@@ -756,7 +757,7 @@ router.get('/logs/:id', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching email log:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchEmailLog' });
         res.status(500).json({ error: 'Failed to fetch email log' });
     }
 });
@@ -802,7 +803,7 @@ router.post('/logs/:id/retry', async (req, res) => {
             result
         });
     } catch (error) {
-        console.error('Error retrying email:', error);
+        logger.logError(error, { context: 'Email', action: 'retryEmail' });
         res.status(500).json({ error: 'Failed to retry email' });
     }
 });
@@ -840,7 +841,7 @@ router.post('/logs/failed', async (req, res) => {
             log
         });
     } catch (error) {
-        console.error('Error logging failed email:', error);
+        logger.logError(error, { context: 'Email', action: 'logFailedEmailAttempt' });
         res.status(500).json({ error: 'Failed to log email failure' });
     }
 });
@@ -943,7 +944,7 @@ router.post('/schedule', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error scheduling emails:', error);
+        logger.logError(error, { context: 'Email', action: 'scheduleEmails' });
         res.status(500).json({ error: 'Failed to schedule emails' });
     }
 });
@@ -987,7 +988,7 @@ router.get('/scheduled', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Error fetching scheduled emails:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchScheduledEmails' });
         res.status(500).json({ error: 'Failed to fetch scheduled emails' });
     }
 });
@@ -1023,7 +1024,7 @@ router.delete('/scheduled/:id', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error cancelling scheduled email:', error);
+        logger.logError(error, { context: 'Email', action: 'cancelScheduledEmail' });
         res.status(500).json({ error: 'Failed to cancel scheduled email' });
     }
 });
@@ -1134,7 +1135,7 @@ router.post('/scheduled/process', async (req, res) => {
             results
         });
     } catch (error) {
-        console.error('Error processing scheduled emails:', error);
+        logger.logError(error, { context: 'Email', action: 'processScheduledEmails' });
         res.status(500).json({ error: 'Failed to process scheduled emails' });
     }
 });
@@ -1219,7 +1220,7 @@ router.get('/owners', async (req, res) => {
             owners: Array.from(uniqueEmails.values())
         });
     } catch (error) {
-        console.error('Error fetching owners:', error);
+        logger.logError(error, { context: 'Email', action: 'fetchOwners' });
         res.status(500).json({ error: 'Failed to fetch owners' });
     }
 });
@@ -1273,7 +1274,7 @@ router.post('/announcement', async (req, res) => {
                     subject
                 });
             } catch (err) {
-                console.error(`Failed to send test announcement to ${testEmail}:`, err.message);
+                logger.logError(err, { context: 'Email', action: 'sendTestAnnouncement', testEmail });
                 results.failed.push({ email: testEmail, error: err.message });
 
                 // Log failed test announcement
@@ -1350,7 +1351,7 @@ router.post('/announcement', async (req, res) => {
             });
             const failedEmails = new Set(failedLogs.map(log => log.recipientEmail));
             recipients = recipients.filter(r => failedEmails.has(r.email));
-            console.log(`[Announcement] Retry mode: ${recipients.length} failed recipients found`);
+            logger.info('Announcement retry mode', { context: 'Email', failedRecipients: recipients.length });
         }
 
         if (recipients.length === 0) {
@@ -1364,7 +1365,7 @@ router.post('/announcement', async (req, res) => {
         };
 
         const rateLimit = parseInt(delayMs) || 0;
-        console.log(`[Announcement] Sending to ${recipients.length} recipients with ${rateLimit}ms delay between emails`);
+        logger.info('Sending announcement', { context: 'Email', recipients: recipients.length, delayMs: rateLimit });
 
         for (let i = 0; i < recipients.length; i++) {
             const recipient = recipients[i];
@@ -1387,7 +1388,7 @@ router.post('/announcement', async (req, res) => {
                 );
 
                 results.sent.push(recipient.email);
-                console.log(`[Announcement] ${i + 1}/${recipients.length} - Sent to ${recipient.email}`);
+                logger.debug(`Announcement sent`, { context: 'Email', progress: `${i + 1}/${recipients.length}`, recipient: recipient.email });
 
                 // Log to email_logs table
                 await EmailLog.create({
@@ -1408,7 +1409,7 @@ router.post('/announcement', async (req, res) => {
                     subject: personalizedSubject
                 });
             } catch (err) {
-                console.error(`[Announcement] ${i + 1}/${recipients.length} - Failed to send to ${recipient.email}:`, err.message);
+                logger.logError(err, { context: 'Email', action: 'sendAnnouncement', progress: `${i + 1}/${recipients.length}`, recipient: recipient.email });
                 results.failed.push({ email: recipient.email, error: err.message });
 
                 // Log failed email
@@ -1434,7 +1435,7 @@ router.post('/announcement', async (req, res) => {
             results
         });
     } catch (error) {
-        console.error('Error sending announcement:', error);
+        logger.logError(error, { context: 'Email', action: 'sendAnnouncement' });
         res.status(500).json({ error: 'Failed to send announcement' });
     }
 });

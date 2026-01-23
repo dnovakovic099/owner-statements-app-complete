@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 const QuickBooksService = require('../services/QuickBooksService');
 const FileDataService = require('../services/FileDataService');
 
@@ -27,7 +28,7 @@ router.get('/transactions', async (req, res) => {
             count: transactions.length
         });
     } catch (error) {
-        console.error('Error fetching QuickBooks transactions:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchTransactions' });
         
         // If QuickBooks is not configured, return empty array
         if (error.message && error.message.includes('QuickBooks not connected')) {
@@ -81,7 +82,7 @@ router.get('/status', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('Error checking QuickBooks status:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'checkStatus' });
         res.json({
             success: true,
             connected: false,
@@ -104,7 +105,7 @@ router.get('/accounts', async (req, res) => {
             data: accounts
         });
     } catch (error) {
-        console.error('Error fetching QuickBooks accounts:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchAccounts' });
         
         // If QuickBooks is not configured, return error (consistent with financials API)
         if (error.message && error.message.includes('QuickBooks access token not configured')) {
@@ -136,7 +137,7 @@ router.get('/departments', async (req, res) => {
             data: departments
         });
     } catch (error) {
-        console.error('Error fetching QuickBooks departments:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchDepartments' });
         
         // If QuickBooks is not configured, return default departments
         if (error.message && error.message.includes('QuickBooks access token not configured')) {
@@ -239,7 +240,7 @@ router.get('/properties', async (req, res) => {
             data: properties
         });
     } catch (error) {
-        console.error('Error fetching properties:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchProperties' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch properties'
@@ -260,7 +261,7 @@ router.get('/listings', async (req, res) => {
             data: listings
         });
     } catch (error) {
-        console.error('Error fetching listings:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchListings' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch listings'
@@ -300,7 +301,7 @@ router.put('/transactions/:id/categorize', async (req, res) => {
             message: 'Transaction categorized successfully'
         });
     } catch (error) {
-        console.error('Error categorizing transaction:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'categorizeTransaction' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to categorize transaction'
@@ -321,7 +322,7 @@ router.get('/auth-url', async (req, res) => {
             authUrl
         });
     } catch (error) {
-        console.error('Error generating auth URL:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'generateAuthUrl' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to generate authorization URL'
@@ -351,7 +352,7 @@ router.post('/save-tokens', async (req, res) => {
         try {
             envContent = fs.readFileSync(envPath, 'utf8');
         } catch (error) {
-            console.log('Creating new .env file');
+            logger.info('Creating new .env file', { context: 'QuickBooks' });
         }
 
         // Update or add QuickBooks tokens
@@ -388,9 +389,9 @@ router.post('/save-tokens', async (req, res) => {
         // Also save to database for multi-worker support
         try {
             await quickBooksService.saveTokensToDatabase(accessToken, refreshToken, companyId);
-            console.log('QuickBooks tokens saved to database for multi-worker support');
+            logger.info('QuickBooks tokens saved to database for multi-worker support', { context: 'QuickBooks' });
         } catch (dbErr) {
-            console.error('Failed to save tokens to database:', dbErr.message);
+            logger.logError(dbErr, { context: 'QuickBooks', action: 'saveTokensToDatabase' });
         }
 
         res.json({
@@ -399,7 +400,7 @@ router.post('/save-tokens', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error saving QuickBooks tokens:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'saveTokens' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to save tokens'
@@ -413,7 +414,7 @@ router.post('/save-tokens', async (req, res) => {
  */
 router.get('/auth/callback', async (req, res) => {
     try {
-        console.log('QuickBooks callback received:', req.url);
+        logger.info('QuickBooks callback received', { context: 'QuickBooks', url: req.url });
         
         // Pass the full req.url like working example
         const tokens = await quickBooksService.exchangeCodeForTokens(req.url);
@@ -425,7 +426,7 @@ router.get('/auth/callback', async (req, res) => {
         try {
             envContent = fs.readFileSync(envPath, 'utf8');
         } catch (error) {
-            console.log('Creating new .env file');
+            logger.info('Creating new .env file', { context: 'QuickBooks' });
         }
 
         // Update or add QuickBooks tokens
@@ -462,12 +463,12 @@ router.get('/auth/callback', async (req, res) => {
         // Also save directly to database for multi-worker support
         try {
             await quickBooksService.saveTokensToDatabase(tokens.accessToken, tokens.refreshToken, tokens.realmId);
-            console.log('QuickBooks tokens saved to database for multi-worker support');
+            logger.info('QuickBooks tokens saved to database for multi-worker support', { context: 'QuickBooks' });
         } catch (dbErr) {
-            console.error('Failed to save tokens to database:', dbErr.message);
+            logger.logError(dbErr, { context: 'QuickBooks', action: 'saveTokensToDatabaseCallback' });
         }
 
-        console.log('QuickBooks connected successfully!');
+        logger.info('QuickBooks connected successfully!', { context: 'QuickBooks' });
 
         // Determine return URL based on environment
         const appUrl = process.env.APP_URL || 'http://localhost:3000';
@@ -499,7 +500,7 @@ router.get('/auth/callback', async (req, res) => {
             </html>
         `);
     } catch (error) {
-        console.error('OAuth error:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'oauthCallback' });
         const appUrl = process.env.APP_URL || 'http://localhost:3000';
         res.status(500).send(`
             <!DOCTYPE html>
@@ -535,7 +536,7 @@ router.get('/customers', async (req, res) => {
             count: customers?.QueryResponse?.Customer?.length || 0
         });
     } catch (error) {
-        console.error('Error fetching customers:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'fetchCustomers' });
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to fetch customers'
@@ -571,7 +572,7 @@ async function saveTransactionCategorization(transactionId, propertyId, listingI
         
         fs.writeFileSync(categorizationsFile, JSON.stringify(categorizations, null, 2));
     } catch (error) {
-        console.error('Error saving transaction categorization:', error);
+        logger.logError(error, { context: 'QuickBooks', action: 'saveTransactionCategorization' });
         // Don't throw error as this is not critical
     }
 }

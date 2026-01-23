@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const ListingService = require('../services/ListingService');
 const FileDataService = require('../services/FileDataService');
 const { ActivityLog } = require('../models');
@@ -87,7 +88,7 @@ router.post('/bulk-update-pm-fees', async (req, res) => {
             results 
         });
     } catch (error) {
-        console.error('Error bulk updating PM fees:', error);
+        logger.logError(error, { context: 'Listings', action: 'bulkUpdatePmFees' });
         res.status(500).json({ error: 'Failed to bulk update PM fees' });
     }
 });
@@ -162,7 +163,7 @@ router.put('/:id/pm-fee', async (req, res) => {
         const listing = await ListingService.updatePmFee(parseInt(id), pmFee);
         res.json({ success: true, message: 'PM fee updated', listing });
     } catch (error) {
-        console.error('Error updating PM fee:', error);
+        logger.logError(error, { context: 'Listings', action: 'updatePmFee' });
         res.status(500).json({ error: error.message || 'Failed to update PM fee' });
     }
 });
@@ -180,7 +181,7 @@ router.put('/:id/display-name', async (req, res) => {
         const listing = await ListingService.updateDisplayName(parseInt(id), displayName);
         res.json({ success: true, message: 'Display name updated', listing });
     } catch (error) {
-        console.error('Error updating display name:', error);
+        logger.logError(error, { context: 'Listings', action: 'updateDisplayName' });
         res.status(500).json({ error: error.message || 'Failed to update display name' });
     }
 });
@@ -198,7 +199,7 @@ router.put('/:id/cohost-status', async (req, res) => {
         const listing = await ListingService.updateCohostStatus(parseInt(id), isCohostOnAirbnb);
         res.json({ success: true, message: 'Co-host status updated', listing });
     } catch (error) {
-        console.error('Error updating co-host status:', error);
+        logger.logError(error, { context: 'Listings', action: 'updateCohostStatus' });
         res.status(500).json({ error: error.message || 'Failed to update co-host status' });
     }
 });
@@ -207,7 +208,7 @@ router.put('/:id/cohost-status', async (req, res) => {
 router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
-        console.log('[ROUTE] PUT /listings/:id/config - Request body:', JSON.stringify(req.body));
+        logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
         const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, stripeAccountId, stripeOnboardingStatus } = req.body;
 
         const config = {};
@@ -264,14 +265,14 @@ router.put('/:id/config', async (req, res) => {
             }
         }
         
-        console.log('[ROUTE] Config to update:', JSON.stringify(config));
+        logger.debug('Config to update', { context: 'Listings', config });
 
         if (Object.keys(config).length === 0) {
             return res.status(400).json({ error: 'No valid fields to update' });
         }
 
         const listing = await ListingService.updateListingConfig(parseInt(id), config);
-        console.log('[ROUTE] Updated listing ownerEmail:', listing.ownerEmail, 'ownerGreeting:', listing.ownerGreeting);
+        logger.debug('Updated listing', { context: 'Listings', ownerEmail: listing.ownerEmail, ownerGreeting: listing.ownerGreeting });
 
         // Clear the listings cache so changes are reflected immediately
         FileDataService.clearListingsCache();
@@ -312,7 +313,7 @@ router.put('/:id/config', async (req, res) => {
 
         res.json({ success: true, message: 'Listing configuration updated', listing });
     } catch (error) {
-        console.error('Error updating listing configuration:', error);
+        logger.logError(error, { context: 'Listings', action: 'updateListingConfig' });
         res.status(500).json({ error: error.message || 'Failed to update listing configuration' });
     }
 });

@@ -6,6 +6,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
+const logger = require('../utils/logger');
 const ExpenseUploadService = require('../services/ExpenseUploadService');
 
 const router = express.Router();
@@ -56,7 +57,7 @@ router.post('/upload', upload.single('expenseFile'), async (req, res) => {
             });
         }
 
-        console.log(`Processing uploaded expense file: ${req.file.originalname}`);
+        logger.info('Processing uploaded expense file', { context: 'Expenses', filename: req.file.originalname });
         
         // Parse the uploaded file
         const expenses = await ExpenseUploadService.parseExpenseFile(req.file.path, req.file.originalname);
@@ -86,17 +87,17 @@ router.post('/upload', upload.single('expenseFile'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error uploading expenses:', error);
-        
+        logger.logError(error, { context: 'Expenses', action: 'uploadExpenses' });
+
         // Clean up temp file on error
         if (req.file && req.file.path) {
             try {
                 await ExpenseUploadService.cleanupUploadedFile(req.file.path);
             } catch (cleanupError) {
-                console.warn('Failed to cleanup temp file:', cleanupError.message);
+                logger.warn('Failed to cleanup temp file', { context: 'Expenses', error: cleanupError.message });
             }
         }
-        
+
         res.status(400).json({
             success: false,
             error: error.message || 'Failed to process uploaded file'
@@ -133,7 +134,7 @@ router.get('/uploaded', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching uploaded expenses:', error);
+        logger.logError(error, { context: 'Expenses', action: 'fetchUploadedExpenses' });
         res.status(500).json({
             success: false,
             error: 'Failed to fetch uploaded expenses'
@@ -160,7 +161,7 @@ router.get('/duplicates', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error checking duplicates:', error);
+        logger.logError(error, { context: 'Expenses', action: 'checkDuplicates' });
         res.status(500).json({
             success: false,
             error: 'Failed to check for duplicates'
@@ -186,7 +187,7 @@ router.delete('/uploaded/:filename', async (req, res) => {
         
         // Delete the file
         await fs.unlink(filePath);
-        console.log(`Deleted uploaded expense file: ${filename}`);
+        logger.info('Deleted uploaded expense file', { context: 'Expenses', filename });
 
         res.json({
             success: true,
@@ -194,7 +195,7 @@ router.delete('/uploaded/:filename', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error deleting expense file:', error);
+        logger.logError(error, { context: 'Expenses', action: 'deleteExpenseFile' });
         res.status(500).json({
             success: false,
             error: 'Failed to delete expense file'

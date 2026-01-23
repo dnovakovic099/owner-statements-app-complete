@@ -38,12 +38,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
         <div className="p-6">
           <div className="flex items-start">
-            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-              variant === 'warning' ? 'bg-amber-100' : variant === 'success' ? 'bg-green-100' : 'bg-blue-100'
-            }`}>
-              <AlertTriangle className={`w-5 h-5 ${
-                variant === 'warning' ? 'text-amber-600' : variant === 'success' ? 'text-green-600' : 'text-blue-600'
-              }`} />
+            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${variant === 'warning' ? 'bg-amber-100' : variant === 'success' ? 'bg-green-100' : 'bg-blue-100'
+              }`}>
+              <AlertTriangle className={`w-5 h-5 ${variant === 'warning' ? 'text-amber-600' : variant === 'success' ? 'text-green-600' : 'text-blue-600'
+                }`} />
             </div>
             <div className="ml-4">
               <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
@@ -166,7 +164,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     message: '',
     confirmText: 'Confirm',
     variant: 'default',
-    onConfirm: () => {}
+    onConfirm: () => { }
   });
 
   // Statement period & settings state
@@ -228,7 +226,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   const loadAvailableReservations = async () => {
     if (!statementId) return;
-    
+
     try {
       setLoadingAvailable(true);
       setError(null);
@@ -535,8 +533,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleReservationRemoveToggle = (reservationId: number) => {
-    setSelectedReservationIdsToRemove(prev => 
-      prev.includes(reservationId) 
+    setSelectedReservationIdsToRemove(prev =>
+      prev.includes(reservationId)
         ? prev.filter(id => id !== reservationId)
         : [...prev, reservationId]
     );
@@ -631,7 +629,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setConfirmDialog({
       isOpen: true,
       title: 'Add Custom Reservation',
-      message: `Add custom reservation for ${customReservation.guestName} with gross payout $${grossPayout.toLocaleString('en-US', {minimumFractionDigits: 2})}?`,
+      message: `Add custom reservation for ${customReservation.guestName} with gross payout $${grossPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}?`,
       confirmText: 'Add Reservation',
       variant: 'success',
       onConfirm: async () => {
@@ -884,7 +882,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover') || [];
   const llCoverUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'll_cover') || [];
   const reservations = statement?.reservations || [];
-  
+
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
     return sum + (expenses[index]?.amount || 0);
   }, 0);
@@ -973,10 +971,59 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   <div className="text-right">
                     <div className="text-sm text-gray-600">Current Payout</div>
                     <div className="text-2xl font-bold text-green-600">
-                      ${statement.ownerPayout.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      ${statement.ownerPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-xs text-gray-500">
                       Revenue: ${statement.totalRevenue.toLocaleString()} - Expenses: ${statement.totalExpenses.toLocaleString()}
+                    </div>
+                    {/* Payout Status & Pay Button */}
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      {(statement as any).payoutStatus === 'paid' ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          ✓ Paid {(statement as any).paidAt ? new Date((statement as any).paidAt).toLocaleDateString() : ''}
+                        </span>
+                      ) : (statement as any).payoutStatus === 'failed' ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(statement as any).payoutError || ''}>
+                          ✗ Failed
+                        </span>
+                      ) : (statement as any).payoutStatus === 'pending' ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          ⏳ Processing
+                        </span>
+                      ) : null}
+                      {(statement.status === 'final' && (statement as any).payoutStatus !== 'paid' && statement.ownerPayout > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmDialog({
+                              isOpen: true,
+                              title: 'Pay Owner',
+                              message: `Transfer $${statement.ownerPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${statement.ownerName}?`,
+                              confirmText: 'Pay Now',
+                              variant: 'success',
+                              onConfirm: async () => {
+                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                                try {
+                                  setSaving(true);
+                                  const { payoutsAPI } = await import('../services/api');
+                                  await payoutsAPI.transferToOwner(statement.id);
+                                  onStatementUpdated();
+                                  loadStatement();
+                                } catch (err: any) {
+                                  setError(err.response?.data?.error || err.message || 'Failed to transfer payout');
+                                } finally {
+                                  setSaving(false);
+                                }
+                              }
+                            });
+                          }}
+                          disabled={saving}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          <DollarSign className="w-3 h-3" />
+                          Pay Owner
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1043,11 +1090,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       Calculation Method <span className="text-red-500">*</span>
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${
-                        editCalculationType === 'checkout'
-                          ? 'bg-blue-50 border-blue-300'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
-                      }`}>
+                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${editCalculationType === 'checkout'
+                        ? 'bg-blue-50 border-blue-300'
+                        : 'bg-white border-gray-200 hover:border-gray-300'
+                        }`}>
                         <input
                           type="radio"
                           name="calculationType"
@@ -1061,11 +1107,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           <div className="text-xs text-gray-500">Reservations that check out during period</div>
                         </div>
                       </label>
-                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${
-                        editCalculationType === 'calendar'
-                          ? 'bg-blue-50 border-blue-300'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
-                      }`}>
+                      <label className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${editCalculationType === 'calendar'
+                        ? 'bg-blue-50 border-blue-300'
+                        : 'bg-white border-gray-200 hover:border-gray-300'
+                        }`}>
                         <input
                           type="radio"
                           name="calculationType"
@@ -1152,7 +1197,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedExpenseIndices.length} expense(s) selected to hide
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Expense reduction: ${selectedExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Expense reduction: ${selectedExpensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1162,7 +1207,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedUpsellIndices.length} upsell(s) selected to hide
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Revenue reduction: ${selectedUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Revenue reduction: ${selectedUpsellsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1172,7 +1217,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedHiddenExpenseIndices.length} hidden expense(s) selected to restore
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Expense increase: ${selectedHiddenExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Expense increase: ${selectedHiddenExpensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1182,7 +1227,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedHiddenUpsellIndices.length} hidden upsell(s) selected to restore
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Revenue increase: ${selectedHiddenUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Revenue increase: ${selectedHiddenUpsellsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1192,7 +1237,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedLLCoverExpenseIndices.length} LL Cover expense(s) selected to include
                             </h4>
                             <p className="text-sm text-purple-700">
-                              Expense increase: ${selectedLLCoverExpensesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Expense increase: ${selectedLLCoverExpensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1202,7 +1247,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedLLCoverUpsellIndices.length} LL Cover upsell(s) selected to include
                             </h4>
                             <p className="text-sm text-purple-700">
-                              Revenue increase: ${selectedLLCoverUpsellsTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Revenue increase: ${selectedLLCoverUpsellsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1212,7 +1257,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedReservationIdsToRemove.length} reservation(s) selected for removal
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Revenue reduction: ${selectedReservationsToRemoveTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Revenue reduction: ${selectedReservationsToRemoveTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1222,7 +1267,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               {selectedReservationIdsToAdd.length} reservation(s) selected to add
                             </h4>
                             <p className="text-sm text-amber-700">
-                              Revenue increase: ${selectedReservationsToAddTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                              Revenue increase: ${selectedReservationsToAddTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1237,7 +1282,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           </>
                         )}
                         <p className="text-xs text-amber-600 font-semibold pt-1">
-                          Net change: ${netChange.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                          Net change: ${netChange.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                       </div>
                     </div>
@@ -1269,7 +1314,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     </button>
                   )}
                 </div>
-                
+
                 {expenses.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     No visible expenses found in this statement
@@ -1358,11 +1403,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={index}
-                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-red-50 border-red-200'
-                              : 'bg-white border-gray-200 hover:bg-gray-50'
-                          }`}
+                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                            ? 'bg-red-50 border-red-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
                           onClick={() => handleExpenseToggle(index)}
                         >
                           <div className="flex items-center justify-between">
@@ -1392,7 +1436,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </button>
                               <div className="flex items-center text-red-600 font-semibold">
                                 <DollarSign className="w-4 h-4 mr-1" />
-                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1416,11 +1460,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`hidden-expense-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-amber-50 border-amber-200'
-                                : 'bg-white border-gray-200 hover:bg-gray-50'
-                            }`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                              ? 'bg-amber-50 border-amber-200'
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
+                              }`}
                             onClick={() => handleHiddenExpenseToggle(index)}
                           >
                             <div className="flex items-center justify-between">
@@ -1447,7 +1490,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </div>
                               <div className="flex items-center text-gray-500 font-semibold">
                                 <DollarSign className="w-4 h-4 mr-1" />
-                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1504,11 +1547,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`llcover-expense-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-purple-100 border-purple-400'
-                                : 'bg-white border-purple-200 hover:bg-purple-50'
-                            }`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                              ? 'bg-purple-100 border-purple-400'
+                              : 'bg-white border-purple-200 hover:bg-purple-50'
+                              }`}
                             onClick={() => handleLLCoverExpenseToggle(index)}
                           >
                             <div className="flex items-center justify-between">
@@ -1531,7 +1573,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </div>
                               <div className="flex items-center text-purple-700 font-semibold">
                                 <DollarSign className="w-4 h-4 mr-1" />
-                                {expense.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1558,7 +1600,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     </button>
                   )}
                 </div>
-                
+
                 {upsells.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     No visible additional revenue/upsells in this statement
@@ -1647,11 +1689,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={index}
-                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-red-50 border-red-200'
-                              : 'bg-white border-gray-200 hover:bg-gray-50'
-                          }`}
+                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                            ? 'bg-red-50 border-red-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
                           onClick={() => handleUpsellToggle(index)}
                         >
                           <div className="flex items-center justify-between">
@@ -1682,7 +1723,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </button>
                               <div className="flex items-center text-green-600 font-semibold">
                                 <Plus className="w-4 h-4 mr-1" />
-                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1706,11 +1747,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`hidden-upsell-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-amber-50 border-amber-200'
-                                : 'bg-white border-gray-200 hover:bg-gray-50'
-                            }`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                              ? 'bg-amber-50 border-amber-200'
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
+                              }`}
                             onClick={() => handleHiddenUpsellToggle(index)}
                           >
                             <div className="flex items-center justify-between">
@@ -1738,7 +1778,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </div>
                               <div className="flex items-center text-gray-500 font-semibold">
                                 <Plus className="w-4 h-4 mr-1" />
-                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1771,11 +1811,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`llcover-upsell-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-purple-100 border-purple-400'
-                                : 'bg-white border-purple-200 hover:bg-purple-50'
-                            }`}
+                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                              ? 'bg-purple-100 border-purple-400'
+                              : 'bg-white border-purple-200 hover:bg-purple-50'
+                              }`}
                             onClick={() => handleLLCoverUpsellToggle(index)}
                           >
                             <div className="flex items-center justify-between">
@@ -1798,7 +1837,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               </div>
                               <div className="flex items-center text-purple-700 font-semibold">
                                 <Plus className="w-4 h-4 mr-1" />
-                                {upsell.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1846,11 +1885,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={resId}
-                          className={`border rounded-lg p-4 transition-colors ${
-                            isSelected
-                              ? 'bg-red-50 border-red-200'
-                              : 'bg-white border-gray-200 hover:bg-gray-50'
-                          }`}
+                          className={`border rounded-lg p-4 transition-colors ${isSelected
+                            ? 'bg-red-50 border-red-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1 cursor-pointer" onClick={() => handleReservationRemoveToggle(resId)}>
@@ -1870,11 +1908,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                         {reservation.checkInDate} to {reservation.checkOutDate}
                                       </span>
                                       {reservation.status && (
-                                        <span className={`px-2 py-1 rounded-full text-xs ${
-                                          reservation.status === 'cancelled'
-                                            ? 'bg-red-100 text-red-800'
-                                            : 'bg-green-100 text-green-800'
-                                        }`}>
+                                        <span className={`px-2 py-1 rounded-full text-xs ${reservation.status === 'cancelled'
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-green-100 text-green-800'
+                                          }`}>
                                           {reservation.status.toUpperCase()}
                                         </span>
                                       )}
@@ -1909,7 +1946,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               )}
                               <div className="flex items-center text-green-600 font-semibold">
                                 <DollarSign className="w-4 h-4 mr-1" />
-                                {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           </div>
@@ -1993,13 +2030,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           return (
                             <div
                               key={resId}
-                              className={`border rounded-lg p-4 transition-colors ${
-                                isAlreadyAdded
-                                  ? 'bg-gray-50 border-gray-200 opacity-60'
-                                  : isSelected
+                              className={`border rounded-lg p-4 transition-colors ${isAlreadyAdded
+                                ? 'bg-gray-50 border-gray-200 opacity-60'
+                                : isSelected
                                   ? 'bg-sky-50 border-sky-200 cursor-pointer'
                                   : 'bg-white border-gray-200 hover:bg-gray-50 cursor-pointer'
-                              }`}
+                                }`}
                               onClick={() => !isAlreadyAdded && handleCancelledReservationToggle(resId)}
                             >
                               <div className="flex items-center justify-between">
@@ -2041,7 +2077,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                                 <div className="flex items-center text-gray-500 font-semibold">
                                   <DollarSign className="w-4 h-4 mr-1" />
-                                  {(reservation.clientRevenue || reservation.grossAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  {(reservation.clientRevenue || reservation.grossAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   <span className="text-xs text-gray-400 ml-1">(original)</span>
                                 </div>
                               </div>
@@ -2098,11 +2134,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           return (
                             <div
                               key={resId}
-                              className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                                isSelected 
-                                  ? 'bg-green-50 border-green-200' 
-                                  : 'bg-white border-gray-200 hover:bg-gray-50'
-                              }`}
+                              className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                                ? 'bg-green-50 border-green-200'
+                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                                }`}
                               onClick={() => handleReservationAddToggle(resId)}
                             >
                               <div className="flex items-center justify-between">
@@ -2123,11 +2158,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                             {reservation.checkInDate} to {reservation.checkOutDate}
                                           </span>
                                           {reservation.status && (
-                                            <span className={`px-2 py-1 rounded-full text-xs ${
-                                              reservation.status === 'cancelled' 
-                                                ? 'bg-red-100 text-red-800' 
-                                                : 'bg-blue-100 text-blue-800'
-                                            }`}>
+                                            <span className={`px-2 py-1 rounded-full text-xs ${reservation.status === 'cancelled'
+                                              ? 'bg-red-100 text-red-800'
+                                              : 'bg-blue-100 text-blue-800'
+                                              }`}>
                                               {reservation.status.toUpperCase()}
                                             </span>
                                           )}
@@ -2141,7 +2175,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                                 <div className="flex items-center text-green-600 font-semibold">
                                   <DollarSign className="w-4 h-4 mr-1" />
-                                  {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                               </div>
                             </div>
@@ -2206,7 +2240,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         <input
                           type="text"
                           value={customReservation.guestName}
-                          onChange={(e) => setCustomReservation({...customReservation, guestName: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, guestName: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="John Doe"
                         />
@@ -2218,7 +2252,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         </label>
                         <select
                           value={customReservation.platform}
-                          onChange={(e) => setCustomReservation({...customReservation, platform: e.target.value as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other'})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, platform: e.target.value as 'airbnb' | 'vrbo' | 'direct' | 'booking' | 'other' })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                         >
                           <option value="direct">Direct</option>
@@ -2236,7 +2270,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         <input
                           type="text"
                           value={customReservation.description}
-                          onChange={(e) => setCustomReservation({...customReservation, description: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, description: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="Direct booking"
                         />
@@ -2253,7 +2287,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         <input
                           type="date"
                           value={customReservation.checkInDate}
-                          onChange={(e) => setCustomReservation({...customReservation, checkInDate: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, checkInDate: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                         />
                       </div>
@@ -2265,7 +2299,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         <input
                           type="date"
                           value={customReservation.checkOutDate}
-                          onChange={(e) => setCustomReservation({...customReservation, checkOutDate: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, checkOutDate: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                         />
                       </div>
@@ -2277,7 +2311,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         <input
                           type="number"
                           value={customReservation.nights}
-                          onChange={(e) => setCustomReservation({...customReservation, nights: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, nights: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="Auto"
                         />
@@ -2295,7 +2329,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.baseRate}
-                          onChange={(e) => setCustomReservation({...customReservation, baseRate: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, baseRate: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="500.00"
                         />
@@ -2309,7 +2343,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.guestFees}
-                          onChange={(e) => setCustomReservation({...customReservation, guestFees: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, guestFees: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="0.00"
                         />
@@ -2323,7 +2357,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.platformFees}
-                          onChange={(e) => setCustomReservation({...customReservation, platformFees: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, platformFees: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="0.00"
                         />
@@ -2337,7 +2371,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.tax}
-                          onChange={(e) => setCustomReservation({...customReservation, tax: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, tax: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="0.00"
                         />
@@ -2351,7 +2385,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.pmCommission}
-                          onChange={(e) => setCustomReservation({...customReservation, pmCommission: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, pmCommission: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="0.00"
                         />
@@ -2365,7 +2399,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.grossPayout}
-                          onChange={(e) => setCustomReservation({...customReservation, grossPayout: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, grossPayout: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="500.00"
                         />
@@ -2383,7 +2417,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           type="number"
                           step="0.01"
                           value={customReservation.guestPaidDamageCoverage}
-                          onChange={(e) => setCustomReservation({...customReservation, guestPaidDamageCoverage: e.target.value})}
+                          onChange={(e) => setCustomReservation({ ...customReservation, guestPaidDamageCoverage: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
                           placeholder="0.00"
                         />

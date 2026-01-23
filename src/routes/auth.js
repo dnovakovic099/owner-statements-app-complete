@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const { User, ActivityLog } = require('../models');
 const { authenticateUser, generateToken, verifyToken } = require('../middleware/auth');
 const { Op } = require('sequelize');
@@ -40,7 +41,7 @@ router.post('/login', async (req, res) => {
         await ActivityLog.log(req, 'LOGIN_FAILED', 'auth', null, { username });
         res.status(401).json({ success: false, message: 'Invalid username or password' });
     } catch (error) {
-        console.error('Login error:', error);
+        logger.logError(error, { context: 'Auth', action: 'login' });
         res.status(500).json({ success: false, message: 'Login failed' });
     }
 });
@@ -81,7 +82,7 @@ router.post('/verify', async (req, res) => {
 
         res.status(401).json({ success: false, message: 'Invalid or expired token' });
     } catch (error) {
-        console.error('Verify error:', error);
+        logger.logError(error, { context: 'Auth', action: 'verifyToken' });
         res.status(500).json({ success: false, message: 'Verification failed' });
     }
 });
@@ -132,7 +133,7 @@ router.post('/refresh', async (req, res) => {
 
         res.status(401).json({ success: false, message: 'Invalid or expired token' });
     } catch (error) {
-        console.error('Refresh error:', error);
+        logger.logError(error, { context: 'Auth', action: 'refreshToken' });
         res.status(500).json({ success: false, message: 'Token refresh failed' });
     }
 });
@@ -168,7 +169,7 @@ router.get('/invite/:token', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Invite validation error:', error);
+        logger.logError(error, { context: 'Auth', action: 'validateInvite' });
         res.status(500).json({ success: false, message: 'Failed to validate invite' });
     }
 });
@@ -230,7 +231,7 @@ router.post('/accept-invite', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Accept invite error:', error);
+        logger.logError(error, { context: 'Auth', action: 'acceptInvite' });
         res.status(500).json({ success: false, message: 'Failed to accept invite' });
     }
 });

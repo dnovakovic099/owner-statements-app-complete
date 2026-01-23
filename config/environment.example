@@ -45,3 +45,9 @@ QUICKBOOKS_REFRESH_TOKEN=your_quickbooks_refresh_token
 QUICKBOOKS_CLIENT_ID=your_quickbooks_client_id
 QUICKBOOKS_CLIENT_SECRET=your_quickbooks_client_secret
 QUICKBOOKS_REDIRECT_URI=http://localhost:3003/api/quickbooks/auth/callback
+
+# Stripe (Payout Onboarding)
+STRIPE_SECRET_KEY=sk_test_your_key
+STRIPE_ONBOARDING_RETURN_URL=http://localhost:3000/payout-onboarding/complete
+STRIPE_ONBOARDING_REFRESH_URL=http://localhost:3000/payout-onboarding/refresh
+DATA_ENCRYPTION_KEY=base64_or_hex_32_byte_key_here

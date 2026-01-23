@@ -119,7 +119,7 @@ export const statementsAPI = {
     endDate: string;
     calculationType: string;
     generateCombined?: boolean; // For tag-based generation: true = one combined statement, false = separate statements
-  }): Promise<{ 
+  }): Promise<{
     message: string;
     jobId?: string;  // For background jobs (bulk generation)
     status?: string;  // Job status
@@ -149,7 +149,7 @@ export const statementsAPI = {
     const response = await api.get(`/statements/${id}`);
     return response.data;
   },
-   getStatementData: async (id: number): Promise<Statement> => {
+  getStatementData: async (id: number): Promise<Statement> => {
     const response = await api.get(`/statements/${id}/view/data`);
     return response.data.data;
   },
@@ -594,6 +594,18 @@ export const payoutsAPI = {
 
   refreshStatus: async (listingId: number): Promise<{ success: boolean; status: string; payoutStatus: string }> => {
     const response = await api.get(`/payouts/listings/${listingId}/status`);
+    return response.data;
+  },
+
+  transferToOwner: async (statementId: number): Promise<{
+    success: boolean;
+    message: string;
+    transferId: string;
+    amount: number;
+    paidAt: string;
+    error?: string;
+  }> => {
+    const response = await api.post(`/payouts/statements/${statementId}/transfer`);
     return response.data;
   },
 };

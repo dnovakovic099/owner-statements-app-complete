@@ -48,10 +48,8 @@ class QuickBooksService {
             this.realmId = this.companyId;
         }
 
-        console.log(`QuickBooks service initialized for ${this.environment.toUpperCase()} environment`);
-        console.log(`Client ID: ${this.clientId}`);
-        console.log(`Redirect URI: ${this.redirectUri}`);
-        
+
+
         // Default departments for categorization
         this.defaultDepartments = [
             'Maintenance',
@@ -93,15 +91,15 @@ class QuickBooksService {
     async exchangeCodeForTokens(reqUrl) {
         try {
             console.log('Exchanging code for tokens with URL:', reqUrl);
-            
+
             // This parses the full redirect URL (including ?code= & realmId=)
             const authResponse = await this.oauthClient.createToken(reqUrl);
             this.tokenSet = authResponse.getJson();
             this.realmId = this.oauthClient.getToken().realmId;
-            
+
             console.log('Token exchange successful');
             console.log('Realm ID:', this.realmId);
-            
+
             return {
                 accessToken: this.tokenSet.access_token,
                 refreshToken: this.tokenSet.refresh_token,
@@ -138,7 +136,7 @@ class QuickBooksService {
         // Update OAuth client with tokens
         this.oauthClient.setToken(this.tokenSet);
 
-        console.log('QuickBooks client initialized with company ID:', companyId);
+
 
         // Also save to database for multi-worker sharing
         this.saveTokensToDatabase(accessToken, refreshToken, companyId).catch(err => {
@@ -334,9 +332,9 @@ class QuickBooksService {
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
-                    
+
                     const purchases = data.QueryResponse?.Purchase || [];
-                    
+
                     // Transform to our format
                     const transactions = purchases.map(purchase => ({
                         Id: purchase.Id,
@@ -346,7 +344,7 @@ class QuickBooksService {
                         AccountRef: purchase.AccountRef,
                         Type: 'Purchase'
                     }));
-                    
+
                     resolve(transactions);
                 });
             });
@@ -386,9 +384,9 @@ class QuickBooksService {
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
-                    
+
                     const accounts = data.QueryResponse?.Account || [];
-                    
+
                     // Transform to our format
                     const accountList = accounts.map(account => ({
                         Id: account.Id,
@@ -397,7 +395,7 @@ class QuickBooksService {
                         AccountSubType: account.AccountSubType,
                         CurrentBalance: account.CurrentBalance
                     }));
-                    
+
                     resolve(accountList);
                 });
             });
@@ -436,7 +434,7 @@ class QuickBooksService {
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
-                    
+
                     resolve(data);
                 });
             });
@@ -489,7 +487,7 @@ class QuickBooksService {
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
-                    
+
                     resolve(data?.QueryResponse?.CompanyInfo?.[0] || {});
                 });
             });
@@ -564,12 +562,12 @@ class QuickBooksService {
         if (!err) return false;
         const msg = (err.message || JSON.stringify(err)).toLowerCase();
         return msg.includes('401') ||
-               msg.includes('403') ||
-               msg.includes('unauthorized') ||
-               msg.includes('token') ||
-               msg.includes('authentication') ||
-               msg.includes('authenticationfailed') ||
-               msg.includes('expired');
+            msg.includes('403') ||
+            msg.includes('unauthorized') ||
+            msg.includes('token') ||
+            msg.includes('authentication') ||
+            msg.includes('authenticationfailed') ||
+            msg.includes('expired');
     }
 
     /**
@@ -1645,8 +1643,8 @@ class QuickBooksService {
                 for (const line of lines) {
                     // Get income account from line item
                     const lineAccountName = line.SalesItemLineDetail?.ItemRef?.name ||
-                                           line.Description ||
-                                           'Services';
+                        line.Description ||
+                        'Services';
                     const lineAmount = line.Amount || 0;
 
                     if (lineAmount > 0 && matchesAnyAccount(lineAccountName)) {
@@ -1671,8 +1669,8 @@ class QuickBooksService {
                 const lines = receipt.Line || [];
                 for (const line of lines) {
                     const lineAccountName = line.SalesItemLineDetail?.ItemRef?.name ||
-                                           line.Description ||
-                                           'Sales';
+                        line.Description ||
+                        'Sales';
                     const lineAmount = line.Amount || 0;
 
                     if (lineAmount > 0 && matchesAnyAccount(lineAccountName)) {

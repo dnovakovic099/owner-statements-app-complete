@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const HostifyService = require('../services/HostifyService');
 const FileDataService = require('../services/FileDataService');
 
@@ -42,7 +43,7 @@ router.get('/', async (req, res) => {
             offset: parseInt(offset)
         });
     } catch (error) {
-        console.error('Reservations get error:', error);
+        logger.logError(error, { context: 'ReservationsFile', action: 'getReservations' });
         res.status(500).json({ error: 'Failed to get reservations' });
     }
 });
@@ -56,7 +57,7 @@ router.post('/sync', async (req, res) => {
             return res.status(400).json({ error: 'Start date and end date are required' });
         }
 
-        console.log(`Starting reservation sync for ${startDate} to ${endDate} (file-based)`);
+        logger.info('Starting reservation sync', { context: 'ReservationsFile', startDate, endDate });
 
         // Get ALL reservations from Hostify with pagination
         const hostifyReservations = await HostifyService.getAllReservations(startDate, endDate);
@@ -72,7 +73,7 @@ router.post('/sync', async (req, res) => {
             listingMap.set(listing.id.toString(), listing.id);
         });
 
-        console.log(`Found ${listings.length} listings for matching`);
+        logger.debug('Found listings for matching', { context: 'ReservationsFile', count: listings.length });
 
         let syncedCount = 0;
         let skippedCount = 0;
@@ -89,7 +90,7 @@ router.post('/sync', async (req, res) => {
                 
                 if (!propertyId) {
                     if (skippedCount < 5) { // Only log first few skips
-                        console.warn(`No matching property found for Hostify listing ${listingId}`);
+                        logger.warn('No matching property found for Hostify listing', { context: 'ReservationsFile', listingId });
                     }
                     skippedCount++;
                     continue;
@@ -105,7 +106,7 @@ router.post('/sync', async (req, res) => {
                 syncedCount++;
 
             } catch (error) {
-                console.error(`Error processing reservation ${hostifyReservation.hostifyId}:`, error);
+                logger.logError(error, { context: 'ReservationsFile', action: 'processReservation', reservationId: hostifyReservation.hostifyId });
                 skippedCount++;
             }
         }
@@ -113,7 +114,7 @@ router.post('/sync', async (req, res) => {
         // Save all reservations to file (replacing existing ones)
         await FileDataService.saveReservations(transformedReservations);
 
-        console.log(`Reservation sync completed: ${syncedCount} synced, ${skippedCount} skipped`);
+        logger.info('Reservation sync completed', { context: 'ReservationsFile', syncedCount, skippedCount });
 
         res.json({
             message: 'Reservation sync completed',
@@ -122,7 +123,7 @@ router.post('/sync', async (req, res) => {
             total: hostifyReservations.result.length
         });
     } catch (error) {
-        console.error('Reservation sync error:', error);
+        logger.logError(error, { context: 'ReservationsFile', action: 'syncReservations' });
         res.status(500).json({ error: 'Failed to sync reservations' });
     }
 });

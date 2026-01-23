@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -54,7 +54,7 @@ interface StatementsTableProps {
   statements: Statement[];
   listings?: ListingName[];
   onAction: (id: number, action: string) => void;
-  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email') => void;
+  onBulkAction?: (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email' | 'pay-owner') => void;
   regeneratingId?: number | null;
   bulkProcessing?: boolean;
   pagination: PaginationState;
@@ -144,6 +144,7 @@ const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, ic
   return (
     <Tooltip content={tooltip}>
       <button
+        type="button" // Prevent form submission
         onClick={onClick}
         disabled={disabled}
         className={buttonClass}
@@ -462,11 +463,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const type = row.getValue('calculationType') as string;
         return (
-          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-            type === 'calendar'
-              ? 'bg-sky-50 text-sky-700 border border-sky-200'
-              : 'bg-slate-50 text-slate-700 border border-slate-200'
-          }`}>
+          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${type === 'calendar'
+            ? 'bg-sky-50 text-sky-700 border border-sky-200'
+            : 'bg-slate-50 text-slate-700 border border-slate-200'
+            }`}>
             {type === 'calendar' ? 'Calendar' : 'Checkout'}
           </span>
         );
@@ -601,6 +601,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               icon={<RotateCcw className="w-[18px] h-[18px]" />}
               color="text-orange-600"
               disabled={statement.status === 'draft' || statement.status === 'sent'}
+            />
+            <ActionButton
+              onClick={() => onAction(statement.id, 'pay-owner')}
+              tooltip={
+                (statement as any).payoutStatus === 'paid' ? 'Already Paid' :
+                  statement.ownerPayout <= 0 ? 'No payout amount' :
+                    'Pay Owner via Stripe'
+              }
+              icon={<DollarSign className="w-[18px] h-[18px]" />}
+              color="text-green-600"
+              disabled={statement.status !== 'final' || (statement as any).payoutStatus === 'paid' || statement.ownerPayout <= 0}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
@@ -781,11 +792,23 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'send-email')}
-                disabled={bulkProcessing}
-                className="h-8 border-purple-300 bg-white text-purple-700 hover:bg-purple-50"
+                disabled={bulkProcessing || statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final')}
+                className="h-8 border-purple-300 bg-white text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final') ? "Only final statements can be emailed" : "Send Email"}
               >
                 <Mail className="w-4 h-4 mr-1.5" />
                 Send Email
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onBulkAction(selectedIds, 'pay-owner')}
+                disabled={bulkProcessing || statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final')}
+                className="h-8 border-green-300 bg-white text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final') ? "Only final statements can be paid" : "Pay Owners"}
+              >
+                <DollarSign className="w-4 h-4 mr-1.5" />
+                Pay Owners
               </Button>
               <button
                 onClick={() => setRowSelection({})}
@@ -1055,9 +1078,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                         }
                         setDraggedColumn(null);
                       }}
-                      className={`text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 last:border-r-0 ${
-                        isDragging ? 'opacity-50 bg-blue-100' : ''
-                      } ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
+                      className={`text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 last:border-r-0 ${isDragging ? 'opacity-50 bg-blue-100' : ''
+                        } ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
                     >
                       <div className="flex items-center gap-1 justify-center">
                         {isDraggable && (
@@ -1098,9 +1120,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                             e.stopPropagation();
                           }}
                           draggable={false}
-                          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group-hover:bg-gray-300 hover:!bg-blue-500 ${
-                            header.column.getIsResizing() ? 'bg-blue-500 w-1' : 'bg-gray-200'
-                          }`}
+                          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group-hover:bg-gray-300 hover:!bg-blue-500 ${header.column.getIsResizing() ? 'bg-blue-500 w-1' : 'bg-gray-200'
+                            }`}
                         />
                       )}
                     </TableHead>
@@ -1186,9 +1207,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                           onPaginationChange(0, size);
                           setIsRowsDropdownOpen(false);
                         }}
-                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${
-                          pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'
-                        }`}
+                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'
+                          }`}
                       >
                         {size}
                       </button>
@@ -1224,11 +1244,10 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                     <button
                       key={page}
                       onClick={() => onPaginationChange(page, pagination.pageSize)}
-                      className={`w-8 h-8 text-sm font-medium rounded-md transition-colors ${
-                        page === currentPage
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
+                      className={`w-8 h-8 text-sm font-medium rounded-md transition-colors ${page === currentPage
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                        }`}
                     >
                       {page + 1}
                     </button>

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const { User, EmailLog } = require('../models');
 const emailService = require('../services/EmailService');
 const { Op } = require('sequelize');
@@ -27,7 +28,7 @@ router.get('/', requireAdmin, async (req, res) => {
         });
         res.json({ success: true, users });
     } catch (error) {
-        console.error('Error fetching users:', error);
+        logger.logError(error, { context: 'Users', action: 'fetchUsers' });
         res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
@@ -51,7 +52,7 @@ router.get('/me', async (req, res) => {
 
         res.json({ success: true, user });
     } catch (error) {
-        console.error('Error fetching current user:', error);
+        logger.logError(error, { context: 'Users', action: 'fetchCurrentUser' });
         res.status(500).json({ error: 'Failed to fetch user' });
     }
 });
@@ -113,7 +114,7 @@ router.post('/invite', requireAdmin, async (req, res) => {
                 sentAt: new Date()
             });
         } catch (emailError) {
-            console.error('Failed to send invite email:', emailError);
+            logger.logError(emailError, { context: 'Users', action: 'sendInviteEmail' });
 
             // Log failed invite email
             await EmailLog.create({
@@ -154,7 +155,7 @@ router.post('/invite', requireAdmin, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error inviting user:', error);
+        logger.logError(error, { context: 'Users', action: 'inviteUser' });
         res.status(500).json({ error: 'Failed to invite user' });
     }
 });
@@ -197,7 +198,7 @@ router.post('/:id/resend-invite', requireAdmin, async (req, res) => {
                 sentAt: new Date()
             });
         } catch (emailError) {
-            console.error('Failed to send invite email:', emailError);
+            logger.logError(emailError, { context: 'Users', action: 'sendInviteEmail' });
 
             // Log failed resend invite email
             await EmailLog.create({
@@ -220,7 +221,7 @@ router.post('/:id/resend-invite', requireAdmin, async (req, res) => {
 
         res.json({ success: true, message: 'Invite resent successfully' });
     } catch (error) {
-        console.error('Error resending invite:', error);
+        logger.logError(error, { context: 'Users', action: 'resendInvite' });
         res.status(500).json({ error: 'Failed to resend invite' });
     }
 });
@@ -265,7 +266,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error updating user:', error);
+        logger.logError(error, { context: 'Users', action: 'updateUser' });
         res.status(500).json({ error: 'Failed to update user' });
     }
 });
@@ -293,7 +294,7 @@ router.delete('/:id', requireAdmin, async (req, res) => {
         await user.destroy();
         res.json({ success: true, message: 'User deleted successfully' });
     } catch (error) {
-        console.error('Error deleting user:', error);
+        logger.logError(error, { context: 'Users', action: 'deleteUser' });
         res.status(500).json({ error: 'Failed to delete user' });
     }
 });

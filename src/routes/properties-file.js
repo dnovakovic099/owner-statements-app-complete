@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const HostifyService = require('../services/HostifyService');
 const FileDataService = require('../services/FileDataService');
 
@@ -71,7 +72,7 @@ router.get('/', async (req, res) => {
 
         res.json(properties);
     } catch (error) {
-        console.error('Properties get error:', error);
+        logger.logError(error, { context: 'PropertiesFile', action: 'getProperties' });
         res.status(500).json({ error: 'Failed to get properties' });
     }
 });
@@ -79,7 +80,7 @@ router.get('/', async (req, res) => {
 // POST /api/properties-file/sync - Sync properties from Hostify to file
 router.post('/sync', async (req, res) => {
     try {
-        console.log('Starting properties sync from Hostify to file...');
+        logger.info('Starting properties sync from Hostify to file', { context: 'PropertiesFile' });
 
         // Get ALL properties from Hostify with pagination
         const hostifyProperties = await HostifyService.getAllProperties();
@@ -114,7 +115,7 @@ router.post('/sync', async (req, res) => {
         // Save to file
         await FileDataService.saveListings(listings);
 
-        console.log(`Properties sync completed: ${listings.length} properties saved to file`);
+        logger.info('Properties sync completed', { context: 'PropertiesFile', count: listings.length });
 
         res.json({
             message: 'Properties sync completed',
@@ -122,7 +123,7 @@ router.post('/sync', async (req, res) => {
             total: listings.length
         });
     } catch (error) {
-        console.error('Properties sync error:', error);
+        logger.logError(error, { context: 'PropertiesFile', action: 'syncProperties' });
         res.status(500).json({ error: 'Failed to sync properties from Hostify' });
     }
 });

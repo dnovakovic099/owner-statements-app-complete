@@ -195,6 +195,31 @@ const Statement = sequelize.define('Statement', {
         allowNull: true,
         field: 'group_tags',
         comment: 'Tags of the group at time of statement generation'
+    },
+    // Payout tracking fields
+    payoutTransferId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'payout_transfer_id',
+        comment: 'Stripe transfer ID when owner has been paid'
+    },
+    payoutStatus: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'payout_status',
+        comment: 'pending | paid | failed'
+    },
+    paidAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'paid_at',
+        comment: 'Timestamp when payout was completed'
+    },
+    payoutError: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'payout_error',
+        comment: 'Error message if payout failed'
     }
 }, {
     tableName: 'statements',

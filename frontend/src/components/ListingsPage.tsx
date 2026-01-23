@@ -109,9 +109,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [payoutNotes, setPayoutNotes] = useState('');
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
   const [stripeOnboardingStatus, setStripeOnboardingStatus] = useState<'missing' | 'pending' | 'verified' | 'requires_action'>('missing');
-  const [refreshingPayout, setRefreshingPayout] = useState(false);
-  const [payoutError, setPayoutError] = useState<string | null>(null);
-  const [payoutLastChecked, setPayoutLastChecked] = useState<string | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const payoutLabel = (status: 'missing' | 'pending' | 'on_file') => {
@@ -314,7 +311,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   useEffect(() => {
     if (selectedListingId) {
-    const listing = listings.find(l => l.id === selectedListingId);
+      const listing = listings.find(l => l.id === selectedListingId);
       if (listing) {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
@@ -391,16 +388,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       setSyncing(true);
       setSaveMessage(null);
       const response = await listingsAPI.syncListings();
-      setSaveMessage({ 
-        type: 'success', 
-        text: `Synced ${response.synced} listings from Hostify` 
+      setSaveMessage({
+        type: 'success',
+        text: `Synced ${response.synced} listings from Hostify`
       });
       await loadListings(true);
       setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
-      setSaveMessage({ 
-        type: 'error', 
-        text: err instanceof Error ? err.message : 'Failed to sync listings' 
+      setSaveMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to sync listings'
       });
     } finally {
       setSyncing(false);
@@ -457,7 +454,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
-      
+
       // Update the listing in local state
       setListings(prevListings =>
         prevListings.map(listing =>
@@ -538,30 +535,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   };
 
-  // Refresh status from Stripe
-  const handleRefreshPayoutStatus = async () => {
-    if (!selectedListingId) return;
-    try {
-      setRefreshingPayout(true);
-      setPayoutError(null);
-      const response = await payoutsAPI.refreshStatus(selectedListingId);
-      const { status, payoutStatus: updatedPayoutStatus } = response;
-      setStripeOnboardingStatus(status as any);
-      setPayoutStatus(updatedPayoutStatus as any);
-      setPayoutLastChecked(new Date().toISOString());
-
-      setListings(prev => prev.map(l => l.id === selectedListingId
-        ? { ...l, stripeOnboardingStatus: status as any, payoutStatus: updatedPayoutStatus as any }
-        : l));
-
-      showToast('Payout status refreshed', 'success');
-    } catch (err) {
-      console.error('Failed to refresh payout status:', err);
-      setPayoutError(err instanceof Error ? err.message : 'Failed to refresh payout status');
-    } finally {
-      setRefreshingPayout(false);
-    }
-  };
 
   // Filter listings based on all filter criteria
   const filteredListings = listings;
@@ -795,11 +768,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         {/* Save Message */}
         {saveMessage && (
           <div
-            className={`${
-              saveMessage.type === 'success'
+            className={`${saveMessage.type === 'success'
                 ? 'bg-green-50 border-green-200 text-green-800'
                 : 'bg-red-50 border-red-200 text-red-800'
-            } border rounded-lg p-3 mb-3 flex items-center flex-shrink-0`}
+              } border rounded-lg p-3 mb-3 flex items-center flex-shrink-0`}
           >
             {saveMessage.type === 'success' ? (
               <CheckCircle className="w-5 h-5 mr-3" />
@@ -872,26 +844,24 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       {availableFrequencyTags
                         .filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase()))
                         .map(tag => (
-                        <button
-                          key={tag}
-                          onClick={() => toggleFrequencyTag(tag)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            selectedFrequencyTags.includes(tag)
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                          <button
+                            key={tag}
+                            onClick={() => toggleFrequencyTag(tag)}
+                            className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFrequencyTags.includes(tag)
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
                       {'NO TAG'.toLowerCase().includes(tagSearchTerm.toLowerCase()) && (
                         <button
                           onClick={() => toggleFrequencyTag('NO TAG')}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            selectedFrequencyTags.includes('NO TAG')
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFrequencyTags.includes('NO TAG')
                               ? 'bg-blue-600 text-white'
                               : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           NO TAG
                         </button>
@@ -914,18 +884,17 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         {availableCities
                           .filter(city => city.toLowerCase().includes(citySearchTerm.toLowerCase()))
                           .map(city => (
-                          <button
-                            key={city}
-                            onClick={() => toggleCity(city)}
-                            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                              selectedCities.includes(city)
-                                ? 'bg-green-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
-                          >
-                            {city}
-                          </button>
-                        ))}
+                            <button
+                              key={city}
+                              onClick={() => toggleCity(city)}
+                              className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedCities.includes(city)
+                                  ? 'bg-green-600 text-white'
+                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                              {city}
+                            </button>
+                          ))}
                       </div>
                     </div>
                   )}
@@ -939,11 +908,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={tag}
                             onClick={() => toggleFilterTag(tag)}
-                            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                              selectedFilterTags.includes(tag)
+                            className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFilterTags.includes(tag)
                                 ? 'bg-purple-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {tag}
                           </button>
@@ -964,11 +932,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <button
                           key={opt.value}
                           onClick={() => setCohostFilter(opt.value as typeof cohostFilter)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            cohostFilter === opt.value
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${cohostFilter === opt.value
                               ? 'bg-indigo-600 text-white'
                               : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -988,11 +955,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <button
                           key={opt.value}
                           onClick={() => setOwnerEmailFilter(opt.value as typeof ownerEmailFilter)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            ownerEmailFilter === opt.value
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${ownerEmailFilter === opt.value
                               ? 'bg-orange-600 text-white'
                               : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -1013,11 +979,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <button
                           key={opt.value}
                           onClick={() => setPayoutFilter(opt.value as typeof payoutFilter)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            payoutFilter === opt.value
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${payoutFilter === opt.value
                               ? 'bg-emerald-600 text-white'
                               : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -1037,11 +1002,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <button
                           key={opt.value}
                           onClick={() => setAutoSendFilter(opt.value as typeof autoSendFilter)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            autoSendFilter === opt.value
+                          className={`px-2 py-1 text-xs rounded-md transition-colors ${autoSendFilter === opt.value
                               ? 'bg-teal-600 text-white'
                               : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -1063,11 +1027,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={opt.value}
                             onClick={() => setPassThroughTaxFilter(opt.value as typeof passThroughTaxFilter)}
-                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                              passThroughTaxFilter === opt.value
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${passThroughTaxFilter === opt.value
                                 ? 'bg-amber-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -1087,11 +1050,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={opt.value}
                             onClick={() => setDisregardTaxFilter(opt.value as typeof disregardTaxFilter)}
-                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                              disregardTaxFilter === opt.value
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${disregardTaxFilter === opt.value
                                 ? 'bg-red-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -1111,11 +1073,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={opt.value}
                             onClick={() => setCleaningFeeFilter(opt.value as typeof cleaningFeeFilter)}
-                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                              cleaningFeeFilter === opt.value
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${cleaningFeeFilter === opt.value
                                 ? 'bg-green-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -1135,11 +1096,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={opt.value}
                             onClick={() => setGuestPaidDamageFilter(opt.value as typeof guestPaidDamageFilter)}
-                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                              guestPaidDamageFilter === opt.value
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${guestPaidDamageFilter === opt.value
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -1159,11 +1119,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             key={opt.value}
                             onClick={() => setWaiveCommissionFilter(opt.value as typeof waiveCommissionFilter)}
-                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                              waiveCommissionFilter === opt.value
+                            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${waiveCommissionFilter === opt.value
                                 ? 'bg-indigo-600 text-white'
                                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -1196,24 +1155,22 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   <button
                     key={listing.id}
                     onClick={() => setSelectedListingId(listing.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
-                      selectedListingId === listing.id
+                    className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
                         ? 'bg-blue-100 border-2 border-blue-500'
                         : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-gray-900 truncate text-sm">
                         {getListingDisplayName(listing)}
                       </div>
                       <span
-                        className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                          (listing.payoutStatus || 'missing') === 'on_file'
+                        className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
                             ? 'bg-emerald-100 text-emerald-800'
                             : (listing.payoutStatus || 'missing') === 'pending'
                               ? 'bg-amber-100 text-amber-800'
                               : 'bg-red-100 text-red-700'
-                        }`}
+                          }`}
                       >
                         {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
                       </span>
@@ -1279,658 +1236,712 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                 {/* Scrollable Form Content */}
                 <div className="flex-1 overflow-auto px-4 sm:px-6 py-4 sm:py-6">
-                <div className="space-y-4 sm:space-y-6">
-                  {/* Display Name */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Display Name
-                    </label>
-                    <input
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Enter custom display name (optional)"
-                      className="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-2">
-                      This name will be used in dropdowns and the UI. The original name "{selectedListing.name}" 
-                      will be preserved for mapping purposes.
-                    </p>
-                  </div>
-
-                  {/* Co-host on Airbnb */}
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="cohost"
-                        checked={isCohostOnAirbnb}
-                        onChange={(e) => setIsCohostOnAirbnb(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3">
-                        <label
-                          htmlFor="cohost"
-                          className="text-sm font-medium text-purple-900 cursor-pointer"
-                        >
-                          Co-host on Airbnb
-                        </label>
-                        <p className="text-xs text-purple-700 mt-1">
-                          When enabled, Airbnb revenue will be <strong>excluded</strong> from statement calculations.
-                          The client receives all payments directly, so only PM commission will be calculated.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Airbnb Pass-Through Tax */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="passThroughTax"
-                        checked={airbnbPassThroughTax}
-                        onChange={(e) => setAirbnbPassThroughTax(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3">
-                        <label
-                          htmlFor="passThroughTax"
-                          className="text-sm font-medium text-amber-900 cursor-pointer"
-                        >
-                          Airbnb Pass-Through Tax
-                        </label>
-                        <p className="text-xs text-amber-700 mt-1">
-                          Enable this if Airbnb collects the tax but does <strong>not remit</strong> it (passes it to you).
-                          When enabled, tax will be <strong>added</strong> to the gross payout for Airbnb bookings.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Disregard Tax (Company Remits) */}
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="disregardTax"
-                        checked={disregardTax}
-                        onChange={(e) => setDisregardTax(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3">
-                        <label
-                          htmlFor="disregardTax"
-                          className="text-sm font-medium text-red-900 cursor-pointer"
-                        >
-                          Disregard Tax (Company Remits)
-                        </label>
-                        <p className="text-xs text-red-700 mt-1">
-                          Enable this for clients where the company has agreed to remit the tax on their behalf.
-                          When enabled, tax will <strong>never be added</strong> to the gross payout.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cleaning Fee Pass-Through */}
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="cleaningFeePassThrough"
-                        checked={cleaningFeePassThrough}
-                        onChange={(e) => setCleaningFeePassThrough(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3">
-                        <label
-                          htmlFor="cleaningFeePassThrough"
-                          className="text-sm font-medium text-green-900 cursor-pointer"
-                        >
-                          Cleaning Fee Pass-Through
-                        </label>
-                        <p className="text-xs text-green-700 mt-1">
-                          When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
-                          instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Guest Paid Damage Coverage */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="guestPaidDamageCoverage"
-                        checked={guestPaidDamageCoverage}
-                        onChange={(e) => setGuestPaidDamageCoverage(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3">
-                        <label
-                          htmlFor="guestPaidDamageCoverage"
-                          className="text-sm font-medium text-blue-900 cursor-pointer"
-                        >
-                          Guest Paid Damage Coverage
-                        </label>
-                        <p className="text-xs text-blue-700 mt-1">
-                          When enabled, a <strong>Guest Paid Damage Coverage</strong> column will appear on statements showing
-                          the resort fee amount collected from each guest. This is an informational column displayed in blue.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Waive PM Commission */}
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <input
-                        type="checkbox"
-                        id="waiveCommission"
-                        checked={waiveCommission}
-                        onChange={(e) => setWaiveCommission(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-3 flex-1">
-                        <label
-                          htmlFor="waiveCommission"
-                          className="text-sm font-medium text-indigo-900 cursor-pointer"
-                        >
-                          Waive PM Commission
-                        </label>
-                        <p className="text-xs text-indigo-700 mt-1">
-                          When enabled, the PM commission will still be <strong>displayed</strong> on statements but will <strong>not be deducted</strong> from the payout.
-                          Use this for promotional periods where you want owners to see what they would normally pay.
-                        </p>
-
-                        {waiveCommission && (
-                          <div className="mt-3 p-3 bg-indigo-100 rounded-md">
-                            <label className="block text-xs font-medium text-indigo-800 mb-1">
-                              Waive Until (inclusive)
-                            </label>
-                            <input
-                              type="date"
-                              value={waiveCommissionUntil}
-                              onChange={(e) => setWaiveCommissionUntil(e.target.value)}
-                              className="w-48 border border-indigo-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                            <p className="text-xs text-indigo-600 mt-1">
-                              {waiveCommissionUntil
-                                ? `Commission waived for reservations until ${new Date(waiveCommissionUntil + 'T00:00:00').toLocaleDateString()}`
-                                : 'Leave empty for indefinite waiver'}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* PM Fee Percentage */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Property Management Fee (%)
-                    </label>
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="number"
-                        value={pmFeePercentage}
-                        onChange={(e) => setPmFeePercentage(parseFloat(e.target.value))}
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        className="w-32 border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-600">%</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      The percentage charged for property management services (e.g., 15% = 15.00)
-                    </p>
-                  </div>
-
-                  {/* Owner Email */}
-                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <div className="flex gap-4 items-end">
-                      <div className="flex-1">
-                        <label className="block text-sm font-medium text-teal-900 mb-2">
-                          Owner Email
-                        </label>
-                        <input
-                          type="email"
-                          value={ownerEmail}
-                          onChange={(e) => setOwnerEmail(e.target.value)}
-                          placeholder="owner@example.com"
-                          className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
-                      <div className="w-40">
-                        <label className="block text-sm font-medium text-teal-900 mb-2">
-                          Greeting
-                        </label>
-                        <input
-                          type="text"
-                          value={ownerGreeting}
-                          onChange={(e) => setOwnerGreeting(e.target.value)}
-                          placeholder="e.g., John"
-                          className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <label className="block text-sm font-medium text-teal-900 mb-2">
-                          Auto-Send
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setAutoSendStatements(!autoSendStatements)}
-                          className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${
-                            autoSendStatements ? 'bg-teal-600' : 'bg-gray-300'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-md transition-transform ${
-                              autoSendStatements ? 'translate-x-11' : 'translate-x-1'
-                            }`}
-                          />
-                          <span className={`absolute text-xs font-medium ${autoSendStatements ? 'left-2 text-white' : 'right-2 text-gray-600'}`}>
-                            {autoSendStatements ? 'ON' : 'OFF'}
-                          </span>
-                        </button>
-                      </div>
-                      <button
-                        onClick={handleSaveOwnerInfo}
-                        disabled={savingOwnerInfo}
-                        className="flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50 h-10"
-                      >
-                        <Save className="w-4 h-4 mr-2" />
-                        {savingOwnerInfo ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                    <p className="text-xs text-teal-700 mt-2">
-                      Email for sending statements. Auto-Send: if ON, statements will be sent automatically.
-                    </p>
-                  </div>
-
-                  {/* Payout Info */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Payout Info</p>
-                          <p className="text-xs text-slate-600">Track Stripe onboarding and our internal marker.</p>
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                          <span className="px-3 py-1 text-xs rounded-full border border-slate-200 text-slate-800 bg-slate-50">
-                            Stripe: {stripeOnboardingStatus === 'verified' ? 'Verified' : stripeOnboardingStatus === 'pending' ? 'Requested' : 'Not Started'}
-                          </span>
-                          {stripeAccountId && (
-                            <span className="px-3 py-1 text-[11px] rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                              {stripeAccountId}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                          {[
-                            { value: 'missing', label: 'Not Collected' },
-                            { value: 'pending', label: 'Requested' },
-                            { value: 'on_file', label: 'Verified' }
-                          ].map(opt => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => setPayoutStatus(opt.value as typeof payoutStatus)}
-                              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                                payoutStatus === opt.value
-                                  ? 'bg-emerald-600 text-white border-emerald-700'
-                                  : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCreatePayoutLink}
-                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-                        >
-                          Generate Stripe Link
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRefreshPayoutStatus}
-                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-emerald-300 text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-                          disabled={!stripeAccountId || refreshingPayout}
-                        >
-                          {refreshingPayout ? 'Refreshing...' : 'Refresh Status'}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium text-emerald-900">
-                          Payout Notes
-                        </label>
-                        <div className="flex items-center justify-between text-xs text-slate-600">
-                          <span>
-                            Internal-only marker to track whether we have payout details verified for this owner.
-                          </span>
-                          {payoutLastChecked && (
-                            <span className="text-slate-500">
-                              Last checked: {new Date(payoutLastChecked).toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                        <textarea
-                          value={payoutNotes}
-                          onChange={(e) => setPayoutNotes(e.target.value)}
-                          rows={3}
-                          placeholder="Add context, e.g. 'Waiting for bank form from owner'"
-                          className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        {payoutError && (
-                          <p className="text-xs text-red-600">
-                            {payoutError}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-blue-900">
-                        Tags
+                  <div className="space-y-4 sm:space-y-6">
+                    {/* Display Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Display Name
                       </label>
+                      <input
+                        type="text"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Enter custom display name (optional)"
+                        className="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        This name will be used in dropdowns and the UI. The original name "{selectedListing.name}"
+                        will be preserved for mapping purposes.
+                      </p>
                     </div>
-                    <p className="text-xs text-blue-700 mb-3">
-                      Add tags to group and filter listings. Click <Clock className="w-3 h-3 inline" /> to set a reminder schedule for a tag.
-                    </p>
 
-                    {/* Existing Tags */}
-                    {tags.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {tags.map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
-                          >
-                            {tag}
-                            <button
-                              onClick={() => openScheduleModal(tag)}
-                              className={`ml-1.5 p-0.5 rounded hover:bg-blue-200 transition-colors ${
-                                tagSchedules[tag] ? 'text-green-600' : 'text-blue-500'
-                              }`}
-                              type="button"
-                              title={tagSchedules[tag] ? 'Edit schedule' : 'Set reminder'}
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setTags(tags.filter((_, i) => i !== idx))}
-                              className="ml-1 text-blue-600 hover:text-blue-800"
-                              type="button"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Add New Tag with Autocomplete */}
-                    <div className="flex space-x-2">
-                      <div className="flex-1 relative">
+                    {/* Co-host on Airbnb */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                      <div className="flex items-start">
                         <input
-                          type="text"
-                          value={newTag}
-                          onChange={(e) => {
-                            setNewTag(e.target.value);
-                            setShowTagSuggestions(true);
-                          }}
-                          onFocus={() => setShowTagSuggestions(true)}
-                          onBlur={() => {
-                            // Delay to allow click on suggestion
-                            setTimeout(() => setShowTagSuggestions(false), 200);
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const trimmedTag = newTag.trim().toUpperCase();
-                              if (trimmedTag && !tags.includes(trimmedTag)) {
-                                setTags([...tags, trimmedTag]);
-                                setNewTag('');
-                                setShowTagSuggestions(false);
+                          type="checkbox"
+                          id="cohost"
+                          checked={isCohostOnAirbnb}
+                          onChange={(e) => setIsCohostOnAirbnb(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="cohost"
+                            className="text-sm font-medium text-purple-900 cursor-pointer"
+                          >
+                            Co-host on Airbnb
+                          </label>
+                          <p className="text-xs text-purple-700 mt-1">
+                            When enabled, Airbnb revenue will be <strong>excluded</strong> from statement calculations.
+                            The client receives all payments directly, so only PM commission will be calculated.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Airbnb Pass-Through Tax */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="passThroughTax"
+                          checked={airbnbPassThroughTax}
+                          onChange={(e) => setAirbnbPassThroughTax(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="passThroughTax"
+                            className="text-sm font-medium text-amber-900 cursor-pointer"
+                          >
+                            Airbnb Pass-Through Tax
+                          </label>
+                          <p className="text-xs text-amber-700 mt-1">
+                            Enable this if Airbnb collects the tax but does <strong>not remit</strong> it (passes it to you).
+                            When enabled, tax will be <strong>added</strong> to the gross payout for Airbnb bookings.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Disregard Tax (Company Remits) */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="disregardTax"
+                          checked={disregardTax}
+                          onChange={(e) => setDisregardTax(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="disregardTax"
+                            className="text-sm font-medium text-red-900 cursor-pointer"
+                          >
+                            Disregard Tax (Company Remits)
+                          </label>
+                          <p className="text-xs text-red-700 mt-1">
+                            Enable this for clients where the company has agreed to remit the tax on their behalf.
+                            When enabled, tax will <strong>never be added</strong> to the gross payout.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cleaning Fee Pass-Through */}
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="cleaningFeePassThrough"
+                          checked={cleaningFeePassThrough}
+                          onChange={(e) => setCleaningFeePassThrough(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="cleaningFeePassThrough"
+                            className="text-sm font-medium text-green-900 cursor-pointer"
+                          >
+                            Cleaning Fee Pass-Through
+                          </label>
+                          <p className="text-xs text-green-700 mt-1">
+                            When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
+                            instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Guest Paid Damage Coverage */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="guestPaidDamageCoverage"
+                          checked={guestPaidDamageCoverage}
+                          onChange={(e) => setGuestPaidDamageCoverage(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="guestPaidDamageCoverage"
+                            className="text-sm font-medium text-blue-900 cursor-pointer"
+                          >
+                            Guest Paid Damage Coverage
+                          </label>
+                          <p className="text-xs text-blue-700 mt-1">
+                            When enabled, a <strong>Guest Paid Damage Coverage</strong> column will appear on statements showing
+                            the resort fee amount collected from each guest. This is an informational column displayed in blue.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Waive PM Commission */}
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="waiveCommission"
+                          checked={waiveCommission}
+                          onChange={(e) => setWaiveCommission(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3 flex-1">
+                          <label
+                            htmlFor="waiveCommission"
+                            className="text-sm font-medium text-indigo-900 cursor-pointer"
+                          >
+                            Waive PM Commission
+                          </label>
+                          <p className="text-xs text-indigo-700 mt-1">
+                            When enabled, the PM commission will still be <strong>displayed</strong> on statements but will <strong>not be deducted</strong> from the payout.
+                            Use this for promotional periods where you want owners to see what they would normally pay.
+                          </p>
+
+                          {waiveCommission && (
+                            <div className="mt-3 p-3 bg-indigo-100 rounded-md">
+                              <label className="block text-xs font-medium text-indigo-800 mb-1">
+                                Waive Until (inclusive)
+                              </label>
+                              <input
+                                type="date"
+                                value={waiveCommissionUntil}
+                                onChange={(e) => setWaiveCommissionUntil(e.target.value)}
+                                className="w-48 border border-indigo-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                              <p className="text-xs text-indigo-600 mt-1">
+                                {waiveCommissionUntil
+                                  ? `Commission waived for reservations until ${new Date(waiveCommissionUntil + 'T00:00:00').toLocaleDateString()}`
+                                  : 'Leave empty for indefinite waiver'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PM Fee Percentage */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Property Management Fee (%)
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="number"
+                          value={pmFeePercentage}
+                          onChange={(e) => setPmFeePercentage(parseFloat(e.target.value))}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          className="w-32 border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-600">%</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        The percentage charged for property management services (e.g., 15% = 15.00)
+                      </p>
+                    </div>
+
+                    {/* Owner Email */}
+                    <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                      <div className="flex gap-4 items-end">
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-teal-900 mb-2">
+                            Owner Email
+                          </label>
+                          <input
+                            type="email"
+                            value={ownerEmail}
+                            onChange={(e) => setOwnerEmail(e.target.value)}
+                            placeholder="owner@example.com"
+                            className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="w-40">
+                          <label className="block text-sm font-medium text-teal-900 mb-2">
+                            Greeting
+                          </label>
+                          <input
+                            type="text"
+                            value={ownerGreeting}
+                            onChange={(e) => setOwnerGreeting(e.target.value)}
+                            placeholder="e.g., John"
+                            className="w-full border border-teal-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <label className="block text-sm font-medium text-teal-900 mb-2">
+                            Auto-Send
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setAutoSendStatements(!autoSendStatements)}
+                            className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${autoSendStatements ? 'bg-teal-600' : 'bg-gray-300'
+                              }`}
+                          >
+                            <span
+                              className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-md transition-transform ${autoSendStatements ? 'translate-x-11' : 'translate-x-1'
+                                }`}
+                            />
+                            <span className={`absolute text-xs font-medium ${autoSendStatements ? 'left-2 text-white' : 'right-2 text-gray-600'}`}>
+                              {autoSendStatements ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                        </div>
+                        <button
+                          onClick={handleSaveOwnerInfo}
+                          disabled={savingOwnerInfo}
+                          className="flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50 h-10"
+                        >
+                          <Save className="w-4 h-4 mr-2" />
+                          {savingOwnerInfo ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-teal-700 mt-2">
+                        Email for sending statements. Auto-Send: if ON, statements will be sent automatically.
+                      </p>
+                    </div>
+
+                    {/* Payout Info */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Payout Info</p>
+                            <p className="text-xs text-slate-600">Enter Stripe account ID (provided by client) and track onboarding status.</p>
+                          </div>
+                        </div>
+
+
+                        {/* Stripe Account ID Input */}
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium text-slate-700">
+                            Stripe Account ID
+                          </label>
+                          <input
+                            type="text"
+                            value={stripeAccountId || ''}
+                            onChange={(e) => setStripeAccountId(e.target.value.trim() || null)}
+                            onBlur={async () => {
+                              if (!selectedListingId || !stripeAccountId) return;
+                              // Auto-save on blur
+                              try {
+                                setSaving(true);
+                                await listingsAPI.updateListingConfig(selectedListingId, { stripeAccountId });
+                                setListings(prev => prev.map(l => l.id === selectedListingId ? { ...l, stripeAccountId } : l));
+                                showToast('Stripe ID stored', 'success');
+                              } catch (error) {
+                                console.error('Auto-save failed:', error);
+                              } finally {
+                                setSaving(false);
                               }
+                            }}
+                            placeholder="acct_xxxxxxxxxxxxx"
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <p className="text-xs text-slate-500">
+                            Client creates Express account in Stripe Dashboard and provides this ID.
+                          </p>
+                        </div>
+
+                        {/* Stripe Onboarding Status */}
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium text-slate-700">
+                            Stripe Onboarding Status
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { value: 'missing', label: 'Not Started' },
+                              { value: 'pending', label: 'Pending' },
+                              { value: 'verified', label: 'Verified' },
+                              { value: 'requires_action', label: 'Requires Action' }
+                            ].map(opt => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setStripeOnboardingStatus(opt.value as typeof stripeOnboardingStatus)}
+                                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${stripeOnboardingStatus === opt.value
+                                    ? 'bg-blue-600 text-white border-blue-700'
+                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Internal Payout Status */}
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium text-slate-700">
+                            Internal Payout Status
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { value: 'missing', label: 'Not Collected' },
+                              { value: 'pending', label: 'Requested' },
+                              { value: 'on_file', label: 'Verified' }
+                            ].map(opt => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setPayoutStatus(opt.value as typeof payoutStatus)}
+                                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${payoutStatus === opt.value
+                                    ? 'bg-emerald-600 text-white border-emerald-700'
+                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Generate Stripe Link Button */}
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              // Wrap helper to ensure we save first
+                              if (!selectedListingId || !stripeAccountId) return;
+                              try {
+                                // Save config first to ensure backend has the ID
+                                setSaving(true);
+                                await listingsAPI.updateListingConfig(selectedListingId, { stripeAccountId });
+
+                                // Then generate link
+                                await handleCreatePayoutLink();
+                              } catch (err) {
+                                console.error(err);
+                                showToast('Failed to save Stripe ID before generating link', 'error');
+                              } finally {
+                                setSaving(false);
+                              }
+                            }}
+                            disabled={!stripeAccountId}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Generate Stripe Onboarding Link
+                          </button>
+                          {!stripeAccountId && (
+                            <span className="text-xs text-amber-600 self-center">
+                              Enter Stripe Account ID first
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium text-slate-700">
+                            Payout Notes
+                          </label>
+                          <p className="text-xs text-slate-500">
+                            Internal notes about payout setup for this owner.
+                          </p>
+                          <textarea
+                            value={payoutNotes}
+                            onChange={(e) => setPayoutNotes(e.target.value)}
+                            rows={3}
+                            placeholder="Add context, e.g. 'Waiting for bank form from owner'"
+                            className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tags */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-blue-900">
+                          Tags
+                        </label>
+                      </div>
+                      <p className="text-xs text-blue-700 mb-3">
+                        Add tags to group and filter listings. Click <Clock className="w-3 h-3 inline" /> to set a reminder schedule for a tag.
+                      </p>
+
+                      {/* Existing Tags */}
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                            >
+                              {tag}
+                              <button
+                                onClick={() => openScheduleModal(tag)}
+                                className={`ml-1.5 p-0.5 rounded hover:bg-blue-200 transition-colors ${tagSchedules[tag] ? 'text-green-600' : 'text-blue-500'
+                                  }`}
+                                type="button"
+                                title={tagSchedules[tag] ? 'Edit schedule' : 'Set reminder'}
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setTags(tags.filter((_, i) => i !== idx))}
+                                className="ml-1 text-blue-600 hover:text-blue-800"
+                                type="button"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add New Tag with Autocomplete */}
+                      <div className="flex space-x-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            value={newTag}
+                            onChange={(e) => {
+                              setNewTag(e.target.value);
+                              setShowTagSuggestions(true);
+                            }}
+                            onFocus={() => setShowTagSuggestions(true)}
+                            onBlur={() => {
+                              // Delay to allow click on suggestion
+                              setTimeout(() => setShowTagSuggestions(false), 200);
+                            }}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const trimmedTag = newTag.trim().toUpperCase();
+                                if (trimmedTag && !tags.includes(trimmedTag)) {
+                                  setTags([...tags, trimmedTag]);
+                                  setNewTag('');
+                                  setShowTagSuggestions(false);
+                                }
+                              }
+                            }}
+                            placeholder="Add a tag..."
+                            className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          {/* Tag Suggestions Dropdown */}
+                          {showTagSuggestions && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                              {/* Combine base tags + all tags from listings (dynamic) */}
+                              {Array.from(new Set([...BASE_TAGS, ...availableTags]))
+                                .filter(tag =>
+                                  !tags.includes(tag) &&
+                                  tag.toLowerCase().includes(newTag.toLowerCase())
+                                )
+                                .slice(0, 10)
+                                .map((tag, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!tags.includes(tag)) {
+                                        setTags([...tags, tag]);
+                                        setNewTag('');
+                                        setShowTagSuggestions(false);
+                                      }
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center justify-between"
+                                  >
+                                    <span>{tag}</span>
+                                    {availableFrequencyTags.includes(tag) && (
+                                      <span className="text-xs text-green-600">has schedule</span>
+                                    )}
+                                  </button>
+                                ))}
+                              {Array.from(new Set([...BASE_TAGS, ...availableTags]))
+                                .filter(tag =>
+                                  !tags.includes(tag) &&
+                                  tag.toLowerCase().includes(newTag.toLowerCase())
+                                ).length === 0 && newTag.trim() && (
+                                  <div className="px-3 py-2 text-sm text-gray-500">
+                                    Press Enter to add "{newTag.trim().toUpperCase()}"
+                                  </div>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const trimmedTag = newTag.trim().toUpperCase();
+                            if (trimmedTag && !tags.includes(trimmedTag)) {
+                              setTags([...tags, trimmedTag]);
+                              setNewTag('');
+                              setShowTagSuggestions(false);
                             }
                           }}
-                          placeholder="Add a tag..."
-                          className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        {/* Tag Suggestions Dropdown */}
-                        {showTagSuggestions && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                            {/* Combine base tags + all tags from listings (dynamic) */}
-                            {Array.from(new Set([...BASE_TAGS, ...availableTags]))
-                              .filter(tag =>
-                                !tags.includes(tag) &&
-                                tag.toLowerCase().includes(newTag.toLowerCase())
-                              )
-                              .slice(0, 10)
-                              .map((tag, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => {
-                                    if (!tags.includes(tag)) {
-                                      setTags([...tags, tag]);
-                                      setNewTag('');
-                                      setShowTagSuggestions(false);
-                                    }
-                                  }}
-                                  className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center justify-between"
-                                >
-                                  <span>{tag}</span>
-                                  {availableFrequencyTags.includes(tag) && (
-                                    <span className="text-xs text-green-600">has schedule</span>
-                                  )}
-                                </button>
-                              ))}
-                            {Array.from(new Set([...BASE_TAGS, ...availableTags]))
-                              .filter(tag =>
-                                !tags.includes(tag) &&
-                                tag.toLowerCase().includes(newTag.toLowerCase())
-                              ).length === 0 && newTag.trim() && (
-                              <div className="px-3 py-2 text-sm text-gray-500">
-                                Press Enter to add "{newTag.trim().toUpperCase()}"
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Internal Notes */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <h3 className="text-sm font-medium text-amber-800 mb-1">Internal Notes</h3>
+                      <p className="text-xs text-amber-600 mb-3">
+                        Private notes about this listing. Visible in the app only, NOT included on PDF statements.
+                      </p>
+                      <textarea
+                        value={internalNotes}
+                        onChange={(e) => setInternalNotes(e.target.value)}
+                        placeholder="Add notes about this listing (owner preferences, special instructions, etc.)"
+                        className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                        rows={3}
+                      />
+                    </div>
+
+                    {/* Group Management */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-purple-700" />
+                          <h3 className="text-sm font-medium text-purple-900">Listing Group</h3>
+                        </div>
+                      </div>
+                      <p className="text-xs text-purple-700 mb-3">
+                        Groups combine multiple listings into a single statement
+                      </p>
+
+                      {selectedListing.group ? (
+                        <div className="space-y-3">
+                          {/* Current Group Info */}
+                          <div className="bg-white rounded-md p-3 border border-purple-200">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <div className="font-medium text-purple-900">{selectedListing.group.name}</div>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {selectedListing.group.tags?.map((tag, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            {selectedListing.group.listingIds && selectedListing.group.listingIds.length > 1 && (
+                              <div className="text-xs text-purple-700 mt-2">
+                                <UsersIcon className="w-3 h-3 inline mr-1" />
+                                Also includes:{' '}
+                                {listings
+                                  .filter(l =>
+                                    selectedListing.group?.listingIds?.includes(l.id) &&
+                                    l.id !== selectedListing.id
+                                  )
+                                  .map(l => l.displayName || l.nickname || l.name)
+                                  .join(', ')}
                               </div>
                             )}
                           </div>
-                        )}
+
+                          {/* Actions */}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditGroupModal(selectedListing.group!)}
+                              className="flex-1 px-3 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-300 rounded-md hover:bg-purple-50 transition-colors"
+                            >
+                              Edit Group
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedListing.group?.id && window.confirm('Remove this listing from the group?')) {
+                                  handleRemoveFromGroup(selectedListing.group.id, selectedListing.id);
+                                }
+                              }}
+                              className="flex-1 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+                            >
+                              Remove from Group
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="text-sm text-purple-700 bg-white rounded-md p-3 border border-purple-200">
+                            No group assigned
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={openCreateGroupModal}
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Create New Group
+                            </button>
+                            {groups.length > 0 && (
+                              <div className="relative flex-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
+                                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-purple-300 rounded-md bg-white hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
+                                >
+                                  <span className="text-gray-700">Add to Existing Group</span>
+                                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {isGroupDropdownOpen && (
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-10"
+                                      onClick={() => setIsGroupDropdownOpen(false)}
+                                    />
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
+                                      {groups.map(group => (
+                                        <button
+                                          key={group.id}
+                                          type="button"
+                                          onClick={() => {
+                                            handleAddToExistingGroup(group.id, selectedListing.id);
+                                            setIsGroupDropdownOpen(false);
+                                          }}
+                                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between"
+                                        >
+                                          <span className="font-medium text-gray-900">{group.name}</span>
+                                          <span className="text-xs text-purple-600">{group.tags?.join(', ')}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Location Info */}
+                    {(selectedListing.street || selectedListing.city || selectedListing.state) && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-700 mb-2">Location</h3>
+                        <p className="text-sm text-gray-600">
+                          {[selectedListing.street, selectedListing.city, selectedListing.state, selectedListing.country]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </p>
                       </div>
+                    )}
+
+                    {/* Save Button */}
+                    <div className="flex justify-end pt-4 border-t border-gray-200">
                       <button
-                        type="button"
-                        onClick={() => {
-                          const trimmedTag = newTag.trim().toUpperCase();
-                          if (trimmedTag && !tags.includes(trimmedTag)) {
-                            setTags([...tags, trimmedTag]);
-                            setNewTag('');
-                            setShowTagSuggestions(false);
-                          }
-                        }}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Add
+                        <Save className="w-4 h-4 mr-2" />
+                        {saving ? 'Saving...' : 'Save Changes'}
                       </button>
                     </div>
                   </div>
-
-                  {/* Internal Notes */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <h3 className="text-sm font-medium text-amber-800 mb-1">Internal Notes</h3>
-                    <p className="text-xs text-amber-600 mb-3">
-                      Private notes about this listing. Visible in the app only, NOT included on PDF statements.
-                    </p>
-                    <textarea
-                      value={internalNotes}
-                      onChange={(e) => setInternalNotes(e.target.value)}
-                      placeholder="Add notes about this listing (owner preferences, special instructions, etc.)"
-                      className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
-                      rows={3}
-                    />
-                  </div>
-
-                  {/* Group Management */}
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className="w-4 h-4 text-purple-700" />
-                        <h3 className="text-sm font-medium text-purple-900">Listing Group</h3>
-                      </div>
-                    </div>
-                    <p className="text-xs text-purple-700 mb-3">
-                      Groups combine multiple listings into a single statement
-                    </p>
-
-                    {selectedListing.group ? (
-                      <div className="space-y-3">
-                        {/* Current Group Info */}
-                        <div className="bg-white rounded-md p-3 border border-purple-200">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <div className="font-medium text-purple-900">{selectedListing.group.name}</div>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {selectedListing.group.tags?.map((tag, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          {selectedListing.group.listingIds && selectedListing.group.listingIds.length > 1 && (
-                            <div className="text-xs text-purple-700 mt-2">
-                              <UsersIcon className="w-3 h-3 inline mr-1" />
-                              Also includes:{' '}
-                              {listings
-                                .filter(l =>
-                                  selectedListing.group?.listingIds?.includes(l.id) &&
-                                  l.id !== selectedListing.id
-                                )
-                                .map(l => l.displayName || l.nickname || l.name)
-                                .join(', ')}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEditGroupModal(selectedListing.group!)}
-                            className="flex-1 px-3 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-300 rounded-md hover:bg-purple-50 transition-colors"
-                          >
-                            Edit Group
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (selectedListing.group?.id && window.confirm('Remove this listing from the group?')) {
-                                handleRemoveFromGroup(selectedListing.group.id, selectedListing.id);
-                              }
-                            }}
-                            className="flex-1 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 transition-colors"
-                          >
-                            Remove from Group
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="text-sm text-purple-700 bg-white rounded-md p-3 border border-purple-200">
-                          No group assigned
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={openCreateGroupModal}
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors"
-                          >
-                            <Plus className="w-4 h-4" />
-                            Create New Group
-                          </button>
-                          {groups.length > 0 && (
-                            <div className="relative flex-1">
-                              <button
-                                type="button"
-                                onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
-                                className="w-full flex items-center justify-between px-3 py-2 text-sm border border-purple-300 rounded-md bg-white hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
-                              >
-                                <span className="text-gray-700">Add to Existing Group</span>
-                                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
-                              </button>
-                              {isGroupDropdownOpen && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-10"
-                                    onClick={() => setIsGroupDropdownOpen(false)}
-                                  />
-                                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
-                                    {groups.map(group => (
-                                      <button
-                                        key={group.id}
-                                        type="button"
-                                        onClick={() => {
-                                          handleAddToExistingGroup(group.id, selectedListing.id);
-                                          setIsGroupDropdownOpen(false);
-                                        }}
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between"
-                                      >
-                                        <span className="font-medium text-gray-900">{group.name}</span>
-                                        <span className="text-xs text-purple-600">{group.tags?.join(', ')}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Location Info */}
-                  {(selectedListing.street || selectedListing.city || selectedListing.state) && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Location</h3>
-                      <p className="text-sm text-gray-600">
-                        {[selectedListing.street, selectedListing.city, selectedListing.state, selectedListing.country]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Save Button */}
-                  <div className="flex justify-end pt-4 border-t border-gray-200">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  </div>
-                </div>
                 </div>
               </>
             )}

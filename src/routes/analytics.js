@@ -7,6 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const { Statement, Listing, ListingGroup, sequelize } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const FileDataService = require('../services/FileDataService');
@@ -363,7 +364,7 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Analytics summary error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getSummary' });
         res.status(500).json({ error: 'Failed to fetch analytics summary' });
     }
 });
@@ -444,7 +445,7 @@ router.get('/revenue-trend', setCacheHeaders(300), async (req, res) => {
         res.json(trend);
 
     } catch (error) {
-        console.error('Revenue trend error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getRevenueTrend' });
         res.status(500).json({ error: 'Failed to fetch revenue trend' });
     }
 });
@@ -521,7 +522,7 @@ router.get('/payout-trend', setCacheHeaders(300), async (req, res) => {
         res.json(trend);
 
     } catch (error) {
-        console.error('Payout trend error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getPayoutTrend' });
         res.status(500).json({ error: 'Failed to fetch payout trend' });
     }
 });
@@ -618,7 +619,7 @@ router.get('/expense-breakdown', setCacheHeaders(300), async (req, res) => {
         res.json(breakdown);
 
     } catch (error) {
-        console.error('Expense breakdown error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getExpenseBreakdown' });
         res.status(500).json({ error: 'Failed to fetch expense breakdown' });
     }
 });
@@ -731,13 +732,13 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
             }
         } catch (listingError) {
             // If listing lookup fails, continue with statement data
-            console.warn('Could not enrich with listing names:', listingError.message);
+            logger.warn('Could not enrich with listing names', { context: 'Analytics', error: listingError.message });
         }
 
         res.json(performance);
 
     } catch (error) {
-        console.error('Property performance error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getPropertyPerformance' });
         res.status(500).json({ error: 'Failed to fetch property performance' });
     }
 });
@@ -816,7 +817,7 @@ router.get('/owner-breakdown', setCacheHeaders(300), async (req, res) => {
         res.json(ownerBreakdown);
 
     } catch (error) {
-        console.error('Owner breakdown error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getOwnerBreakdown' });
         res.status(500).json({ error: 'Failed to fetch owner breakdown' });
     }
 });
@@ -905,7 +906,7 @@ router.get('/statement-status', setCacheHeaders(300), async (req, res) => {
         res.json(statusBreakdown);
 
     } catch (error) {
-        console.error('Statement status error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getStatementStatus' });
         res.status(500).json({ error: 'Failed to fetch statement status' });
     }
 });
@@ -996,7 +997,7 @@ router.get('/recent-statements', async (req, res) => {
         res.json(recentStatements);
 
     } catch (error) {
-        console.error('Recent statements error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getRecentStatements' });
         res.status(500).json({ error: 'Failed to fetch recent statements' });
     }
 });
@@ -1063,7 +1064,7 @@ router.get('/monthly-comparison', setCacheHeaders(300), async (req, res) => {
         res.json(comparison);
 
     } catch (error) {
-        console.error('Monthly comparison error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getMonthlyComparison' });
         res.status(500).json({ error: 'Failed to fetch monthly comparison' });
     }
 });
@@ -1187,7 +1188,7 @@ router.get('/export', async (req, res) => {
                 });
             }
         } catch (e) {
-            console.warn('Could not enrich with listing names:', e.message);
+            logger.warn('Could not enrich with listing names', { context: 'Analytics', error: e.message });
         }
 
         propertyPerformance.sort((a, b) => b.revenue - a.revenue);
@@ -1349,7 +1350,7 @@ router.get('/export', async (req, res) => {
         res.json(exportData);
 
     } catch (error) {
-        console.error('Analytics export error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'exportData' });
         res.status(500).json({ error: 'Failed to export analytics data' });
     }
 });
@@ -1439,7 +1440,7 @@ router.get('/filters', setCacheHeaders(600), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Analytics filters error:', error);
+        logger.logError(error, { context: 'Analytics', action: 'getFilters' });
         res.status(500).json({ error: 'Failed to fetch analytics filters' });
     }
 });

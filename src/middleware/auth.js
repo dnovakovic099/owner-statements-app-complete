@@ -11,6 +11,7 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 
 // JWT Secret - use environment variable or generate a secure default
 const JWT_SECRET = process.env.JWT_SECRET || 'luxury-lodging-pm-jwt-secret-key-change-in-production';
@@ -21,7 +22,7 @@ let legacyAuthConfig;
 try {
     legacyAuthConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../../config/auth.json'), 'utf8'));
 } catch (error) {
-    console.warn('[Auth] Could not load legacy auth config, using defaults');
+    logger.warn('Could not load legacy auth config, using defaults', { context: 'Auth' });
     legacyAuthConfig = {
         users: { 'LL': 'bnb547!' },
         realm: 'Luxury Lodging PM - Owner Statements'
@@ -127,7 +128,7 @@ async function authenticateUser(username, password) {
             }
         }
     } catch (error) {
-        console.warn('[Auth] Database auth check failed:', error.message);
+        logger.warn('Database auth check failed', { context: 'Auth', error: error.message });
     }
 
     // Fall back to legacy config users (backward compatibility)

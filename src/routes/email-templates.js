@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const { EmailTemplate } = require('../models');
 
 /**
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
             variables: EmailTemplate.AVAILABLE_VARIABLES
         });
     } catch (error) {
-        console.error('Error fetching email templates:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'fetchTemplates' });
         res.status(500).json({ error: 'Failed to fetch email templates' });
     }
 });
@@ -39,7 +40,7 @@ router.get('/variables', async (req, res) => {
             variables: EmailTemplate.AVAILABLE_VARIABLES
         });
     } catch (error) {
-        console.error('Error fetching template variables:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'fetchVariables' });
         res.status(500).json({ error: 'Failed to fetch template variables' });
     }
 });
@@ -58,7 +59,7 @@ router.get('/:id', async (req, res) => {
 
         res.json({ template });
     } catch (error) {
-        console.error('Error fetching email template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'fetchTemplate' });
         res.status(500).json({ error: 'Failed to fetch email template' });
     }
 });
@@ -99,7 +100,7 @@ router.post('/', async (req, res) => {
 
         res.status(201).json({ template });
     } catch (error) {
-        console.error('Error creating email template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'createTemplate' });
         res.status(500).json({ error: 'Failed to create email template' });
     }
 });
@@ -142,7 +143,7 @@ router.put('/:id', async (req, res) => {
 
         res.json({ template });
     } catch (error) {
-        console.error('Error updating email template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'updateTemplate' });
         res.status(500).json({ error: 'Failed to update email template' });
     }
 });
@@ -173,7 +174,7 @@ router.delete('/:id', async (req, res) => {
 
         res.json({ message: 'Template deleted successfully' });
     } catch (error) {
-        console.error('Error deleting email template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'deleteTemplate' });
         res.status(500).json({ error: 'Failed to delete email template' });
     }
 });
@@ -201,7 +202,7 @@ router.post('/:id/set-default', async (req, res) => {
 
         res.json({ template, message: `Template "${template.name}" is now the default for ${template.frequencyType}` });
     } catch (error) {
-        console.error('Error setting default template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'setDefaultTemplate' });
         res.status(500).json({ error: 'Failed to set default template' });
     }
 });
@@ -250,7 +251,7 @@ router.post('/preview', async (req, res) => {
             sampleData
         });
     } catch (error) {
-        console.error('Error previewing template:', error);
+        logger.logError(error, { context: 'EmailTemplates', action: 'previewTemplate' });
         res.status(500).json({ error: 'Failed to preview template' });
     }
 });

@@ -1,6 +1,7 @@
 const { Statement, UploadedExpense } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
+const logger = require('../utils/logger');
 
 class DatabaseService {
     // ==================== STATEMENTS ====================
@@ -13,48 +14,47 @@ class DatabaseService {
         try {
             // Only works for PostgreSQL
             const dialectName = sequelize.getDialect();
-            console.log(`[DatabaseService] resetStatementSequence() - dialect: ${dialectName}`);
+            logger.debug(`resetStatementSequence() - dialect: ${dialectName}`, { context: 'DatabaseService', action: 'resetStatementSequence' });
 
             if (dialectName !== 'postgres') {
-                console.log('[DatabaseService] Sequence reset skipped (not PostgreSQL)');
+                logger.debug('Sequence reset skipped (not PostgreSQL)', { context: 'DatabaseService', action: 'resetStatementSequence' });
                 return;
             }
 
             // First, get current max ID for logging
             const [maxResult] = await sequelize.query("SELECT MAX(id) as max_id FROM statements");
             const currentMaxId = maxResult[0]?.max_id || 0;
-            console.log(`[DatabaseService] Current max statement ID: ${currentMaxId}`);
+            logger.debug(`Current max statement ID: ${currentMaxId}`, { context: 'DatabaseService', action: 'resetStatementSequence' });
 
             // Get current sequence value
             const [seqResult] = await sequelize.query("SELECT last_value FROM statements_id_seq");
             const currentSeqValue = seqResult[0]?.last_value || 0;
-            console.log(`[DatabaseService] Current sequence value: ${currentSeqValue}`);
+            logger.debug(`Current sequence value: ${currentSeqValue}`, { context: 'DatabaseService', action: 'resetStatementSequence' });
 
             // Reset sequence to max + 1
             const [results] = await sequelize.query(
                 "SELECT setval('statements_id_seq', COALESCE((SELECT MAX(id) FROM statements), 0) + 1, false)"
             );
             const newSeqValue = results[0]?.setval;
-            console.log(`[DatabaseService] Reset statements_id_seq: ${currentSeqValue} -> ${newSeqValue}`);
+            logger.info(`Reset statements_id_seq: ${currentSeqValue} -> ${newSeqValue}`, { context: 'DatabaseService', action: 'resetStatementSequence' });
         } catch (err) {
-            console.error('[DatabaseService] Error resetting sequence:', err.message);
-            console.error('[DatabaseService] Full error:', err);
+            logger.logError(err, { context: 'DatabaseService', action: 'resetStatementSequence' });
         }
     }
 
     async saveStatement(statementData, retryCount = 0) {
-        const logPrefix = `[DatabaseService.saveStatement]`;
+        const logContext = { context: 'DatabaseService', action: 'saveStatement' };
 
-        console.log(`${logPrefix} Called with retryCount=${retryCount}`);
-        console.log(`${logPrefix} Input data - id: ${statementData.id}, groupId: ${statementData.groupId}, groupName: ${statementData.groupName}, propertyName: ${statementData.propertyName}`);
+        logger.debug(`Called with retryCount=${retryCount}`, logContext);
+        logger.debug(`Input data - id: ${statementData.id}, groupId: ${statementData.groupId}, groupName: ${statementData.groupName}, propertyName: ${statementData.propertyName}`, logContext);
 
         try {
             // Check if statement already exists
             if (statementData.id) {
-                console.log(`${logPrefix} Checking for existing statement with id=${statementData.id}`);
+                logger.debug(`Checking for existing statement with id=${statementData.id}`, logContext);
                 const existing = await Statement.findByPk(statementData.id);
                 if (existing) {
-                    console.log(`${logPrefix} Found existing statement, updating...`);
+                    logger.debug('Found existing statement, updating...', logContext);
                     // Remove fields that Sequelize manages automatically
                     const { createdAt, updatedAt, created_at, updated_at, ...dataToUpdate } = statementData;
 
@@ -65,48 +65,47 @@ class DatabaseService {
                     // Reload to get the updated timestamp
                     await existing.reload();
 
-                    console.log(`${logPrefix} Updated statement ${statementData.id} (updated_at: ${existing.updatedAt})`);
+                    logger.info(`Updated statement ${statementData.id} (updated_at: ${existing.updatedAt})`, logContext);
                     return existing.toJSON();
                 } else {
-                    console.log(`${logPrefix} Statement with id=${statementData.id} not found, will create new`);
+                    logger.debug(`Statement with id=${statementData.id} not found, will create new`, logContext);
                 }
             }
 
             // Create new statement if it doesn't exist
             // Remove any id field to let the database auto-generate it
-            console.log(`${logPrefix} Creating new statement (removing id field to let DB auto-generate)`);
+            logger.debug('Creating new statement (removing id field to let DB auto-generate)', logContext);
             const { id, createdAt, updatedAt, created_at, updated_at, ...dataToCreate } = statementData;
 
-            console.log(`${logPrefix} Calling Statement.create()...`);
+            logger.debug('Calling Statement.create()...', logContext);
             const statement = await Statement.create(dataToCreate);
-            console.log(`${logPrefix} SUCCESS - Created statement with id=${statement.id} for "${dataToCreate.propertyName || dataToCreate.groupName}"`);
+            logger.info(`SUCCESS - Created statement with id=${statement.id} for "${dataToCreate.propertyName || dataToCreate.groupName}"`, logContext);
             return statement.toJSON();
         } catch (error) {
-            console.log(`${logPrefix} ERROR caught: ${error.name} - ${error.message}`);
+            logger.debug(`ERROR caught: ${error.name} - ${error.message}`, logContext);
 
             // Handle duplicate key constraint error (sequence out of sync)
             const isUniqueConstraintError = error.name === 'SequelizeUniqueConstraintError';
             const hasIdError = error.errors && error.errors.some(e => e.path === 'id');
             const canRetry = retryCount < 3;
 
-            console.log(`${logPrefix} Error analysis: isUniqueConstraintError=${isUniqueConstraintError}, hasIdError=${hasIdError}, canRetry=${canRetry}`);
+            logger.debug(`Error analysis: isUniqueConstraintError=${isUniqueConstraintError}, hasIdError=${hasIdError}, canRetry=${canRetry}`, logContext);
 
             if (error.errors) {
-                console.log(`${logPrefix} Error details:`, error.errors.map(e => ({ path: e.path, type: e.type, message: e.message })));
+                logger.debug(`Error details: ${JSON.stringify(error.errors.map(e => ({ path: e.path, type: e.type, message: e.message })))}`, logContext);
             }
 
             if (isUniqueConstraintError && hasIdError && canRetry) {
-                console.log(`${logPrefix} Duplicate key error on 'id' field - will reset sequence and retry (attempt ${retryCount + 1}/3)`);
+                logger.info(`Duplicate key error on 'id' field - will reset sequence and retry (attempt ${retryCount + 1}/3)`, logContext);
                 await this.resetStatementSequence();
 
                 // Retry without the id field
                 const { id, ...dataWithoutId } = statementData;
-                console.log(`${logPrefix} Retrying saveStatement...`);
+                logger.debug('Retrying saveStatement...', logContext);
                 return this.saveStatement(dataWithoutId, retryCount + 1);
             }
 
-            console.error(`${logPrefix} FAILED - Error saving statement:`, error);
-            console.error(`${logPrefix} Statement data (truncated):`, JSON.stringify(statementData, null, 2).substring(0, 500));
+            logger.logError(error, { ...logContext, statementData: JSON.stringify(statementData).substring(0, 500) });
             throw error;
         }
     }
@@ -156,7 +155,7 @@ class DatabaseService {
                 return json;
             });
         } catch (error) {
-            console.error('Error fetching statements from database:', error);
+            logger.logError(error, { context: 'DatabaseService', action: 'getStatements' });
             throw error;
         }
     }
@@ -176,7 +175,7 @@ class DatabaseService {
             }
             return json;
         } catch (error) {
-            console.error(`Error fetching statement ${id} from database:`, error);
+            logger.logError(error, { context: 'DatabaseService', action: 'getStatementById', id });
             throw error;
         }
     }
@@ -189,10 +188,10 @@ class DatabaseService {
             }
 
             await statement.update(updates);
-            console.log(`Updated statement ${id} in database`);
+            logger.info(`Updated statement ${id} in database`, { context: 'DatabaseService', action: 'updateStatement' });
             return statement.toJSON();
         } catch (error) {
-            console.error(`Error updating statement ${id}:`, error);
+            logger.logError(error, { context: 'DatabaseService', action: 'updateStatement', id });
             throw error;
         }
     }
@@ -205,10 +204,10 @@ class DatabaseService {
             }
 
             await statement.destroy();
-            console.log(`Deleted statement ${id} from database`);
+            logger.info(`Deleted statement ${id} from database`, { context: 'DatabaseService', action: 'deleteStatement' });
             return true;
         } catch (error) {
-            console.error(`Error deleting statement ${id}:`, error);
+            logger.logError(error, { context: 'DatabaseService', action: 'deleteStatement', id });
             throw error;
         }
     }
@@ -225,10 +224,10 @@ class DatabaseService {
     async saveUploadedExpense(expenseData) {
         try {
             const expense = await UploadedExpense.create(expenseData);
-            console.log(`Saved uploaded expense ${expense.id} to database`);
+            logger.debug(`Saved uploaded expense ${expense.id} to database`, { context: 'DatabaseService', action: 'saveUploadedExpense' });
             return expense.toJSON();
         } catch (error) {
-            console.error('Error saving uploaded expense to database:', error);
+            logger.logError(error, { context: 'DatabaseService', action: 'saveUploadedExpense' });
             throw error;
         }
     }
@@ -236,10 +235,10 @@ class DatabaseService {
     async saveUploadedExpenses(expensesArray) {
         try {
             const expenses = await UploadedExpense.bulkCreate(expensesArray);
-            console.log(`Saved ${expenses.length} uploaded expenses to database`);
+            logger.info(`Saved ${expenses.length} uploaded expenses to database`, { context: 'DatabaseService', action: 'saveUploadedExpenses' });
             return expenses.map(e => e.toJSON());
         } catch (error) {
-            console.error('Error bulk saving uploaded expenses:', error);
+            logger.logError(error, { context: 'DatabaseService', action: 'saveUploadedExpenses' });
             throw error;
         }
     }
@@ -277,7 +276,7 @@ class DatabaseService {
 
             return expenses.map(e => e.toJSON());
         } catch (error) {
-            console.error('Error fetching uploaded expenses from database:', error);
+            logger.logError(error, { context: 'DatabaseService', action: 'getUploadedExpenses' });
             throw error;
         }
     }
@@ -287,10 +286,10 @@ class DatabaseService {
             const count = await UploadedExpense.destroy({
                 where: { uploadFilename: filename }
             });
-            console.log(`Deleted ${count} uploaded expenses with filename ${filename}`);
+            logger.info(`Deleted ${count} uploaded expenses with filename ${filename}`, { context: 'DatabaseService', action: 'deleteUploadedExpensesByFilename' });
             return count;
         } catch (error) {
-            console.error(`Error deleting uploaded expenses for ${filename}:`, error);
+            logger.logError(error, { context: 'DatabaseService', action: 'deleteUploadedExpensesByFilename', filename });
             throw error;
         }
     }
@@ -308,7 +307,7 @@ class DatabaseService {
             });
             return results.map(r => r.uploadFilename).filter(Boolean);
         } catch (error) {
-            console.error('Error fetching upload filenames:', error);
+            logger.logError(error, { context: 'DatabaseService', action: 'getUploadFilenames' });
             throw error;
         }
     }

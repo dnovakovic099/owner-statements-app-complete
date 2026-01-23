@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const logger = require('../utils/logger');
 
 const ActivityLog = sequelize.define('ActivityLog', {
     id: {
@@ -80,7 +81,7 @@ ActivityLog.log = async function(req, action, resource, resourceId = null, detai
             userAgent: req.headers?.['user-agent']?.substring(0, 500)
         });
     } catch (error) {
-        console.error('[ActivityLog] Failed to log activity:', error.message);
+        logger.error('Failed to log activity', { context: 'ActivityLog', error: error.message });
     }
 };
 
@@ -98,7 +99,7 @@ ActivityLog.logSystem = async function(action, resource, resourceId = null, deta
             userAgent: 'TagScheduleService/AutoGeneration'
         });
     } catch (error) {
-        console.error('[ActivityLog] Failed to log system activity:', error.message);
+        logger.error('Failed to log system activity', { context: 'ActivityLog', error: error.message });
     }
 };
 

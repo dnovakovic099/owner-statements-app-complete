@@ -3,6 +3,8 @@
  * Handles long-running tasks like bulk statement generation
  */
 
+const logger = require('../utils/logger');
+
 class BackgroundJobService {
     constructor() {
         this.jobs = new Map(); // Store job status in memory
@@ -32,7 +34,7 @@ class BackgroundJobService {
             params
         });
 
-        console.log(`Created background job: ${jobId} (${type})`);
+        logger.info(`Created background job: ${jobId} (${type})`, { context: 'BackgroundJobService', action: 'createJob' });
         return jobId;
     }
 
@@ -56,7 +58,7 @@ class BackgroundJobService {
             total,
             progress: 0
         });
-        console.log(`Started job: ${jobId}`);
+        logger.info(`Started job: ${jobId}`, { context: 'BackgroundJobService', action: 'startJob' });
     }
 
     /**
@@ -82,12 +84,12 @@ class BackgroundJobService {
             completedAt: new Date().toISOString(),
             result
         });
-        console.log(`Completed job: ${jobId}`);
-        
+        logger.info(`Completed job: ${jobId}`, { context: 'BackgroundJobService', action: 'completeJob' });
+
         // Auto-cleanup after 1 hour
         setTimeout(() => {
             this.jobs.delete(jobId);
-            console.log(`Cleaned up job: ${jobId}`);
+            logger.debug(`Cleaned up job: ${jobId}`, { context: 'BackgroundJobService', action: 'cleanup' });
         }, 60 * 60 * 1000);
     }
 
@@ -100,7 +102,7 @@ class BackgroundJobService {
             completedAt: new Date().toISOString(),
             error: error.message || String(error)
         });
-        console.error(`Failed job: ${jobId}`, error);
+        logger.logError(error, { context: 'BackgroundJobService', action: 'failJob', jobId });
         
         // Auto-cleanup after 1 hour
         setTimeout(() => {

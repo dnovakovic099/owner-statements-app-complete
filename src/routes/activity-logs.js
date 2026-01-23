@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const { ActivityLog } = require('../models');
 const { Op } = require('sequelize');
 
@@ -70,7 +71,7 @@ router.get('/', requireAdmin, async (req, res) => {
             offset: parseInt(offset)
         });
     } catch (error) {
-        console.error('Error fetching activity logs:', error);
+        logger.logError(error, { context: 'ActivityLogs', action: 'fetchLogs' });
         res.status(500).json({ error: 'Failed to fetch activity logs' });
     }
 });
@@ -96,7 +97,7 @@ router.get('/filters', requireAdmin, async (req, res) => {
             actions: actions.map(a => a.action)
         });
     } catch (error) {
-        console.error('Error fetching filter options:', error);
+        logger.logError(error, { context: 'ActivityLogs', action: 'fetchFilterOptions' });
         res.status(500).json({ error: 'Failed to fetch filter options' });
     }
 });
@@ -132,7 +133,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching activity stats:', error);
+        logger.logError(error, { context: 'ActivityLogs', action: 'fetchStats' });
         res.status(500).json({ error: 'Failed to fetch activity stats' });
     }
 });

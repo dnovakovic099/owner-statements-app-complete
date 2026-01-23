@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const TagScheduleService = require('../services/TagScheduleService');
 const Listing = require('../models/Listing');
 const { Op } = require('sequelize');
@@ -12,7 +13,7 @@ router.get('/schedules', async (req, res) => {
         const schedules = await TagScheduleService.getAllSchedules();
         res.json({ success: true, schedules });
     } catch (error) {
-        console.error('Error fetching schedules:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchSchedules' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -28,7 +29,7 @@ router.get('/schedules/:tagName', async (req, res) => {
             res.json({ success: true, schedule: null });
         }
     } catch (error) {
-        console.error('Error fetching schedule:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchSchedule' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -73,7 +74,7 @@ router.post('/schedules', async (req, res) => {
 
         res.json({ success: true, schedule, message: 'Schedule saved successfully' });
     } catch (error) {
-        console.error('Error saving schedule:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'saveSchedule' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -89,7 +90,7 @@ router.delete('/schedules/:tagName', async (req, res) => {
             res.status(404).json({ success: false, error: 'Schedule not found' });
         }
     } catch (error) {
-        console.error('Error deleting schedule:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'deleteSchedule' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -107,7 +108,7 @@ router.get('/notifications', async (req, res) => {
         const unreadCount = await TagScheduleService.getNotificationCount();
         res.json({ success: true, notifications, unreadCount });
     } catch (error) {
-        console.error('Error fetching notifications:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchNotifications' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -118,7 +119,7 @@ router.get('/notifications/count', async (req, res) => {
         const count = await TagScheduleService.getNotificationCount();
         res.json({ success: true, count });
     } catch (error) {
-        console.error('Error fetching notification count:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchNotificationCount' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -134,7 +135,7 @@ router.put('/notifications/:id/read', async (req, res) => {
             res.status(404).json({ success: false, error: 'Notification not found' });
         }
     } catch (error) {
-        console.error('Error marking notification as read:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'markNotificationRead' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -150,7 +151,7 @@ router.put('/notifications/:id/action', async (req, res) => {
             res.status(404).json({ success: false, error: 'Notification not found' });
         }
     } catch (error) {
-        console.error('Error marking notification as actioned:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'markNotificationActioned' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -166,7 +167,7 @@ router.put('/notifications/:id/dismiss', async (req, res) => {
             res.status(404).json({ success: false, error: 'Notification not found' });
         }
     } catch (error) {
-        console.error('Error dismissing notification:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'dismissNotification' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -199,7 +200,7 @@ router.get('/listings-by-tag/:tagName', async (req, res) => {
             listings
         });
     } catch (error) {
-        console.error('Error fetching listings by tag:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchListingsByTag' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -210,7 +211,7 @@ router.post('/trigger-check', async (req, res) => {
         await TagScheduleService.checkSchedules();
         res.json({ success: true, message: 'Schedule check triggered' });
     } catch (error) {
-        console.error('Error triggering schedule check:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'triggerScheduleCheck' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -223,7 +224,7 @@ router.get('/period-configs', async (req, res) => {
         const configs = await TagScheduleService.getAllPeriodConfigs();
         res.json({ success: true, configs });
     } catch (error) {
-        console.error('Error fetching period configs:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchPeriodConfigs' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -245,7 +246,7 @@ router.put('/period-configs/:tagName', async (req, res) => {
             message: 'Period config updated successfully'
         });
     } catch (error) {
-        console.error('Error updating period config:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'updatePeriodConfig' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -263,7 +264,7 @@ router.get('/schedules/:tagName/skip-dates', async (req, res) => {
             res.status(404).json({ success: false, error: 'Schedule not found' });
         }
     } catch (error) {
-        console.error('Error fetching skip dates:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'fetchSkipDates' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -292,7 +293,7 @@ router.post('/schedules/:tagName/skip-dates', async (req, res) => {
 
         res.json({ success: true, skipDates, message: `Skip date ${date} added` });
     } catch (error) {
-        console.error('Error adding skip date:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'addSkipDate' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -312,7 +313,7 @@ router.delete('/schedules/:tagName/skip-dates/:date', async (req, res) => {
 
         res.json({ success: true, skipDates, message: `Skip date ${date} removed` });
     } catch (error) {
-        console.error('Error removing skip date:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'removeSkipDate' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -344,7 +345,7 @@ router.put('/schedules/:tagName/skip-dates', async (req, res) => {
 
         res.json({ success: true, skipDates: sortedDates, message: 'Skip dates updated' });
     } catch (error) {
-        console.error('Error updating skip dates:', error);
+        logger.logError(error, { context: 'TagSchedules', action: 'updateSkipDates' });
         res.status(500).json({ success: false, error: error.message });
     }
 });
