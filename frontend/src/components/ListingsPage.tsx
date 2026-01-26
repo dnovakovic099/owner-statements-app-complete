@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown } from 'lucide-react';
-import { listingsAPI, tagScheduleAPI, groupsAPI, payoutsAPI } from '../services/api';
+import { listingsAPI, tagScheduleAPI, groupsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
