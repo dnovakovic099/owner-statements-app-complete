@@ -2546,9 +2546,9 @@ router.put('/:id', async (req, res) => {
             const adjustments = parseFloat(statement.adjustments || 0);
             statement.ownerPayout = Math.round((statement.totalRevenue - statement.pmCommission + totalUpsells - statement.totalExpenses - adjustments) * 100) / 100;
 
-            // Update the statement status (only if not already sent)
-            if (statement.status !== 'sent') {
-                statement.status = 'modified';
+            // Keep statement as draft when edited (unless already sent/final)
+            if (statement.status !== 'sent' && statement.status !== 'final') {
+                statement.status = 'draft';
             }
 
             // Save updated statement (Sequelize will automatically update the timestamp)

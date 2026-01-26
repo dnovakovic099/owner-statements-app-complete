@@ -108,7 +108,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [payoutStatus, setPayoutStatus] = useState<'missing' | 'pending' | 'on_file'>('missing');
   const [payoutNotes, setPayoutNotes] = useState('');
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
-  const [stripeOnboardingStatus, setStripeOnboardingStatus] = useState<'missing' | 'pending' | 'verified' | 'requires_action'>('missing');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const payoutLabel = (status: 'missing' | 'pending' | 'on_file') => {
@@ -330,7 +329,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setPayoutStatus((listing.payoutStatus as any) || 'missing');
         setPayoutNotes(listing.payoutNotes || '');
         setStripeAccountId((listing.stripeAccountId as any) || null);
-        setStripeOnboardingStatus((listing.stripeOnboardingStatus as any) || 'missing');
       }
     } else {
       resetForm();
@@ -349,8 +347,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         ...l,
         payoutStatus: (l as any).payoutStatus || 'missing',
         payoutNotes: l.payoutNotes || '',
-        stripeAccountId: (l as any).stripeAccountId || null,
-        stripeOnboardingStatus: (l as any).stripeOnboardingStatus || 'missing'
+        stripeAccountId: (l as any).stripeAccountId || null
       })));
 
       if (updateOptions) {
@@ -422,7 +419,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setPayoutStatus('missing');
     setPayoutNotes('');
     setStripeAccountId(null);
-    setStripeOnboardingStatus('missing');
   };
 
   const handleSave = async () => {
@@ -449,8 +445,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         internalNotes: internalNotes.trim() || null,
         payoutStatus,
         payoutNotes: payoutNotes.trim() || null,
-        stripeAccountId: stripeAccountId || undefined,
-        stripeOnboardingStatus
+        stripeAccountId: stripeAccountId || undefined
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -509,32 +504,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       setSavingOwnerInfo(false);
     }
   };
-
-  // Generate Stripe onboarding link for payouts
-  const handleCreatePayoutLink = async () => {
-    if (!selectedListingId) return;
-    try {
-      const response = await payoutsAPI.createOnboardingLink(selectedListingId);
-      const { stripeAccountId: accountId } = response;
-
-      const nextPayoutStatus = payoutStatus === 'on_file' ? 'on_file' : 'pending';
-
-      setStripeAccountId(accountId);
-      setStripeOnboardingStatus('pending');
-      setPayoutStatus(nextPayoutStatus);
-
-      setListings(prev => prev.map(l => l.id === selectedListingId
-        ? { ...l, stripeAccountId: accountId, stripeOnboardingStatus: 'pending', payoutStatus: nextPayoutStatus }
-        : l));
-
-      window.open(response.url, '_blank', 'noopener');
-      showToast('Onboarding link created', 'success');
-    } catch (err) {
-      console.error('Failed to create onboarding link:', err);
-      showToast(err instanceof Error ? err.message : 'Failed to create onboarding link', 'error');
-    }
-  };
-
 
   // Filter listings based on all filter criteria
   const filteredListings = listings;
@@ -1548,33 +1517,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           </p>
                         </div>
 
-                        {/* Stripe Onboarding Status */}
-                        <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium text-slate-700">
-                            Stripe Onboarding Status
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { value: 'missing', label: 'Not Started' },
-                              { value: 'pending', label: 'Pending' },
-                              { value: 'verified', label: 'Verified' },
-                              { value: 'requires_action', label: 'Requires Action' }
-                            ].map(opt => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => setStripeOnboardingStatus(opt.value as typeof stripeOnboardingStatus)}
-                                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${stripeOnboardingStatus === opt.value
-                                    ? 'bg-blue-600 text-white border-blue-700'
-                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
-                                  }`}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
                         {/* Internal Payout Status */}
                         <div className="flex flex-col gap-2">
                           <label className="text-sm font-medium text-slate-700">
@@ -1599,39 +1541,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               </button>
                             ))}
                           </div>
-                        </div>
-
-                        {/* Generate Stripe Link Button */}
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              // Wrap helper to ensure we save first
-                              if (!selectedListingId || !stripeAccountId) return;
-                              try {
-                                // Save config first to ensure backend has the ID
-                                setSaving(true);
-                                await listingsAPI.updateListingConfig(selectedListingId, { stripeAccountId });
-
-                                // Then generate link
-                                await handleCreatePayoutLink();
-                              } catch (err) {
-                                console.error(err);
-                                showToast('Failed to save Stripe ID before generating link', 'error');
-                              } finally {
-                                setSaving(false);
-                              }
-                            }}
-                            disabled={!stripeAccountId}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Generate Stripe Onboarding Link
-                          </button>
-                          {!stripeAccountId && (
-                            <span className="text-xs text-amber-600 self-center">
-                              Enter Stripe Account ID first
-                            </span>
-                          )}
                         </div>
 
                         <div className="flex flex-col gap-2">

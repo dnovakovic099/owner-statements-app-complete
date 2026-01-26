@@ -610,17 +610,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }
 
         // Show confirmation dialog
+        const payoutAmount = Number(statement.ownerPayout) || 0;
         setConfirmDialog({
           isOpen: true,
           title: 'Pay Owner via Stripe',
-          message: `Transfer $${statement.ownerPayout.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
+          message: `Transfer $${payoutAmount.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
           type: 'info',
           onConfirm: async () => {
             const toastId = showToast('Processing Stripe transfer...', 'loading');
             try {
               const response = await payoutsAPI.transferToOwner(id);
               if (response.success) {
-                updateToast(toastId, `Payment of $${statement.ownerPayout.toFixed(2)} sent successfully!`, 'success');
+                updateToast(toastId, `Payment of $${payoutAmount.toFixed(2)} sent successfully!`, 'success');
                 await loadStatements();
               } else {
                 updateToast(toastId, response.error || 'Transfer failed', 'error');

@@ -99,13 +99,18 @@ export interface Statement {
   } | null;
   shouldConvertToCalendar?: boolean;
   cancelledReservationCount?: number;
-  status: 'draft' | 'final' | 'generated' | 'sent' | 'paid' | 'modified';
+  status: 'draft' | 'final' | 'sent' | 'paid';
   sentAt: string | null;
   createdAt: string;
   reservations?: Reservation[];
   expenses?: any[];
   items?: StatementItem[];
   internalNotes?: string | null;
+  // Payout tracking fields
+  payoutStatus?: 'pending' | 'paid' | 'failed' | null;
+  payoutTransferId?: string | null;
+  paidAt?: string | null;
+  payoutError?: string | null;
 }
 
 export interface DashboardSummary {

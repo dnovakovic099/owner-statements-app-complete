@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check } from 'lucide-react';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
+import { Checkbox } from './ui/checkbox';
 
 // Custom Confirm Dialog Component
 interface ConfirmDialogProps {
@@ -1403,7 +1404,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={index}
-                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                          className={`border rounded-lg p-4 cursor-pointer ${isSelected
                             ? 'bg-red-50 border-red-200'
                             : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
@@ -1412,11 +1413,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center space-x-3">
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={isSelected}
-                                  onChange={() => handleExpenseToggle(index)}
-                                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                  onCheckedChange={() => handleExpenseToggle(index)}
+                                  className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
                                 />
                                 <div>
                                   <h4 className="font-medium">{expense.description}</h4>
@@ -1460,7 +1460,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`hidden-expense-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
                               ? 'bg-amber-50 border-amber-200'
                               : 'bg-white border-gray-200 hover:bg-gray-50'
                               }`}
@@ -1469,11 +1469,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={isSelected}
-                                    onChange={() => handleHiddenExpenseToggle(index)}
-                                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                                    onCheckedChange={() => handleHiddenExpenseToggle(index)}
+                                    className="data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
                                   />
                                   <div>
                                     <h4 className="font-medium text-gray-800">{expense.description}</h4>
@@ -1547,7 +1546,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`llcover-expense-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
                               ? 'bg-purple-100 border-purple-400'
                               : 'bg-white border-purple-200 hover:bg-purple-50'
                               }`}
@@ -1556,11 +1555,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={isSelected}
-                                    onChange={() => handleLLCoverExpenseToggle(index)}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                    onCheckedChange={() => handleLLCoverExpenseToggle(index)}
+                                    className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                                   />
                                   <div>
                                     <h4 className="font-medium text-gray-800">{expense.description}</h4>
@@ -1689,7 +1687,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={index}
-                          className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                          className={`border rounded-lg p-4 cursor-pointer ${isSelected
                             ? 'bg-red-50 border-red-200'
                             : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
@@ -1698,11 +1696,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center space-x-3">
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={isSelected}
-                                  onChange={() => handleUpsellToggle(index)}
-                                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                  onCheckedChange={() => handleUpsellToggle(index)}
+                                  className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
                                 />
                                 <div>
                                   <h4 className="font-medium">{upsell.description}</h4>
@@ -1747,7 +1744,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`hidden-upsell-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
                               ? 'bg-amber-50 border-amber-200'
                               : 'bg-white border-gray-200 hover:bg-gray-50'
                               }`}
@@ -1756,11 +1753,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={isSelected}
-                                    onChange={() => handleHiddenUpsellToggle(index)}
-                                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                                    onCheckedChange={() => handleHiddenUpsellToggle(index)}
+                                    className="data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
                                   />
                                   <div>
                                     <h4 className="font-medium text-gray-800">{upsell.description}</h4>
@@ -1811,7 +1807,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         return (
                           <div
                             key={`llcover-upsell-${index}`}
-                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${isSelected
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
                               ? 'bg-purple-100 border-purple-400'
                               : 'bg-white border-purple-200 hover:bg-purple-50'
                               }`}
@@ -1820,11 +1816,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={isSelected}
-                                    onChange={() => handleLLCoverUpsellToggle(index)}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                    onCheckedChange={() => handleLLCoverUpsellToggle(index)}
+                                    className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                                   />
                                   <div>
                                     <h4 className="font-medium text-gray-800">{upsell.description}</h4>
@@ -1885,7 +1880,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       return (
                         <div
                           key={resId}
-                          className={`border rounded-lg p-4 transition-colors ${isSelected
+                          className={`border rounded-lg p-4 ${isSelected
                             ? 'bg-red-50 border-red-200'
                             : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
@@ -1893,11 +1888,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           <div className="flex items-center justify-between">
                             <div className="flex-1 cursor-pointer" onClick={() => handleReservationRemoveToggle(resId)}>
                               <div className="flex items-center space-x-3">
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={isSelected}
-                                  onChange={() => handleReservationRemoveToggle(resId)}
-                                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                  onCheckedChange={() => handleReservationRemoveToggle(resId)}
+                                  className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
                                 />
                                 <div>
                                   <h4 className="font-medium">{reservation.guestName}</h4>
@@ -2042,11 +2036,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 <div className="flex-1">
                                   <div className="flex items-center space-x-3">
                                     {!isAlreadyAdded && (
-                                      <input
-                                        type="checkbox"
+                                      <Checkbox
                                         checked={isSelected}
-                                        onChange={() => handleCancelledReservationToggle(resId)}
-                                        className="w-4 h-4 text-sky-600 rounded focus:ring-sky-500"
+                                        onCheckedChange={() => handleCancelledReservationToggle(resId)}
+                                        className="data-[state=checked]:bg-sky-600 data-[state=checked]:border-sky-600"
                                       />
                                     )}
                                     <div>
@@ -2134,7 +2127,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           return (
                             <div
                               key={resId}
-                              className={`border rounded-lg p-4 cursor-pointer transition-colors ${isSelected
+                              className={`border rounded-lg p-4 cursor-pointer ${isSelected
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-white border-gray-200 hover:bg-gray-50'
                                 }`}
@@ -2143,11 +2136,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center space-x-3">
-                                    <input
-                                      type="checkbox"
+                                    <Checkbox
                                       checked={isSelected}
-                                      onChange={() => handleReservationAddToggle(resId)}
-                                      className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                      onCheckedChange={() => handleReservationAddToggle(resId)}
+                                      className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                                     />
                                     <div>
                                       <h4 className="font-medium">{reservation.guestName}</h4>

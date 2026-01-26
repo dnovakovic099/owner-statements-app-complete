@@ -98,7 +98,6 @@ const getStatusBadge = (status: string) => {
   const statusConfig = {
     draft: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
     final: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-    generated: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
     sent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', dot: 'bg-green-500' },
     paid: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
   };
@@ -518,7 +517,21 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       accessorKey: 'status',
       size: 100,
       header: () => <span className="font-semibold text-gray-600">Status</span>,
-      cell: ({ row }) => getStatusBadge(row.getValue('status')),
+      cell: ({ row }) => {
+        const status = row.getValue('status') as string;
+        const payoutStatus = row.original.payoutStatus;
+        return (
+          <div className="flex flex-col items-center gap-1">
+            {getStatusBadge(status)}
+            {payoutStatus === 'paid' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                Paid
+              </span>
+            )}
+          </div>
+        );
+      },
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
@@ -570,17 +583,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'edit')}
-              tooltip={statement.status === 'sent' ? 'Cannot Edit Sent Statement' : statement.status === 'final' ? 'Cannot Edit Final Statement' : 'Edit Statement'}
+              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Edit Paid Statement' : statement.status === 'sent' ? 'Cannot Edit Sent Statement' : statement.status === 'final' ? 'Cannot Edit Final Statement' : 'Edit Statement'}
               icon={<Edit className="w-[18px] h-[18px]" />}
               color="text-amber-600"
-              disabled={statement.status === 'final' || statement.status === 'sent'}
+              disabled={statement.status === 'final' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'refresh')}
-              tooltip={statement.status === 'sent' ? 'Cannot Regenerate Sent Statement' : statement.status === 'final' ? 'Cannot Regenerate Final Statement' : 'Regenerate'}
+              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Regenerate Paid Statement' : statement.status === 'sent' ? 'Cannot Regenerate Sent Statement' : statement.status === 'final' ? 'Cannot Regenerate Final Statement' : 'Regenerate'}
               icon={<RefreshCw className="w-[18px] h-[18px]" />}
               color="text-indigo-600"
-              disabled={statement.status === 'final' || statement.status === 'sent'}
+              disabled={statement.status === 'final' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'download')}
@@ -590,35 +603,35 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'finalize')}
-              tooltip={statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'final' ? 'Already Final' : 'Mark as Final'}
+              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Change Paid Statement' : statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'final' ? 'Already Final' : 'Mark as Final'}
               icon={<CheckCircle className="w-[18px] h-[18px]" />}
               color="text-emerald-600"
-              disabled={statement.status === 'final' || statement.status === 'sent'}
+              disabled={statement.status === 'final' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'revert-to-draft')}
-              tooltip={statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'draft' ? 'Already Draft' : 'Return to Draft'}
+              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Change Paid Statement' : statement.status === 'sent' ? 'Cannot Change Sent Statement' : statement.status === 'draft' ? 'Already Draft' : 'Return to Draft'}
               icon={<RotateCcw className="w-[18px] h-[18px]" />}
               color="text-orange-600"
-              disabled={statement.status === 'draft' || statement.status === 'sent'}
+              disabled={statement.status === 'draft' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'pay-owner')}
               tooltip={
-                (statement as any).payoutStatus === 'paid' ? 'Already Paid' :
+                statement.payoutStatus === 'paid' ? 'Already Paid' :
                   statement.ownerPayout <= 0 ? 'No payout amount' :
                     'Pay Owner via Stripe'
               }
               icon={<DollarSign className="w-[18px] h-[18px]" />}
               color="text-green-600"
-              disabled={statement.status !== 'final' || (statement as any).payoutStatus === 'paid' || statement.ownerPayout <= 0}
+              disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.ownerPayout <= 0}
             />
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
-              tooltip={statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
+              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Delete Paid Statement' : statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
               icon={<Trash2 className="w-[18px] h-[18px]" />}
               color="text-red-500"
-              disabled={statement.status !== 'draft'}
+              disabled={statement.status !== 'draft' || statement.payoutStatus === 'paid'}
             />
           </div>
         );
