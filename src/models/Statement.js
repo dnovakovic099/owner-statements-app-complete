@@ -220,6 +220,18 @@ const Statement = sequelize.define('Statement', {
         allowNull: true,
         field: 'payout_error',
         comment: 'Error message if payout failed'
+    },
+    stripeFee: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        field: 'stripe_fee',
+        comment: 'Stripe Connect fee (0.25%) added on top of payout'
+    },
+    totalTransferAmount: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        field: 'total_transfer_amount',
+        comment: 'Total amount transferred (ownerPayout + stripeFee)'
     }
 }, {
     tableName: 'statements',

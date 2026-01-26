@@ -111,6 +111,8 @@ export interface Statement {
   payoutTransferId?: string | null;
   paidAt?: string | null;
   payoutError?: string | null;
+  stripeFee?: number | null;
+  totalTransferAmount?: number | null;
 }
 
 export interface DashboardSummary {

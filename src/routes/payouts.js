@@ -149,9 +149,14 @@ router.post('/statements/:id/transfer', async (req, res) => {
         // Mark as pending before attempting transfer
         await statement.update({ payoutStatus: 'pending', payoutError: null });
 
+        // Calculate Stripe Connect fee (0.25%) and add on top of payout
+        const STRIPE_FEE_PERCENT = 0.0025; // 0.25%
+        const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100; // Round to 2 decimals
+        const totalTransferAmount = payoutAmount + stripeFee;
+
         // Create Stripe transfer
         // Amount is in cents for Stripe
-        const amountInCents = Math.round(payoutAmount * 100);
+        const amountInCents = Math.round(totalTransferAmount * 100);
 
         const transfer = await stripe.transfers.create({
             amount: amountInCents,
@@ -163,22 +168,29 @@ router.post('/statements/:id/transfer', async (req, res) => {
                 listingId: listingId.toString(),
                 ownerName: statement.ownerName,
                 periodStart: statement.weekStartDate,
-                periodEnd: statement.weekEndDate
+                periodEnd: statement.weekEndDate,
+                ownerPayout: payoutAmount.toString(),
+                stripeFee: stripeFee.toString(),
+                totalTransfer: totalTransferAmount.toString()
             }
         });
 
-        // Update statement with success
+        // Update statement with success and fee info
         await statement.update({
             payoutStatus: 'paid',
             payoutTransferId: transfer.id,
             paidAt: new Date(),
-            payoutError: null
+            payoutError: null,
+            stripeFee: stripeFee,
+            totalTransferAmount: totalTransferAmount
         });
 
         logger.info('Payout transfer successful', {
             statementId,
             transferId: transfer.id,
-            amount: payoutAmount,
+            ownerPayout: payoutAmount,
+            stripeFee,
+            totalTransferAmount,
             destination: stripeAccountId
         });
 
@@ -186,7 +198,9 @@ router.post('/statements/:id/transfer', async (req, res) => {
             success: true,
             message: 'Payout transfer completed',
             transferId: transfer.id,
-            amount: payoutAmount,
+            ownerPayout: payoutAmount,
+            stripeFee,
+            totalTransferAmount,
             paidAt: new Date()
         });
 

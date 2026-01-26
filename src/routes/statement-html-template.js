@@ -766,6 +766,16 @@ function generateStatementHTML(statement, id) {
                     return (totalGrossPayout + upsells - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 })()}</strong></td>
             </tr>
+            ${statement.payoutStatus === 'paid' && statement.stripeFee ? `
+            <tr>
+                <td class="summary-label">Stripe Fee (0.25%)</td>
+                <td class="summary-value">+$${Number(statement.stripeFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr class="total-row" style="background-color: #ecfdf5;">
+                <td class="summary-label"><strong>TOTAL TRANSFER</strong></td>
+                <td class="summary-value" style="color: #059669;"><strong>$${Number(statement.totalTransferAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+            </tr>
+            ` : ''}
         </table>
     </div>
 

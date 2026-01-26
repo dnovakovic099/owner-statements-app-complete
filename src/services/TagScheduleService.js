@@ -168,39 +168,79 @@ class TagScheduleService {
      * Trigger a notification for a schedule and auto-generate draft statements for groups AND individual listings
      */
     async triggerNotification(schedule, now) {
+        let listingCount = 0;
+        let groupResults = { generated: 0, skipped: 0, errors: 0 };
+        let individualResults = { generated: 0, skipped: 0, errors: 0 };
+        let hasErrors = false;
+        let errorMessage = '';
+
         try {
             // Count listings with this tag
             const listings = await this.getListingsWithTag(schedule.tagName);
-            const listingCount = listings.length;
+            listingCount = listings.length;
+        } catch (error) {
+            console.error(`[TagScheduleService] Error getting listings for ${schedule.tagName}:`, error.message);
+            hasErrors = true;
+            errorMessage = 'Failed to get listings. ';
+        }
 
+        try {
             // Auto-generate draft statements for groups with this tag
-            const groupResults = await this.autoGenerateGroupStatements(schedule.tagName, schedule);
+            groupResults = await this.autoGenerateGroupStatements(schedule.tagName, schedule);
+        } catch (error) {
+            console.error(`[TagScheduleService] Error generating group statements for ${schedule.tagName}:`, error.message);
+            hasErrors = true;
+            errorMessage += 'Group generation failed. ';
+        }
 
+        try {
             // Auto-generate draft statements for individual (non-grouped) listings with this tag
-            const individualResults = await this.autoGenerateIndividualStatements(schedule.tagName, schedule);
+            individualResults = await this.autoGenerateIndividualStatements(schedule.tagName, schedule);
+        } catch (error) {
+            console.error(`[TagScheduleService] Error generating individual statements for ${schedule.tagName}:`, error.message);
+            hasErrors = true;
+            errorMessage += 'Individual generation failed. ';
+        }
 
-            // Create notification
-            const totalGenerated = groupResults.generated + individualResults.generated;
+        // Always create notification (even with partial failures)
+        let message = `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts auto-generated)`;
+        if (hasErrors) {
+            message += ` [Warnings: ${errorMessage.trim()}]`;
+        }
+        if (groupResults.errors > 0 || individualResults.errors > 0) {
+            message += ` [${groupResults.errors + individualResults.errors} generation errors]`;
+        }
+
+        try {
             const notification = await TagNotification.create({
                 tagName: schedule.tagName,
                 scheduleId: schedule.id,
-                message: `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts auto-generated)`,
+                message,
                 status: 'unread',
                 listingCount,
                 scheduledFor: now
             });
 
-            // Update schedule's lastNotifiedAt
+            // Always update lastNotifiedAt to prevent infinite retries
             await schedule.update({
                 lastNotifiedAt: now,
                 nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
             });
 
-            console.log(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts`);
+            console.log(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts${hasErrors ? ' (with errors)' : ''}`);
 
             return notification;
         } catch (error) {
-            console.error(`[TagScheduleService] Error triggering notification for ${schedule.tagName}:`, error);
+            console.error(`[TagScheduleService] Error creating notification for ${schedule.tagName}:`, error);
+            // Still try to update lastNotifiedAt to prevent infinite retries
+            try {
+                await schedule.update({
+                    lastNotifiedAt: now,
+                    nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
+                });
+            } catch (updateError) {
+                console.error(`[TagScheduleService] Failed to update lastNotifiedAt:`, updateError.message);
+            }
             throw error;
         }
     }
@@ -303,7 +343,9 @@ class TagScheduleService {
                 // For WEEKLY, filter out BI-WEEKLY matches
                 if (upperTag === 'WEEKLY') {
                     listings = listings.filter(l => {
-                        const tags = (l.tags || '').toUpperCase();
+                        // l.tags is an array from Sequelize getter, join to string for comparison
+                        const tagsArray = l.tags || [];
+                        const tags = (Array.isArray(tagsArray) ? tagsArray.join(',') : tagsArray).toUpperCase();
                         return tags.includes('WEEKLY') && !tags.includes('BI-WEEKLY') && !tags.includes('BIWEEKLY');
                     });
                 }
@@ -487,7 +529,9 @@ class TagScheduleService {
             // For WEEKLY, filter out BI-WEEKLY matches
             if (upperTag === 'WEEKLY') {
                 listings = listings.filter(l => {
-                    const tags = (l.tags || '').toUpperCase();
+                    // l.tags is an array from Sequelize getter, join to string for comparison
+                    const tagsArray = l.tags || [];
+                    const tags = (Array.isArray(tagsArray) ? tagsArray.join(',') : tagsArray).toUpperCase();
                     return tags.includes('WEEKLY') && !tags.includes('BI-WEEKLY') && !tags.includes('BIWEEKLY');
                 });
             }

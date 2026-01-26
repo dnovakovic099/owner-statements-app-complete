@@ -601,7 +601,9 @@ export const payoutsAPI = {
     success: boolean;
     message: string;
     transferId: string;
-    amount: number;
+    ownerPayout: number;
+    stripeFee: number;
+    totalTransferAmount: number;
     paidAt: string;
     error?: string;
   }> => {

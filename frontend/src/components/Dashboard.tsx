@@ -609,19 +609,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return;
         }
 
-        // Show confirmation dialog
+        // Show confirmation dialog with fee breakdown
         const payoutAmount = Number(statement.ownerPayout) || 0;
+        const stripeFee = Math.round(payoutAmount * 0.0025 * 100) / 100; // 0.25%
+        const totalTransfer = payoutAmount + stripeFee;
         setConfirmDialog({
           isOpen: true,
           title: 'Pay Owner via Stripe',
-          message: `Transfer $${payoutAmount.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
+          message: `Transfer to ${statement.ownerName || 'owner'}?\n\nOwner Payout: $${payoutAmount.toFixed(2)}\nStripe Fee (0.25%): $${stripeFee.toFixed(2)}\nTotal Transfer: $${totalTransfer.toFixed(2)}`,
           type: 'info',
           onConfirm: async () => {
             const toastId = showToast('Processing Stripe transfer...', 'loading');
             try {
               const response = await payoutsAPI.transferToOwner(id);
               if (response.success) {
-                updateToast(toastId, `Payment of $${payoutAmount.toFixed(2)} sent successfully!`, 'success');
+                const actualTotal = response.totalTransferAmount || totalTransfer;
+                updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
                 await loadStatements();
               } else {
                 updateToast(toastId, response.error || 'Transfer failed', 'error');

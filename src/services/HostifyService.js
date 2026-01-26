@@ -80,7 +80,7 @@ class HostifyService {
                 'x-api-key': this.apiKey,
                 'Content-Type': 'application/json'
             },
-            timeout: 15000 // 15 second timeout (reduced from 30s for faster responses)
+            timeout: 45000 // 45 second timeout (increased for bulk scheduler operations)
         };
 
         let lastError = null;
