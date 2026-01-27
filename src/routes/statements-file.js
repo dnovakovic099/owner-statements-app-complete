@@ -5701,6 +5701,48 @@ router.get('/:id/view', async (req, res) => {
     }
 });
 
+// Helper: Fetch HTML using internal HTTP with proper timeout and error handling
+// Uses 127.0.0.1 instead of localhost for better compatibility with containerized environments like Railway
+async function fetchStatementHTMLViaHTTP(statementId, authHeader) {
+    const http = require('http');
+    const viewUrl = `http://127.0.0.1:${process.env.PORT || 3003}/api/statements/${statementId}/view?pdf=true`;
+
+    return new Promise((resolve, reject) => {
+        const options = {
+            headers: authHeader ? { 'Authorization': authHeader } : {},
+            timeout: 30000 // 30 second timeout
+        };
+
+        const req = http.get(viewUrl, options, (response) => {
+            // Check for redirect or error status
+            if (response.statusCode >= 400) {
+                reject(new Error(`HTTP ${response.statusCode}: Failed to fetch statement HTML`));
+                return;
+            }
+
+            let data = '';
+            response.on('data', chunk => data += chunk);
+            response.on('end', () => resolve(data));
+            response.on('error', reject);
+        });
+
+        req.on('error', (err) => {
+            // If internal HTTP fails, try to generate HTML directly
+            logger.warn('Internal HTTP request failed, will try direct generation', {
+                context: 'StatementsFile',
+                error: err.message,
+                statementId
+            });
+            reject(err);
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Request timed out'));
+        });
+    });
+}
+
 // POST /api/statements-file/bulk-download - Download multiple statements as ZIP
 router.post('/bulk-download', async (req, res) => {
     try {
@@ -5712,7 +5754,6 @@ router.post('/bulk-download', async (req, res) => {
 
         const archiver = require('archiver');
         const htmlPdf = require('html-pdf-node');
-        const http = require('http');
 
         // Create ZIP archive
         const archive = archiver('zip', {
@@ -5727,23 +5768,8 @@ router.post('/bulk-download', async (req, res) => {
         // Pipe archive to response
         archive.pipe(res);
 
-        // Helper function to fetch HTML
-        const fetchHTML = (id) => {
-            return new Promise((resolve, reject) => {
-                const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true`;
-                const authHeader = req.headers.authorization;
-                const options = {
-                    headers: authHeader ? { 'Authorization': authHeader } : {}
-                };
-
-                http.get(viewUrl, options, (response) => {
-                    let data = '';
-                    response.on('data', chunk => data += chunk);
-                    response.on('end', () => resolve(data));
-                    response.on('error', reject);
-                }).on('error', reject);
-            });
-        };
+        // Use the improved HTTP helper that works with 127.0.0.1
+        const authHeader = req.headers.authorization;
 
         // PDF options
         const pdfOptions = {
@@ -5780,8 +5806,8 @@ router.post('/bulk-download', async (req, res) => {
                     continue;
                 }
 
-                // Fetch HTML and generate PDF
-                const statementHTML = await fetchHTML(id);
+                // Fetch HTML using improved helper with 127.0.0.1
+                const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
                 const file = { content: statementHTML };
                 const pdfBuffer = await htmlPdf.generatePdf(file, pdfOptions);
 
@@ -5839,30 +5865,11 @@ router.get('/:id/download', async (req, res) => {
         }
 
         const htmlPdf = require('html-pdf-node');
-        const http = require('http');
 
-        // Fetch HTML from the view route internally (with pdf=true to hide download button)
-        // Pass token from query string if present (for token-based auth), or use Authorization header
-        const token = req.query.token;
-        const viewUrl = `http://localhost:${process.env.PORT || 3003}/api/statements/${id}/view?pdf=true${token ? '&token=' + token : ''}`;
-
-        const fetchHTML = () => {
-            return new Promise((resolve, reject) => {
-                const authHeader = req.headers.authorization;
-                const options = {
-                    headers: authHeader ? { 'Authorization': authHeader } : {}
-                };
-
-                http.get(viewUrl, options, (response) => {
-                    let data = '';
-                    response.on('data', chunk => data += chunk);
-                    response.on('end', () => resolve(data));
-                    response.on('error', reject);
-                }).on('error', reject);
-            });
-        };
-
-        const statementHTML = await fetchHTML();
+        // Use the improved HTTP helper with 127.0.0.1 instead of localhost
+        // This works more reliably in containerized environments like Railway
+        const authHeader = req.headers.authorization;
+        const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
 
         const options = {
             format: 'A4',
