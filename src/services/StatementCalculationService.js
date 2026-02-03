@@ -92,8 +92,8 @@ class StatementCalculationService {
                 }
             }
 
-            // Only include confirmed status reservations
-            const allowedStatuses = ['confirmed'];
+            // Only include confirmed/accepted status reservations
+            const allowedStatuses = ['confirmed', 'accepted'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
     }

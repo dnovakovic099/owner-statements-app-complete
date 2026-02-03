@@ -676,7 +676,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             }
 
             // Only include confirmed and accepted status reservations (exclude expired, cancelled, etc.)
-            const allowedStatuses = ['confirmed'];
+            const allowedStatuses = ['confirmed', 'accepted'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
@@ -1178,7 +1178,7 @@ router.post('/generate', async (req, res) => {
         }
 
         // Filter reservations - optimized with reduced logging
-        const allowedStatuses = ['confirmed'];
+        const allowedStatuses = ['confirmed', 'accepted'];
         const periodReservations = reservations.filter(res => {
             // Use parseInt on both sides to ensure proper type comparison
             if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
@@ -4493,7 +4493,7 @@ router.get('/:id/view', async (req, res) => {
                         <span class="detail-value">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
             </div>
                     <div class="detail-group">
-                        <span class="detail-label">Property:</span>
+                        <span class="detail-label">Property/Owner:</span>
                         <span class="detail-value">${statement.propertyName}</span>
             </div>
             </div>
@@ -6174,7 +6174,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                     // Filter reservations for this property from the pre-fetched pool
                     // Filter reservations based on calculation type
-                    const allowedStatuses = ['confirmed'];
+                    const allowedStatuses = ['confirmed', 'accepted'];
 
                     const periodReservations = allReservations.filter(res => {
                         const propMatch = parseInt(res.propertyId) === parseInt(property.id);
@@ -6670,7 +6670,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                             dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                         }
 
-                        const allowedStatuses = ['confirmed'];
+                        const allowedStatuses = ['confirmed', 'accepted'];
                         const statusMatch = allowedStatuses.includes(res.status);
 
                         return dateMatch && statusMatch;

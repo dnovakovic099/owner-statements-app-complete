@@ -22,6 +22,45 @@ class HostifyService {
         // Child listings cache - stores child listing IDs for parent listings
         this._childListingsCache = new Map(); // key: parentId, value: { childIds, time }
         this._childListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
+
+        // All listings cache (without service_pms filter) - for child lookup by parent_id
+        this._allListingsCache = null;
+        this._allListingsCacheTime = null;
+        this._allListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._allListingsFetchPromise = null; // Lock for concurrent fetches
+    }
+
+    // Get all listings (without service_pms filter) for child lookup by parent_id
+    // Cached separately from getAllProperties to avoid breaking existing logic
+    async _getAllListingsForChildLookup() {
+        // Check cache first
+        if (this._allListingsCache && this._allListingsCacheTime &&
+            (Date.now() - this._allListingsCacheTime) < this._allListingsCacheTTL) {
+            return this._allListingsCache;
+        }
+
+        // Prevent duplicate concurrent fetches
+        if (this._allListingsFetchPromise) {
+            return this._allListingsFetchPromise;
+        }
+
+        this._allListingsFetchPromise = (async () => {
+            try {
+                // Single API call with high per_page, include inactive listings for child lookup
+                const response = await this.makeRequest('/listings', { per_page: 500, is_active: 'all' });
+                const allListings = response.success && response.listings ? response.listings : [];
+
+                this._allListingsCache = allListings;
+                this._allListingsCacheTime = Date.now();
+                return allListings;
+            } catch (error) {
+                return [];
+            } finally {
+                this._allListingsFetchPromise = null;
+            }
+        })();
+
+        return this._allListingsFetchPromise;
     }
 
     // Get listing's pets_fee from Hostify RMS API /listings endpoint
@@ -68,6 +107,9 @@ class HostifyService {
         this._usersCacheTime = null;
         this._feeDetailsCache.clear();
         this._childListingsCache.clear();
+        this._allListingsCache = null;
+        this._allListingsCacheTime = null;
+        this._allListingsFetchPromise = null;
     }
 
     async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 3) {
@@ -623,19 +665,34 @@ class HostifyService {
 
         for (let attempt = 1; attempt <= retries + 1; attempt++) {
             try {
-                const response = await this.makeRequest(`/listings/children/${parentId}`, { service_pms: 1 });
-                if (response.success && response.listings && response.listings.length > 0) {
-                    const childIds = response.listings.map(l => parseInt(l.id));
-                    console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
+                // Fetch children from API
+                const response = await this.makeRequest(`/listings/children/${parentId}`);
+                const childIdSet = new Set();
 
-                    // Cache the result
-                    this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
-                    return childIds;
+                if (response.success && response.listings && response.listings.length > 0) {
+                    response.listings.forEach(l => childIdSet.add(parseInt(l.id)));
                 }
 
-                // Cache empty result too (listing has no children)
-                this._childListingsCache.set(cacheKey, { childIds: [], time: Date.now() });
-                return [];
+                // Also check all listings for parent_id match (catches channel-specific children like Bcom)
+                // Use cached all-listings if available, otherwise fetch once
+                const allListings = await this._getAllListingsForChildLookup();
+                if (allListings && allListings.length > 0) {
+                    allListings.forEach(l => {
+                        if (parseInt(l.parent_id) === parseInt(parentId) && parseInt(l.id) !== parseInt(parentId)) {
+                            childIdSet.add(parseInt(l.id));
+                        }
+                    });
+                }
+
+                const childIds = Array.from(childIdSet);
+
+                if (childIds.length > 0) {
+                    console.log(`[PARENT-CHILD] Parent ${parentId} has ${childIds.length} children: ${childIds.join(', ')}`);
+                }
+
+                // Cache the result
+                this._childListingsCache.set(cacheKey, { childIds, time: Date.now() });
+                return childIds;
             } catch (error) {
                 if (attempt <= retries) {
                     console.log(`[PARENT-CHILD] Retry ${attempt}/${retries} for listing ${parentId}: ${error.message}`);
@@ -897,22 +954,29 @@ class HostifyService {
         const statusMap = {
             'accepted': 'confirmed',
             'confirmed': 'confirmed',
+            'checked_in': 'confirmed',
+            'checkedin': 'confirmed',
             'pending': 'new',
             'new': 'new',
             'cancelled': 'cancelled',
             'cancelled_by_guest': 'cancelled',
             'cancelled_by_host': 'cancelled',
             'denied': 'cancelled',
-            'completed': 'completed',
+            'completed': 'confirmed',
             'no_show': 'cancelled',
             'inquiry': 'inquiry',
             'expired': 'expired',
             'declined': 'declined',
             'declined_inq': 'inquiry',
             'offer': 'new',
-            'withdrawn': 'cancelled'
+            'withdrawn': 'cancelled',
+            'not_possible': 'cancelled'
         };
-        return statusMap[hostifyStatus] || 'unknown';
+        const mapped = statusMap[hostifyStatus] || 'unknown';
+        if (mapped === 'unknown') {
+            console.log(`[STATUS-UNKNOWN] Hostify returned unmapped status: "${hostifyStatus}"`);
+        }
+        return mapped;
     }
 
     async getOverlappingReservations(listingIds, fromDate, toDate) {
@@ -949,6 +1013,19 @@ class HostifyService {
                 });
             });
 
+            // Also include inactive/old children by scanning all listings
+            const allListings = await this._getAllListingsForChildLookup();
+            const baseIdSetInt = new Set(baseListingIds.map(id => parseInt(id)));
+
+            allListings.forEach(listing => {
+                const listingId = parseInt(listing.id);
+                const parentId = parseInt(listing.parent_id);
+                if (parentId && baseIdSetInt.has(parentId) && !childToParentMap.has(listingId) && !baseIdSetInt.has(listingId)) {
+                    expandedListingIds.push(listingId);
+                    childToParentMap.set(listingId, parentId);
+                }
+            });
+
             if (childToParentMap.size > 0) {
                 console.log(`[EXPAND] Expanded ${baseListingIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
             }
@@ -961,19 +1038,124 @@ class HostifyService {
             const lookforwardDate = new Date(toDate);
             lookforwardDate.setDate(lookforwardDate.getDate() + 365);
 
-            // Fetch reservations for each listing in PARALLEL (much faster than fetching all and filtering)
-            const reservationsList = await this.getReservationsForListings(
+            // Fetch reservations for all expanded listings (parents + children)
+            // Note: Hostify listing_id filter returns direct matches only, so we need both
+            let reservationsList = await this.getReservationsForListings(
                 expandedListingIds,
                 lookbackDate.toISOString().split('T')[0],
                 lookforwardDate.toISOString().split('T')[0],
                 'checkIn'
             );
 
+            // Also fetch ALL reservations to catch child reservations on inactive/old listings
+            if (baseListingIds.length > 0 && baseListingIds.length <= 10) {
+                try {
+                    const baseIdSet = new Set(baseListingIds.map(id => String(id)));
+                    const existingIds = new Set(reservationsList.map(r => r.hostifyId));
+                    const startDateStr = lookbackDate.toISOString().split('T')[0];
+                    const endDateStr = lookforwardDate.toISOString().split('T')[0];
+
+                    // Build a map of listing_id -> parent_id from all listings (including inactive)
+                    const allListings = await this._getAllListingsForChildLookup();
+                    const listingParentMap = new Map();
+                    allListings.forEach(l => {
+                        if (l.parent_id) {
+                            listingParentMap.set(String(l.id), String(l.parent_id));
+                        }
+                    });
+
+                    // Helper to check if reservation belongs to our listings
+                    const belongsToOurListings = (r) => {
+                        const listingId = String(r.listing_id || '');
+                        const parentListingId = String(r.parent_listing_id || '');
+                        // Also check if the listing's parent_id matches our base IDs
+                        const listingsParent = listingParentMap.get(listingId) || '';
+                        // Match if listing_id, parent_listing_id, or listing's parent_id is one of our base parents
+                        return (baseIdSet.has(listingId) || baseIdSet.has(parentListingId) || baseIdSet.has(listingsParent)) && !existingIds.has(String(r.id));
+                    };
+
+                    // For archived listings not in allListings, fetch their parent_id directly
+                    const fetchListingParent = async (listingId) => {
+                        try {
+                            const response = await this.makeRequest(`/listings/${listingId}`);
+                            if (response.success && response.listing) {
+                                return String(response.listing.parent_id || '');
+                            }
+                        } catch (e) { }
+                        return '';
+                    };
+
+                    // First call to get total count
+                    const firstRes = await this.getReservations(startDateStr, endDateStr, 1, 100, null, 'checkIn');
+
+                    if (firstRes.success && firstRes.reservations?.length > 0) {
+                        const total = firstRes.total || firstRes.reservations.length;
+                        const totalPages = Math.ceil(total / 100); // Fetch all pages dynamically
+
+                        // Fetch all pages in parallel
+                        const pageNumbers = [];
+                        for (let p = 2; p <= totalPages; p++) {
+                            pageNumbers.push(p);
+                        }
+
+                        // Collect all reservations first
+                        const allPageResults = await Promise.all([
+                            Promise.resolve(firstRes.reservations),
+                            ...pageNumbers.map(async (pageNum) => {
+                                try {
+                                    const res = await this.getReservations(startDateStr, endDateStr, pageNum, 100, null, 'checkIn');
+                                    return res.success && res.reservations?.length > 0 ? res.reservations : [];
+                                } catch (err) { return []; }
+                            })
+                        ]);
+                        const allReservationsRaw = allPageResults.flat();
+
+                        // Find reservations on unknown listings (archived) and fetch their parent_id
+                        const unknownListingIds = new Set();
+                        allReservationsRaw.forEach(r => {
+                            const listingId = String(r.listing_id || '');
+                            if (listingId && !listingParentMap.has(listingId) && !baseIdSet.has(listingId)) {
+                                unknownListingIds.add(listingId);
+                            }
+                        });
+
+                        // Fetch parent_id for unknown (archived) listings
+                        if (unknownListingIds.size > 0) {
+                            const unknownList = Array.from(unknownListingIds);
+                            const unknownResults = await Promise.all(
+                                unknownList.map(async (listingId) => {
+                                    const parentId = await fetchListingParent(listingId);
+                                    return { listingId, parentId };
+                                })
+                            );
+                            unknownResults.forEach(({ listingId, parentId }) => {
+                                if (parentId) {
+                                    listingParentMap.set(listingId, parentId);
+                                    // Also add to childToParentMap so reservations get attributed correctly
+                                    if (baseIdSet.has(parentId)) {
+                                        childToParentMap.set(parseInt(listingId), parseInt(parentId));
+                                    }
+                                }
+                            });
+                        }
+
+                        // Now filter using updated listingParentMap
+                        const allChildRes = allReservationsRaw.filter(belongsToOurListings);
+                        if (allChildRes.length > 0) {
+                            const childReservations = allChildRes.map(r => this.transformReservation(r));
+                            reservationsList = reservationsList.concat(childReservations);
+                        }
+                    }
+                } catch (err) {
+                    console.log(`[OVERLAP-CHILD] Failed to fetch additional reservations: ${err.message}`);
+                }
+            }
+
             const periodStart = new Date(fromDate);
             const periodEnd = new Date(toDate);
 
-            // Only include confirmed reservations - filter out expired, cancelled, new, etc.
-            const allowedStatuses = ['confirmed'];
+            // Only include confirmed/accepted reservations - filter out expired, cancelled, new, etc.
+            const allowedStatuses = ['confirmed', 'accepted'];
 
             reservationsList.forEach(res => {
                 // Skip reservations with non-allowed statuses (expired, cancelled, inquiry, etc.)
@@ -1119,8 +1301,60 @@ class HostifyService {
         let allReservations = [];
         allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
 
-        // Filter out expired, cancelled, inquiry reservations - only keep confirmed
-        const allowedStatuses = ['confirmed'];
+        // Also fetch ALL reservations (no listing filter) to catch child reservations on inactive listings
+        // Then filter to include those with parent_id matching our base listings
+        if (baseListingIds.length > 0 && baseListingIds.length <= 10) {
+            try {
+                const baseIdSet = new Set(baseListingIds.map(id => String(id)));
+                const existingIds = new Set(allReservations.map(r => r.hostifyId));
+
+                // First call to get total count
+                const firstRes = await this.getReservations(fromDate, toDate, 1, 100, null, dateType);
+                if (firstRes.success && firstRes.reservations?.length > 0) {
+                    const total = firstRes.total || firstRes.reservations.length;
+                    const totalPages = Math.min(Math.ceil(total / 100), 50);
+
+                    // Fetch all pages in parallel (skip page 1 since we already have it)
+                    const pageNumbers = [];
+                    for (let p = 2; p <= totalPages; p++) {
+                        pageNumbers.push(p);
+                    }
+
+                    const [firstPageChildren, ...otherResults] = await Promise.all([
+                        // Process first page
+                        Promise.resolve(firstRes.reservations.filter(r => {
+                            const parentListingId = String(r.parent_listing_id || '');
+                            return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
+                        })),
+                        // Fetch remaining pages in parallel
+                        ...pageNumbers.map(async (pageNum) => {
+                            try {
+                                const res = await this.getReservations(fromDate, toDate, pageNum, 100, null, dateType);
+                                if (res.success && res.reservations?.length > 0) {
+                                    return res.reservations.filter(r => {
+                                        const parentListingId = String(r.parent_listing_id || '');
+                                        return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
+                                    });
+                                }
+                            } catch (err) { }
+                            return [];
+                        })
+                    ]);
+
+                    // Combine all child reservations
+                    const allChildRes = [firstPageChildren, ...otherResults].flat();
+                    if (allChildRes.length > 0) {
+                        const childReservations = allChildRes.map(r => this.transformReservation(r));
+                        allReservations = allReservations.concat(childReservations);
+                    }
+                }
+            } catch (err) {
+                console.log(`[FINANCE-CHILD] Failed to fetch additional reservations: ${err.message}`);
+            }
+        }
+
+        // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
+        const allowedStatuses = ['confirmed', 'accepted'];
         allReservations = allReservations.filter(res => {
             if (!allowedStatuses.includes(res.status)) {
                 console.log(`[FINANCE-SKIP] Reservation ${res.hostifyId} (${res.guestName}): status "${res.status}" not allowed`);
