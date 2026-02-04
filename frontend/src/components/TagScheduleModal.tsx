@@ -9,6 +9,7 @@ interface TagSchedule {
   dayOfMonth?: number;
   timeOfDay: string;
   biweeklyWeek?: 'A' | 'B';
+  calculationType?: 'checkout' | 'calendar';
   nextScheduledAt?: string;
 }
 
@@ -37,6 +38,7 @@ const TagScheduleModal: React.FC<TagScheduleModalProps> = ({
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [timeOfDay, setTimeOfDay] = useState('09:00');
   const [biweeklyWeek, setBiweeklyWeek] = useState<'A' | 'B'>('A');
+  const [calculationType, setCalculationType] = useState<'checkout' | 'calendar'>('checkout');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -48,6 +50,7 @@ const TagScheduleModal: React.FC<TagScheduleModalProps> = ({
       if (existingSchedule.dayOfMonth !== undefined) setDayOfMonth(existingSchedule.dayOfMonth);
       setTimeOfDay(existingSchedule.timeOfDay || '09:00');
       if (existingSchedule.biweeklyWeek) setBiweeklyWeek(existingSchedule.biweeklyWeek);
+      setCalculationType(existingSchedule.calculationType || 'checkout');
     } else {
       setIsEnabled(true);
       setFrequencyType('weekly');
@@ -55,6 +58,7 @@ const TagScheduleModal: React.FC<TagScheduleModalProps> = ({
       setDayOfMonth(1);
       setTimeOfDay('09:00');
       setBiweeklyWeek('A');
+      setCalculationType('checkout');
     }
   }, [existingSchedule, isOpen]);
 
@@ -68,7 +72,8 @@ const TagScheduleModal: React.FC<TagScheduleModalProps> = ({
         dayOfWeek: frequencyType !== 'monthly' ? dayOfWeek : undefined,
         dayOfMonth: frequencyType === 'monthly' ? dayOfMonth : undefined,
         timeOfDay,
-        biweeklyWeek: frequencyType === 'biweekly' ? biweeklyWeek : undefined
+        biweeklyWeek: frequencyType === 'biweekly' ? biweeklyWeek : undefined,
+        calculationType
       });
       onClose();
     } catch (error) {
@@ -249,12 +254,42 @@ const TagScheduleModal: React.FC<TagScheduleModalProps> = ({
                 />
               </div>
 
+              {/* Calculation Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Default Calculation Type</label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'checkout', label: 'Checkout', desc: 'Full amount on checkout date' },
+                    { value: 'calendar', label: 'Calendar', desc: 'Pro-rated by nights' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setCalculationType(opt.value as 'checkout' | 'calendar')}
+                      className={`flex-1 py-2 px-3 text-sm font-medium rounded-md border transition-colors ${
+                        calculationType === opt.value
+                          ? 'bg-blue-50 border-blue-500 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {calculationType === 'checkout'
+                    ? 'Revenue counted when guest checks out within the period'
+                    : 'Revenue pro-rated based on nights within the period'}
+                </p>
+              </div>
+
               {/* Summary */}
               <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-md">
                 <Calendar className="w-4 h-4 text-gray-500 mt-0.5" />
                 <div>
                   <p className="text-sm text-gray-700">{getSummary()}</p>
-                  <p className="text-xs text-gray-500 mt-1">You'll get a notification. No emails are sent automatically.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Draft statements auto-generated using each listing's last calculation type (or this default if none).
+                  </p>
                 </div>
               </div>
             </>

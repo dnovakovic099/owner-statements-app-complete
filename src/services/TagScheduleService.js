@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const TagSchedule = require('../models/TagSchedule');
 const TagNotification = require('../models/TagNotification');
 const Listing = require('../models/Listing');
+const logger = require('../utils/logger');
 
 // Lazy load to avoid circular dependency
 let ListingGroupService = null;
@@ -10,6 +11,15 @@ const getListingGroupService = () => {
         ListingGroupService = require('./ListingGroupService');
     }
     return ListingGroupService;
+};
+
+// Lazy load Statement model
+let Statement = null;
+const getStatementModel = () => {
+    if (!Statement) {
+        Statement = require('../models/Statement');
+    }
+    return Statement;
 };
 
 class TagScheduleService {
@@ -30,7 +40,7 @@ class TagScheduleService {
      * Start the schedule checker
      */
     start() {
-        console.log('[TagScheduleService] Starting schedule checker...');
+        logger.info('[TagScheduleService] Starting schedule checker...');
         // Run immediately on start
         this.checkSchedules();
         // Then run every minute
@@ -46,7 +56,7 @@ class TagScheduleService {
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
             this.checkInterval = null;
-            console.log('[TagScheduleService] Schedule checker stopped');
+            logger.info('[TagScheduleService] Schedule checker stopped');
         }
     }
 
@@ -71,7 +81,7 @@ class TagScheduleService {
                 }
             }
         } catch (error) {
-            console.error('[TagScheduleService] Error checking schedules:', error);
+            logger.error('[TagScheduleService] Error checking schedules:', error);
         }
     }
 
@@ -101,7 +111,7 @@ class TagScheduleService {
         if (skipDates.length > 0) {
             const todayStr = this.formatDateYMD(now);
             if (skipDates.includes(todayStr)) {
-                console.log(`[TagScheduleService] Skipping schedule "${schedule.tagName}" - date ${todayStr} is in skip list`);
+                logger.info(`[TagScheduleService] Skipping schedule "${schedule.tagName}" - date ${todayStr} is in skip list`);
                 return false;
             }
         }
@@ -179,7 +189,7 @@ class TagScheduleService {
             const listings = await this.getListingsWithTag(schedule.tagName);
             listingCount = listings.length;
         } catch (error) {
-            console.error(`[TagScheduleService] Error getting listings for ${schedule.tagName}:`, error.message);
+            logger.error(`[TagScheduleService] Error getting listings for ${schedule.tagName}:`, error.message);
             hasErrors = true;
             errorMessage = 'Failed to get listings. ';
         }
@@ -188,7 +198,7 @@ class TagScheduleService {
             // Auto-generate draft statements for groups with this tag
             groupResults = await this.autoGenerateGroupStatements(schedule.tagName, schedule);
         } catch (error) {
-            console.error(`[TagScheduleService] Error generating group statements for ${schedule.tagName}:`, error.message);
+            logger.error(`[TagScheduleService] Error generating group statements for ${schedule.tagName}:`, error.message);
             hasErrors = true;
             errorMessage += 'Group generation failed. ';
         }
@@ -197,7 +207,7 @@ class TagScheduleService {
             // Auto-generate draft statements for individual (non-grouped) listings with this tag
             individualResults = await this.autoGenerateIndividualStatements(schedule.tagName, schedule);
         } catch (error) {
-            console.error(`[TagScheduleService] Error generating individual statements for ${schedule.tagName}:`, error.message);
+            logger.error(`[TagScheduleService] Error generating individual statements for ${schedule.tagName}:`, error.message);
             hasErrors = true;
             errorMessage += 'Individual generation failed. ';
         }
@@ -227,11 +237,11 @@ class TagScheduleService {
                 nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
             });
 
-            console.log(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts${hasErrors ? ' (with errors)' : ''}`);
+            logger.info(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts${hasErrors ? ' (with errors)' : ''}`);
 
             return notification;
         } catch (error) {
-            console.error(`[TagScheduleService] Error creating notification for ${schedule.tagName}:`, error);
+            logger.error(`[TagScheduleService] Error creating notification for ${schedule.tagName}:`, error);
             // Still try to update lastNotifiedAt to prevent infinite retries
             try {
                 await schedule.update({
@@ -239,7 +249,7 @@ class TagScheduleService {
                     nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
                 });
             } catch (updateError) {
-                console.error(`[TagScheduleService] Failed to update lastNotifiedAt:`, updateError.message);
+                logger.error(`[TagScheduleService] Failed to update lastNotifiedAt:`, updateError.message);
             }
             throw error;
         }
@@ -256,11 +266,11 @@ class TagScheduleService {
             const groups = await groupService.getGroupsByTag(tagName);
 
             if (groups.length === 0) {
-                console.log(`[TagScheduleService] No groups found with tag "${tagName}"`);
+                logger.info(`[TagScheduleService] No groups found with tag "${tagName}"`);
                 return results;
             }
 
-            console.log(`[TagScheduleService] Found ${groups.length} groups with tag "${tagName}", generating draft statements...`);
+            logger.info(`[TagScheduleService] Found ${groups.length} groups with tag "${tagName}", generating draft statements...`);
 
             // Calculate date range based on tag
             const dateRange = this.calculateDateRangeForTag(tagName);
@@ -274,9 +284,16 @@ class TagScheduleService {
                     const groupDetails = await groupService.getGroupById(group.id);
 
                     if (!groupDetails.members || groupDetails.members.length === 0) {
-                        console.log(`[TagScheduleService] Skipping group "${group.name}" - no member listings`);
+                        logger.info(`[TagScheduleService] Skipping group "${group.name}" - no member listings`);
                         continue;
                     }
+
+                    // Get calculation type from the last statement for this group
+                    // Falls back to group default, then to 'checkout'
+                    const calculationType = await this.getLastCalculationTypeForGroup(
+                        group.id,
+                        group.calculationType || schedule.calculationType || 'checkout'
+                    );
 
                     // Generate combined draft statement for the group
                     const statement = await StatementService.generateGroupStatement({
@@ -285,13 +302,13 @@ class TagScheduleService {
                         listingIds: groupDetails.members.map(m => m.id),
                         startDate: dateRange.start,
                         endDate: dateRange.end,
-                        calculationType: group.calculationType || 'checkout'
+                        calculationType
                     });
 
                     // Check if statement was skipped (duplicate)
                     if (statement?.skipped) {
                         results.skipped++;
-                        console.log(`[TagScheduleService] Skipped group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
+                        logger.info(`[TagScheduleService] Skipped group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }
 
@@ -302,16 +319,16 @@ class TagScheduleService {
                         statementId: statement?.id
                     });
 
-                    console.log(`[TagScheduleService] Generated draft statement for group "${group.name}" (ID: ${group.id})`);
+                    logger.info(`[TagScheduleService] Generated draft statement for group "${group.name}" (ID: ${group.id})`);
                 } catch (groupError) {
-                    console.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
+                    logger.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
                     results.errors++;
                 }
             }
 
-            console.log(`[TagScheduleService] Auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
+            logger.info(`[TagScheduleService] Auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
         } catch (error) {
-            console.error('[TagScheduleService] Error in autoGenerateGroupStatements:', error);
+            logger.error('[TagScheduleService] Error in autoGenerateGroupStatements:', error);
         }
 
         return results;
@@ -368,11 +385,11 @@ class TagScheduleService {
             }
 
             if (listings.length === 0) {
-                console.log(`[TagScheduleService] No non-grouped listings found with tag "${tagName}"`);
+                logger.info(`[TagScheduleService] No non-grouped listings found with tag "${tagName}"`);
                 return results;
             }
 
-            console.log(`[TagScheduleService] Found ${listings.length} non-grouped listings with tag "${tagName}", generating draft statements...`);
+            logger.info(`[TagScheduleService] Found ${listings.length} non-grouped listings with tag "${tagName}", generating draft statements...`);
 
             // Calculate date range based on tag
             const dateRange = this.calculateDateRangeForTag(tagName);
@@ -382,18 +399,25 @@ class TagScheduleService {
 
             for (const listing of listings) {
                 try {
+                    // Get calculation type from the last statement for this listing
+                    // Falls back to schedule default, then to 'checkout'
+                    const calculationType = await this.getLastCalculationTypeForListing(
+                        listing.id,
+                        schedule.calculationType || 'checkout'
+                    );
+
                     // Generate individual draft statement
                     const statement = await StatementService.generateIndividualStatement({
                         listingId: listing.id,
                         startDate: dateRange.start,
                         endDate: dateRange.end,
-                        calculationType: schedule.calculationType || 'checkout'
+                        calculationType
                     });
 
                     // Check if statement was skipped (duplicate)
                     if (statement?.skipped) {
                         results.skipped++;
-                        console.log(`[TagScheduleService] Skipped listing "${listing.displayName || listing.name}" - statement already exists (ID: ${statement.existingId})`);
+                        logger.info(`[TagScheduleService] Skipped listing "${listing.displayName || listing.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }
 
@@ -404,16 +428,16 @@ class TagScheduleService {
                         statementId: statement?.id
                     });
 
-                    console.log(`[TagScheduleService] Generated draft statement for listing "${listing.displayName || listing.name}" (ID: ${listing.id})`);
+                    logger.info(`[TagScheduleService] Generated draft statement for listing "${listing.displayName || listing.name}" (ID: ${listing.id})`);
                 } catch (listingError) {
-                    console.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
+                    logger.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
                     results.errors++;
                 }
             }
 
-            console.log(`[TagScheduleService] Individual auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
+            logger.info(`[TagScheduleService] Individual auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
         } catch (error) {
-            console.error('[TagScheduleService] Error in autoGenerateIndividualStatements:', error);
+            logger.error('[TagScheduleService] Error in autoGenerateIndividualStatements:', error);
         }
 
         return results;
@@ -572,14 +596,23 @@ class TagScheduleService {
                 break;
 
             case 'biweekly':
-                // Find next occurrence considering bi-weekly pattern
-                next.setDate(next.getDate() + 1);
-                while (true) {
+                // Find next occurrence using biweeklyStartDate (runs every 2 weeks from that date)
+                const biweeklyStart = schedule.biweeklyStartDate
+                    ? new Date(schedule.biweeklyStartDate)
+                    : new Date('2026-01-19'); // Default reference date
+
+                next.setDate(next.getDate() + 1); // Start from tomorrow
+                let safetyCounter = 0;
+                const maxIterations = 365; // Prevent infinite loop
+
+                while (safetyCounter < maxIterations) {
+                    safetyCounter++;
                     if (next.getDay() === schedule.dayOfWeek) {
-                        const weekNum = this.getWeekNumber(next);
-                        const isOddWeek = weekNum % 2 === 1;
-                        if ((schedule.biweeklyWeek === 'A' && isOddWeek) ||
-                            (schedule.biweeklyWeek === 'B' && !isOddWeek)) {
+                        // Check if this is on the bi-weekly pattern from the start date
+                        const daysSinceStart = Math.floor((next - biweeklyStart) / (1000 * 60 * 60 * 24));
+                        const weeksSinceStart = Math.floor(daysSinceStart / 7);
+                        // Run on weeks 0, 2, 4, 6... (every 2 weeks)
+                        if (weeksSinceStart >= 0 && weeksSinceStart % 2 === 0) {
                             break;
                         }
                     }
@@ -599,6 +632,52 @@ class TagScheduleService {
         }
 
         return next;
+    }
+
+    /**
+     * Get the calculation type from the most recent statement for a group
+     * Falls back to schedule default if no previous statement exists
+     */
+    async getLastCalculationTypeForGroup(groupId, fallback = 'checkout') {
+        try {
+            const StatementModel = getStatementModel();
+            const lastStatement = await StatementModel.findOne({
+                where: { groupId },
+                order: [['created_at', 'DESC']],
+                attributes: ['calculationType']
+            });
+
+            if (lastStatement && lastStatement.calculationType) {
+                logger.info(`[TagScheduleService] Using last calculation type "${lastStatement.calculationType}" for group ${groupId}`);
+                return lastStatement.calculationType;
+            }
+        } catch (error) {
+            logger.error(`[TagScheduleService] Error getting last calculation type for group ${groupId}:`, error.message);
+        }
+        return fallback;
+    }
+
+    /**
+     * Get the calculation type from the most recent statement for a listing
+     * Falls back to schedule default if no previous statement exists
+     */
+    async getLastCalculationTypeForListing(listingId, fallback = 'checkout') {
+        try {
+            const StatementModel = getStatementModel();
+            const lastStatement = await StatementModel.findOne({
+                where: { propertyId: listingId },
+                order: [['created_at', 'DESC']],
+                attributes: ['calculationType']
+            });
+
+            if (lastStatement && lastStatement.calculationType) {
+                logger.info(`[TagScheduleService] Using last calculation type "${lastStatement.calculationType}" for listing ${listingId}`);
+                return lastStatement.calculationType;
+            }
+        } catch (error) {
+            logger.error(`[TagScheduleService] Error getting last calculation type for listing ${listingId}:`, error.message);
+        }
+        return fallback;
     }
 
     // === API Methods ===

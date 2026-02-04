@@ -37,7 +37,7 @@ router.get('/schedules/:tagName', async (req, res) => {
 // Create or update a schedule
 router.post('/schedules', async (req, res) => {
     try {
-        const { tagName, frequencyType, dayOfWeek, dayOfMonth, timeOfDay, biweeklyStartDate, isEnabled } = req.body;
+        const { tagName, frequencyType, dayOfWeek, dayOfMonth, timeOfDay, biweeklyStartDate, isEnabled, calculationType } = req.body;
 
         if (!tagName) {
             return res.status(400).json({ success: false, error: 'tagName is required' });
@@ -69,7 +69,8 @@ router.post('/schedules', async (req, res) => {
             dayOfMonth: frequencyType === 'monthly' ? dayOfMonth : null,
             timeOfDay: timeOfDay || '09:00',
             biweeklyStartDate: frequencyType === 'biweekly' ? (biweeklyStartDate || '2026-01-19') : null,
-            isEnabled: isEnabled !== false
+            isEnabled: isEnabled !== false,
+            calculationType: calculationType || 'checkout'
         });
 
         res.json({ success: true, schedule, message: 'Schedule saved successfully' });

@@ -26,7 +26,8 @@ import {
   Play,
   Pause,
   CalendarDays,
-  Plus
+  Plus,
+  ChevronDown
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
@@ -38,6 +39,24 @@ interface SettingsPageProps {
   currentUserEmail?: string;
   hideSidebar?: boolean;
 }
+
+// Days of week for dropdowns
+const DAYS_OF_WEEK = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' }
+];
+
+// Frequency types for dropdowns
+const FREQUENCY_TYPES = [
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Bi-Weekly (every 2 weeks)' },
+  { value: 'monthly', label: 'Monthly' }
+];
 
 // Allowed emails for Settings access
 const SETTINGS_ALLOWED_EMAILS = [
@@ -92,8 +111,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     dayOfWeek: 1,
     dayOfMonth: 1,
     timeOfDay: '08:00',
-    biweeklyStartDate: '2026-01-19'
+    biweeklyStartDate: '2026-01-19',
+    calculationType: 'checkout' as 'checkout' | 'calendar'
   });
+
+  // Custom dropdown states
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   // Activity log state
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
@@ -308,7 +331,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
           dayOfMonth: editingSchedule.frequencyType === 'monthly' ? scheduleForm.dayOfMonth : null,
           timeOfDay: scheduleForm.timeOfDay,
           biweeklyStartDate: editingSchedule.frequencyType === 'biweekly' ? scheduleForm.biweeklyStartDate : null,
-          isEnabled: editingSchedule.isEnabled
+          isEnabled: editingSchedule.isEnabled,
+          calculationType: scheduleForm.calculationType
         })
       });
       const data = await response.json();
@@ -344,7 +368,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
           dayOfMonth: scheduleForm.frequencyType === 'monthly' ? scheduleForm.dayOfMonth : null,
           timeOfDay: scheduleForm.timeOfDay,
           biweeklyStartDate: scheduleForm.frequencyType === 'biweekly' ? scheduleForm.biweeklyStartDate : null,
-          isEnabled: true
+          isEnabled: true,
+          calculationType: scheduleForm.calculationType
         })
       });
       const data = await response.json();
@@ -357,7 +382,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
           dayOfWeek: 1,
           dayOfMonth: 1,
           timeOfDay: '08:00',
-          biweeklyStartDate: '2026-01-19'
+          biweeklyStartDate: '2026-01-19',
+          calculationType: 'checkout'
         });
         loadSchedules();
       } else {
@@ -1161,7 +1187,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                       dayOfWeek: 1,
                       dayOfMonth: 1,
                       timeOfDay: '08:00',
-                      biweeklyStartDate: '2026-01-19'
+                      biweeklyStartDate: '2026-01-19',
+                      calculationType: 'checkout'
                     });
                     setIsAddScheduleOpen(true);
                   }}
@@ -1235,7 +1262,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                                 dayOfWeek: schedule.dayOfWeek ?? 1,
                                 dayOfMonth: schedule.dayOfMonth ?? 1,
                                 timeOfDay: schedule.timeOfDay,
-                                biweeklyStartDate: schedule.biweeklyStartDate || '2026-01-19'
+                                biweeklyStartDate: schedule.biweeklyStartDate || '2026-01-19',
+                                calculationType: schedule.calculationType || 'checkout'
                               });
                             }}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1318,39 +1346,67 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             </div>
             <div className="p-6 space-y-4">
               {editingSchedule.frequencyType !== 'monthly' && (
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Day of Week
                   </label>
-                  <select
-                    value={scheduleForm.dayOfWeek}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'editDayOfWeek' ? null : 'editDayOfWeek')}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value={0}>Sunday</option>
-                    <option value={1}>Monday</option>
-                    <option value={2}>Tuesday</option>
-                    <option value={3}>Wednesday</option>
-                    <option value={4}>Thursday</option>
-                    <option value={5}>Friday</option>
-                    <option value={6}>Saturday</option>
-                  </select>
+                    <span>{DAYS_OF_WEEK.find(d => d.value === scheduleForm.dayOfWeek)?.label}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${openDropdown === 'editDayOfWeek' ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openDropdown === 'editDayOfWeek' && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {DAYS_OF_WEEK.map(day => (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => {
+                            setScheduleForm({ ...scheduleForm, dayOfWeek: day.value });
+                            setOpenDropdown(null);
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-blue-50 ${scheduleForm.dayOfWeek === day.value ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {editingSchedule.frequencyType === 'monthly' && (
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Day of Month
                   </label>
-                  <select
-                    value={scheduleForm.dayOfMonth}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfMonth: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'editDayOfMonth' ? null : 'editDayOfMonth')}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                      <option key={day} value={day}>{day}</option>
-                    ))}
-                  </select>
+                    <span>{scheduleForm.dayOfMonth}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${openDropdown === 'editDayOfMonth' ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openDropdown === 'editDayOfMonth' && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            setScheduleForm({ ...scheduleForm, dayOfMonth: day });
+                            setOpenDropdown(null);
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-blue-50 ${scheduleForm.dayOfMonth === day ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div>
@@ -1380,6 +1436,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </p>
                 </div>
               )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Default Calculation Type
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleForm({ ...scheduleForm, calculationType: 'checkout' })}
+                    className={`flex-1 py-2 px-3 text-sm font-medium rounded-md border transition-colors ${
+                      scheduleForm.calculationType === 'checkout'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Checkout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleForm({ ...scheduleForm, calculationType: 'calendar' })}
+                    className={`flex-1 py-2 px-3 text-sm font-medium rounded-md border transition-colors ${
+                      scheduleForm.calculationType === 'calendar'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Calendar
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for new listings; existing listings use their last statement's type
+                </p>
+              </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
               <button
@@ -1423,54 +1511,98 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   Will match listings/groups with tags containing this text
                 </p>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Frequency Type
                 </label>
-                <select
-                  value={scheduleForm.frequencyType}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, frequencyType: e.target.value as 'weekly' | 'biweekly' | 'monthly' })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <button
+                  type="button"
+                  onClick={() => setOpenDropdown(openDropdown === 'addFrequency' ? null : 'addFrequency')}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="weekly">Weekly</option>
-                  <option value="biweekly">Bi-Weekly (every 2 weeks)</option>
-                  <option value="monthly">Monthly</option>
-                </select>
+                  <span>{FREQUENCY_TYPES.find(f => f.value === scheduleForm.frequencyType)?.label}</span>
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${openDropdown === 'addFrequency' ? 'rotate-180' : ''}`} />
+                </button>
+                {openDropdown === 'addFrequency' && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
+                    {FREQUENCY_TYPES.map(freq => (
+                      <button
+                        key={freq.value}
+                        type="button"
+                        onClick={() => {
+                          setScheduleForm({ ...scheduleForm, frequencyType: freq.value as 'weekly' | 'biweekly' | 'monthly' });
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full px-3 py-2 text-left hover:bg-blue-50 ${scheduleForm.frequencyType === freq.value ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                      >
+                        {freq.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {scheduleForm.frequencyType !== 'monthly' && (
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Day of Week
                   </label>
-                  <select
-                    value={scheduleForm.dayOfWeek}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'addDayOfWeek' ? null : 'addDayOfWeek')}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value={0}>Sunday</option>
-                    <option value={1}>Monday</option>
-                    <option value={2}>Tuesday</option>
-                    <option value={3}>Wednesday</option>
-                    <option value={4}>Thursday</option>
-                    <option value={5}>Friday</option>
-                    <option value={6}>Saturday</option>
-                  </select>
+                    <span>{DAYS_OF_WEEK.find(d => d.value === scheduleForm.dayOfWeek)?.label}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${openDropdown === 'addDayOfWeek' ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openDropdown === 'addDayOfWeek' && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {DAYS_OF_WEEK.map(day => (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => {
+                            setScheduleForm({ ...scheduleForm, dayOfWeek: day.value });
+                            setOpenDropdown(null);
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-blue-50 ${scheduleForm.dayOfWeek === day.value ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {scheduleForm.frequencyType === 'monthly' && (
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Day of Month
                   </label>
-                  <select
-                    value={scheduleForm.dayOfMonth}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfMonth: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'addDayOfMonth' ? null : 'addDayOfMonth')}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                      <option key={day} value={day}>{day}</option>
-                    ))}
-                  </select>
+                    <span>{scheduleForm.dayOfMonth}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${openDropdown === 'addDayOfMonth' ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openDropdown === 'addDayOfMonth' && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            setScheduleForm({ ...scheduleForm, dayOfMonth: day });
+                            setOpenDropdown(null);
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-blue-50 ${scheduleForm.dayOfMonth === day ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div>
@@ -1500,6 +1632,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </p>
                 </div>
               )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Default Calculation Type
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleForm({ ...scheduleForm, calculationType: 'checkout' })}
+                    className={`flex-1 py-2 px-3 text-sm font-medium rounded-md border transition-colors ${
+                      scheduleForm.calculationType === 'checkout'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Checkout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleForm({ ...scheduleForm, calculationType: 'calendar' })}
+                    className={`flex-1 py-2 px-3 text-sm font-medium rounded-md border transition-colors ${
+                      scheduleForm.calculationType === 'calendar'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Calendar
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for new listings; existing listings use their last statement's type
+                </p>
+              </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
               <button

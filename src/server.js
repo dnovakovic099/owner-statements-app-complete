@@ -20,6 +20,10 @@ const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./
 const app = express();
 const PORT = process.env.PORT || 3003;
 
+// Trust proxy for deployment behind reverse proxies (Railway, Heroku, etc.)
+// This enables express-rate-limit to correctly identify client IPs via X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security Headers with Helmet
 app.use(helmet({
     contentSecurityPolicy: {

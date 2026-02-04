@@ -870,7 +870,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             // Store group info if this statement was generated from a group
             groupId: group ? group.id : null,
             groupName: group ? group.name : null,
-            groupTags: group ? group.tags : null,
+            groupTags: group && group.tags ? (Array.isArray(group.tags) ? group.tags.join(',') : group.tags) : null,
             weekStartDate: startDate,
             weekEndDate: endDate,
             calculationType,

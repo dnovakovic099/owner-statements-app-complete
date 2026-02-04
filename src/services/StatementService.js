@@ -11,6 +11,7 @@ const ActivityLog = require('../models/ActivityLog');
 const FileDataService = require('./FileDataService');
 const ListingService = require('./ListingService');
 const StatementCalculationService = require('./StatementCalculationService');
+const logger = require('../utils/logger');
 
 class StatementService {
     /**
@@ -69,14 +70,14 @@ class StatementService {
     async generateGroupStatement(options) {
         const { groupId, groupName, listingIds, startDate, endDate, calculationType = 'checkout' } = options;
 
-        console.log(`[StatementService] Generating statement for group "${groupName}" (${listingIds.length} listings)`);
-        console.log(`[StatementService] Period: ${startDate} to ${endDate}, Type: ${calculationType}`);
+        logger.info(`Generating statement for group "${groupName}" (${listingIds.length} listings)`, { context: 'StatementService', action: 'generateGroupStatement', groupName, listingCount: listingIds.length });
+        logger.info(`Period: ${startDate} to ${endDate}, Type: ${calculationType}`, { context: 'StatementService', startDate, endDate, calculationType });
 
         try {
             // Check for existing statement to prevent duplicates
             const existingStatement = await this.checkExistingStatement({ groupId, startDate, endDate });
             if (existingStatement) {
-                console.log(`[StatementService] Statement already exists for group "${groupName}" (ID: ${existingStatement.id}), skipping`);
+                logger.info(`Statement already exists for group "${groupName}" (ID: ${existingStatement.id}), skipping`, { context: 'StatementService', action: 'skipDuplicate', groupName, existingId: existingStatement.id });
                 return { skipped: true, existingId: existingStatement.id, reason: 'duplicate' };
             }
 
@@ -190,13 +191,13 @@ class StatementService {
             };
 
             // Save to database (same storage as manual generation)
-            console.log(`[StatementService] Saving statement for group "${groupName}" (groupId=${groupId})...`);
-            console.log(`[StatementService] Statement data: totalRevenue=${financials.totalRevenue}, ownerPayout=${financials.ownerPayout}, listingCount=${parsedPropertyIds.length}`);
+            logger.info(`Saving statement for group "${groupName}"`, { context: 'StatementService', action: 'saveGroupStatement', groupId, groupName });
+            logger.debug(`Statement data`, { context: 'StatementService', totalRevenue: financials.totalRevenue, ownerPayout: financials.ownerPayout, listingCount: parsedPropertyIds.length });
 
             const savedStatement = await FileDataService.saveStatement(statementData);
             statementData.id = savedStatement.id;
 
-            console.log(`[StatementService] SUCCESS - Created draft statement ID: ${statementData.id} for group "${groupName}"`);
+            logger.info(`SUCCESS - Created draft statement ID: ${statementData.id} for group "${groupName}"`, { context: 'StatementService', action: 'createGroupStatement', statementId: statementData.id, groupName });
 
             // Log to activity log
             await ActivityLog.logSystem('AUTO_GENERATE', 'statement', statementData.id, {
@@ -213,8 +214,7 @@ class StatementService {
 
             return statementData;
         } catch (error) {
-            console.error(`[StatementService] FAILED - Error generating group statement for "${groupName}" (groupId=${groupId}):`, error.message);
-            console.error(`[StatementService] Full error:`, error);
+            logger.error(`FAILED - Error generating group statement for "${groupName}"`, { context: 'StatementService', action: 'generateGroupStatement', groupId, groupName, error: error.message, stack: error.stack });
             throw error;
         }
     }
@@ -226,14 +226,14 @@ class StatementService {
     async generateIndividualStatement(options) {
         const { listingId, startDate, endDate, calculationType = 'checkout' } = options;
 
-        console.log(`[StatementService] Generating individual statement for listing ${listingId}`);
-        console.log(`[StatementService] Period: ${startDate} to ${endDate}, Type: ${calculationType}`);
+        logger.info(`Generating individual statement for listing ${listingId}`, { context: 'StatementService', action: 'generateIndividualStatement', listingId });
+        logger.info(`Period: ${startDate} to ${endDate}, Type: ${calculationType}`, { context: 'StatementService', startDate, endDate, calculationType });
 
         try {
             // Check for existing statement to prevent duplicates
             const existingStatement = await this.checkExistingStatement({ listingId, startDate, endDate });
             if (existingStatement) {
-                console.log(`[StatementService] Statement already exists for listing ${listingId} (ID: ${existingStatement.id}), skipping`);
+                logger.info(`Statement already exists for listing ${listingId} (ID: ${existingStatement.id}), skipping`, { context: 'StatementService', action: 'skipDuplicate', listingId, existingId: existingStatement.id });
                 return { skipped: true, existingId: existingStatement.id, reason: 'duplicate' };
             }
 
@@ -286,13 +286,8 @@ class StatementService {
             const owners = await FileDataService.getOwners();
             const owner = owners[0] || { id: 1, name: listingName };
 
-            // Generate unique ID
-            const existingStatements = await FileDataService.getStatements();
-            const newId = FileDataService.generateId(existingStatements);
-
-            // Create statement object
+            // Create statement object (ID will be assigned by database)
             const statementData = {
-                id: newId,
                 ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
                 ownerName: owner.name,
                 propertyId: parsedPropertyId,
@@ -329,11 +324,12 @@ class StatementService {
                 items: []
             };
 
-            // Save to file
-            existingStatements.push(statementData);
-            await FileDataService.saveStatements(existingStatements);
+            // Save to database (same as group statements)
+            logger.info(`Saving individual statement for "${listingName}"`, { context: 'StatementService', action: 'saveIndividualStatement', listingId, listingName });
+            const savedStatement = await FileDataService.saveStatement(statementData);
+            statementData.id = savedStatement.id;
 
-            console.log(`[StatementService] Created draft statement ID: ${statementData.id} for listing "${listingName}"`);
+            logger.info(`SUCCESS - Created draft statement ID: ${statementData.id} for listing "${listingName}"`, { context: 'StatementService', action: 'createIndividualStatement', statementId: statementData.id, listingName });
 
             // Log to activity log
             await ActivityLog.logSystem('AUTO_GENERATE', 'statement', statementData.id, {
@@ -349,7 +345,7 @@ class StatementService {
 
             return statementData;
         } catch (error) {
-            console.error(`[StatementService] Error generating individual statement:`, error);
+            logger.error(`Error generating individual statement`, { context: 'StatementService', action: 'generateIndividualStatement', error: error.message, stack: error.stack });
             throw error;
         }
     }
