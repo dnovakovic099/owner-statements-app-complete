@@ -174,7 +174,7 @@ router.get('/', async (req, res) => {
                         const category = (exp.category || '').toLowerCase();
                         const type = (exp.type || '').toLowerCase();
                         const description = (exp.description || '').toLowerCase();
-                        return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+                        return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
                     });
 
                     // Check for mismatches - prioritize showing the most relevant warning
@@ -698,7 +698,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
             const description = (exp.description || '').toLowerCase();
-            return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+            return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
         });
 
         // Validate cleaning expenses vs reservations for properties with cleaningFeePassThrough
@@ -884,6 +884,8 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             ownerPayout: Math.round(ownerPayout * 100) / 100,
             isCombinedStatement: true,
             propertyCount: propertyCount,
+            // Set cleaningFeePassThrough if ANY property in the combined statement has it enabled
+            cleaningFeePassThrough: parsedPropertyIds.some(propId => listingInfoMap[propId]?.cleaningFeePassThrough),
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
@@ -6273,7 +6275,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const category = (exp.category || '').toLowerCase();
                         const type = (exp.type || '').toLowerCase();
                         const description = (exp.description || '').toLowerCase();
-                        return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+                        return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
                     });
 
                     // Validate cleaning expenses vs reservations count (only if cleaningFeePassThrough is enabled)

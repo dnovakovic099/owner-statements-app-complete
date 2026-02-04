@@ -150,7 +150,7 @@ class StatementCalculationService {
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
             const description = (exp.description || '').toLowerCase();
-            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
 
             // Skip cleaning expenses for properties with cleaningFeePassThrough enabled
             const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
@@ -204,7 +204,7 @@ class StatementCalculationService {
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
             const description = (exp.description || '').toLowerCase();
-            return category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
+            return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
         });
 
         // Count cleaning expenses for properties with passthrough

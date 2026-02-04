@@ -717,7 +717,7 @@ function generateStatementHTML(statement, id) {
                     if (statement.cleaningFeePassThrough) {
                         const category = (item.category || '').toLowerCase();
                         const description = (item.description || '').toLowerCase();
-                        if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        if (category.includes('cleaning') || description.includes('cleaning')) {
                             return false;
                         }
                     }
@@ -757,7 +757,7 @@ function generateStatementHTML(statement, id) {
                         if (statement.cleaningFeePassThrough) {
                             const category = (item.category || '').toLowerCase();
                             const description = (item.description || '').toLowerCase();
-                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                            if (category.includes('cleaning') || description.includes('cleaning')) {
                                 return false;
                             }
                         }
@@ -970,7 +970,7 @@ function generateStatementHTML(statement, id) {
                         if (statement.cleaningFeePassThrough) {
                             const category = (item.category || '').toLowerCase();
                             const description = (item.description || '').toLowerCase();
-                            if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                            if (category.includes('cleaning') || description.includes('cleaning')) {
                                 return false;
                             }
                         }
@@ -1012,7 +1012,7 @@ function generateStatementHTML(statement, id) {
                             if (statement.cleaningFeePassThrough) {
                                 const category = (item.category || '').toLowerCase();
                                 const description = (item.description || '').toLowerCase();
-                                if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                                if (category.includes('cleaning') || description.includes('cleaning')) {
                                     return false;
                                 }
                             }
