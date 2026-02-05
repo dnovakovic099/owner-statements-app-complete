@@ -717,9 +717,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50">
+      <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
@@ -1053,7 +1053,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Table */}
-      <div className="w-full overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
+      <div className="w-full overflow-x-auto overflow-y-auto flex-1 min-h-0">
         <Table className="w-full min-w-[900px]" style={{ tableLayout: 'fixed' }}>
           <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -1176,7 +1176,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white">
+      <div className="px-4 py-3 border-t border-gray-200 bg-white flex-shrink-0">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           {/* Results info and page size */}
           <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6">
@@ -1213,7 +1213,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 </button>
                 {isRowsDropdownOpen && (
                   <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
-                    {[15, 25, 50, 100].map((size) => (
+                    {[pagination.pageSize, 15, 25, 50, 100].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((size) => (
                       <button
                         key={size}
                         onClick={() => {

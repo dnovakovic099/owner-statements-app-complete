@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { Plus, AlertCircle, Search, Check, ChevronDown } from 'lucide-react';
+import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -14,7 +14,6 @@ import { Layout } from './Layout';
 // Lazy load modals for better initial bundle size
 const GenerateModal = lazy(() => import('./GenerateModal'));
 const UploadModal = lazy(() => import('./UploadModal'));
-const ExpenseUpload = lazy(() => import('./ExpenseUpload'));
 const EditStatementModal = lazy(() => import('./EditStatementModal'));
 // const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
@@ -100,12 +99,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     localStorage.setItem('readListingNotifications', JSON.stringify(newReadIds));
   };
 
+  // Calculate dynamic page size based on viewport height
+  const getDynamicPageSize = () => {
+    const vh = window.innerHeight;
+    // header ~50px, filters ~50px, table header+toolbar ~100px, pagination ~50px, padding ~30px
+    const overhead = 280;
+    const rowHeight = 35;
+    const rows = Math.max(10, Math.floor((vh - overhead) / rowHeight));
+    return rows;
+  };
+
   // Pagination state
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 15,
+    pageSize: getDynamicPageSize(),
     total: 0,
   });
+
+  // Recalculate page size on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const newSize = getDynamicPageSize();
+      setPagination(prev => {
+        if (prev.pageSize !== newSize) {
+          return { ...prev, pageSize: newSize, pageIndex: 0 };
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -1253,234 +1277,244 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
               <p className="text-gray-500 text-sm mt-0.5">Manage owner statements and view activity</p>
             </div>
-            <button
-              onClick={() => setIsGenerateModalOpen(true)}
-              className="flex items-center px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Generate Statement</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-auto p-4 sm:p-6">
-
-          {/* File Uploads */}
-          <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Expense Upload */}
-            <Suspense fallback={<div className="bg-gray-50 rounded-lg p-6 animate-pulse h-32" />}>
-              <ExpenseUpload onUploadSuccess={loadInitialData} />
-            </Suspense>
-
-            {/* Reservation Upload */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-md p-6 border border-purple-200">
-              <h3 className="text-lg font-semibold text-purple-900 mb-2">Import Reservations</h3>
-              <p className="text-sm text-purple-700 mb-4">Upload a CSV file with manual reservations</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setUploadModalType('expenses');
+                  setIsUploadModalOpen(true);
+                }}
+                className="flex items-center px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm whitespace-nowrap"
+              >
+                <Upload className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Upload Expenses</span>
+              </button>
               <button
                 onClick={() => {
                   setUploadModalType('reservations');
                   setIsUploadModalOpen(true);
                 }}
-                className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium"
+                className="flex items-center px-3 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 transition-colors font-medium text-sm whitespace-nowrap"
               >
-                Upload Reservations CSV
+                <Upload className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Import Reservations</span>
+              </button>
+              <button
+                onClick={() => setIsGenerateModalOpen(true)}
+                className="flex items-center px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Generate Statement</span>
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 flex flex-col overflow-hidden p-4 sm:p-4">
 
           {/* Filters */}
-          <div className="bg-white rounded-lg shadow-md p-4 mb-8 relative z-20">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[160px_1fr_auto_auto] gap-4 items-end">
-              <div className="w-full">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
+          <div className="bg-white rounded-lg shadow-md px-3 py-2 mb-4 relative z-20 flex-shrink-0">
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Owner */}
+              <div className="min-w-[160px] w-[22%]">
+                <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Owner</label>
                 <div className="relative" ref={ownerDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isOwnerDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
                   >
-                    <span className="text-gray-900 truncate">
+                    <span className={`truncate ${filters.ownerId ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
                       {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isOwnerDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      <div
-                        onClick={() => {
-                          setFilters({ ...filters, ownerId: '' });
-                          setIsOwnerDropdownOpen(false);
-                        }}
-                        className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === '' ? 'bg-blue-50' : ''}`}
-                      >
-                        <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === '' ? 'border-blue-600' : 'border-gray-300'}`}>
-                          {filters.ownerId === '' && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                        </div>
-                        <span className="text-sm text-gray-900">All Owners</span>
-                      </div>
-                      {owners.map((owner) => (
+                    <div className="absolute z-50 mt-1.5 w-full bg-white border border-gray-200 rounded-xl shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="max-h-[480px] overflow-y-auto py-1">
                         <div
-                          key={owner.id}
                           onClick={() => {
-                            setFilters({ ...filters, ownerId: owner.id.toString() });
+                            setFilters({ ...filters, ownerId: '' });
                             setIsOwnerDropdownOpen(false);
                           }}
-                          className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center ${filters.ownerId === owner.id.toString() ? 'bg-blue-50' : ''}`}
+                          className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === '' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
                         >
-                          <div className={`w-4 h-4 border rounded-full mr-3 flex items-center justify-center flex-shrink-0 ${filters.ownerId === owner.id.toString() ? 'border-blue-600' : 'border-gray-300'}`}>
-                            {filters.ownerId === owner.id.toString() && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
+                          <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === '' ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                            {filters.ownerId === '' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                           </div>
-                          <span className="text-sm text-gray-900">{owner.name}</span>
+                          <span className="text-sm font-medium">All Owners</span>
                         </div>
-                      ))}
+                        {owners.map((owner) => (
+                          <div
+                            key={owner.id}
+                            onClick={() => {
+                              setFilters({ ...filters, ownerId: owner.id.toString() });
+                              setIsOwnerDropdownOpen(false);
+                            }}
+                            className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === owner.id.toString() ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                          >
+                            <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === owner.id.toString() ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                              {filters.ownerId === owner.id.toString() && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                            </div>
+                            <span className="text-sm">{owner.name}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-              <div className="w-full sm:col-span-2 lg:col-span-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Property</label>
-                <div className="space-y-2">
-                  {/* Search Input */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Search by property name, nickname, or ID..."
-                      value={propertySearch}
-                      onChange={(e) => setPropertySearch(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {propertySearch && (
-                      <button
-                        onClick={() => setPropertySearch('')}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        x
-                      </button>
-                    )}
-                  </div>
 
-                  {/* Property Dropdown - Multi-select */}
-                  <div className="relative" ref={propertyDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-left bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
-                    >
-                      <span className="text-gray-900 truncate">
-                        {filters.propertyIds.length > 0
-                          ? `${filters.propertyIds.length} properties selected`
-                          : `All Properties (${filteredProperties.length})`}
-                      </span>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
-                    </button>
+              {/* Property */}
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Property</label>
+                <div className="relative" ref={propertyDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
+                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isPropertyDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
+                  >
+                    <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mr-2" />
+                    <span className={`truncate flex-1 ${filters.propertyIds.length > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                      {filters.propertyIds.length > 0
+                        ? `${filters.propertyIds.length} properties selected`
+                        : `All Properties (${filteredProperties.length})`}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
 
-                    {/* Custom Dropdown Popup */}
-                    {isPropertyDropdownOpen && (
-                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg flex flex-col">
-                        {/* Action buttons */}
-                        <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-                          <span className="text-xs text-gray-600">
-                            {filters.propertyIds.length > 0 ? `${filters.propertyIds.length} selected` : 'Select properties'}
-                          </span>
-                          <div className="flex gap-2">
+                  {/* Combined Search + Dropdown Popup */}
+                  {isPropertyDropdownOpen && (
+                    <div className="absolute z-50 mt-1.5 w-full bg-white border border-gray-200 rounded-xl shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      {/* Search input inside dropdown */}
+                      <div className="px-3 pt-3 pb-2 flex-shrink-0">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input
+                            type="text"
+                            placeholder="Search properties..."
+                            value={propertySearch}
+                            onChange={(e) => setPropertySearch(e.target.value)}
+                            className="w-full border border-gray-200 bg-gray-50 rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 focus:bg-white transition-colors"
+                            autoFocus
+                          />
+                          {propertySearch && (
                             <button
-                              type="button"
-                              onClick={() => setFilters({ ...filters, propertyIds: filteredProperties.map(p => p.id.toString()), propertyId: '' })}
-                              className="text-xs text-blue-600 hover:text-blue-800"
+                              onClick={() => setPropertySearch('')}
+                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 w-4 h-4 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors"
                             >
-                              Select All
+                              <span className="text-xs leading-none">&times;</span>
                             </button>
-                            <span className="text-gray-300">|</span>
-                            <button
-                              type="button"
-                              onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
-                              className="text-xs text-gray-600 hover:text-gray-800"
-                            >
-                              Clear
-                            </button>
-                          </div>
+                          )}
                         </div>
-
-                        {/* Property List */}
-                        <div className="max-h-60 overflow-y-auto flex-1">
-                          {filteredProperties.map((property) => {
-                            const isSelected = filters.propertyIds.includes(property.id.toString());
-                            return (
-                              <div
-                                key={property.id}
-                                onClick={() => {
-                                  const newIds = isSelected
-                                    ? filters.propertyIds.filter(id => id !== property.id.toString())
-                                    : [...filters.propertyIds, property.id.toString()];
-                                  setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
-                                }}
-                                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''
-                                  }`}
-                              >
-                                <div className={`w-4 h-4 border rounded mr-3 flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
-                                  }`}>
-                                  {isSelected && <Check className="w-3 h-3 text-white" />}
-                                </div>
-                                <span className="text-sm text-gray-900 truncate flex-1">
-                                  {property.nickname || property.displayName || property.name}
-                                </span>
-                                <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                                  ID: {property.id}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Done button */}
-                        <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                      </div>
+                      {/* Action buttons */}
+                      <div className="px-3 py-1.5 flex justify-between items-center flex-shrink-0 border-b border-gray-100">
+                        <span className="text-xs text-gray-500">
+                          {filters.propertyIds.length > 0 ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">{filters.propertyIds.length}</span>
+                              selected
+                            </span>
+                          ) : 'Select properties'}
+                        </span>
+                        <div className="flex gap-1">
                           <button
                             type="button"
-                            onClick={() => setIsPropertyDropdownOpen(false)}
-                            className="w-full px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                            onClick={() => setFilters({ ...filters, propertyIds: filteredProperties.map(p => p.id.toString()), propertyId: '' })}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
                           >
-                            Done
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
+                            className="text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded-md transition-colors"
+                          >
+                            Clear
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
+
+                      {/* Property List */}
+                      <div className="max-h-[480px] overflow-y-auto flex-1 py-1">
+                        {filteredProperties.map((property) => {
+                          const isSelected = filters.propertyIds.includes(property.id.toString());
+                          return (
+                            <div
+                              key={property.id}
+                              onClick={() => {
+                                const newIds = isSelected
+                                  ? filters.propertyIds.filter(id => id !== property.id.toString())
+                                  : [...filters.propertyIds, property.id.toString()];
+                                setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
+                              }}
+                              className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                            >
+                              <div className={`w-4 h-4 border-2 rounded flex items-center justify-center flex-shrink-0 transition-all duration-150 ${isSelected ? 'bg-blue-500 border-blue-500 shadow-sm' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={`text-sm truncate flex-1 ml-3 ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                                {property.nickname || property.displayName || property.name}
+                              </span>
+                              <span className="text-[11px] text-gray-400 ml-2 flex-shrink-0 tabular-nums">
+                                {property.id}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Done button */}
+                      <div className="px-3 py-2.5 border-t border-gray-100 bg-gray-50/80 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => { setIsPropertyDropdownOpen(false); setPropertySearch(''); }}
+                          className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="w-full sm:w-auto">
+
+              {/* Start Date */}
+              <div className="flex-shrink-0">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
                 <input
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                  className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="w-full sm:w-auto">
+
+              {/* End Date */}
+              <div className="flex-shrink-0">
                 <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                  className="w-full sm:w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
-            {/* Hide $0 Activity Toggle */}
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <label className="inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filters.hideZeroActivity}
-                  onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="ml-2 text-sm text-gray-600">Hide $0 activity statements</span>
-                <span className="ml-1 text-xs text-gray-400">(no revenue & no payout)</span>
-              </label>
+
+              {/* Hide $0 Toggle */}
+              <div className="flex-shrink-0 flex items-center pb-1">
+                <label className="inline-flex items-center cursor-pointer whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={filters.hideZeroActivity}
+                    onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="ml-1.5 text-xs text-gray-600">Hide $0</span>
+                </label>
+              </div>
             </div>
           </div>
 

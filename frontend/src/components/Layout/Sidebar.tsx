@@ -213,7 +213,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
             </div>
-            <div className="max-h-64 overflow-y-auto">
+            <div className="max-h-[528px] overflow-y-auto">
               {newListings.length === 0 ? (
                 <div className="px-4 py-6 text-center text-gray-500">
                   No new listings
