@@ -287,8 +287,8 @@ router.get('/', async (req, res) => {
                             const category = (exp.category || '').toLowerCase();
                             const type = (exp.type || '').toLowerCase();
                             const description = (exp.description || '').toLowerCase();
-                            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
-                            if (isCleaning) return sum; // Skip cleaning expenses - already deducted in grossPayout
+                            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+                            if (isCleaningOrSupplies) return sum; // Skip cleaning/supplies expenses - already deducted in grossPayout
                         }
 
                         return sum + Math.abs(exp.amount);
@@ -725,15 +725,23 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             }
         }
 
-        // Filter out cleaning expenses for properties with cleaningFeePassThrough enabled
+        // Identify supplies expenses
+        const suppliesExpenses = periodExpenses.filter(exp => {
+            const category = (exp.category || '').toLowerCase();
+            const type = (exp.type || '').toLowerCase();
+            const description = (exp.description || '').toLowerCase();
+            return category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+        });
+
+        // Filter out cleaning and supplies expenses for properties with cleaningFeePassThrough enabled
         // This prevents double-charging (once via Cleaning Expense column, once via expense list)
         const filteredExpenses = periodExpenses.filter(exp => {
             const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
             const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
 
             if (hasCleaningPassThrough) {
-                // Exclude cleaning expenses for this property
-                return !cleaningExpenses.includes(exp);
+                // Exclude cleaning and supplies expenses for this property
+                return !cleaningExpenses.includes(exp) && !suppliesExpenses.includes(exp);
             }
             return true;
         });
@@ -1304,8 +1312,8 @@ router.post('/generate', async (req, res) => {
                 const category = (exp.category || '').toLowerCase();
                 const type = (exp.type || '').toLowerCase();
                 const description = (exp.description || '').toLowerCase();
-                // Exclude if categorized as cleaning
-                return !category.includes('cleaning') && !type.includes('cleaning') && !description.startsWith('cleaning');
+                // Exclude if categorized as cleaning or supplies
+                return !category.includes('cleaning') && !type.includes('cleaning') && !description.startsWith('cleaning') && !category.includes('supplies') && !type.includes('supplies') && !description.includes('supplies');
             })
             : periodExpenses;
 
@@ -1967,7 +1975,8 @@ router.put('/:id/reconfigure', async (req, res) => {
         const filteredExpenses = cleaningFeePassThrough
             ? expenseCandidates.filter(exp => {
                 const cat = (exp.category || exp.type || '').toLowerCase();
-                return !cat.includes('cleaning');
+                const desc = (exp.description || '').toLowerCase();
+                return !cat.includes('cleaning') && !cat.includes('supplies') && !desc.includes('cleaning') && !desc.includes('supplies');
             })
             : expenseCandidates;
 
@@ -2505,7 +2514,7 @@ router.put('/:id', async (req, res) => {
                 if (statement.cleaningFeePassThrough) {
                     const category = (item.category || '').toLowerCase();
                     const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
                         return false;
                     }
                 }
@@ -4823,7 +4832,7 @@ router.get('/:id/view', async (req, res) => {
                 if (statement.cleaningFeePassThrough) {
                     const category = (item.category || '').toLowerCase();
                     const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
                         return false;
                     }
                 }
@@ -4850,7 +4859,7 @@ router.get('/:id/view', async (req, res) => {
                 if (statement.cleaningFeePassThrough) {
                     const category = (item.category || '').toLowerCase();
                     const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
                         return false;
                     }
                 }
@@ -4892,7 +4901,7 @@ router.get('/:id/view', async (req, res) => {
                 if (statement.cleaningFeePassThrough) {
                     const category = (item.category || '').toLowerCase();
                     const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
                         return false;
                     }
                 }
@@ -6286,9 +6295,17 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                     }
 
-                    // Filter out cleaning expenses if cleaningFeePassThrough is enabled
+                    // Identify supplies expenses
+                    const suppliesExpenses = periodExpenses.filter(exp => {
+                        const category = (exp.category || '').toLowerCase();
+                        const type = (exp.type || '').toLowerCase();
+                        const description = (exp.description || '').toLowerCase();
+                        return category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+                    });
+
+                    // Filter out cleaning and supplies expenses if cleaningFeePassThrough is enabled
                     const filteredExpenses = cleaningFeePassThrough
-                        ? periodExpenses.filter(exp => !cleaningExpenses.includes(exp))
+                        ? periodExpenses.filter(exp => !cleaningExpenses.includes(exp) && !suppliesExpenses.includes(exp))
                         : periodExpenses;
 
                     // Generate cleaning fee expenses from reservations when pass-through is enabled
@@ -6709,8 +6726,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                             const category = (exp.category || '').toLowerCase();
                             const type = (exp.type || '').toLowerCase();
                             const description = (exp.description || '').toLowerCase();
-                            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning');
-                            return !isCleaning;
+                            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+                            return !isCleaningOrSupplies;
                         })
                         : periodExpenses;
 

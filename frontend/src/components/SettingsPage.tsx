@@ -19,9 +19,6 @@ import {
   Download,
   Eye,
   Settings,
-  Link,
-  ExternalLink,
-  CheckCircle,
   Calendar,
   Play,
   Pause,
@@ -84,21 +81,10 @@ interface TagSchedule {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, currentUserEmail, hideSidebar = false }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'quickbooks' | 'schedules'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'schedules'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // QuickBooks state
-  const [qbConnected, setQbConnected] = useState(false);
-  const [qbLoading, setQbLoading] = useState(false);
-  const [showTokenModal, setShowTokenModal] = useState(false);
-  const [tokenForm, setTokenForm] = useState({
-    companyId: '',
-    accessToken: '',
-    refreshToken: ''
-  });
-  const [savingTokens, setSavingTokens] = useState(false);
 
   // Schedules state
   const [schedules, setSchedules] = useState<TagSchedule[]>([]);
@@ -166,13 +152,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     loadUsers();
   }, []);
 
-  // Check QuickBooks connection when tab changes
-  useEffect(() => {
-    if (activeTab === 'quickbooks') {
-      checkQuickBooksConnection();
-    }
-  }, [activeTab]);
-
   // Load schedules when tab changes
   useEffect(() => {
     if (activeTab === 'schedules') {
@@ -180,82 +159,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
-  const checkQuickBooksConnection = async () => {
-    try {
-      setQbLoading(true);
-      const response = await fetch('/api/quickbooks/accounts', {
-        headers: {
-          'Authorization': 'Basic ' + btoa('LL:bnb547!')
-        }
-      });
-      const data = await response.json();
-      setQbConnected(data.success === true);
-    } catch {
-      setQbConnected(false);
-    } finally {
-      setQbLoading(false);
-    }
-  };
-
-  const handleConnectQuickBooks = async () => {
-    try {
-      setQbLoading(true);
-      const response = await fetch('/api/quickbooks/auth-url', {
-        headers: {
-          'Authorization': 'Basic ' + btoa('LL:bnb547!')
-        }
-      });
-      const data = await response.json();
-      if (data.success && data.authUrl) {
-        window.open(data.authUrl, '_blank');
-        showToast('QuickBooks authorization window opened. Complete the sign-in process.', 'info');
-      } else {
-        showToast('Failed to get QuickBooks auth URL', 'error');
-      }
-    } catch (err) {
-      showToast('Failed to connect to QuickBooks', 'error');
-    } finally {
-      setQbLoading(false);
-    }
-  };
-
-  const handleSaveTokens = async () => {
-    if (!tokenForm.companyId || !tokenForm.accessToken || !tokenForm.refreshToken) {
-      showToast('Please fill in all fields', 'error');
-      return;
-    }
-
-    try {
-      setSavingTokens(true);
-      const response = await fetch('/api/quickbooks/save-tokens', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + btoa('LL:bnb547!')
-        },
-        body: JSON.stringify({
-          companyId: tokenForm.companyId,
-          accessToken: tokenForm.accessToken,
-          refreshToken: tokenForm.refreshToken
-        })
-      });
-      const data = await response.json();
-      if (data.success) {
-        showToast('Tokens saved successfully! Server restart required.', 'success');
-        setShowTokenModal(false);
-        setTokenForm({ companyId: '', accessToken: '', refreshToken: '' });
-        // Check connection after a brief delay
-        setTimeout(() => checkQuickBooksConnection(), 1000);
-      } else {
-        showToast(data.error || 'Failed to save tokens', 'error');
-      }
-    } catch (err) {
-      showToast('Failed to save tokens', 'error');
-    } finally {
-      setSavingTokens(false);
-    }
-  };
 
   // Schedule management functions
   const getAuthHeaders = (): Record<string, string> => {
@@ -733,17 +636,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
               Activity Log
             </button>
             <button
-              onClick={() => setActiveTab('quickbooks')}
-              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
-                activeTab === 'quickbooks'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Link className="w-4 h-4 mr-2" />
-              QuickBooks
-            </button>
-            <button
               onClick={() => setActiveTab('schedules')}
               className={`flex items-center px-4 py-2 rounded-md transition-colors ${
                 activeTab === 'schedules'
@@ -1095,75 +987,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </div>
-          </div>
-          )}
-
-          {/* QuickBooks Section */}
-          {activeTab === 'quickbooks' && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center">
-              <Link className="w-5 h-5 text-gray-600 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">QuickBooks Integration</h2>
-            </div>
-
-            <div className="p-6">
-              {qbLoading ? (
-                <div className="text-center py-8">
-                  <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-2" />
-                  <p className="text-gray-500">Checking connection status...</p>
-                </div>
-              ) : qbConnected ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle className="w-8 h-8 text-green-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Connected to QuickBooks</h3>
-                  <p className="text-gray-500 mb-4">Your QuickBooks account is connected and ready to use.</p>
-                  <button
-                    onClick={checkQuickBooksConnection}
-                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                  >
-                    <RefreshCw className="w-4 h-4 inline mr-2" />
-                    Refresh Status
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Link className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Connect to QuickBooks</h3>
-                  <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                    Connect your QuickBooks account to sync transactions, manage expenses, and streamline your accounting workflow.
-                  </p>
-                  <div className="flex flex-col items-center gap-3">
-                    <button
-                      onClick={handleConnectQuickBooks}
-                      disabled={qbLoading}
-                      className="inline-flex items-center px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                    >
-                      <ExternalLink className="w-5 h-5 mr-2" />
-                      Connect to QuickBooks
-                    </button>
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <div className="w-16 h-px bg-gray-300"></div>
-                      <span className="text-sm">or</span>
-                      <div className="w-16 h-px bg-gray-300"></div>
-                    </div>
-                    <button
-                      onClick={() => setShowTokenModal(true)}
-                      className="inline-flex items-center px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Paste Tokens from Playground
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-4">
-                    You'll be redirected to Intuit to authorize the connection.
-                  </p>
                 </div>
               )}
             </div>
@@ -1784,95 +1607,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
               >
                 Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Token Modal */}
-      {showTokenModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Paste QuickBooks Tokens</h2>
-              <p className="text-sm text-gray-500">Copy tokens from QuickBooks Playground</p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                <p className="text-sm text-blue-800">
-                  <strong>Instructions:</strong> Go to{' '}
-                  <a
-                    href="https://developer.intuit.com/app/developer/playground"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-blue-600"
-                  >
-                    QuickBooks Playground
-                  </a>, connect to your sandbox company, then copy the tokens from the "Get App Now" response.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Company ID (realmId)
-                </label>
-                <input
-                  type="text"
-                  value={tokenForm.companyId}
-                  onChange={(e) => setTokenForm({ ...tokenForm, companyId: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder="9341453585361979"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Access Token
-                </label>
-                <textarea
-                  value={tokenForm.accessToken}
-                  onChange={(e) => setTokenForm({ ...tokenForm, accessToken: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs h-24 resize-none"
-                  placeholder="eyJlbmMiOiJBMTI4Q0JDLUhTMjU2..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Refresh Token
-                </label>
-                <textarea
-                  value={tokenForm.refreshToken}
-                  onChange={(e) => setTokenForm({ ...tokenForm, refreshToken: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs h-24 resize-none"
-                  placeholder="AB11734437284aw2zOlXS1..."
-                />
-              </div>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowTokenModal(false);
-                  setTokenForm({ companyId: '', accessToken: '', refreshToken: '' });
-                }}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveTokens}
-                disabled={savingTokens}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center"
-              >
-                {savingTokens ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Save Tokens
-                  </>
-                )}
               </button>
             </div>
           </div>

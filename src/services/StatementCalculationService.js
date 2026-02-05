@@ -146,16 +146,17 @@ class StatementCalculationService {
                 continue;
             }
 
-            // Check if cleaning expense
+            // Check if cleaning or supplies expense
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
             const description = (exp.description || '').toLowerCase();
-            const isCleaning = category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
+            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning') ||
+                category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
 
-            // Skip cleaning expenses for properties with cleaningFeePassThrough enabled
+            // Skip cleaning and supplies expenses for properties with cleaningFeePassThrough enabled
             const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
             const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
-            if (isCleaning && hasCleaningPassThrough) {
+            if (isCleaningOrSupplies && hasCleaningPassThrough) {
                 continue;
             }
 
