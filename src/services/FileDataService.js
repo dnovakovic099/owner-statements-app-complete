@@ -75,8 +75,10 @@ class FileDataService {
                 return [];
             }
 
-            // Transform to our format
-            const listings = response.result.map(listing => ({
+            const activeHostifyIds = new Set(response.result.map(l => l.id));
+
+            // Transform Hostify listing to our format
+            const transformListing = (listing, isOffboarded = false) => ({
                 id: listing.id,
                 name: listing.name || listing.nickname || `Property ${listing.id}`,
                 nickname: listing.nickname || null,
@@ -94,11 +96,14 @@ class FileDataService {
                 checkOutTime: listing.checkout ? parseInt(listing.checkout.split(':')[0]) : 11,
                 minNights: listing.min_nights || 1,
                 maxNights: listing.max_nights || 365,
-                isActive: listing.is_listed === 1,
+                isActive: !isOffboarded,
+                isOffboarded,
                 syncedAt: new Date().toISOString()
-            }));
+            });
 
-            // Merge database fields
+            const listings = response.result.map(l => transformListing(l, false));
+
+            // Merge database fields + find offboarded (in DB but not in Hostify active set)
             try {
                 const ListingService = require('./ListingService');
                 const dbListings = await ListingService.getListingsWithPmFees();
@@ -139,6 +144,50 @@ class FileDataService {
                         listing.stripeAccountId = null;
                         listing.stripeOnboardingStatus = 'missing';
                     }
+                });
+
+                // Add offboarded listings: exist in DB but NOT in Hostify active set
+                const hostifyListingIds = new Set(listings.map(l => parseInt(l.id)));
+                const offboardedDbListings = dbListings.filter(db => !hostifyListingIds.has(parseInt(db.id)));
+
+                offboardedDbListings.forEach(db => {
+                    listings.push({
+                        id: parseInt(db.id),
+                        name: db.name || db.displayName || `Property ${db.id}`,
+                        nickname: db.nickname || null,
+                        displayName: db.displayName || null,
+                        address: db.address || '',
+                        country: '',
+                        city: db.city || '',
+                        personCapacity: 0,
+                        bedroomsNumber: 0,
+                        bathroomsNumber: 0,
+                        currency: 'USD',
+                        price: 0,
+                        cleaningFee: 0,
+                        checkInTimeStart: 15,
+                        checkInTimeEnd: 22,
+                        checkOutTime: 11,
+                        minNights: 1,
+                        maxNights: 365,
+                        isActive: false,
+                        isOffboarded: true,
+                        tags: db.tags || [],
+                        pmFeePercentage: db.pmFeePercentage || 15.00,
+                        isCohostOnAirbnb: Boolean(db.isCohostOnAirbnb),
+                        cleaningFeePassThrough: Boolean(db.cleaningFeePassThrough),
+                        disregardTax: Boolean(db.disregardTax),
+                        airbnbPassThroughTax: Boolean(db.airbnbPassThroughTax),
+                        guestPaidDamageCoverage: Boolean(db.guestPaidDamageCoverage),
+                        waiveCommission: Boolean(db.waiveCommission),
+                        waiveCommissionUntil: db.waiveCommissionUntil || null,
+                        internalNotes: db.internalNotes || null,
+                        payoutStatus: db.payoutStatus || 'missing',
+                        payoutNotes: db.payoutNotes || null,
+                        stripeAccountId: db.stripeAccountId || null,
+                        stripeOnboardingStatus: db.stripeOnboardingStatus || 'missing',
+                        syncedAt: new Date().toISOString()
+                    });
                 });
             } catch (dbError) {
                 listings.forEach(listing => {

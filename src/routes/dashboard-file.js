@@ -73,6 +73,7 @@ router.get('/properties', async (req, res) => {
                     techFeeAmount: 50.00,
                     insuranceFeeAmount: 25.00,
                     isActive: listing.isActive,
+                    isOffboarded: listing.isOffboarded || false,
                     Owner: {
                         id: owner.id,
                         name: owner.name,
@@ -96,6 +97,7 @@ router.get('/properties', async (req, res) => {
                 techFeeAmount: 50.00,
                 insuranceFeeAmount: 25.00,
                 isActive: listing.isActive,
+                isOffboarded: listing.isOffboarded || false,
                 Owner: {
                     id: defaultOwner?.id || 1,
                     name: defaultOwner?.name || 'Default Owner',

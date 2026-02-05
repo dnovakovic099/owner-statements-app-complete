@@ -25,6 +25,7 @@ export interface Property {
   techFeeAmount: number | null;
   insuranceFeeAmount: number | null;
   isActive: boolean;
+  isOffboarded?: boolean;
   createdAt: string;
   updatedAt: string;
   Owner?: Owner;
@@ -191,6 +192,7 @@ export interface Listing {
   stripeAccountId?: string | null;
   stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   isActive: boolean;
+  isOffboarded?: boolean;
   lastSyncedAt?: string;
   syncedAt?: string;
   createdAt?: string;

@@ -555,6 +555,31 @@ class HostifyService {
         return result;
     }
 
+    /**
+     * Get ALL listings from Hostify including offboarded/inactive ones (with pagination)
+     */
+    async getAllPropertiesIncludingOffboarded() {
+        let allProperties = [];
+        let page = 1;
+        const perPage = 100;
+        let hasMore = true;
+
+        while (hasMore) {
+            const response = await this.makeRequest('/listings', { page, per_page: perPage });
+
+            if (response.success && response.listings?.length > 0) {
+                allProperties = allProperties.concat(response.listings);
+                hasMore = response.listings.length === perPage && response.total > allProperties.length;
+                page++;
+                if (page > 50) break; // Safety limit
+            } else {
+                hasMore = false;
+            }
+        }
+
+        return allProperties;
+    }
+
     async getProperty(listingId) {
         return await this.makeRequest(`/listings/${listingId}`);
     }

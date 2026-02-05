@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Tag, Check, ChevronDown, Calendar, Building2, Users, Loader2, X, FolderOpen, Home } from 'lucide-react';
+import { Search, Tag, Check, ChevronDown, ChevronRight, Calendar, Building2, Users, Loader2, X, FolderOpen, Home, AlertTriangle } from 'lucide-react';
 import { Owner, Property, Listing, ListingGroup } from '../types';
 import { listingsAPI, groupsAPI } from '../services/api';
 import { useToast } from './ui/toast';
@@ -57,6 +57,15 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
 
+  // Offboarded section toggle - auto-expand when searching
+  const [showOffboarded, setShowOffboarded] = useState(false);
+  useEffect(() => {
+    if (propertySearch) setShowOffboarded(true);
+  }, [propertySearch]);
+
+  // Format date as YYYY-MM-DD in local timezone (avoids UTC shift)
+  const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   // Helper function to calculate date range based on tag
   const getDateRangeForTag = (tag: string): { start: string; end: string } => {
     const today = new Date();
@@ -66,50 +75,40 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
     if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) {
       // WEEKLY: Monday to Monday
-      // Find most recent Monday
       const lastMonday = new Date(today);
       const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       lastMonday.setDate(today.getDate() - daysToMonday);
 
-      // Previous Monday (7 days before last Monday)
       const prevMonday = new Date(lastMonday);
       prevMonday.setDate(lastMonday.getDate() - 7);
 
       return {
-        start: prevMonday.toISOString().split('T')[0],
-        end: lastMonday.toISOString().split('T')[0]
+        start: formatDate(prevMonday),
+        end: formatDate(lastMonday)
       };
     } else if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
       // BI-WEEKLY: Monday to Monday (14 days), every 2 weeks from reference date
-      // Reference start date: Jan 19, 2026 (a Monday)
-      const referenceDate = new Date('2026-01-19');
+      const referenceDate = new Date(2026, 0, 19); // Jan 19, 2026 (local)
 
-      // Find most recent Monday
       const lastMonday = new Date(today);
       const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       lastMonday.setDate(today.getDate() - daysToMonday);
 
-      // Calculate weeks since reference date
       const msSinceReference = lastMonday.getTime() - referenceDate.getTime();
       const daysSinceReference = Math.floor(msSinceReference / (1000 * 60 * 60 * 24));
       const weeksSinceReference = Math.floor(daysSinceReference / 7);
 
-      // Find the most recent bi-weekly Monday (every 2 weeks from reference)
-      // If we're on an even week number from reference, this Monday is a bi-weekly date
-      // Otherwise, go back 1 week to find the last bi-weekly Monday
       let endMonday = new Date(lastMonday);
       if (weeksSinceReference % 2 !== 0) {
-        // Not a bi-weekly week, go back 1 week
         endMonday.setDate(lastMonday.getDate() - 7);
       }
 
-      // Start is 14 days before end
       const startMonday = new Date(endMonday);
       startMonday.setDate(endMonday.getDate() - 14);
 
       return {
-        start: startMonday.toISOString().split('T')[0],
-        end: endMonday.toISOString().split('T')[0]
+        start: formatDate(startMonday),
+        end: formatDate(endMonday)
       };
     } else {
       // MONTHLY: Last month
@@ -117,8 +116,8 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
 
       return {
-        start: lastMonth.toISOString().split('T')[0],
-        end: lastDayOfLastMonth.toISOString().split('T')[0]
+        start: formatDate(lastMonth),
+        end: formatDate(lastDayOfLastMonth)
       };
     }
   };
@@ -174,13 +173,17 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     );
   });
 
+  // Split into active and offboarded properties (from Hostify API)
+  const activeProperties = searchFilteredProperties.filter(p => !p.isOffboarded);
+  const offboardedProperties = searchFilteredProperties.filter(p => p.isOffboarded);
+
   useEffect(() => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-    setStartDate(firstDay.toISOString().split('T')[0]);
-    setEndDate(lastDay.toISOString().split('T')[0]);
+    setStartDate(formatDate(firstDay));
+    setEndDate(formatDate(lastDay));
 
     // Set Default as the default owner
     setOwnerId('default');
@@ -338,7 +341,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   };
 
   const selectAllProperties = () => {
-    const allIds = searchFilteredProperties.map(p => p.id.toString());
+    const allIds = activeProperties.map(p => p.id.toString());
     setSelectedPropertyIds(allIds);
   };
 
@@ -346,11 +349,41 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     setSelectedPropertyIds([]);
   };
 
-  const setQuickDate = (type: 'thisMonth' | 'lastMonth' | 'thisYear') => {
+  const setQuickDate = (type: 'thisWeek' | 'lastWeek' | 'lastTwoWeeks' | 'thisMonth' | 'lastMonth' | 'thisYear') => {
     const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ...
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     let firstDay: Date, lastDay: Date;
 
     switch (type) {
+      case 'thisWeek': {
+        // Monday of this week to Sunday
+        firstDay = new Date(today);
+        firstDay.setDate(today.getDate() - daysToMonday);
+        lastDay = new Date(firstDay);
+        lastDay.setDate(firstDay.getDate() + 6);
+        break;
+      }
+      case 'lastWeek': {
+        // Monday to Sunday of last week
+        const thisMonday = new Date(today);
+        thisMonday.setDate(today.getDate() - daysToMonday);
+        firstDay = new Date(thisMonday);
+        firstDay.setDate(thisMonday.getDate() - 7);
+        lastDay = new Date(firstDay);
+        lastDay.setDate(firstDay.getDate() + 6);
+        break;
+      }
+      case 'lastTwoWeeks': {
+        // Monday 2 weeks ago to last Sunday
+        const thisMonday = new Date(today);
+        thisMonday.setDate(today.getDate() - daysToMonday);
+        firstDay = new Date(thisMonday);
+        firstDay.setDate(thisMonday.getDate() - 14);
+        lastDay = new Date(thisMonday);
+        lastDay.setDate(thisMonday.getDate() - 1);
+        break;
+      }
       case 'thisMonth':
         firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -365,13 +398,13 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
         break;
     }
 
-    setStartDate(firstDay.toISOString().split('T')[0]);
-    setEndDate(lastDay.toISOString().split('T')[0]);
+    setStartDate(formatDate(firstDay));
+    setEndDate(formatDate(lastDay));
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[1200px] w-[95vw] max-h-[85vh] p-0 gap-0 overflow-hidden" hideCloseButton>
+      <DialogContent className="sm:max-w-[1200px] w-[95vw] max-h-[92vh] p-0 gap-0 overflow-hidden" hideCloseButton>
         {/* Header */}
         <DialogHeader className="px-6 py-3 border-b bg-gradient-to-r from-blue-600 to-blue-700">
           <div className="flex items-center justify-between">
@@ -420,7 +453,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           </div>
 
           {/* Three Column Landscape Layout */}
-          <div className="p-4 overflow-y-auto max-h-[calc(85vh-180px)]">
+          <div className="p-4 overflow-y-auto max-h-[calc(92vh-180px)]">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* COLUMN 1 - Owner & Tags */}
               <div className="space-y-4">
@@ -684,7 +717,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                     </div>
                     <div className="flex gap-2 text-xs">
                       <button type="button" onClick={selectAllProperties} className="text-blue-600 hover:text-blue-800 font-medium">
-                        Select All ({searchFilteredProperties.length})
+                        Select All ({activeProperties.length})
                       </button>
                       <span className="text-gray-300">|</span>
                       <button type="button" onClick={clearPropertySelection} className="text-gray-600 hover:text-gray-800">
@@ -767,8 +800,8 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                           </>
                         )}
 
-                        {/* Properties Section */}
-                        {searchFilteredProperties.map((property) => {
+                        {/* Active Properties Section */}
+                        {activeProperties.map((property) => {
                           const propertyGroup = groups.find(g => g.listingIds?.includes(property.id));
                           return (
                             <label
@@ -801,6 +834,60 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                             </label>
                           );
                         })}
+
+                        {/* Offboarded Properties Section */}
+                        {offboardedProperties.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setShowOffboarded(!showOffboarded)}
+                              className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-orange-700 uppercase tracking-wide bg-orange-50 border-y border-orange-200 mt-2 hover:bg-orange-100 transition-colors"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <span>Offboarded ({offboardedProperties.length})</span>
+                              </div>
+                              {showOffboarded ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            {showOffboarded && offboardedProperties.map((property) => {
+                              const propertyGroup = groups.find(g => g.listingIds?.includes(property.id));
+                              return (
+                                <label
+                                  key={property.id}
+                                  className={`flex items-center px-2 py-1.5 cursor-pointer hover:bg-orange-50 rounded-md transition-colors ${
+                                    selectedPropertyIds.includes(property.id.toString()) ? 'bg-orange-100' : ''
+                                  }`}
+                                  title={`PM Commission: ${property.pmPercentage ?? 15}%`}
+                                >
+                                  <Checkbox
+                                    checked={selectedPropertyIds.includes(property.id.toString())}
+                                    onCheckedChange={() => {
+                                      togglePropertySelection(property.id.toString());
+                                      setSelectedGroupId(null);
+                                    }}
+                                    className="mr-2"
+                                  />
+                                  <Home className="w-4 h-4 text-orange-400 mr-2 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm text-gray-600 truncate block">
+                                      {property.nickname || property.name}
+                                    </span>
+                                    {propertyGroup && (
+                                      <span className="text-xs text-purple-600">
+                                        (in: {propertyGroup.name})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="ml-1 text-xs text-gray-400">#{property.id}</span>
+                                </label>
+                              );
+                            })}
+                          </>
+                        )}
                       </div>
                     )}
                   </ScrollArea>
@@ -879,29 +966,24 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                   </div>
 
                   {/* Quick Date Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs text-gray-500">Quick:</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDate('thisMonth')}
-                      className="px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                    >
-                      This Month
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDate('lastMonth')}
-                      className="px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                    >
-                      Last Month
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDate('thisYear')}
-                      className="px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                    >
-                      This Year
-                    </button>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      ['thisWeek', 'This Week'],
+                      ['lastWeek', 'Last Week'],
+                      ['lastTwoWeeks', 'Last 2 Wks'],
+                      ['thisMonth', 'This Month'],
+                      ['lastMonth', 'Last Month'],
+                      ['thisYear', 'This Year'],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setQuickDate(key)}
+                        className="px-2 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 rounded-md transition-colors text-center"
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

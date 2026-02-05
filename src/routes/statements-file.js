@@ -6004,17 +6004,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
         logger.debug('Loaded expenses', { context: 'StatementsFile', count: allExpenses.length });
 
-        // Filter listings:
-        // - If property has tags, include it (don't skip based on isActive)
-        // - If property has no tags, only include if isActive is true
-        let activeListings = listings.filter(l => {
-            const hasTags = l.tags && l.tags.length > 0;
-            if (hasTags) {
-                return true; // Properties with tags are never skipped
-            }
-            return l.isActive; // Properties without tags must be active
-        });
-        logger.debug('Properties after isActive/tags filter', { context: 'StatementsFile', activeListings: activeListings.length, totalActive: listings.filter(l => l.isActive).length, tagged: listings.filter(l => l.tags && l.tags.length > 0).length });
+        // Include all listings (active + offboarded) - offboarded properties can still have statements generated manually
+        let activeListings = listings;
+        logger.debug('Properties available for generation', { context: 'StatementsFile', totalListings: listings.length, active: listings.filter(l => l.isActive).length, offboarded: listings.filter(l => !l.isActive).length });
 
         // Apply tag filter if specified (case-insensitive)
         // STEP 3.5: If tag is specified, first generate GROUP statements, then individual non-grouped listings

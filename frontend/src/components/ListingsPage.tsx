@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown } from 'lucide-react';
+import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { listingsAPI, tagScheduleAPI, groupsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types';
 import LoadingSpinner from './LoadingSpinner';
@@ -85,6 +85,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [editingGroup, setEditingGroup] = useState<ListingGroup | null>(null);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
 
+  // Offboarded section toggle
+  const [showOffboardedListings, setShowOffboardedListings] = useState(false);
+
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
@@ -132,6 +135,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(searchTerm), 300);
     return () => clearTimeout(handle);
+  }, [searchTerm]);
+
+  // Auto-expand offboarded section when searching
+  useEffect(() => {
+    if (searchTerm) {
+      setShowOffboardedListings(true);
+    }
   }, [searchTerm]);
 
   // Reload listings on filter changes (server-side filtering)
@@ -507,6 +517,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   // Filter listings based on all filter criteria
   const filteredListings = listings;
+
+  // Split into active and offboarded listings (from Hostify API)
+  const activeListings = filteredListings.filter(l => !l.isOffboarded);
+  const offboardedListings = filteredListings.filter(l => l.isOffboarded);
 
   // Toggle a tag in the filter
   const toggleFilterTag = (tag: string) => {
@@ -1120,53 +1134,124 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   No listings found
                 </p>
               ) : (
-                filteredListings.map((listing) => (
-                  <button
-                    key={listing.id}
-                    onClick={() => setSelectedListingId(listing.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
-                        ? 'bg-blue-100 border-2 border-blue-500'
-                        : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-gray-900 truncate text-sm">
-                        {getListingDisplayName(listing)}
-                      </div>
-                      <span
-                        className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : (listing.payoutStatus || 'missing') === 'pending'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-red-100 text-red-700'
-                          }`}
-                      >
-                        {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      ID: {listing.id}
-                      {listing.city && ` • ${listing.city}`}
-                      {listing.isCohostOnAirbnb && (
-                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                          Co-host
+                <>
+                  {/* Active Listings */}
+                  {activeListings.map((listing) => (
+                    <button
+                      key={listing.id}
+                      onClick={() => setSelectedListingId(listing.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
+                          ? 'bg-blue-100 border-2 border-blue-500'
+                          : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                        }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-gray-900 truncate text-sm">
+                          {getListingDisplayName(listing)}
+                        </div>
+                        <span
+                          className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : (listing.payoutStatus || 'missing') === 'pending'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                        >
+                          {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
                         </span>
-                      )}
-                    </div>
-                    {listing.tags && listing.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {listing.tags.map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                          >
-                            {tag}
-                          </span>
-                        ))}
                       </div>
-                    )}
-                  </button>
-                ))
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        ID: {listing.id}
+                        {listing.city && ` • ${listing.city}`}
+                        {listing.isCohostOnAirbnb && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                            Co-host
+                          </span>
+                        )}
+                      </div>
+                      {listing.tags && listing.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {listing.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+
+                  {/* Offboarded Listings Section */}
+                  {offboardedListings.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowOffboardedListings(!showOffboardedListings)}
+                        className="w-full flex items-center justify-between px-3 py-2 mt-2 text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Offboarded ({offboardedListings.length})</span>
+                        </div>
+                        {showOffboardedListings ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                      </button>
+                      {showOffboardedListings && offboardedListings.map((listing) => (
+                        <button
+                          key={listing.id}
+                          onClick={() => setSelectedListingId(listing.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
+                              ? 'bg-orange-100 border-2 border-orange-400'
+                              : 'bg-orange-50/50 border border-orange-200 hover:bg-orange-50 hover:border-orange-300'
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-medium text-gray-700 truncate text-sm">
+                              {getListingDisplayName(listing)}
+                            </div>
+                            <span
+                              className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : (listing.payoutStatus || 'missing') === 'pending'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-red-100 text-red-700'
+                                }`}
+                            >
+                              {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            ID: {listing.id}
+                            {listing.city && ` • ${listing.city}`}
+                            {listing.isCohostOnAirbnb && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                Co-host
+                              </span>
+                            )}
+                          </div>
+                          {listing.tags && listing.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {listing.tags.map((tag, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>
