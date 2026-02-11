@@ -283,8 +283,10 @@ class TagScheduleService {
                     // Get group details with member listings
                     const groupDetails = await groupService.getGroupById(group.id);
 
-                    if (!groupDetails.members || groupDetails.members.length === 0) {
-                        logger.info(`[TagScheduleService] Skipping group "${group.name}" - no member listings`);
+                    // Filter out inactive/offboarded listings from group members
+                    const activeMembers = (groupDetails.members || []).filter(m => m.isActive);
+                    if (activeMembers.length === 0) {
+                        logger.info(`[TagScheduleService] Skipping group "${group.name}" - no active member listings`);
                         continue;
                     }
 
@@ -295,11 +297,11 @@ class TagScheduleService {
                         group.calculationType || schedule.calculationType || 'checkout'
                     );
 
-                    // Generate combined draft statement for the group
+                    // Generate combined draft statement for the group (active members only)
                     const statement = await StatementService.generateGroupStatement({
                         groupId: group.id,
                         groupName: group.name,
-                        listingIds: groupDetails.members.map(m => m.id),
+                        listingIds: activeMembers.map(m => m.id),
                         startDate: dateRange.start,
                         endDate: dateRange.end,
                         calculationType
@@ -335,14 +337,16 @@ class TagScheduleService {
     }
 
     /**
-     * Auto-generate draft statements for individual (non-grouped) listings with the given tag
+     * Auto-generate draft statements for individual (non-grouped) listings with the given tag.
+     * Includes listings that are in groups whose group-level tags don't match the schedule tag,
+     * so they aren't silently skipped by both the group and individual generation paths.
      */
     async autoGenerateIndividualStatements(tagName, schedule) {
         const results = { generated: 0, skipped: 0, errors: 0, listings: [] };
 
         try {
-            // Get all listings with this tag that are NOT in any group
-            // Use pattern matching for WEEKLY, BI-WEEKLY, MONTHLY tags
+            // Get all active listings with this tag (including grouped ones)
+            // We'll filter out listings whose groups already handle this tag
             const pattern = this.buildTagMatchPattern(tagName);
             const upperTag = (tagName || '').toUpperCase();
 
@@ -352,7 +356,6 @@ class TagScheduleService {
                 listings = await Listing.findAll({
                     where: {
                         isActive: true,
-                        groupId: null, // Only non-grouped listings
                         tags: { [Op.iLike]: pattern }
                     }
                 });
@@ -371,7 +374,6 @@ class TagScheduleService {
                 listings = await Listing.findAll({
                     where: {
                         isActive: true,
-                        groupId: null, // Only non-grouped listings
                         tags: {
                             [Op.or]: [
                                 { [Op.iLike]: tagName },
@@ -384,12 +386,32 @@ class TagScheduleService {
                 });
             }
 
+            // Filter out listings whose groups already have this tag
+            // (those are handled by autoGenerateGroupStatements)
+            if (listings.some(l => l.groupId)) {
+                const groupService = getListingGroupService();
+                const matchedGroups = await groupService.getGroupsByTag(tagName);
+                const matchedGroupIds = new Set(matchedGroups.map(g => g.id));
+
+                listings = listings.filter(l => {
+                    if (!l.groupId) return true; // Non-grouped listings always included
+                    if (matchedGroupIds.has(l.groupId)) {
+                        // This listing's group already handles this tag via group generation
+                        logger.info(`[TagScheduleService] Skipping listing "${l.displayName || l.name}" - its group (ID: ${l.groupId}) already handles tag "${tagName}"`);
+                        return false;
+                    }
+                    // Listing is in a group that does NOT have this tag - include for individual generation
+                    logger.info(`[TagScheduleService] Including grouped listing "${l.displayName || l.name}" (group ID: ${l.groupId}) - group does not have tag "${tagName}"`);
+                    return true;
+                });
+            }
+
             if (listings.length === 0) {
-                logger.info(`[TagScheduleService] No non-grouped listings found with tag "${tagName}"`);
+                logger.info(`[TagScheduleService] No eligible listings found with tag "${tagName}"`);
                 return results;
             }
 
-            logger.info(`[TagScheduleService] Found ${listings.length} non-grouped listings with tag "${tagName}", generating draft statements...`);
+            logger.info(`[TagScheduleService] Found ${listings.length} eligible listings with tag "${tagName}", generating draft statements...`);
 
             // Calculate date range based on tag
             const dateRange = this.calculateDateRangeForTag(tagName);
