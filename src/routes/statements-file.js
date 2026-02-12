@@ -417,51 +417,62 @@ router.post('/cancelled-counts', async (req, res) => {
             return res.json({ counts });
         }
 
-        // Only fetch from Hostify for statements without stored counts
+        // Fetch from Hostify per-property instead of one giant query
         const hostifyService = require('../services/HostifyService');
 
-        const minStartDate = missingIds.reduce((min, { statement }) =>
-            statement.weekStartDate < min ? statement.weekStartDate : min, missingIds[0].statement.weekStartDate);
-        const maxEndDate = missingIds.reduce((max, { statement }) =>
-            statement.weekEndDate > max ? statement.weekEndDate : max, missingIds[0].statement.weekEndDate);
+        // Group missing statements by their primary property ID for targeted queries
+        const byProperty = new Map();
+        for (const entry of missingIds) {
+            const propertyIds = entry.statement.propertyIds || (entry.statement.propertyId ? [entry.statement.propertyId] : []);
+            const primaryId = propertyIds[0];
+            if (!primaryId) continue;
+            if (!byProperty.has(primaryId)) byProperty.set(primaryId, []);
+            byProperty.get(primaryId).push(entry);
+        }
 
-        // Fetch reservations with a timeout
-        let allCancelledReservations = [];
-        try {
-            const apiResponse = await Promise.race([
-                hostifyService.getAllReservations(minStartDate, maxEndDate, null, 'checkIn'),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Hostify timeout')), 30000))
-            ]);
-            const allReservations = apiResponse.result || [];
-            allCancelledReservations = allReservations.filter(r => r.status === 'cancelled');
-        } catch (fetchError) {
-            logger.warn('Cancelled counts fetch timeout, returning partial data', { context: 'StatementsFile' });
-            // Return what we have, set missing to 0
-            for (const { id, cacheKey } of missingIds) {
-                counts[id] = 0;
-                cancelledCountsCache.set(cacheKey, { count: 0, time: Date.now() });
+        // Fetch cancelled reservations per property with individual timeouts
+        const PER_PROPERTY_TIMEOUT = 10000;
+        await Promise.all([...byProperty.entries()].map(async ([propertyId, entries]) => {
+            const minStart = entries.reduce((min, { statement }) =>
+                statement.weekStartDate < min ? statement.weekStartDate : min, entries[0].statement.weekStartDate);
+            const maxEnd = entries.reduce((max, { statement }) =>
+                statement.weekEndDate > max ? statement.weekEndDate : max, entries[0].statement.weekEndDate);
+
+            let cancelledReservations = [];
+            try {
+                const apiResponse = await Promise.race([
+                    hostifyService.getAllReservations(minStart, maxEnd, propertyId, 'checkIn'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Hostify timeout')), PER_PROPERTY_TIMEOUT))
+                ]);
+                const allRes = apiResponse.result || [];
+                cancelledReservations = allRes.filter(r => r.status === 'cancelled');
+            } catch (fetchError) {
+                logger.warn('Cancelled counts fetch timeout for property, skipping', { context: 'StatementsFile', propertyId });
+                // Don't cache 0 on timeout — leave these statements without a count so they retry next time
+                for (const { id } of entries) {
+                    counts[id] = 0;
+                }
+                return;
             }
-            return res.json({ counts });
-        }
 
-        // Calculate counts for missing statements
-        for (const { id, statement, cacheKey } of missingIds) {
-            const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
-            const propertyIdSet = new Set(propertyIds.map(p => parseInt(p)));
-            const stmtStart = new Date(statement.weekStartDate);
-            const stmtEnd = new Date(statement.weekEndDate);
+            for (const { id, statement, cacheKey } of entries) {
+                const propertyIds = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
+                const propertyIdSet = new Set(propertyIds.map(p => parseInt(p)));
+                const stmtStart = new Date(statement.weekStartDate);
+                const stmtEnd = new Date(statement.weekEndDate);
 
-            const cancelledCount = allCancelledReservations.filter(r => {
-                const resPropertyId = parseInt(r.propertyId);
-                if (!propertyIdSet.has(resPropertyId)) return false;
-                const resCheckIn = new Date(r.checkInDate);
-                const resCheckOut = new Date(r.checkOutDate);
-                return resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
-            }).length;
+                const cancelledCount = cancelledReservations.filter(r => {
+                    const resPropertyId = parseInt(r.propertyId);
+                    if (!propertyIdSet.has(resPropertyId)) return false;
+                    const resCheckIn = new Date(r.checkInDate);
+                    const resCheckOut = new Date(r.checkOutDate);
+                    return resCheckIn <= stmtEnd && resCheckOut >= stmtStart;
+                }).length;
 
-            counts[id] = cancelledCount;
-            cancelledCountsCache.set(cacheKey, { count: cancelledCount, time: Date.now() });
-        }
+                counts[id] = cancelledCount;
+                cancelledCountsCache.set(cacheKey, { count: cancelledCount, time: Date.now() });
+            }
+        }));
 
         res.json({ counts });
     } catch (error) {
