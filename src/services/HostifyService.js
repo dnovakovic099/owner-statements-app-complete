@@ -28,6 +28,85 @@ class HostifyService {
         this._allListingsCacheTime = null;
         this._allListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
         this._allListingsFetchPromise = null; // Lock for concurrent fetches
+
+        // Exchange rate cache (for converting non-USD currencies)
+        this._exchangeRates = new Map(); // key: currency code, value: { rate, time }
+        this._exchangeRateTTL = 60 * 60 * 1000; // 1 hour
+    }
+
+    /**
+     * Get exchange rate to USD for a given currency.
+     * Uses Frankfurter API (free, no key, daily ECB rates).
+     * Returns 1.0 for USD. Caches rates for 1 hour.
+     */
+    async getExchangeRateToUSD(currency) {
+        if (!currency || currency.toUpperCase() === 'USD') return 1.0;
+
+        const code = currency.toUpperCase();
+        const cached = this._exchangeRates.get(code);
+        if (cached && Date.now() - cached.time < this._exchangeRateTTL) {
+            return cached.rate;
+        }
+
+        try {
+            const response = await axios.get(`https://api.frankfurter.dev/v1/latest?base=${code}&symbols=USD`, { timeout: 10000 });
+            const rate = response.data?.rates?.USD;
+            if (rate) {
+                this._exchangeRates.set(code, { rate, time: Date.now() });
+                console.log(`[CURRENCY] Fetched exchange rate: 1 ${code} = ${rate} USD`);
+                return rate;
+            }
+        } catch (error) {
+            console.log(`[CURRENCY] Failed to fetch rate for ${code}, using cached or fallback`);
+            if (cached) return cached.rate; // Use stale cache if available
+        }
+
+        // Fallback rates for common currencies if API fails
+        const fallbackRates = { CAD: 0.73, EUR: 1.08, GBP: 1.26, AUD: 0.65, MXN: 0.058 };
+        return fallbackRates[code] || 1.0;
+    }
+
+    /**
+     * Convert all financial fields of a transformed reservation from source currency to USD.
+     */
+    convertReservationToUSD(reservation, exchangeRate) {
+        if (exchangeRate === 1.0) return reservation;
+
+        const financialFields = [
+            'baseRate', 'cleaningFee', 'cleaningAndOtherFees', 'platformFees',
+            'clientRevenue', 'clientTaxResponsibility', 'clientPayout',
+            'resortFee', 'grossAmount', 'hostPayoutAmount'
+        ];
+
+        const converted = { ...reservation, originalCurrency: reservation.currency, exchangeRate };
+        for (const field of financialFields) {
+            if (typeof converted[field] === 'number') {
+                converted[field] = Math.round(converted[field] * exchangeRate * 100) / 100;
+            }
+        }
+        converted.currency = 'USD';
+        return converted;
+    }
+
+    /**
+     * Convert an array of reservations to USD. Fetches exchange rates for any non-USD currencies found.
+     */
+    async convertReservationsBatchToUSD(reservations) {
+        // Find unique non-USD currencies
+        const currencies = [...new Set(reservations.map(r => r.currency).filter(c => c && c !== 'USD'))];
+        if (currencies.length === 0) return reservations;
+
+        // Fetch all needed rates in parallel
+        const rates = {};
+        await Promise.all(currencies.map(async (cur) => {
+            rates[cur] = await this.getExchangeRateToUSD(cur);
+        }));
+
+        return reservations.map(r => {
+            if (!r.currency || r.currency === 'USD') return r;
+            const rate = rates[r.currency] || 1.0;
+            return this.convertReservationToUSD(r, rate);
+        });
     }
 
     // Get all listings (without service_pms filter) for child lookup by parent_id
@@ -322,7 +401,9 @@ class HostifyService {
             enrichedReservations.push(...detailedBatch);
         }
 
-        return { result: enrichedReservations };
+        // Convert any non-USD reservations to USD
+        const usdReservations = await this.convertReservationsBatchToUSD(enrichedReservations);
+        return { result: usdReservations };
     }
 
     /**
@@ -496,11 +577,14 @@ class HostifyService {
         // extracted in transformReservation() from the list API with fees=1 parameter.
         // The fees=1 parameter should include all fee details - no enrichment needed.
 
+        // Convert any non-USD reservations to USD
+        const usdReservations = await this.convertReservationsBatchToUSD(dedupedReservations);
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[BULK-FETCH] Complete! ${dedupedReservations.length} reservations fetched in ${elapsed}s`);
+        console.log(`[BULK-FETCH] Complete! ${usdReservations.length} reservations fetched in ${elapsed}s`);
 
         return {
-            reservations: dedupedReservations,
+            reservations: usdReservations,
             childToParentMap,
             listings: allListings,
             dateRange: { fromDate, toDate },
@@ -911,7 +995,8 @@ class HostifyService {
             status: this.mapStatus(hostifyReservation.status),
             source: hostifyReservation.source || 'Unknown',
             isProrated: false, // Will be determined by business rules
-            weeklyPayoutDate: null // Will be set when processing
+            weeklyPayoutDate: null, // Will be set when processing
+            currency: hostifyReservation.currency || 'USD'
         };
 
         // Extract detailed financial data from Hostify response
@@ -1279,7 +1364,8 @@ class HostifyService {
             }
 
             console.log(`[OVERLAP] Enriched ${enrichedReservations.length} reservations`);
-            return enrichedReservations;
+            // Convert any non-USD reservations to USD
+            return await this.convertReservationsBatchToUSD(enrichedReservations);
         } catch (error) {
             throw error;
         }
@@ -1469,7 +1555,8 @@ class HostifyService {
         }
 
         console.log(`[FINANCE] Enriched ${enrichedReservations.length} reservations`);
-        return enrichedReservations;
+        // Convert any non-USD reservations to USD
+        return await this.convertReservationsBatchToUSD(enrichedReservations);
     }
 }
 
