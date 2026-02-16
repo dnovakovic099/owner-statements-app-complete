@@ -181,6 +181,9 @@ export interface Listing {
   includeChildListings?: boolean;
   waiveCommission?: boolean;
   waiveCommissionUntil?: string | null;
+  newPmFeeEnabled?: boolean;
+  newPmFeePercentage?: number | null;
+  newPmFeeStartDate?: string | null;
   defaultPetFee?: number | null;
   tags?: string[];
   ownerEmail?: string | null;

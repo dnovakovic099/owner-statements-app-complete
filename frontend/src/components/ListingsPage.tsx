@@ -98,6 +98,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [waiveCommission, setWaiveCommission] = useState(false);
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
+  const [newPmFeeEnabled, setNewPmFeeEnabled] = useState(false);
+  const [newPmFeePercentage, setNewPmFeePercentage] = useState<number>(15);
+  const [newPmFeeStartDate, setNewPmFeeStartDate] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
@@ -331,6 +334,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage ?? 15);
+        setNewPmFeeEnabled(listing.newPmFeeEnabled || false);
+        setNewPmFeePercentage(listing.newPmFeePercentage ?? 15);
+        setNewPmFeeStartDate(listing.newPmFeeStartDate || '');
         setTags(listing.tags || []);
         setOwnerEmail(listing.ownerEmail || '');
         setOwnerGreeting(listing.ownerGreeting || '');
@@ -420,6 +426,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setWaiveCommission(false);
     setWaiveCommissionUntil('');
     setPmFeePercentage(15);
+    setNewPmFeeEnabled(false);
+    setNewPmFeePercentage(15);
+    setNewPmFeeStartDate('');
     setTags([]);
     setNewTag('');
     setOwnerEmail('');
@@ -448,6 +457,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
+        newPmFeeEnabled,
+        newPmFeePercentage: newPmFeeEnabled ? newPmFeePercentage : null,
+        newPmFeeStartDate: newPmFeeEnabled ? newPmFeeStartDate : null,
         tags,
         ownerEmail: ownerEmail.trim() || null,
         ownerGreeting: ownerGreeting.trim() || null,
@@ -1498,6 +1510,53 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       <p className="text-xs text-gray-500 mt-2">
                         The percentage charged for property management services (e.g., 15% = 15.00)
                       </p>
+                    </div>
+
+                    {/* New PM Fee % Transition */}
+                    <div className={`border rounded-lg p-4 ${newPmFeeEnabled ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="newPmFeeEnabled"
+                          checked={newPmFeeEnabled}
+                          onChange={(e) => setNewPmFeeEnabled(e.target.checked)}
+                          className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                        />
+                        <label htmlFor="newPmFeeEnabled" className="text-sm font-medium text-gray-900">
+                          New PM Fee % (Transition)
+                        </label>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1 ml-7">
+                        Enable to set a new PM fee percentage. Reservations created on or after the start date will use the new rate.
+                      </p>
+                      {newPmFeeEnabled && (
+                        <div className="mt-3 ml-7 flex items-center space-x-4">
+                          <div>
+                            <label className="block text-xs font-medium text-amber-800 mb-1">New PM Fee %</label>
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="number"
+                                value={newPmFeePercentage}
+                                onChange={(e) => setNewPmFeePercentage(parseFloat(e.target.value))}
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                className="w-24 border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                              />
+                              <span className="text-sm text-gray-600">%</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-800 mb-1">Start Date</label>
+                            <input
+                              type="date"
+                              value={newPmFeeStartDate}
+                              onChange={(e) => setNewPmFeeStartDate(e.target.value)}
+                              className="border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Owner Email */}

@@ -248,7 +248,7 @@ class StatementCalculationService {
             totalRevenue += revenue;
 
             // Calculate PM commission
-            const resPmFee = listing.pmFeePercentage ?? 15;
+            const resPmFee = this._getEffectivePmFee(listing, res.createdAt);
             pmCommission += revenue * (resPmFee / 100);
         }
 
@@ -282,7 +282,7 @@ class StatementCalculationService {
 
         for (const res of periodReservations) {
             const resListingInfo = listingInfoMap[res.propertyId] || {};
-            const resPmPercentage = resListingInfo.pmFeePercentage ?? 15;
+            const resPmPercentage = this._getEffectivePmFee(resListingInfo, res.createdAt);
             const resDisregardTax = resListingInfo.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
@@ -332,6 +332,21 @@ class StatementCalculationService {
     }
 
     /**
+     * Determine the effective PM fee for a reservation based on the listing's
+     * new-PM-fee transition settings and the reservation's created_at date.
+     */
+    _getEffectivePmFee(listingInfo, reservationCreatedAt) {
+        const baseFee = listingInfo.pmFeePercentage ?? 15;
+        if (!listingInfo.newPmFeeEnabled || !listingInfo.newPmFeeStartDate || listingInfo.newPmFeePercentage == null) {
+            return baseFee;
+        }
+        if (!reservationCreatedAt) return baseFee;
+        const createdDate = new Date(reservationCreatedAt);
+        const startDate = new Date(listingInfo.newPmFeeStartDate);
+        return createdDate >= startDate ? parseFloat(listingInfo.newPmFeePercentage) : baseFee;
+    }
+
+    /**
      * Build internal notes from listings
      */
     buildInternalNotes(listings) {
@@ -346,4 +361,9 @@ class StatementCalculationService {
     }
 }
 
-module.exports = new StatementCalculationService();
+const instance = new StatementCalculationService();
+
+// Export the helper as a standalone function so routes can use it directly
+instance.getEffectivePmFee = instance._getEffectivePmFee.bind(instance);
+
+module.exports = instance;

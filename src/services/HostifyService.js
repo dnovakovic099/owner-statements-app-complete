@@ -996,7 +996,8 @@ class HostifyService {
             source: hostifyReservation.source || 'Unknown',
             isProrated: false, // Will be determined by business rules
             weeklyPayoutDate: null, // Will be set when processing
-            currency: hostifyReservation.currency || 'USD'
+            currency: hostifyReservation.currency || 'USD',
+            createdAt: hostifyReservation.created_at || null
         };
 
         // Extract detailed financial data from Hostify response

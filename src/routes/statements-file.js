@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const FileDataService = require('../services/FileDataService');
 const BackgroundJobService = require('../services/BackgroundJobService');
 const ListingService = require('../services/ListingService');
+const StatementCalculationService = require('../services/StatementCalculationService');
 const { ActivityLog } = require('../models');
 
 const isLlCoverExpense = (expense) => Boolean(expense && expense.llCover && expense.llCover !== 0);
@@ -227,7 +228,7 @@ router.get('/', async (req, res) => {
                     let grossPayoutSum = 0;
                     for (const res of s.reservations) {
                         const listing = listingMap.get(parseInt(res.propertyId));
-                        const pmPercentage = listing?.pmFeePercentage ?? s.pmPercentage ?? 15;
+                        const pmPercentage = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : (s.pmPercentage ?? 15);
                         const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
                         const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
                         const disregardTax = listing?.disregardTax || false;
@@ -797,7 +798,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 continue;
             }
 
-            const resPmFee = listing?.pmFeePercentage ?? 15;
+            const resPmFee = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : 15;
             // Use clientRevenue (prorated) for calendar-based statements
             const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             const resCommission = resRevenue * (resPmFee / 100);
@@ -817,7 +818,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         let grossPayoutSum = 0;
         for (const res of periodReservations) {
             const resListingInfo = listingInfoMap[res.propertyId] || {};
-            const resPmPercentage = resListingInfo.pmFeePercentage ?? 15;
+            const resPmPercentage = StatementCalculationService.getEffectivePmFee(resListingInfo, res.createdAt);
             const resDisregardTax = resListingInfo.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
@@ -1375,33 +1376,36 @@ router.post('/generate', async (req, res) => {
         let pmPercentage = 15; // For display purposes
 
         if (propertyId) {
-            // Single property - use its PM fee for revenue (excluding co-hosted Airbnb)
-            if (listingInfo && listingInfo.pmFeePercentage !== null) {
-                pmPercentage = listingInfo.pmFeePercentage;
+            // Single property - calculate PM commission per-reservation (accounts for PM fee transitions)
+            for (const res of periodReservations) {
+                const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+                if (isAirbnb && (listingInfo?.isCohostOnAirbnb || false)) continue;
+                const resPmFee = listingInfo ? StatementCalculationService.getEffectivePmFee(listingInfo, res.createdAt) : 15;
+                const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+                pmCommission += resRevenue * (resPmFee / 100);
             }
-            pmCommission = totalRevenue * (pmPercentage / 100);
+            pmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : (listingInfo?.pmFeePercentage ?? 15);
         } else {
             // Multi-property statement - calculate PM commission per reservation
-            const propertyPmFees = {}; // Cache PM fees to avoid repeated DB calls
             const propertyListings = {}; // Cache listing info
 
             for (const res of periodReservations) {
-                if (!propertyPmFees[res.propertyId]) {
-                    const listing = await ListingService.getListingWithPmFee(res.propertyId);
-                    propertyPmFees[res.propertyId] = listing?.pmFeePercentage ?? 15;
-                    propertyListings[res.propertyId] = listing;
+                if (!propertyListings[res.propertyId]) {
+                    propertyListings[res.propertyId] = await ListingService.getListingWithPmFee(res.propertyId);
                 }
+
+                const resListing = propertyListings[res.propertyId];
 
                 // Check if this is Airbnb and co-hosted
                 const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
-                const isCohostForProperty = propertyListings[res.propertyId]?.isCohostOnAirbnb || false;
+                const isCohostForProperty = resListing?.isCohostOnAirbnb || false;
 
                 // Skip PM commission for co-hosted Airbnb reservations
                 if (isAirbnb && isCohostForProperty) {
                     continue;
                 }
 
-                const resPmFee = propertyPmFees[res.propertyId];
+                const resPmFee = resListing ? StatementCalculationService.getEffectivePmFee(resListing, res.createdAt) : 15;
                 // Use clientRevenue (prorated) for calendar-based statements
                 const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                 const resCommission = resRevenue * (resPmFee / 100);
@@ -1422,7 +1426,7 @@ router.post('/generate', async (req, res) => {
         let grossPayoutSum = 0;
         for (const res of periodReservations) {
             const resListingInfo = propertyId ? listingInfo : await ListingService.getListingWithPmFee(res.propertyId);
-            const resPmPercentage = resListingInfo?.pmFeePercentage ?? 15;
+            const resPmPercentage = resListingInfo ? StatementCalculationService.getEffectivePmFee(resListingInfo, res.createdAt) : 15;
             const resDisregardTax = resListingInfo?.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo?.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo?.isCohostOnAirbnb || false;
@@ -1819,10 +1823,10 @@ router.put('/:id/reconfigure', async (req, res) => {
             const llCoverExpenses = allExpenses.filter(exp => isLlCoverExpense(exp));
             const visibleExpenses = allExpenses.filter(exp => !isLlCoverExpense(exp));
 
-            // Build property PM fees map
-            const propertyPmFees = {};
+            // Build property listing info map for PM fee lookups
+            const propertyListingMap = {};
             targetListings.forEach(l => {
-                propertyPmFees[l.id] = l.pmFeePercentage ?? 15;
+                propertyListingMap[l.id] = l;
             });
 
             // Calculate totals
@@ -1834,7 +1838,8 @@ router.put('/:id/reconfigure', async (req, res) => {
             for (const res of allReservations) {
                 const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
                 totalRevenue += revenue;
-                const resPmFee = propertyPmFees[res.propertyId] ?? 15;
+                const resListing = propertyListingMap[res.propertyId] || {};
+                const resPmFee = StatementCalculationService.getEffectivePmFee(resListing, res.createdAt);
                 pmCommission += revenue * (resPmFee / 100);
             }
 
@@ -1946,7 +1951,6 @@ router.put('/:id/reconfigure', async (req, res) => {
         const owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
 
         // Get listing configuration
-        const pmPercentage = listing.pmFeePercentage ?? 15;
         const isCohostOnAirbnb = listing.isCohostOnAirbnb || false;
         const airbnbPassThroughTax = listing.airbnbPassThroughTax || false;
         const disregardTax = listing.disregardTax || false;
@@ -1972,9 +1976,10 @@ router.put('/:id/reconfigure', async (req, res) => {
             totalRevenue += revenue;
             if (cleaningFeePassThrough) {
                 // Formula: ceil(guestPaid / (1 + PM%)) rounded to nearest $5
+                const resPmPercentage = StatementCalculationService.getEffectivePmFee(listing, res.createdAt);
                 const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
                 const calculatedFee = guestPaidCleaningFee > 0
-                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                    ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                     : 0;
                 totalCleaningFeeFromReservations += calculatedFee;
             }
@@ -2022,8 +2027,16 @@ router.put('/:id/reconfigure', async (req, res) => {
             }
         }
 
-        // Calculate PM commission
-        const pmCommission = totalRevenue * (pmPercentage / 100);
+        // Calculate PM commission per-reservation (accounts for PM fee transitions)
+        let pmCommission = 0;
+        for (const res of periodReservations) {
+            const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
+            if (isAirbnb && isCohostOnAirbnb) continue;
+            const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            const resPmFee = StatementCalculationService.getEffectivePmFee(listing, res.createdAt);
+            pmCommission += revenue * (resPmFee / 100);
+        }
+        const avgPmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : (listing.pmFeePercentage ?? 15);
 
         // Calculate fees
         const techFees = 50;
@@ -2041,17 +2054,18 @@ router.put('/:id/reconfigure', async (req, res) => {
         // Calculate owner payout
         let grossPayoutSum = 0;
         for (const res of periodReservations) {
+            const resPmPct = StatementCalculationService.getEffectivePmFee(listing, res.createdAt);
             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
             const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-            const luxuryFee = clientRevenue * (pmPercentage / 100);
+            const luxuryFee = clientRevenue * (resPmPct / 100);
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
-                ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
             const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -2083,7 +2097,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             totalRevenue: Math.round(finalTotalRevenue * 100) / 100,
             totalExpenses: Math.round(totalExpenses * 100) / 100,
             pmCommission: Math.round(pmCommission * 100) / 100,
-            pmPercentage,
+            pmPercentage: Math.round(avgPmPercentage * 100) / 100,
             techFees: Math.round(techFees * 100) / 100,
             insuranceFees: Math.round(insuranceFees * 100) / 100,
             ownerPayout: Math.round(finalOwnerPayout * 100) / 100,
@@ -2541,18 +2555,25 @@ router.put('/:id', async (req, res) => {
 
             statement.totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
 
-            // Calculate PM Commission respecting custom reservation values
+            // Calculate PM Commission respecting custom reservation values and PM fee transitions
             // - Custom reservations: use user-entered luxuryLodgingFee
-            // - Regular reservations: calculate from clientRevenue × pmPercentage
-            const pmPercentage = parseFloat(statement.pmPercentage || 10);
+            // - Regular reservations: calculate using effective PM fee per reservation
+            // Fetch current listing settings for PM fee transition support
+            const editPropertyIds = [...new Set((statement.reservations || []).map(r => r.propertyId).filter(Boolean))];
+            const editListingMap = {};
+            for (const pid of editPropertyIds) {
+                editListingMap[pid] = await ListingService.getListingWithPmFee(parseInt(pid));
+            }
             statement.pmCommission = Math.round((statement.reservations || []).reduce((sum, res) => {
                 if (res.isCustom && res.luxuryLodgingFee !== undefined) {
                     // Custom reservation: use user-entered PM Commission
                     return sum + (parseFloat(res.luxuryLodgingFee) || 0);
                 } else {
-                    // Regular reservation: calculate from revenue × percentage
+                    // Regular reservation: calculate using effective PM fee (with transition support)
+                    const resListing = editListingMap[res.propertyId];
+                    const resPmPct = resListing ? StatementCalculationService.getEffectivePmFee(resListing, res.createdAt) : (parseFloat(statement.pmPercentage) || 15);
                     const revenue = res.hasDetailedFinance ? (parseFloat(res.clientRevenue) || 0) : (parseFloat(res.grossAmount) || 0);
-                    return sum + (revenue * (pmPercentage / 100));
+                    return sum + (revenue * (resPmPct / 100));
                 }
             }, 0) * 100) / 100;
 
@@ -2754,6 +2775,9 @@ router.get('/:id/view', async (req, res) => {
                     waiveCommissionUntil: listing.waiveCommissionUntil || null,
                     cleaningFee: hostifyListing?.cleaningFee || 0,
                     pmFeePercentage: listing.pmFeePercentage ?? 15,
+                    newPmFeeEnabled: Boolean(listing.newPmFeeEnabled),
+                    newPmFeePercentage: listing.newPmFeePercentage ?? null,
+                    newPmFeeStartDate: listing.newPmFeeStartDate || null,
                     nickname: listing.nickname || listing.displayName || listing.name || ''
                 };
             });
@@ -2781,7 +2805,10 @@ router.get('/:id/view', async (req, res) => {
                     waiveCommission: Boolean(currentListing.waiveCommission),
                     waiveCommissionUntil: currentListing.waiveCommissionUntil || null,
                     cleaningFee: hostifyListing?.cleaningFee || 0,
-                    pmFeePercentage: currentListing.pmFeePercentage ?? 15
+                    pmFeePercentage: currentListing.pmFeePercentage ?? 15,
+                    newPmFeeEnabled: Boolean(currentListing.newPmFeeEnabled),
+                    newPmFeePercentage: currentListing.newPmFeePercentage ?? null,
+                    newPmFeeStartDate: currentListing.newPmFeeStartDate || null
                 };
                 // Also set on statement object for template access
                 statement.waiveCommission = Boolean(currentListing.waiveCommission);
@@ -2863,17 +2890,18 @@ router.get('/:id/view', async (req, res) => {
             const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
             const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
 
+            const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
             // PM Commission: use stored value for custom reservations, otherwise calculate
             const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                 ? reservation.luxuryLodgingFee
-                : clientRevenue * (propSettings.pmFeePercentage / 100);
+                : clientRevenue * (resPmPct / 100);
             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
@@ -4615,10 +4643,11 @@ router.get('/:id/view', async (req, res) => {
                     const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                     const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
                     // PM Commission: use stored value for custom reservations, otherwise calculate
-                    // Use per-property PM fee percentage for regular reservations
+                    // Use per-property PM fee percentage for regular reservations (with transition support)
+                    const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
                     const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                         ? reservation.luxuryLodgingFee
-                        : clientRevenue * (propSettings.pmFeePercentage / 100);
+                        : clientRevenue * (resPmPct / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
                     // Tax calculation priority (uses per-property settings):
@@ -4633,7 +4662,7 @@ router.get('/:id/view', async (req, res) => {
                     // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                     const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                        ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
                     // Check if PM commission waiver is active for this property
@@ -4729,9 +4758,10 @@ router.get('/:id/view', async (req, res) => {
                             const platformFees = reservation.hasDetailedFinance ? reservation.platformFees : (reservation.grossAmount * 0.03);
                             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
                             // PM Commission: use stored value for custom reservations, otherwise calculate
+                            const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
                             const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                                 ? reservation.luxuryLodgingFee
-                                : clientRevenue * (propSettings.pmFeePercentage / 100);
+                                : clientRevenue * (resPmPct / 100);
                             const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
                             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
@@ -4740,7 +4770,7 @@ router.get('/:id/view', async (req, res) => {
                             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                             const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
                             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                                ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                                 : 0;
 
                             // Check if PM commission waiver is active for this property
@@ -4986,18 +5016,19 @@ router.get('/:id/view', async (req, res) => {
                     const isAirbnb = reservation.source && reservation.source.toLowerCase().includes('airbnb');
                     const isCohostAirbnb = isAirbnb && propSettings.isCohostOnAirbnb;
 
+                    const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
                     const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
                     // PM Commission: use stored value for custom reservations, otherwise calculate
                     const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                         ? reservation.luxuryLodgingFee
-                        : clientRevenue * (propSettings.pmFeePercentage / 100);
+                        : clientRevenue * (resPmPct / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
                     // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                     // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                     const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
-                        ? Math.ceil((guestPaidCleaningFee / (1 + propSettings.pmFeePercentage / 100)) / 5) * 5
+                        ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
                     // Check if PM commission waiver is active for this property
@@ -6343,13 +6374,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Combine filtered expenses with cleaning fee expenses
                     const combinedExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
 
-                    // Get PM percentage
-                    let pmPercentage = 15;
-                    if (listing && listing.pmFeePercentage !== null) {
-                        pmPercentage = listing.pmFeePercentage;
-                    }
-
-                    // Calculate totals
+                    // Calculate totals with per-reservation PM fee (accounts for PM fee transitions)
                     let totalRevenue = 0;
                     let totalGrossPayout = 0;
                     let totalPmCommission = 0;
@@ -6358,14 +6383,15 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                         const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
 
+                        const resPmPct = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : 15;
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-                        const pmFee = clientRevenue * (pmPercentage / 100);
+                        const pmFee = clientRevenue * (resPmPct / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                         const guestPaidCleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
-                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                            ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
@@ -6385,6 +6411,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                         totalGrossPayout += grossPayout;
                     }
+                    const pmPercentage = totalRevenue > 0 ? (totalPmCommission / totalRevenue) * 100 : (listing?.pmFeePercentage ?? 15);
 
                     const totalExpenses = filteredExpenses.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
@@ -6722,12 +6749,8 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         continue;
                     }
 
-                    // Get PM percentage and settings from listing database (property-specific)
-                    let pmPercentage = 15; // Default fallback
+                    // Get listing settings from database (property-specific)
                     const listing = await ListingService.getListingWithPmFee(property.id);
-                    if (listing && listing.pmFeePercentage !== null) {
-                        pmPercentage = listing.pmFeePercentage;
-                    }
                     const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
 
                     // Filter out cleaning expenses if cleaningFeePassThrough is enabled
@@ -6781,14 +6804,15 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
                         const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
 
+                        const resPmPct = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : 15;
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-                        const pmFee = clientRevenue * (pmPercentage / 100);
+                        const pmFee = clientRevenue * (resPmPct / 100);
                         const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                         const guestPaidCleaningFee = res.cleaningFee ?? property.cleaningFee ?? 0;
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
-                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
+                            ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
@@ -6810,6 +6834,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         }
                         totalGrossPayout += grossPayout;
                     }
+                    const pmPercentage = totalRevenue > 0 ? (totalPmCommission / totalRevenue) * 100 : (listing?.pmFeePercentage ?? 15);
 
                     // Separate expenses (negative/costs) from upsells (positive/revenue) - use filtered expenses
                     const totalExpenses = filteredExpenses.reduce((sum, exp) => {

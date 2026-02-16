@@ -108,6 +108,25 @@ const Listing = sequelize.define('Listing', {
         field: 'waive_commission_until',
         comment: 'Date until which commission waiver is active (inclusive)'
     },
+    newPmFeeEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'new_pm_fee_enabled',
+        comment: 'If true, a new PM fee percentage is applied to reservations created on/after the start date'
+    },
+    newPmFeePercentage: {
+        type: DataTypes.DECIMAL(5, 2),
+        allowNull: true,
+        field: 'new_pm_fee_percentage',
+        comment: 'New PM fee percentage for reservations created on/after newPmFeeStartDate'
+    },
+    newPmFeeStartDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        field: 'new_pm_fee_start_date',
+        comment: 'Date from which the new PM fee percentage applies (based on reservation created_at)'
+    },
     defaultPetFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,

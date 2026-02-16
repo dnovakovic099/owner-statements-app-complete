@@ -280,6 +280,11 @@ class ListingService {
                     // Attach group data to each listing
                     return listings.map(l => {
                         const listingJson = l.toJSON();
+                        try {
+                            listingJson.stripeAccountId = decryptOptional(listingJson.stripeAccountId);
+                        } catch (e) {
+                            listingJson.stripeAccountId = null;
+                        }
                         if (listingJson.groupId && groupMap.has(listingJson.groupId)) {
                             const group = groupMap.get(listingJson.groupId);
                             listingJson.group = {
@@ -477,6 +482,9 @@ class ListingService {
             if (config.stripeAccountId !== undefined) {
                 updates.stripeAccountId = encryptOptional(config.stripeAccountId);
             }
+            if (config.newPmFeeEnabled !== undefined) updates.newPmFeeEnabled = config.newPmFeeEnabled;
+            if (config.newPmFeePercentage !== undefined) updates.newPmFeePercentage = config.newPmFeePercentage;
+            if (config.newPmFeeStartDate !== undefined) updates.newPmFeeStartDate = config.newPmFeeStartDate;
             if (config.stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = config.stripeOnboardingStatus;
             // Support groupId assignment (null to remove from group, number to assign to group)
             if (config.groupId !== undefined) updates.groupId = config.groupId;

@@ -223,7 +223,7 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, stripeAccountId, stripeOnboardingStatus } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, stripeAccountId, stripeOnboardingStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -235,6 +235,19 @@ router.put('/:id/config', async (req, res) => {
         if (includeChildListings !== undefined) config.includeChildListings = includeChildListings;
         if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
         if (waiveCommissionUntil !== undefined) config.waiveCommissionUntil = waiveCommissionUntil || null;
+        if (newPmFeeEnabled !== undefined) config.newPmFeeEnabled = newPmFeeEnabled;
+        if (newPmFeePercentage !== undefined) {
+            if (newPmFeePercentage === null) {
+                config.newPmFeePercentage = null;
+            } else {
+                const newFee = parseFloat(newPmFeePercentage);
+                if (isNaN(newFee) || newFee < 0 || newFee > 100) {
+                    return res.status(400).json({ error: 'newPmFeePercentage must be between 0 and 100' });
+                }
+                config.newPmFeePercentage = newFee;
+            }
+        }
+        if (newPmFeeStartDate !== undefined) config.newPmFeeStartDate = newPmFeeStartDate || null;
         if (tags !== undefined) config.tags = tags;
         if (internalNotes !== undefined) config.internalNotes = internalNotes;
         if (ownerEmail !== undefined) config.ownerEmail = ownerEmail;
@@ -303,6 +316,9 @@ router.put('/:id/config', async (req, res) => {
             includeChildListings: 'Include Child Listings',
             waiveCommission: 'Waive Commission',
             waiveCommissionUntil: 'Waive Until',
+            newPmFeeEnabled: 'New PM Fee Enabled',
+            newPmFeePercentage: 'New PM Fee %',
+            newPmFeeStartDate: 'New PM Fee Start Date',
             tags: 'Tags',
             internalNotes: 'Internal Notes',
             ownerEmail: 'Owner Email',
