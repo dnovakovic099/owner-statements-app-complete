@@ -4587,7 +4587,18 @@ router.get('/:id/view', async (req, res) => {
     ${(statement.internalNotes && !isPdf) ? `
     <div class="internal-notes-banner">
         <div class="internal-notes-header">
-            <span class="internal-notes-title">INTERNAL NOTES - PM ${statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15}%</span>
+            <span class="internal-notes-title">INTERNAL NOTES - PM ${(() => {
+                const basePm = statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15;
+                const props = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
+                const transitionListings = props.map(pid => listingSettingsMap[pid]).filter(s => s && s.newPmFeeEnabled && s.newPmFeeStartDate && s.newPmFeePercentage != null);
+                if (transitionListings.length > 0) {
+                    const t = transitionListings[0];
+                    const [y,m,d] = t.newPmFeeStartDate.split('-');
+                    const fmtDate = new Date(y, m-1, d).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+                    return basePm + '% → ' + t.newPmFeePercentage + '% from ' + fmtDate;
+                }
+                return basePm + '%';
+            })()}</span>
         </div>
         <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
     </div>
@@ -4718,7 +4729,7 @@ router.get('/:id/view', async (req, res) => {
                                     <td class="amount-cell revenue-amount">$${cleaningFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell expense-amount">-$${platformFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell revenue-amount">$${clientRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="amount-cell expense-amount">-$${luxuryFeeToDeduct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-cell expense-amount">-$${luxuryFeeToDeduct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${(!isPdf && propSettings.newPmFeeEnabled && propSettings.newPmFeeStartDate) ? `<div style="font-size: 9px; color: ${resPmPct !== (propSettings.pmFeePercentage ?? 15) ? '#d97706' : '#6b7280'}; margin-top: 1px;">${resPmPct}%</div>` : ''}</td>
                                     ${anyCleaningFeePassThrough ? `<td class="amount-cell expense-amount">-$${cleaningFeeForPassThrough.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : ''}
                                     <td class="amount-cell ${shouldAddTax ? 'revenue-amount' : 'info-amount'}">$${taxResponsibility.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td class="amount-cell payout-cell ${grossPayout < 0 ? 'expense-amount' : 'revenue-amount'}">${grossPayout >= 0 ? '$' : '-$'}${Math.abs(grossPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
