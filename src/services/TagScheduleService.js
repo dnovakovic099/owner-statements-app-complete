@@ -386,25 +386,12 @@ class TagScheduleService {
                 });
             }
 
-            // Filter out listings whose groups already have this tag
-            // (those are handled by autoGenerateGroupStatements)
-            if (listings.some(l => l.groupId)) {
-                const groupService = getListingGroupService();
-                const matchedGroups = await groupService.getGroupsByTag(tagName);
-                const matchedGroupIds = new Set(matchedGroups.map(g => g.id));
-
-                listings = listings.filter(l => {
-                    if (!l.groupId) return true; // Non-grouped listings always included
-                    if (matchedGroupIds.has(l.groupId)) {
-                        // This listing's group already handles this tag via group generation
-                        logger.info(`[TagScheduleService] Skipping listing "${l.displayName || l.name}" - its group (ID: ${l.groupId}) already handles tag "${tagName}"`);
-                        return false;
-                    }
-                    // Listing is in a group that does NOT have this tag - include for individual generation
-                    logger.info(`[TagScheduleService] Including grouped listing "${l.displayName || l.name}" (group ID: ${l.groupId}) - group does not have tag "${tagName}"`);
-                    return true;
-                });
-            }
+            // Filter out listings that belong to any group — those are handled by autoGenerateGroupStatements
+            listings = listings.filter(l => {
+                if (!l.groupId) return true; // Non-grouped listings always included
+                logger.info(`[TagScheduleService] Skipping listing "${l.displayName || l.name}" - belongs to group (ID: ${l.groupId}), handled by group generation`);
+                return false;
+            });
 
             if (listings.length === 0) {
                 logger.info(`[TagScheduleService] No eligible listings found with tag "${tagName}"`);

@@ -1027,7 +1027,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
     try {
-        const { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
+        let { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
@@ -1060,9 +1060,14 @@ router.post('/generate', async (req, res) => {
             return await generateCombinedStatement(req, res, groupPropertyIds, ownerId, startDate, endDate, calculationType, group);
         }
 
-        // Handle combined multi-property statement generation
-        if (propertyIds && Array.isArray(propertyIds) && propertyIds.length > 1) {
-            return await generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType);
+        // Handle combined multi-property statement generation (including single-property groups)
+        if (propertyIds && Array.isArray(propertyIds) && propertyIds.length > 0) {
+            if (propertyIds.length === 1 && !groupId) {
+                // Single property passed as array — treat as single property generation
+                propertyId = propertyIds[0];
+            } else {
+                return await generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType);
+            }
         }
 
         // Handle tag-based COMBINED statement generation
