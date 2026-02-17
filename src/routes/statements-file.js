@@ -2862,6 +2862,10 @@ router.get('/:id/view', async (req, res) => {
         let listingSettingsMap = {};
         const hasSnapshot = statement.listingSettingsSnapshot && Object.keys(statement.listingSettingsSnapshot).length > 0;
 
+        // Always load listings (needed for internal notes fallback and cleaning fees)
+        const allListings = await FileDataService.getListings();
+        const hostifyListingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
+
         if (hasSnapshot) {
             // USE STORED SNAPSHOT - statement is immune to live listing changes
             listingSettingsMap = statement.listingSettingsSnapshot;
@@ -2881,9 +2885,6 @@ router.get('/:id/view', async (req, res) => {
             }
         } else {
             // FALLBACK: Fetch CURRENT listing settings (backward compat for old statements)
-            const allListings = await FileDataService.getListings();
-            const hostifyListingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
-
             if (statement.propertyIds && Array.isArray(statement.propertyIds) && statement.propertyIds.length > 0) {
                 // COMBINED STATEMENT: Fetch settings for ALL properties
                 const dbListings = await ListingService.getListingsWithPmFees(statement.propertyIds);
