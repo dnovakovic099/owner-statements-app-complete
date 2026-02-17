@@ -43,10 +43,10 @@ class StatementCalculationService {
         const insuranceFees = propertyCount * 25;
 
         // Calculate cleaning fees for pass-through
-        const totalCleaningFee = this.calculateCleaningFees(periodReservations, listingInfoMap);
+        const totalCleaningFee = this.calculateCleaningFees(periodReservations, listingInfoMap, calculationType, endDate);
 
         // Calculate owner payout using per-reservation logic
-        const grossPayoutSum = this.calculateGrossPayoutSum(periodReservations, listingInfoMap, endDate);
+        const grossPayoutSum = this.calculateGrossPayoutSum(periodReservations, listingInfoMap, endDate, calculationType);
         const ownerPayout = grossPayoutSum + totalUpsells - totalExpenses;
 
         return {
@@ -258,14 +258,29 @@ class StatementCalculationService {
     }
 
     /**
+     * Check if a reservation's checkout date falls within the statement period
+     */
+    _isCheckoutInPeriod(checkOutDate, endDate) {
+        if (!checkOutDate || !endDate) return true;
+        const checkout = new Date(checkOutDate);
+        const periodEnd = new Date(endDate);
+        // Checkout is in period if it's on or before the end date
+        return checkout <= periodEnd;
+    }
+
+    /**
      * Calculate cleaning fees for pass-through properties
      */
-    calculateCleaningFees(periodReservations, listingInfoMap) {
+    calculateCleaningFees(periodReservations, listingInfoMap, calculationType, endDate) {
         let totalCleaningFee = 0;
 
         for (const res of periodReservations) {
             const listing = listingInfoMap[res.propertyId] || {};
             if (listing.cleaningFeePassThrough) {
+                // In calendar mode, only include cleaning fee if checkout is within the period
+                if (calculationType === 'calendar' && !this._isCheckoutInPeriod(res.checkOutDate, endDate)) {
+                    continue;
+                }
                 totalCleaningFee += parseFloat(res.cleaningFee) || 0;
             }
         }
@@ -277,7 +292,7 @@ class StatementCalculationService {
      * Calculate gross payout sum using per-reservation logic
      * This matches the PDF view calculation exactly
      */
-    calculateGrossPayoutSum(periodReservations, listingInfoMap, endDate) {
+    calculateGrossPayoutSum(periodReservations, listingInfoMap, endDate, calculationType) {
         let grossPayoutSum = 0;
 
         for (const res of periodReservations) {
@@ -310,8 +325,10 @@ class StatementCalculationService {
 
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
+            // In calendar mode, only charge cleaning if checkout is within the period
+            const checkoutInPeriod = calculationType !== 'calendar' || this._isCheckoutInPeriod(res.checkOutDate, endDate);
             const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 

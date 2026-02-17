@@ -232,6 +232,49 @@ const Statement = sequelize.define('Statement', {
         allowNull: true,
         field: 'total_transfer_amount',
         comment: 'Total amount transferred (ownerPayout + stripeFee)'
+    },
+    // Snapshot listing settings at generation time (prevents retroactive changes)
+    waiveCommission: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: null,
+        field: 'waive_commission',
+        comment: 'Snapshot of waiveCommission at statement generation time'
+    },
+    waiveCommissionUntil: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        defaultValue: null,
+        field: 'waive_commission_until',
+        comment: 'Snapshot of waiveCommissionUntil at statement generation time'
+    },
+    disregardTax: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: null,
+        field: 'disregard_tax',
+        comment: 'Snapshot of disregardTax at statement generation time'
+    },
+    airbnbPassThroughTax: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: null,
+        field: 'airbnb_pass_through_tax',
+        comment: 'Snapshot of airbnbPassThroughTax at statement generation time'
+    },
+    guestPaidDamageCoverage: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: null,
+        field: 'guest_paid_damage_coverage',
+        comment: 'Snapshot of guestPaidDamageCoverage at statement generation time'
+    },
+    listingSettingsSnapshot: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+        field: 'listing_settings_snapshot',
+        comment: 'Per-property settings map for combined statements at generation time'
     }
 }, {
     tableName: 'statements',

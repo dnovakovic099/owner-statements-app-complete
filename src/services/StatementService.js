@@ -179,6 +179,29 @@ class StatementService {
                 propertyCount: financials.propertyCount,
                 totalCleaningFee: financials.totalCleaningFee,
                 cleaningFeePassThrough: targetListings.some(l => listingInfoMap[l.id]?.cleaningFeePassThrough),
+                // Snapshot per-property listing settings at generation time
+                listingSettingsSnapshot: (() => {
+                    const snapshot = {};
+                    for (const propId of parsedPropertyIds) {
+                        const info = listingInfoMap[propId] || {};
+                        snapshot[propId] = {
+                            isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                            disregardTax: Boolean(info.disregardTax),
+                            airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
+                            cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
+                            guestPaidDamageCoverage: Boolean(info.guestPaidDamageCoverage),
+                            waiveCommission: Boolean(info.waiveCommission),
+                            waiveCommissionUntil: info.waiveCommissionUntil || null,
+                            cleaningFee: info.cleaningFee || 0,
+                            pmFeePercentage: info.pmFeePercentage ?? 15,
+                            newPmFeeEnabled: Boolean(info.newPmFeeEnabled),
+                            newPmFeePercentage: info.newPmFeePercentage ?? null,
+                            newPmFeeStartDate: info.newPmFeeStartDate || null,
+                            nickname: info.nickname || info.displayName || info.name || ''
+                        };
+                    }
+                    return snapshot;
+                })(),
                 status: 'draft',
                 sentAt: null,
                 createdAt: new Date().toISOString(),
@@ -319,6 +342,28 @@ class StatementService {
                 totalCleaningFee: financials.totalCleaningFee,
                 cleaningFeePassThrough: listingInfoMap[parsedPropertyId]?.cleaningFeePassThrough || false,
                 isCohostOnAirbnb: listingInfoMap[parsedPropertyId]?.isCohostOnAirbnb || false,
+                // Snapshot listing settings at generation time
+                waiveCommission: Boolean(listingInfoMap[parsedPropertyId]?.waiveCommission),
+                waiveCommissionUntil: listingInfoMap[parsedPropertyId]?.waiveCommissionUntil || null,
+                disregardTax: Boolean(listingInfoMap[parsedPropertyId]?.disregardTax),
+                airbnbPassThroughTax: Boolean(listingInfoMap[parsedPropertyId]?.airbnbPassThroughTax),
+                guestPaidDamageCoverage: Boolean(listingInfoMap[parsedPropertyId]?.guestPaidDamageCoverage),
+                listingSettingsSnapshot: listingInfoMap[parsedPropertyId] ? {
+                    [parsedPropertyId]: {
+                        isCohostOnAirbnb: Boolean(listingInfoMap[parsedPropertyId].isCohostOnAirbnb),
+                        disregardTax: Boolean(listingInfoMap[parsedPropertyId].disregardTax),
+                        airbnbPassThroughTax: Boolean(listingInfoMap[parsedPropertyId].airbnbPassThroughTax),
+                        cleaningFeePassThrough: Boolean(listingInfoMap[parsedPropertyId].cleaningFeePassThrough),
+                        guestPaidDamageCoverage: Boolean(listingInfoMap[parsedPropertyId].guestPaidDamageCoverage),
+                        waiveCommission: Boolean(listingInfoMap[parsedPropertyId].waiveCommission),
+                        waiveCommissionUntil: listingInfoMap[parsedPropertyId].waiveCommissionUntil || null,
+                        cleaningFee: listingInfoMap[parsedPropertyId].cleaningFee || 0,
+                        pmFeePercentage: listingInfoMap[parsedPropertyId].pmFeePercentage ?? 15,
+                        newPmFeeEnabled: Boolean(listingInfoMap[parsedPropertyId].newPmFeeEnabled),
+                        newPmFeePercentage: listingInfoMap[parsedPropertyId].newPmFeePercentage ?? null,
+                        newPmFeeStartDate: listingInfoMap[parsedPropertyId].newPmFeeStartDate || null
+                    }
+                } : null,
                 status: 'draft',
                 sentAt: null,
                 createdAt: new Date().toISOString(),

@@ -246,7 +246,9 @@ router.get('/', async (req, res) => {
                         // Reverse-engineer actual cleaning fee from guest-paid amount
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                         const guestPaidCleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                        // In calendar mode, only charge cleaning fee if checkout is within the period
+                        const checkoutInPeriod = s.calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(s.weekEndDate);
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                             ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                             : 0;
 
@@ -505,8 +507,10 @@ router.get('/:id', async (req, res) => {
                 const cleaningFeeExpenses = [];
                 const cleaningFeeItems = [];
                 for (const res of statement.reservations) {
+                    // In calendar mode, only inject cleaning fee if checkout is within the period
+                    const checkoutInPeriod = statement.calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(statement.weekEndDate);
                     const cleaningFee = res.cleaningFee || 0;
-                    if (cleaningFee > 0) {
+                    if (cleaningFee > 0 && checkoutInPeriod) {
                         cleaningFeeExpenses.push({
                             id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
                             propertyId: statement.propertyId,
@@ -846,7 +850,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0
+            // In calendar mode, only charge cleaning fee if checkout is within the period
+            const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
+            const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 
@@ -906,6 +912,29 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             propertyCount: propertyCount,
             // Set cleaningFeePassThrough if ANY property in the combined statement has it enabled
             cleaningFeePassThrough: parsedPropertyIds.some(propId => listingInfoMap[propId]?.cleaningFeePassThrough),
+            // Snapshot per-property listing settings at generation time
+            listingSettingsSnapshot: (() => {
+                const snapshot = {};
+                for (const propId of parsedPropertyIds) {
+                    const info = listingInfoMap[propId] || {};
+                    snapshot[propId] = {
+                        isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                        disregardTax: Boolean(info.disregardTax),
+                        airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
+                        cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
+                        guestPaidDamageCoverage: Boolean(info.guestPaidDamageCoverage),
+                        waiveCommission: Boolean(info.waiveCommission),
+                        waiveCommissionUntil: info.waiveCommissionUntil || null,
+                        cleaningFee: info.cleaningFee || 0,
+                        pmFeePercentage: info.pmFeePercentage ?? 15,
+                        newPmFeeEnabled: Boolean(info.newPmFeeEnabled),
+                        newPmFeePercentage: info.newPmFeePercentage ?? null,
+                        newPmFeeStartDate: info.newPmFeeStartDate || null,
+                        nickname: info.nickname || info.displayName || info.name || ''
+                    };
+                }
+                return snapshot;
+            })(),
             status: 'draft',
             sentAt: null,
             createdAt: new Date().toISOString(),
@@ -1458,7 +1487,9 @@ router.post('/generate', async (req, res) => {
             // Reverse-engineer actual cleaning fee from guest-paid amount
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo?.cleaningFee ?? listingInfo?.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+            // In calendar mode, only charge cleaning fee if checkout is within the period
+            const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 
@@ -1503,6 +1534,30 @@ router.post('/generate', async (req, res) => {
             airbnbPassThroughTax: airbnbPassThroughTax,
             disregardTax: disregardTax,
             cleaningFeePassThrough: cleaningFeePassThrough,
+            // Snapshot listing settings at generation time
+            waiveCommission: Boolean(listingInfo?.waiveCommission),
+            waiveCommissionUntil: listingInfo?.waiveCommissionUntil || null,
+            guestPaidDamageCoverage: Boolean(listingInfo?.guestPaidDamageCoverage),
+            listingSettingsSnapshot: (() => {
+                const propId = propertyId ? parseInt(propertyId) : null;
+                if (!propId || !listingInfo) return null;
+                return {
+                    [propId]: {
+                        isCohostOnAirbnb: Boolean(listingInfo.isCohostOnAirbnb),
+                        disregardTax: Boolean(listingInfo.disregardTax),
+                        airbnbPassThroughTax: Boolean(listingInfo.airbnbPassThroughTax),
+                        cleaningFeePassThrough: Boolean(listingInfo.cleaningFeePassThrough),
+                        guestPaidDamageCoverage: Boolean(listingInfo.guestPaidDamageCoverage),
+                        waiveCommission: Boolean(listingInfo.waiveCommission),
+                        waiveCommissionUntil: listingInfo.waiveCommissionUntil || null,
+                        cleaningFee: listingInfo.cleaningFee || 0,
+                        pmFeePercentage: listingInfo.pmFeePercentage ?? 15,
+                        newPmFeeEnabled: Boolean(listingInfo.newPmFeeEnabled),
+                        newPmFeePercentage: listingInfo.newPmFeePercentage ?? null,
+                        newPmFeeStartDate: listingInfo.newPmFeeStartDate || null
+                    }
+                };
+            })(),
             totalCleaningFee: Math.round(totalCleaningFeeFromReservations * 100) / 100,
             shouldConvertToCalendar,
             calendarConversionNotice,
@@ -1881,6 +1936,29 @@ router.put('/:id/reconfigure', async (req, res) => {
                 techFees: Math.round(techFees * 100) / 100,
                 insuranceFees: Math.round(insuranceFees * 100) / 100,
                 ownerPayout: Math.round(finalOwnerPayout * 100) / 100,
+                // Update listing settings snapshot on reconfigure
+                listingSettingsSnapshot: (() => {
+                    const snapshot = {};
+                    for (const propId of propertyIds) {
+                        const info = propertyListingMap[propId] || {};
+                        snapshot[propId] = {
+                            isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                            disregardTax: Boolean(info.disregardTax),
+                            airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
+                            cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
+                            guestPaidDamageCoverage: Boolean(info.guestPaidDamageCoverage),
+                            waiveCommission: Boolean(info.waiveCommission),
+                            waiveCommissionUntil: info.waiveCommissionUntil || null,
+                            cleaningFee: info.cleaningFee || 0,
+                            pmFeePercentage: info.pmFeePercentage ?? 15,
+                            newPmFeeEnabled: Boolean(info.newPmFeeEnabled),
+                            newPmFeePercentage: info.newPmFeePercentage ?? null,
+                            newPmFeeStartDate: info.newPmFeeStartDate || null,
+                            nickname: info.nickname || info.displayName || info.name || ''
+                        };
+                    }
+                    return snapshot;
+                })(),
                 status: 'draft',
                 updatedAt: new Date().toISOString(),
                 reservations: mergedReservations,
@@ -2069,7 +2147,9 @@ router.put('/:id/reconfigure', async (req, res) => {
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+            // In calendar mode, only charge cleaning fee if checkout is within the period
+            const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
+            const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
             const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
@@ -2110,6 +2190,26 @@ router.put('/:id/reconfigure', async (req, res) => {
             airbnbPassThroughTax,
             disregardTax,
             cleaningFeePassThrough,
+            // Update listing settings snapshot on reconfigure
+            waiveCommission: Boolean(waiveCommission),
+            waiveCommissionUntil: waiveCommissionUntil || null,
+            guestPaidDamageCoverage: Boolean(listing?.guestPaidDamageCoverage),
+            listingSettingsSnapshot: {
+                [parseInt(propertyId)]: {
+                    isCohostOnAirbnb: Boolean(isCohostOnAirbnb),
+                    disregardTax: Boolean(disregardTax),
+                    airbnbPassThroughTax: Boolean(airbnbPassThroughTax),
+                    cleaningFeePassThrough: Boolean(cleaningFeePassThrough),
+                    guestPaidDamageCoverage: Boolean(listing?.guestPaidDamageCoverage),
+                    waiveCommission: Boolean(waiveCommission),
+                    waiveCommissionUntil: waiveCommissionUntil || null,
+                    cleaningFee: listing?.cleaningFee || 0,
+                    pmFeePercentage: listing?.pmFeePercentage ?? 15,
+                    newPmFeeEnabled: Boolean(listing?.newPmFeeEnabled),
+                    newPmFeePercentage: listing?.newPmFeePercentage ?? null,
+                    newPmFeeStartDate: listing?.newPmFeeStartDate || null
+                }
+            },
             totalCleaningFee: Math.round(totalCleaningFeeFromReservations * 100) / 100,
             status: 'draft',
             updatedAt: new Date().toISOString(),
@@ -2702,8 +2802,10 @@ router.get('/:id/view/data', async (req, res) => {
                 const cleaningFeeExpenses = [];
                 const cleaningFeeItems = [];
                 for (const res of statement.reservations) {
+                    // In calendar mode, only inject cleaning fee if checkout is within the period
+                    const checkoutInPeriod = statement.calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(statement.weekEndDate);
                     const cleaningFee = res.cleaningFee || 0;
-                    if (cleaningFee > 0) {
+                    if (cleaningFee > 0 && checkoutInPeriod) {
                         cleaningFeeExpenses.push({
                             id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
                             propertyId: statement.propertyId,
@@ -2754,75 +2856,89 @@ router.get('/:id/view', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        // Fetch CURRENT listing settings to override stored values
-        // This allows changes to listing settings (like disregardTax) to affect existing statements
-
-        // For combined statements, we need per-property settings for each reservation
-        // Create a map: propertyId -> { isCohostOnAirbnb, disregardTax, airbnbPassThroughTax, pmFeePercentage }
+        // Determine listing settings: use stored snapshot if available, otherwise fall back to live data
+        // New statements (with listingSettingsSnapshot) are immune to listing changes
+        // Old statements (null snapshot) use live data for backward compatibility
         let listingSettingsMap = {};
+        const hasSnapshot = statement.listingSettingsSnapshot && Object.keys(statement.listingSettingsSnapshot).length > 0;
 
-        // Get listings from Hostify API (includes cleaningFee) merged with DB settings
-        const allListings = await FileDataService.getListings();
-        const hostifyListingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
+        if (hasSnapshot) {
+            // USE STORED SNAPSHOT - statement is immune to live listing changes
+            listingSettingsMap = statement.listingSettingsSnapshot;
+            logger.debug('Using stored listing settings snapshot', { context: 'StatementsFile', statementId: id, propertyCount: Object.keys(listingSettingsMap).length });
 
-        if (statement.propertyIds && Array.isArray(statement.propertyIds) && statement.propertyIds.length > 0) {
-            // COMBINED STATEMENT: Fetch settings for ALL properties
-            const dbListings = await ListingService.getListingsWithPmFees(statement.propertyIds);
-            dbListings.forEach(listing => {
-                const hostifyListing = hostifyListingMap.get(parseInt(listing.id));
-                listingSettingsMap[listing.id] = {
-                    isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
-                    disregardTax: Boolean(listing.disregardTax),
-                    airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
-                    cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
-                    guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
-                    waiveCommission: Boolean(listing.waiveCommission),
-                    waiveCommissionUntil: listing.waiveCommissionUntil || null,
-                    cleaningFee: hostifyListing?.cleaningFee || 0,
-                    pmFeePercentage: listing.pmFeePercentage ?? 15,
-                    newPmFeeEnabled: Boolean(listing.newPmFeeEnabled),
-                    newPmFeePercentage: listing.newPmFeePercentage ?? null,
-                    newPmFeeStartDate: listing.newPmFeeStartDate || null,
-                    nickname: listing.nickname || listing.displayName || listing.name || ''
-                };
-            });
-            logger.debug('Combined statement - loaded settings for properties', { context: 'StatementsFile', properties: Object.keys(listingSettingsMap) });
-        } else if (statement.propertyId) {
-            // SINGLE PROPERTY STATEMENT: Fetch settings for just that property
-            const currentListing = await ListingService.getListingWithPmFee(parseInt(statement.propertyId));
-            const hostifyListing = hostifyListingMap.get(parseInt(statement.propertyId));
-            if (currentListing) {
-                // Use explicit boolean conversion to handle SQLite's 0/1 values
-                statement.disregardTax = Boolean(currentListing.disregardTax);
-                statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
-                statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
-                statement.cleaningFeePassThrough = Boolean(currentListing.cleaningFeePassThrough);
-                statement.guestPaidDamageCoverage = Boolean(currentListing.guestPaidDamageCoverage);
-                statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
+            // Set statement-level fields from snapshot for template access
+            if (statement.propertyId && listingSettingsMap[statement.propertyId]) {
+                const snap = listingSettingsMap[statement.propertyId];
+                statement.disregardTax = Boolean(snap.disregardTax);
+                statement.isCohostOnAirbnb = Boolean(snap.isCohostOnAirbnb);
+                statement.airbnbPassThroughTax = Boolean(snap.airbnbPassThroughTax);
+                statement.cleaningFeePassThrough = Boolean(snap.cleaningFeePassThrough);
+                statement.guestPaidDamageCoverage = Boolean(snap.guestPaidDamageCoverage);
+                statement.waiveCommission = Boolean(snap.waiveCommission);
+                statement.waiveCommissionUntil = snap.waiveCommissionUntil || null;
+                statement.pmPercentage = snap.pmFeePercentage ?? statement.pmPercentage ?? 15;
+            }
+        } else {
+            // FALLBACK: Fetch CURRENT listing settings (backward compat for old statements)
+            const allListings = await FileDataService.getListings();
+            const hostifyListingMap = new Map(allListings.map(l => [parseInt(l.id), l]));
 
-                // Also add to map for consistency
-                listingSettingsMap[statement.propertyId] = {
-                    isCohostOnAirbnb: Boolean(currentListing.isCohostOnAirbnb),
-                    disregardTax: Boolean(currentListing.disregardTax),
-                    airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
-                    cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
-                    guestPaidDamageCoverage: Boolean(currentListing.guestPaidDamageCoverage),
-                    waiveCommission: Boolean(currentListing.waiveCommission),
-                    waiveCommissionUntil: currentListing.waiveCommissionUntil || null,
-                    cleaningFee: hostifyListing?.cleaningFee || 0,
-                    pmFeePercentage: currentListing.pmFeePercentage ?? 15,
-                    newPmFeeEnabled: Boolean(currentListing.newPmFeeEnabled),
-                    newPmFeePercentage: currentListing.newPmFeePercentage ?? null,
-                    newPmFeeStartDate: currentListing.newPmFeeStartDate || null
-                };
-                // Also set on statement object for template access
-                statement.waiveCommission = Boolean(currentListing.waiveCommission);
-                statement.waiveCommissionUntil = currentListing.waiveCommissionUntil || null;
+            if (statement.propertyIds && Array.isArray(statement.propertyIds) && statement.propertyIds.length > 0) {
+                // COMBINED STATEMENT: Fetch settings for ALL properties
+                const dbListings = await ListingService.getListingsWithPmFees(statement.propertyIds);
+                dbListings.forEach(listing => {
+                    const hostifyListing = hostifyListingMap.get(parseInt(listing.id));
+                    listingSettingsMap[listing.id] = {
+                        isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                        disregardTax: Boolean(listing.disregardTax),
+                        airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
+                        cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
+                        guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
+                        waiveCommission: Boolean(listing.waiveCommission),
+                        waiveCommissionUntil: listing.waiveCommissionUntil || null,
+                        cleaningFee: hostifyListing?.cleaningFee || 0,
+                        pmFeePercentage: listing.pmFeePercentage ?? 15,
+                        newPmFeeEnabled: Boolean(listing.newPmFeeEnabled),
+                        newPmFeePercentage: listing.newPmFeePercentage ?? null,
+                        newPmFeeStartDate: listing.newPmFeeStartDate || null,
+                        nickname: listing.nickname || listing.displayName || listing.name || ''
+                    };
+                });
+                logger.debug('Combined statement (no snapshot) - loaded live settings for properties', { context: 'StatementsFile', properties: Object.keys(listingSettingsMap) });
+            } else if (statement.propertyId) {
+                // SINGLE PROPERTY STATEMENT: Fetch settings for just that property
+                const currentListing = await ListingService.getListingWithPmFee(parseInt(statement.propertyId));
+                const hostifyListing = hostifyListingMap.get(parseInt(statement.propertyId));
+                if (currentListing) {
+                    statement.disregardTax = Boolean(currentListing.disregardTax);
+                    statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
+                    statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
+                    statement.cleaningFeePassThrough = Boolean(currentListing.cleaningFeePassThrough);
+                    statement.guestPaidDamageCoverage = Boolean(currentListing.guestPaidDamageCoverage);
+                    statement.pmPercentage = currentListing.pmFeePercentage ?? statement.pmPercentage ?? 15;
+
+                    listingSettingsMap[statement.propertyId] = {
+                        isCohostOnAirbnb: Boolean(currentListing.isCohostOnAirbnb),
+                        disregardTax: Boolean(currentListing.disregardTax),
+                        airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
+                        cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
+                        guestPaidDamageCoverage: Boolean(currentListing.guestPaidDamageCoverage),
+                        waiveCommission: Boolean(currentListing.waiveCommission),
+                        waiveCommissionUntil: currentListing.waiveCommissionUntil || null,
+                        cleaningFee: hostifyListing?.cleaningFee || 0,
+                        pmFeePercentage: currentListing.pmFeePercentage ?? 15,
+                        newPmFeeEnabled: Boolean(currentListing.newPmFeeEnabled),
+                        newPmFeePercentage: currentListing.newPmFeePercentage ?? null,
+                        newPmFeeStartDate: currentListing.newPmFeeStartDate || null
+                    };
+                    statement.waiveCommission = Boolean(currentListing.waiveCommission);
+                    statement.waiveCommissionUntil = currentListing.waiveCommissionUntil || null;
+                }
             }
         }
 
         // Ensure boolean values are properly set (fallback to false if undefined)
-        // These are used as defaults when per-property settings are not available
         statement.disregardTax = Boolean(statement.disregardTax);
         statement.isCohostOnAirbnb = Boolean(statement.isCohostOnAirbnb);
         statement.airbnbPassThroughTax = Boolean(statement.airbnbPassThroughTax);
@@ -2842,8 +2958,10 @@ router.get('/:id/view', async (req, res) => {
                 const cleaningFeeExpenses = [];
                 const cleaningFeeItems = [];
                 for (const res of statement.reservations) {
+                    // In calendar mode, only inject cleaning fee if checkout is within the period
+                    const checkoutInPeriod = statement.calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(statement.weekEndDate);
                     const cleaningFee = res.cleaningFee || 0;
-                    if (cleaningFee > 0) {
+                    if (cleaningFee > 0 && checkoutInPeriod) {
                         cleaningFeeExpenses.push({
                             id: `cleaning-${res.hostifyId || res.reservationId || res.id}`,
                             propertyId: statement.propertyId,
@@ -2905,7 +3023,9 @@ router.get('/:id/view', async (req, res) => {
             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
             const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+            // In calendar mode, only charge cleaning fee if checkout is within the period
+            const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
+            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
 
@@ -4677,7 +4797,9 @@ router.get('/:id/view', async (req, res) => {
                     // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                     // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                     const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                    // In calendar mode, only charge cleaning fee if checkout is within the period
+                    const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
+                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                         ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
@@ -4785,7 +4907,9 @@ router.get('/:id/view', async (req, res) => {
                             // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                             // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                             const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-                            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                            // In calendar mode, only charge cleaning fee if checkout is within the period
+                            const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
+                            const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                                 ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                                 : 0;
 
@@ -5043,7 +5167,9 @@ router.get('/:id/view', async (req, res) => {
                     // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                     // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                     const guestPaidCleaningFee = reservation.cleaningFee ?? propSettings.cleaningFee ?? 0;
-                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0
+                    // In calendar mode, only charge cleaning fee if checkout is within the period
+                    const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
+                    const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                         ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
@@ -6406,7 +6532,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                         const guestPaidCleaningFee = res.cleaningFee ?? listing?.cleaningFee ?? 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                        // In calendar mode, only charge cleaning fee if checkout is within the period
+                        const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                             ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
@@ -6470,6 +6598,26 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             airbnbPassThroughTax,
                             disregardTax,
                             cleaningFeePassThrough,
+                            // Snapshot listing settings at generation time
+                            waiveCommission: Boolean(listing?.waiveCommission),
+                            waiveCommissionUntil: listing?.waiveCommissionUntil || null,
+                            guestPaidDamageCoverage: Boolean(listing?.guestPaidDamageCoverage),
+                            listingSettingsSnapshot: listing ? {
+                                [property.id]: {
+                                    isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                                    disregardTax: Boolean(listing.disregardTax),
+                                    airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
+                                    cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
+                                    guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
+                                    waiveCommission: Boolean(listing.waiveCommission),
+                                    waiveCommissionUntil: listing.waiveCommissionUntil || null,
+                                    cleaningFee: listing.cleaningFee || 0,
+                                    pmFeePercentage: listing.pmFeePercentage ?? 15,
+                                    newPmFeeEnabled: Boolean(listing.newPmFeeEnabled),
+                                    newPmFeePercentage: listing.newPmFeePercentage ?? null,
+                                    newPmFeeStartDate: listing.newPmFeeStartDate || null
+                                }
+                            } : null,
                             shouldConvertToCalendar,
                             // Include overlapping reservations info when flagged for calendar conversion
                             overlappingReservations: shouldConvertToCalendar ? overlappingReservations.map(res => ({
@@ -6827,7 +6975,9 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
                         // Formula: actualCleaningFee = (guestPaid / (1 + PM%))
                         const guestPaidCleaningFee = res.cleaningFee ?? property.cleaningFee ?? 0;
-                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0
+                        // In calendar mode, only charge cleaning fee if checkout is within the period
+                        const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
+                        const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
                             ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
@@ -6893,6 +7043,28 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         adjustments: 0,
                         ownerPayout: Math.round(ownerPayout * 100) / 100,
                         cleaningFeePassThrough: cleaningFeePassThrough,
+                        // Snapshot listing settings at generation time
+                        waiveCommission: Boolean(listing?.waiveCommission),
+                        waiveCommissionUntil: listing?.waiveCommissionUntil || null,
+                        disregardTax: Boolean(listing?.disregardTax),
+                        airbnbPassThroughTax: Boolean(listing?.airbnbPassThroughTax),
+                        guestPaidDamageCoverage: Boolean(listing?.guestPaidDamageCoverage),
+                        listingSettingsSnapshot: listing ? {
+                            [property.id]: {
+                                isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                                disregardTax: Boolean(listing.disregardTax),
+                                airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
+                                cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
+                                guestPaidDamageCoverage: Boolean(listing.guestPaidDamageCoverage),
+                                waiveCommission: Boolean(listing.waiveCommission),
+                                waiveCommissionUntil: listing.waiveCommissionUntil || null,
+                                cleaningFee: listing.cleaningFee || 0,
+                                pmFeePercentage: listing.pmFeePercentage ?? 15,
+                                newPmFeeEnabled: Boolean(listing.newPmFeeEnabled),
+                                newPmFeePercentage: listing.newPmFeePercentage ?? null,
+                                newPmFeeStartDate: listing.newPmFeeStartDate || null
+                            }
+                        } : null,
                         status: 'draft',
                         sentAt: null,
                         createdAt: new Date().toISOString(),
