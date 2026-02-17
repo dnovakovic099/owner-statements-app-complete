@@ -27,13 +27,47 @@ class TagScheduleService {
         this.checkInterval = null;
         this.CHECK_INTERVAL_MS = 60000; // Check every minute
         this.TIMEZONE = 'America/New_York'; // Always use EST/EDT
+        this._isChecking = false; // Concurrency guard
     }
 
     /**
-     * Get current time in EST/EDT timezone
+     * Get current time in EST/EDT timezone.
+     * Returns a Date whose local-time methods (getHours, getDay, etc.) return EST/EDT values.
      */
     getESTTime() {
-        return new Date(new Date().toLocaleString('en-US', { timeZone: this.TIMEZONE }));
+        return this._dateToEST(new Date());
+    }
+
+    /**
+     * Convert any Date to a Date whose local-time methods return EST/EDT values.
+     * Uses Intl.DateTimeFormat.formatToParts for reliable cross-platform timezone conversion.
+     */
+    _dateToEST(date) {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.TIMEZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        });
+        const parts = {};
+        for (const { type, value } of formatter.formatToParts(date)) {
+            parts[type] = parseInt(value, 10);
+        }
+        // hour12:false can return hour 24 for midnight in some environments
+        const hour = parts.hour === 24 ? 0 : parts.hour;
+        return new Date(parts.year, parts.month - 1, parts.day, hour, parts.minute, parts.second);
+    }
+
+    /**
+     * Parse a YYYY-MM-DD date string as a local date (avoiding UTC midnight interpretation).
+     */
+    _parseLocalDate(dateStr) {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
     }
 
     /**
@@ -65,6 +99,13 @@ class TagScheduleService {
      * Always uses EST/EDT timezone
      */
     async checkSchedules() {
+        // Prevent overlapping runs if previous check is still in progress
+        if (this._isChecking) {
+            logger.warn('[TagScheduleService] Previous schedule check still running, skipping this cycle');
+            return;
+        }
+
+        this._isChecking = true;
         try {
             const now = this.getESTTime(); // Always use EST
 
@@ -82,6 +123,8 @@ class TagScheduleService {
             }
         } catch (error) {
             logger.error('[TagScheduleService] Error checking schedules:', error);
+        } finally {
+            this._isChecking = false;
         }
     }
 
@@ -138,8 +181,10 @@ class TagScheduleService {
                 // Bi-weekly runs every 2 weeks from the reference start date (Jan 19, 2026)
                 // This replaces the old A/B week system
                 const biweeklyStartDate = schedule.biweeklyStartDate
-                    ? new Date(schedule.biweeklyStartDate)
-                    : new Date('2026-01-19'); // Default reference: Jan 19, 2026
+                    ? this._parseLocalDate(typeof schedule.biweeklyStartDate === 'string'
+                        ? schedule.biweeklyStartDate
+                        : schedule.biweeklyStartDate.toISOString().split('T')[0])
+                    : new Date(2026, 0, 19); // Default reference: Jan 19, 2026 (local)
                 const daysSinceStart = Math.floor((now - biweeklyStartDate) / (1000 * 60 * 60 * 24));
                 const weeksSinceStart = Math.floor(daysSinceStart / 7);
                 // Run on weeks 0, 2, 4, 6... (every 2 weeks)
@@ -607,8 +652,10 @@ class TagScheduleService {
             case 'biweekly':
                 // Find next occurrence using biweeklyStartDate (runs every 2 weeks from that date)
                 const biweeklyStart = schedule.biweeklyStartDate
-                    ? new Date(schedule.biweeklyStartDate)
-                    : new Date('2026-01-19'); // Default reference date
+                    ? this._parseLocalDate(typeof schedule.biweeklyStartDate === 'string'
+                        ? schedule.biweeklyStartDate
+                        : schedule.biweeklyStartDate.toISOString().split('T')[0])
+                    : new Date(2026, 0, 19); // Default reference date
 
                 next.setDate(next.getDate() + 1); // Start from tomorrow
                 let safetyCounter = 0;

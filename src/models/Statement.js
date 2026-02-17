@@ -253,7 +253,24 @@ const Statement = sequelize.define('Statement', {
         { fields: ['owner_id', 'week_start_date'] },
         // For filtering by total_revenue/owner_payout (excludes $0 activity)
         { fields: ['week_start_date', 'total_revenue'] },
-        { fields: ['week_start_date', 'owner_payout'] }
+        { fields: ['week_start_date', 'owner_payout'] },
+        // Prevent duplicate statements for the same group + date range
+        {
+            name: 'unique_group_statement_period',
+            unique: true,
+            fields: ['group_id', 'week_start_date', 'week_end_date'],
+            where: { group_id: { [require('sequelize').Op.ne]: null } }
+        },
+        // Prevent duplicate statements for the same individual listing + date range
+        {
+            name: 'unique_individual_statement_period',
+            unique: true,
+            fields: ['property_id', 'week_start_date', 'week_end_date'],
+            where: {
+                group_id: null,
+                property_id: { [require('sequelize').Op.ne]: null }
+            }
+        }
     ]
 });
 

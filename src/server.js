@@ -322,6 +322,8 @@ app.use((err, req, res, next) => {
 // SERVER STARTUP
 // ================================
 
+let server;
+
 async function startServer() {
     try {
         // Initialize database
@@ -345,7 +347,7 @@ async function startServer() {
         logger.info('TagScheduleService started - checking schedules every minute at 8:00 AM EST');
 
         // Start server
-        app.listen(PORT, () => {
+        server = app.listen(PORT, () => {
             logger.info('Owner Statements Server started', {
                 port: PORT,
                 environment: process.env.NODE_ENV || 'development',
@@ -357,6 +359,62 @@ async function startServer() {
         process.exit(1);
     }
 }
+
+// ================================
+// GRACEFUL SHUTDOWN & CRASH HANDLERS
+// ================================
+
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    logger.info(`${signal} received, starting graceful shutdown...`);
+
+    // Force exit after 10 seconds if cleanup stalls
+    const forceExitTimer = setTimeout(() => {
+        logger.error('Graceful shutdown timed out, forcing exit');
+        process.exit(1);
+    }, 10000);
+    forceExitTimer.unref();
+
+    // Stop accepting new connections
+    if (server) {
+        server.close(() => {
+            logger.info('HTTP server closed');
+        });
+    }
+
+    // Stop TagScheduleService cron
+    TagScheduleService.stop();
+
+    // Close database connections
+    try {
+        const sequelize = require('./config/database');
+        await sequelize.close();
+        logger.info('Database connections closed');
+    } catch (err) {
+        logger.error('Error closing database connections', { error: err.message });
+    }
+
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+    logger.error('Uncaught exception', { error: err.message, stack: err.stack });
+    gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection', {
+        error: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined
+    });
+});
 
 startServer();
 

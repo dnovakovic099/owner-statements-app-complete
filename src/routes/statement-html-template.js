@@ -1,4 +1,18 @@
 // Improved Statement HTML Template with better layout and typography
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function generateStatementHTML(statement, id) {
     return `
 <!DOCTYPE html>
@@ -6,7 +20,7 @@ function generateStatementHTML(statement, id) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${statement.propertyName || `Statement ${id}`} - Luxury Lodging</title>
+    <title>${esc(statement.propertyName) || `Statement ${id}`} - Luxury Lodging</title>
     <style>
         :root {
             --luxury-navy: #1e3a5f;
@@ -602,11 +616,11 @@ function generateStatementHTML(statement, id) {
             </div>
             <div class="meta-item">
                 <span class="meta-label">Property</span>
-                <span class="meta-value">${statement.propertyName || `Property ${statement.propertyId}`}</span>
+                <span class="meta-value">${esc(statement.propertyName) || `Property ${statement.propertyId}`}</span>
             </div>
             <div class="meta-item">
                 <span class="meta-label">Owner</span>
-                <span class="meta-value">${statement.ownerName || 'Client'}</span>
+                <span class="meta-value">${esc(statement.ownerName) || 'Client'}</span>
             </div>
         </div>
     </div>
@@ -618,7 +632,7 @@ function generateStatementHTML(statement, id) {
             <span class="calendar-notice-icon">&#9888;</span>
             <span class="calendar-notice-title">Calendar Conversion Recommended</span>
         </div>
-        <div class="calendar-notice-message">${statement.calendarConversionNotice || (
+        <div class="calendar-notice-message">${esc(statement.calendarConversionNotice) || (
             statement.calculationType === 'checkout'
                 ? 'This property has reservation(s) during this period but no checkouts. Revenue shows $0 because checkout-based calculation is selected. Consider converting to calendar-based calculation to see prorated revenue.'
                 : 'This property has long-stay reservation(s) spanning beyond the statement period. Prorated calendar calculation is applied.'
@@ -628,7 +642,7 @@ function generateStatementHTML(statement, id) {
             <div class="overlapping-reservations-title">Reservations during this period:</div>
             ${statement.overlappingReservations.map(res => `
             <div class="overlapping-reservation-item">
-                <strong>${res.guestName}</strong> - ${res.checkInDate} to ${res.checkOutDate} (${res.source || 'Direct'}) - $${(res.grossAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <strong>${esc(res.guestName)}</strong> - ${esc(res.checkInDate)} to ${esc(res.checkOutDate)} (${esc(res.source) || 'Direct'}) - $${(res.grossAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             `).join('')}
         </div>
@@ -642,7 +656,7 @@ function generateStatementHTML(statement, id) {
         <div class="internal-notes-header">
             <span class="internal-notes-title">Internal Notes</span>
         </div>
-        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div class="internal-notes-content">${esc(statement.internalNotes)}</div>
     </div>
     ` : ''}
 
@@ -840,7 +854,7 @@ function generateStatementHTML(statement, id) {
                     return `
                     <tr>
                         <td class="guest-details-cell">
-                            <div class="guest-name">${reservation.guestName}</div>
+                            <div class="guest-name">${esc(reservation.guestName)}</div>
                             <div class="guest-info">${(() => {
                                 const [yearIn, monthIn, dayIn] = reservation.checkInDate.split('-').map(Number);
                                 const [yearOut, monthOut, dayOut] = reservation.checkOutDate.split('-').map(Number);
@@ -848,10 +862,10 @@ function generateStatementHTML(statement, id) {
                                 const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                 return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
                             })()}</div>
-                            <div class="channel-badge">${reservation.source}</div>
+                            <div class="channel-badge">${esc(reservation.source)}</div>
                             ${reservation.prorationNote ?
                                 `<div class="proration-info">
-                                    ${reservation.prorationNote}
+                                    ${esc(reservation.prorationNote)}
                                 </div>` : ''
                             }
                         </td>
@@ -996,9 +1010,9 @@ function generateStatementHTML(statement, id) {
                                 })()}
                                 ${isDuplicate ? '<br><span style="color: #856404; font-size: 10px; font-weight: 600;">Duplicate</span>' : ''}
                             </td>
-                            <td style="line-height: 1.5; color: #1f2937; font-weight: 500;">${expense.description}</td>
-                            <td style="color: #6b7280; font-size: 11px;">${expense.listing || '-'}</td>
-                            <td style="text-transform: capitalize; color: #6b7280;">${expense.category}</td>
+                            <td style="line-height: 1.5; color: #1f2937; font-weight: 500;">${esc(expense.description)}</td>
+                            <td style="color: #6b7280; font-size: 11px;">${esc(expense.listing) || '-'}</td>
+                            <td style="text-transform: capitalize; color: #6b7280;">${esc(expense.category)}</td>
                             <td style="text-align: right; font-weight: 700; color: #dc2626;">$${expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         `;
@@ -1046,9 +1060,9 @@ function generateStatementHTML(statement, id) {
                                     return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                                 })()}
                             </td>
-                            <td style="line-height: 1.5; color: #1f2937; font-weight: 500;">${upsell.description}</td>
-                            <td style="color: #6b7280; font-size: 11px;">${upsell.listing || '-'}</td>
-                            <td style="text-transform: capitalize; color: #6b7280;">${upsell.category}</td>
+                            <td style="line-height: 1.5; color: #1f2937; font-weight: 500;">${esc(upsell.description)}</td>
+                            <td style="color: #6b7280; font-size: 11px;">${esc(upsell.listing) || '-'}</td>
+                            <td style="text-transform: capitalize; color: #6b7280;">${esc(upsell.category)}</td>
                             <td style="text-align: right; font-weight: 700; color: #059669;">+$${upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                     `).join('')}

@@ -4,7 +4,7 @@
  * Uses same calculation logic as manual generation for consistency
  */
 
-const { Op } = require('sequelize');
+const { Op, UniqueConstraintError } = require('sequelize');
 const Statement = require('../models/Statement');
 const Listing = require('../models/Listing');
 const ActivityLog = require('../models/ActivityLog');
@@ -214,6 +214,12 @@ class StatementService {
 
             return statementData;
         } catch (error) {
+            // Handle race condition: another process created the statement between our check and save
+            if (error instanceof UniqueConstraintError || error.name === 'SequelizeUniqueConstraintError') {
+                logger.info(`Statement already exists for group "${groupName}" (caught by unique constraint), skipping`, { context: 'StatementService', action: 'skipDuplicate', groupName });
+                const existing = await this.checkExistingStatement({ groupId, startDate, endDate });
+                return { skipped: true, existingId: existing?.id, reason: 'duplicate' };
+            }
             logger.error(`FAILED - Error generating group statement for "${groupName}"`, { context: 'StatementService', action: 'generateGroupStatement', groupId, groupName, error: error.message, stack: error.stack });
             throw error;
         }
@@ -345,6 +351,12 @@ class StatementService {
 
             return statementData;
         } catch (error) {
+            // Handle race condition: another process created the statement between our check and save
+            if (error instanceof UniqueConstraintError || error.name === 'SequelizeUniqueConstraintError') {
+                logger.info(`Statement already exists for listing ${listingId} (caught by unique constraint), skipping`, { context: 'StatementService', action: 'skipDuplicate', listingId });
+                const existing = await this.checkExistingStatement({ listingId, startDate, endDate });
+                return { skipped: true, existingId: existing?.id, reason: 'duplicate' };
+            }
             logger.error(`Error generating individual statement`, { context: 'StatementService', action: 'generateIndividualStatement', error: error.message, stack: error.stack });
             throw error;
         }
