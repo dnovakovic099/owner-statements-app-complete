@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../utils/logger');
-const { ActivityLog } = require('../models');
+const { ActivityLog, Statement } = require('../models');
 const { Op } = require('sequelize');
 
 // Middleware to check if user is admin or system
@@ -63,9 +63,63 @@ router.get('/', requireAdmin, async (req, res) => {
             offset: parseInt(offset)
         });
 
+        // Enrich statement-related logs with property/group names
+        const statementActions = ['CREATE_STATEMENT', 'VIEW_STATEMENT', 'DOWNLOAD_STATEMENT', 'DELETE', 'SEND_EMAIL', 'STATUS_UPDATE', 'AUTO_GENERATE'];
+        const enrichedLogs = logs.map(l => l.toJSON());
+
+        // First pass: normalize propertyName from existing details (groupName, listingName, etc.)
+        // Collect statement IDs that still need enrichment from DB
+        const statementIdsToLookup = new Set();
+        for (const log of enrichedLogs) {
+            if (log.resource === 'statement' && log.resourceId && statementActions.includes(log.action)) {
+                const details = log.details ? JSON.parse(log.details) : null;
+                if (details) {
+                    // Use groupName or listingName from details if propertyName is missing
+                    if (!details.propertyName && (details.groupName || details.listingName)) {
+                        details.propertyName = details.groupName || details.listingName;
+                        if (!details.period && details.startDate && details.endDate) {
+                            details.period = `${details.startDate} to ${details.endDate}`;
+                        }
+                        log.details = JSON.stringify(details);
+                    } else if (!details.propertyName) {
+                        statementIdsToLookup.add(parseInt(log.resourceId));
+                    }
+                } else {
+                    statementIdsToLookup.add(parseInt(log.resourceId));
+                }
+            }
+        }
+
+        // Batch-load statements that still need enrichment from DB
+        if (statementIdsToLookup.size > 0) {
+            try {
+                const statements = await Statement.findAll({
+                    where: { id: Array.from(statementIdsToLookup) },
+                    attributes: ['id', 'propertyName', 'propertyNames', 'groupName', 'weekStartDate', 'weekEndDate']
+                });
+                const statementMap = new Map(statements.map(s => [s.id, s]));
+
+                for (const log of enrichedLogs) {
+                    if (log.resource === 'statement' && log.resourceId && statementIdsToLookup.has(parseInt(log.resourceId))) {
+                        const stmt = statementMap.get(parseInt(log.resourceId));
+                        if (stmt) {
+                            const details = log.details ? JSON.parse(log.details) : {};
+                            details.propertyName = stmt.groupName || stmt.propertyName || stmt.propertyNames || details.propertyName;
+                            if (!details.period && stmt.weekStartDate && stmt.weekEndDate) {
+                                details.period = `${stmt.weekStartDate} to ${stmt.weekEndDate}`;
+                            }
+                            log.details = JSON.stringify(details);
+                        }
+                    }
+                }
+            } catch (enrichError) {
+                logger.error('Failed to enrich activity logs with statement data', { context: 'ActivityLogs', error: enrichError.message });
+            }
+        }
+
         res.json({
             success: true,
-            logs,
+            logs: enrichedLogs,
             total: count,
             limit: parseInt(limit),
             offset: parseInt(offset)

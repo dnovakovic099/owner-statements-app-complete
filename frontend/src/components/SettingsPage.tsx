@@ -429,6 +429,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
       case 'STATUS_UPDATE':
         return <FileText className="w-4 h-4 text-purple-600" />;
       case 'CREATE_STATEMENT':
+      case 'AUTO_GENERATE':
         return <FileText className="w-4 h-4 text-green-600" />;
       case 'VIEW_STATEMENT':
         return <Eye className="w-4 h-4 text-blue-600" />;
@@ -472,6 +473,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
       'UPDATE_LISTING': 'Updated listing',
       'SEND_TEST_ANNOUNCEMENT': 'Test email',
       'SEND_ANNOUNCEMENT': 'Announcement',
+      'AUTO_GENERATE': 'Auto-generated',
     };
     return actionMap[action] || action.replace(/_/g, ' ').toLowerCase();
   };
@@ -891,37 +893,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                 <div className="divide-y divide-gray-100">
                   {sortedActivityLogs.map((log) => {
                     const details = parseDetails(log.details);
+                    // Resolve property/group name from any available detail field
+                    const getStatementName = () => details?.propertyName || details?.groupName || details?.listingName || `Statement #${log.resourceId}`;
+                    const getPeriod = () => {
+                      const p = details?.period || (details?.startDate && details?.endDate ? `${details.startDate} to ${details.endDate}` : null);
+                      return p ? ` (${p})` : '';
+                    };
                     const getDetails = () => {
                       switch(log.action) {
                         case 'LOGIN': return 'Successfully logged in';
                         case 'LOGIN_FAILED': return 'Failed login attempt';
                         case 'DELETE': {
-                          const name = details?.propertyName || `Statement #${log.resourceId}`;
-                          const period = details?.period ? ` (${details.period})` : '';
-                          return `Deleted: ${name}${period}`;
+                          return `Deleted: ${getStatementName()}${getPeriod()}`;
                         }
                         case 'SEND_EMAIL': {
-                          const name = details?.propertyName || `Statement #${log.resourceId}`;
-                          const period = details?.period ? ` (${details.period})` : '';
-                          return `Sent to ${details?.recipientEmail || 'unknown'} - ${name}${period}`;
+                          return `Sent to ${details?.recipientEmail || 'unknown'} - ${getStatementName()}${getPeriod()}`;
                         }
                         case 'STATUS_UPDATE': {
-                          const name = details?.propertyName || `Statement #${log.resourceId}`;
                           const oldStatus = details?.oldStatus ? `${details.oldStatus} → ` : '';
-                          return `${oldStatus}${details?.newStatus || 'unknown'} - ${name}`;
+                          return `${oldStatus}${details?.newStatus || 'unknown'} - ${getStatementName()}`;
                         }
                         case 'CREATE_STATEMENT': {
-                          const name = details?.propertyName || `Statement #${log.resourceId}`;
-                          const period = details?.period ? ` (${details.period})` : '';
-                          return `Created: ${name}${period}`;
+                          return `Created: ${getStatementName()}${getPeriod()}`;
                         }
                         case 'VIEW_STATEMENT': {
-                          const name = details?.propertyName || `Statement #${log.resourceId}`;
-                          const period = details?.period ? ` (${details.period})` : '';
-                          return `Viewed: ${name}${period}`;
+                          return `Viewed: ${getStatementName()}${getPeriod()}`;
                         }
                         case 'DOWNLOAD_STATEMENT': {
-                          const name = details?.filename || details?.propertyName || `Statement #${log.resourceId}`;
+                          const name = details?.filename || details?.propertyName || details?.groupName || details?.listingName || `Statement #${log.resourceId}`;
                           return `Downloaded: ${name}`;
                         }
                         case 'UPDATE_LISTING': {
@@ -935,6 +934,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                         case 'SEND_ANNOUNCEMENT': {
                           return `Sent to ${details?.recipientCount || 0} recipients: "${details?.subject || 'Announcement'}"`;
                         }
+                        case 'AUTO_GENERATE': {
+                          return `Auto-generated: ${getStatementName()}${getPeriod()}`;
+                        }
                         default: return `${log.resource} ${log.resourceId ? '#' + log.resourceId : ''}`;
                       }
                     };
@@ -946,7 +948,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                             log.action === 'LOGIN' ? 'bg-green-100' :
                             log.action === 'LOGIN_FAILED' ? 'bg-red-100' :
                             log.action === 'DELETE' ? 'bg-red-100' :
-                            log.action === 'CREATE_STATEMENT' ? 'bg-emerald-100' :
+                            log.action === 'CREATE_STATEMENT' || log.action === 'AUTO_GENERATE' ? 'bg-emerald-100' :
                             log.action === 'SEND_EMAIL' || log.action === 'SEND_ANNOUNCEMENT' || log.action === 'SEND_TEST_ANNOUNCEMENT' ? 'bg-blue-100' :
                             log.action === 'VIEW_STATEMENT' ? 'bg-slate-100' :
                             log.action === 'DOWNLOAD_STATEMENT' ? 'bg-indigo-100' :
@@ -965,7 +967,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                                 log.action === 'LOGIN' ? 'text-green-700' :
                                 log.action === 'LOGIN_FAILED' ? 'text-red-600' :
                                 log.action === 'DELETE' ? 'text-red-600' :
-                                log.action === 'CREATE_STATEMENT' ? 'text-emerald-700' :
+                                log.action === 'CREATE_STATEMENT' || log.action === 'AUTO_GENERATE' ? 'text-emerald-700' :
                                 log.action.includes('SEND') ? 'text-blue-700' :
                                 log.action === 'DOWNLOAD_STATEMENT' ? 'text-indigo-700' :
                                 log.action === 'UPDATE_LISTING' ? 'text-amber-700' :
@@ -1033,7 +1035,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
 
             <div className="p-6">
               <p className="text-sm text-gray-500 mb-6">
-                Configure automatic statement generation schedules. Statements will be auto-generated at 8:00 AM EST on the configured days for listings/groups with matching tags.
+                Configure automatic statement generation schedules. Statements will be auto-generated at the configured time (EST) on the configured days for listings/groups with matching tags.
               </p>
 
               {schedulesLoading ? (
@@ -1066,7 +1068,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                             <CalendarDays className={`w-5 h-5 ${schedule.isEnabled ? 'text-green-600' : 'text-gray-400'}`} />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">{schedule.tagName}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900">{schedule.tagName}</h3>
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                                schedule.calculationType === 'calendar'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {schedule.calculationType === 'calendar' ? 'Calendar' : 'Checkout'}
+                              </span>
+                            </div>
                             <p className="text-sm text-gray-500">
                               {schedule.frequencyType === 'weekly' && `Every ${getDayName(schedule.dayOfWeek)}`}
                               {schedule.frequencyType === 'biweekly' && `Every other ${getDayName(schedule.dayOfWeek)} (from ${schedule.biweeklyStartDate || '2026-01-19'})`}
