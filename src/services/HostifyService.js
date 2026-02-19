@@ -32,6 +32,10 @@ class HostifyService {
         // Exchange rate cache (for converting non-USD currencies)
         this._exchangeRates = new Map(); // key: currency code, value: { rate, time }
         this._exchangeRateTTL = 60 * 60 * 1000; // 1 hour
+
+        // Offboarded listing cache - stores service_pms status for listings
+        this._offboardedCache = new Map(); // key: listingId, value: { isOffboarded, time }
+        this._offboardedCacheTTL = 10 * 60 * 1000; // 10 minutes
     }
 
     /**
@@ -178,6 +182,28 @@ class HostifyService {
         return (Date.now() - cached.time) < this._reservationsCacheTTL;
     }
 
+    /**
+     * Check if a listing is offboarded (service_pms=0) in Hostify.
+     * Uses caching to avoid repeated API calls.
+     */
+    async isListingOffboarded(listingId) {
+        const id = parseInt(listingId);
+        const cached = this._offboardedCache.get(id);
+        if (cached && (Date.now() - cached.time) < this._offboardedCacheTTL) {
+            return cached.isOffboarded;
+        }
+
+        try {
+            const response = await this.makeRequest(`/listings/${id}`);
+            const isOffboarded = response.success && response.listing && response.listing.service_pms === 0;
+            this._offboardedCache.set(id, { isOffboarded, time: Date.now() });
+            return isOffboarded;
+        } catch (error) {
+            console.log(`[OFFBOARDED] Failed to check listing ${id}: ${error.message}`);
+            return false;
+        }
+    }
+
     clearAllCaches() {
         this._reservationsCache.clear();
         this._propertiesCache = null;
@@ -189,6 +215,7 @@ class HostifyService {
         this._allListingsCache = null;
         this._allListingsCacheTime = null;
         this._allListingsFetchPromise = null;
+        this._offboardedCache.clear();
     }
 
     async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 3) {
@@ -251,7 +278,7 @@ class HostifyService {
         throw new Error(`Hostify API Error after ${maxRetries} retries: ${lastError?.message || 'Unknown error'}`);
     }
 
-    async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn') {
+    async getReservations(startDate, endDate, page = 1, perPage = 100, listingId = null, dateType = 'checkIn', useListingFilter = false) {
         const params = {
             page,
             per_page: perPage,
@@ -259,24 +286,36 @@ class HostifyService {
         };
 
         // Add listing filter if specified
-        if (listingId) {
+        // useListingFilter=true puts listing_id in the filters array instead of query param
+        // This is needed for offboarded listings (service_pms=0) which are hidden from the query param approach
+        if (listingId && !useListingFilter) {
             params.listing_id = listingId;
         }
 
         if (dateType === 'checkOut' || dateType === 'departureDate') {
-            params.filters = JSON.stringify([
+            const filters = [
                 { field: 'checkOut', operator: '>=', value: startDate },
                 { field: 'checkOut', operator: '<=', value: endDate }
-            ]);
+            ];
+            if (listingId && useListingFilter) {
+                filters.push({ field: 'listing_id', operator: '=', value: String(listingId) });
+            }
+            params.filters = JSON.stringify(filters);
         } else {
             params.start_date = startDate;
             params.end_date = endDate;
+            if (listingId && useListingFilter) {
+                params.filters = JSON.stringify([
+                    { field: 'listing_id', operator: '=', value: String(listingId) }
+                ]);
+            }
         }
 
         return await this.makeRequest('/reservations', params);
     }
 
     // Fetch reservations for a specific listing ID
+    // Includes fallback for offboarded listings (service_pms=0) using filter-based approach
     async getReservationsForListing(listingId, startDate, endDate, dateType = 'checkIn') {
         let allReservations = [];
         let page = 1;
@@ -297,6 +336,34 @@ class HostifyService {
                         console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: API returned success=false`);
                     }
                     hasMore = false;
+                }
+            }
+
+            // Fallback for offboarded listings: if 0 results, check if listing is offboarded
+            // and retry using listing_id as a filter field (bypasses Hostify's service_pms exclusion)
+            if (allReservations.length === 0) {
+                const offboarded = await this.isListingOffboarded(listingId);
+                if (offboarded) {
+                    console.log(`[OFFBOARDED] Listing ${listingId} is offboarded (service_pms=0), retrying with filter-based approach...`);
+                    page = 1;
+                    hasMore = true;
+                    while (hasMore) {
+                        const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType, true);
+
+                        if (response.success && response.reservations?.length > 0) {
+                            allReservations = allReservations.concat(response.reservations);
+                            hasMore = response.reservations.length === perPage && response.total > allReservations.length;
+                            page++;
+                            if (page > 50) break;
+                        } else {
+                            hasMore = false;
+                        }
+                    }
+                    if (allReservations.length > 0) {
+                        console.log(`[OFFBOARDED] Found ${allReservations.length} reservations for offboarded listing ${listingId} via filter approach`);
+                    } else {
+                        console.log(`[OFFBOARDED] No reservations found for offboarded listing ${listingId} even with filter approach`);
+                    }
                 }
             }
         } catch (error) {
@@ -353,6 +420,30 @@ class HostifyService {
                 if (page > 100) break; // Safety limit
             } else {
                 hasMore = false;
+            }
+        }
+
+        // Fallback for offboarded listings: retry with listing_id as filter field
+        if (allReservations.length === 0 && listingId) {
+            const offboarded = await this.isListingOffboarded(listingId);
+            if (offboarded) {
+                console.log(`[OFFBOARDED] Listing ${listingId} is offboarded, retrying getAllReservations with filter approach...`);
+                page = 1;
+                hasMore = true;
+                while (hasMore) {
+                    const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType, true);
+                    if (response.success && response.reservations?.length > 0) {
+                        allReservations = allReservations.concat(response.reservations);
+                        hasMore = response.reservations.length === perPage && response.total > allReservations.length;
+                        page++;
+                        if (page > 100) break;
+                    } else {
+                        hasMore = false;
+                    }
+                }
+                if (allReservations.length > 0) {
+                    console.log(`[OFFBOARDED] Found ${allReservations.length} reservations for offboarded listing ${listingId} via filter approach`);
+                }
             }
         }
 

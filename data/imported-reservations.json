@@ -1,0 +1,32 @@
+[
+  {
+    "hostifyId": "300684024",
+    "propertyId": 300017732,
+    "guestName": "Guest",
+    "guestEmail": "",
+    "checkInDate": "2026-02-09",
+    "checkOutDate": "2026-02-12",
+    "nights": 3,
+    "status": "confirmed",
+    "source": "Airbnb",
+    "isProrated": false,
+    "weeklyPayoutDate": null,
+    "currency": "USD",
+    "createdAt": "2026-01-04 00:00:00",
+    "baseRate": 236.25,
+    "cleaningFee": 150,
+    "cleaningAndOtherFees": 150,
+    "platformFees": 59.87,
+    "clientRevenue": 326.38,
+    "luxuryLodgingFee": 0,
+    "clientTaxResponsibility": 0,
+    "clientPayout": 326.38,
+    "resortFee": 0,
+    "grossAmount": 326.38,
+    "hostPayoutAmount": 326.38,
+    "hasDetailedFinance": true,
+    "isImported": true,
+    "importedAt": "2026-02-19T20:45:48.311Z",
+    "importedFrom": "hostify-direct-fetch"
+  }
+]

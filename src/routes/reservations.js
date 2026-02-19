@@ -285,5 +285,148 @@ router.post('/upload', upload.single('reservationFile'), async (req, res) => {
     }
 });
 
+// POST /api/reservations-import/fetch-by-id - Fetch reservation by Hostify ID and import it
+// Used for offboarded listings where the Hostify list API hides reservations
+router.post('/fetch-by-id', async (req, res) => {
+    try {
+        const { reservationId, propertyId } = req.body;
+
+        if (!reservationId) {
+            return res.status(400).json({ success: false, error: 'Reservation ID is required' });
+        }
+
+        const hostifyService = require('../services/HostifyService');
+
+        // Fetch the reservation directly by ID (this works even for offboarded listings)
+        logger.info('Fetching reservation by ID for import', { context: 'Reservations', reservationId });
+        const details = await hostifyService.getReservationDetails(reservationId);
+
+        if (!details.success || !details.reservation) {
+            return res.status(404).json({ success: false, error: `Reservation ${reservationId} not found in Hostify` });
+        }
+
+        // Transform the reservation
+        const transformed = hostifyService.transformReservation(details.reservation);
+
+        // Use fees array if available for accurate financial data
+        if (details.fees && Array.isArray(details.fees)) {
+            const feeCalc = hostifyService.calculateFeesFromArray(details.fees);
+            transformed.cleaningFee = feeCalc.cleaningFee;
+            transformed.cleaningAndOtherFees = feeCalc.totalFees;
+            transformed.clientRevenue = transformed.baseRate + feeCalc.totalFees - transformed.platformFees;
+            transformed.grossAmount = transformed.clientRevenue;
+            transformed.resortFee = feeCalc.resortFee || 0;
+        }
+
+        // Override propertyId if provided (useful for child/parent listing attribution)
+        if (propertyId) {
+            transformed.propertyId = parseInt(propertyId);
+        }
+
+        // Mark as imported
+        transformed.isImported = true;
+        transformed.importedAt = new Date().toISOString();
+        transformed.importedFrom = 'hostify-direct-fetch';
+
+        // Save to imported reservations file
+        const importedReservationsFile = path.join(process.cwd(), 'data', 'imported-reservations.json');
+
+        let existingReservations = [];
+        try {
+            const fileContent = await fs.readFile(importedReservationsFile, 'utf8');
+            existingReservations = JSON.parse(fileContent);
+        } catch (err) {
+            existingReservations = [];
+        }
+
+        // Check for duplicates
+        const isDuplicate = existingReservations.some(r =>
+            r.hostifyId === transformed.hostifyId || r.id === transformed.hostifyId
+        );
+        if (isDuplicate) {
+            return res.json({
+                success: true,
+                message: `Reservation ${reservationId} already imported`,
+                duplicate: true,
+                reservation: transformed
+            });
+        }
+
+        existingReservations.push(transformed);
+        await fs.mkdir(path.dirname(importedReservationsFile), { recursive: true });
+        await fs.writeFile(importedReservationsFile, JSON.stringify(existingReservations, null, 2), 'utf8');
+
+        logger.info('Successfully imported reservation by ID', {
+            context: 'Reservations',
+            reservationId,
+            guestName: transformed.guestName,
+            propertyId: transformed.propertyId,
+            revenue: transformed.clientRevenue
+        });
+
+        res.json({
+            success: true,
+            message: `Successfully imported reservation ${reservationId}`,
+            reservation: transformed
+        });
+
+    } catch (error) {
+        logger.logError(error, { context: 'Reservations', action: 'fetchById' });
+        res.status(500).json({ success: false, error: error.message || 'Failed to fetch reservation' });
+    }
+});
+
+// GET /api/reservations-import/imported - List all imported reservations
+router.get('/imported', async (req, res) => {
+    try {
+        const importedReservationsFile = path.join(process.cwd(), 'data', 'imported-reservations.json');
+        let reservations = [];
+        try {
+            const fileContent = await fs.readFile(importedReservationsFile, 'utf8');
+            reservations = JSON.parse(fileContent);
+        } catch (err) {
+            reservations = [];
+        }
+
+        // Filter by propertyId if provided
+        const { propertyId } = req.query;
+        if (propertyId) {
+            reservations = reservations.filter(r => parseInt(r.propertyId) === parseInt(propertyId));
+        }
+
+        res.json({ success: true, reservations, total: reservations.length });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// DELETE /api/reservations-import/imported/:id - Remove an imported reservation
+router.delete('/imported/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const importedReservationsFile = path.join(process.cwd(), 'data', 'imported-reservations.json');
+
+        let reservations = [];
+        try {
+            const fileContent = await fs.readFile(importedReservationsFile, 'utf8');
+            reservations = JSON.parse(fileContent);
+        } catch (err) {
+            return res.status(404).json({ success: false, error: 'No imported reservations found' });
+        }
+
+        const before = reservations.length;
+        reservations = reservations.filter(r => r.hostifyId !== id && r.id !== id);
+
+        if (reservations.length === before) {
+            return res.status(404).json({ success: false, error: `Reservation ${id} not found in imports` });
+        }
+
+        await fs.writeFile(importedReservationsFile, JSON.stringify(reservations, null, 2), 'utf8');
+        res.json({ success: true, message: `Removed imported reservation ${id}` });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
 

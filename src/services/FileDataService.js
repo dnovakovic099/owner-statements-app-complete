@@ -333,7 +333,7 @@ class FileDataService {
             
             // Check if file exists
             try {
-                await this.fs.access(importedFile);
+                await fs.access(importedFile);
             } catch {
                 // File doesn't exist, return empty array
                 return [];
