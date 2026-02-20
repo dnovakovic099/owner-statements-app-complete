@@ -67,12 +67,19 @@ router.get('/', requireAdmin, async (req, res) => {
         const statementActions = ['CREATE_STATEMENT', 'VIEW_STATEMENT', 'DOWNLOAD_STATEMENT', 'DELETE', 'SEND_EMAIL', 'STATUS_UPDATE', 'AUTO_GENERATE'];
         const enrichedLogs = logs.map(l => l.toJSON());
 
+        // Safely parse details JSON (handles string, object, or invalid JSON)
+        const safeParseDetails = (details) => {
+            if (!details) return null;
+            if (typeof details === 'object') return details;
+            try { return JSON.parse(details); } catch { return null; }
+        };
+
         // First pass: normalize propertyName from existing details (groupName, listingName, etc.)
         // Collect statement IDs that still need enrichment from DB
         const statementIdsToLookup = new Set();
         for (const log of enrichedLogs) {
             if (log.resource === 'statement' && log.resourceId && statementActions.includes(log.action)) {
-                const details = log.details ? JSON.parse(log.details) : null;
+                const details = safeParseDetails(log.details);
                 if (details) {
                     // Use groupName or listingName from details if propertyName is missing
                     if (!details.propertyName && (details.groupName || details.listingName)) {
@@ -103,7 +110,7 @@ router.get('/', requireAdmin, async (req, res) => {
                     if (log.resource === 'statement' && log.resourceId && statementIdsToLookup.has(parseInt(log.resourceId))) {
                         const stmt = statementMap.get(parseInt(log.resourceId));
                         if (stmt) {
-                            const details = log.details ? JSON.parse(log.details) : {};
+                            const details = safeParseDetails(log.details) || {};
                             details.propertyName = stmt.groupName || stmt.propertyName || stmt.propertyNames || details.propertyName;
                             if (!details.period && stmt.weekStartDate && stmt.weekEndDate) {
                                 details.period = `${stmt.weekStartDate} to ${stmt.weekEndDate}`;
