@@ -308,6 +308,18 @@ router.post('/fetch-by-id', async (req, res) => {
         // Transform the reservation
         const transformed = hostifyService.transformReservation(details.reservation);
 
+        // Fetch guest name if missing (individual reservation endpoint doesn't include it)
+        if (transformed.guestName === 'Guest' && details.reservation.guest_id) {
+            try {
+                const guestResp = await hostifyService.makeRequest(`/guests/${details.reservation.guest_id}`);
+                if (guestResp.success && guestResp.guest && guestResp.guest.name) {
+                    transformed.guestName = guestResp.guest.name;
+                }
+            } catch (e) {
+                // Guest name fetch failed, keep default
+            }
+        }
+
         // Use fees array if available for accurate financial data
         if (details.fees && Array.isArray(details.fees)) {
             const feeCalc = hostifyService.calculateFeesFromArray(details.fees);

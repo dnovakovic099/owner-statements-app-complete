@@ -938,6 +938,23 @@ class HostifyService {
 
         const result = await this.makeRequest(`/reservations/${reservationId}`, { fees: 1 });
 
+        // Individual reservation endpoint doesn't include guest name - fetch from /guests/{id}
+        if (result.success && result.reservation && result.reservation.guest_id) {
+            const res = result.reservation;
+            const hasGuestName = res.guestName || res.guest_name || res.guest?.name ||
+                res.guest?.first_name || res.guestFirstName;
+            if (!hasGuestName) {
+                try {
+                    const guestResp = await this.makeRequest(`/guests/${res.guest_id}`);
+                    if (guestResp.success && guestResp.guest && guestResp.guest.name) {
+                        result.reservation.guestName = guestResp.guest.name;
+                    }
+                } catch (e) {
+                    // Guest fetch failed, transformReservation will default to 'Guest'
+                }
+            }
+        }
+
         // Cache the result
         this._feeDetailsCache.set(reservationId, { data: result, time: Date.now() });
 
