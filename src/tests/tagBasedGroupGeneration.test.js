@@ -612,4 +612,111 @@ describe('Tag-Based Group Statement Generation', () => {
             expect(progressUpdates[0].message).toContain('Generating statements for 5 groups');
         });
     });
+
+    // ==========================================
+    // Fix: Grouped listings with non-matching group tags
+    // ==========================================
+    describe('Grouped listings whose group tag does not match schedule tag', () => {
+
+        it('should include a WEEKLY-tagged listing in a MONTHLY group when WEEKLY schedule runs', () => {
+            // Scenario: Listing tagged WEEKLY, belongs to group 10 which is tagged MONTHLY
+            // When the WEEKLY schedule fires, group 10 is NOT in matchingGroups
+            // So this listing should be included for individual generation
+            const matchingGroups = [
+                { id: 1, name: 'Beach Properties', tags: 'WEEKLY' }
+            ];
+            const matchingGroupIds = new Set(matchingGroups.map(g => g.id));
+
+            const listings = [
+                { id: 100, displayName: 'Condo A', groupId: null },    // no group
+                { id: 101, displayName: 'Condo B', groupId: 1 },       // group matches WEEKLY
+                { id: 102, displayName: 'Condo C', groupId: 10 },      // group is MONTHLY, not in matchingGroups
+                { id: 103, displayName: 'Condo D', groupId: null },    // no group
+            ];
+
+            const result = listings.filter(l => {
+                if (!l.groupId) return true;
+                if (matchingGroupIds.has(l.groupId)) return false;
+                return true; // group doesn't match this tag
+            });
+
+            expect(result.map(l => l.id)).toEqual([100, 102, 103]);
+            expect(result.map(l => l.id)).not.toContain(101); // handled by group generation
+            expect(result.map(l => l.id)).toContain(102);     // NOT handled by group generation
+        });
+
+        it('should exclude a listing whose group matches the current tag', () => {
+            const matchingGroupIds = new Set([1, 2]);
+
+            const listings = [
+                { id: 200, displayName: 'Villa A', groupId: 1 },
+                { id: 201, displayName: 'Villa B', groupId: 2 },
+                { id: 202, displayName: 'Villa C', groupId: 3 },
+            ];
+
+            const result = listings.filter(l => {
+                if (!l.groupId) return true;
+                if (matchingGroupIds.has(l.groupId)) return false;
+                return true;
+            });
+
+            expect(result.map(l => l.id)).toEqual([202]);
+        });
+
+        it('should include all listings when no groups match the tag', () => {
+            const matchingGroupIds = new Set(); // no groups match
+
+            const listings = [
+                { id: 300, displayName: 'Cabin A', groupId: 5 },
+                { id: 301, displayName: 'Cabin B', groupId: 6 },
+                { id: 302, displayName: 'Cabin C', groupId: null },
+            ];
+
+            const result = listings.filter(l => {
+                if (!l.groupId) return true;
+                if (matchingGroupIds.has(l.groupId)) return false;
+                return true;
+            });
+
+            // All should be included — no groups were handled
+            expect(result.length).toBe(3);
+        });
+
+        it('should handle the full scenario: WEEKLY schedule with mixed group tags', () => {
+            // Groups in the system
+            const allGroups = [
+                { id: 1, name: 'Weekly Group', tags: 'WEEKLY' },
+                { id: 2, name: 'Monthly Group', tags: 'MONTHLY' },
+                { id: 3, name: 'Bi-Weekly Group', tags: 'BI-WEEKLY A' },
+            ];
+
+            // getGroupsByTag('WEEKLY') returns only groups with WEEKLY tag
+            const weeklyGroups = allGroups.filter(g => {
+                const groupTags = g.tags.split(',').map(t => t.trim().toUpperCase());
+                return groupTags.some(t => t.includes('WEEKLY') && !t.includes('BI-WEEKLY'));
+            });
+            expect(weeklyGroups.map(g => g.id)).toEqual([1]);
+
+            const matchingGroupIds = new Set(weeklyGroups.map(g => g.id));
+
+            // Listings tagged WEEKLY (from DB query)
+            const listings = [
+                { id: 10, displayName: 'Ungrouped A', groupId: null },
+                { id: 11, displayName: 'In Weekly Group', groupId: 1 },
+                { id: 12, displayName: 'In Monthly Group', groupId: 2 },
+                { id: 13, displayName: 'In Bi-Weekly Group', groupId: 3 },
+                { id: 14, displayName: 'Ungrouped B', groupId: null },
+            ];
+
+            const result = listings.filter(l => {
+                if (!l.groupId) return true;
+                if (matchingGroupIds.has(l.groupId)) return false;
+                return true;
+            });
+
+            // Listing 11 is excluded (Weekly Group handles it)
+            // Listings 12, 13 are INCLUDED (their groups don't handle WEEKLY)
+            expect(result.map(l => l.id)).toEqual([10, 12, 13, 14]);
+        });
+    });
 });

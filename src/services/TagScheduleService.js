@@ -317,8 +317,8 @@ class TagScheduleService {
 
             logger.info(`[TagScheduleService] Found ${groups.length} groups with tag "${tagName}", generating draft statements...`);
 
-            // Calculate date range based on tag
-            const dateRange = this.calculateDateRangeForTag(tagName);
+            // Tag-based default calculation type
+            const tagDefaultCalcType = this.getDefaultCalculationTypeForTag(tagName);
 
             // Lazy load statement generation
             const StatementService = require('./StatementService');
@@ -336,11 +336,14 @@ class TagScheduleService {
                     }
 
                     // Get calculation type from the last statement for this group
-                    // Falls back to group default, then to 'checkout'
+                    // Falls back to group default, then schedule default, then tag-based default
                     const calculationType = await this.getLastCalculationTypeForGroup(
                         group.id,
-                        group.calculationType || schedule.calculationType || 'checkout'
+                        group.calculationType || schedule.calculationType || tagDefaultCalcType
                     );
+
+                    // Calculate date range based on tag and resolved calculation type
+                    const dateRange = this.calculateDateRangeForTag(tagName, calculationType);
 
                     // Generate combined draft statement for the group (active members only)
                     const statement = await StatementService.generateGroupStatement({
@@ -431,11 +434,22 @@ class TagScheduleService {
                 });
             }
 
-            // Filter out listings that belong to any group — those are handled by autoGenerateGroupStatements
+            // Get groups that match this tag (already handled by autoGenerateGroupStatements)
+            const groupService = getListingGroupService();
+            const matchingGroups = await groupService.getGroupsByTag(tagName);
+            const matchingGroupIds = new Set(matchingGroups.map(g => g.id));
+
+            // Filter out listings whose group already handles this tag;
+            // include grouped listings whose group has a different tag
             listings = listings.filter(l => {
-                if (!l.groupId) return true; // Non-grouped listings always included
-                logger.info(`[TagScheduleService] Skipping listing "${l.displayName || l.name}" - belongs to group (ID: ${l.groupId}), handled by group generation`);
-                return false;
+                if (!l.groupId) return true;
+                if (matchingGroupIds.has(l.groupId)) {
+                    logger.info(`[TagScheduleService] Skipping listing "${l.displayName || l.name}" - group ${l.groupId} handles "${tagName}"`);
+                    return false;
+                }
+                // Group doesn't match this tag — include for individual generation
+                logger.info(`[TagScheduleService] Including grouped listing "${l.displayName || l.name}" - group ${l.groupId} doesn't handle "${tagName}"`);
+                return true;
             });
 
             if (listings.length === 0) {
@@ -445,8 +459,8 @@ class TagScheduleService {
 
             logger.info(`[TagScheduleService] Found ${listings.length} eligible listings with tag "${tagName}", generating draft statements...`);
 
-            // Calculate date range based on tag
-            const dateRange = this.calculateDateRangeForTag(tagName);
+            // Tag-based default calculation type
+            const tagDefaultCalcType = this.getDefaultCalculationTypeForTag(tagName);
 
             // Lazy load statement generation
             const StatementService = require('./StatementService');
@@ -454,11 +468,14 @@ class TagScheduleService {
             for (const listing of listings) {
                 try {
                     // Get calculation type from the last statement for this listing
-                    // Falls back to schedule default, then to 'checkout'
+                    // Falls back to schedule default, then tag-based default
                     const calculationType = await this.getLastCalculationTypeForListing(
                         listing.id,
-                        schedule.calculationType || 'checkout'
+                        schedule.calculationType || tagDefaultCalcType
                     );
+
+                    // Calculate date range based on tag and resolved calculation type
+                    const dateRange = this.calculateDateRangeForTag(tagName, calculationType);
 
                     // Generate individual draft statement
                     const statement = await StatementService.generateIndividualStatement({
@@ -501,12 +518,14 @@ class TagScheduleService {
      * Calculate date range for a given tag (Monday to Monday for weekly, etc.)
      * Always uses EST timezone for consistency
      */
-    calculateDateRangeForTag(tagName) {
+    calculateDateRangeForTag(tagName, calculationType) {
         // Use EST time for consistent date calculations
         const today = this.getESTTime();
         const dayOfWeek = today.getDay(); // 0 = Sunday
 
         const upperTag = tagName.toUpperCase();
+        // If no calculationType provided, derive from tag
+        const calcType = calculationType || this.getDefaultCalculationTypeForTag(tagName);
 
         // Helper to format date as YYYY-MM-DD without timezone conversion
         const formatDate = (date) => {
@@ -517,7 +536,7 @@ class TagScheduleService {
         };
 
         if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) {
-            // WEEKLY: Monday to Monday
+            // WEEKLY: Monday to Monday (checkout) or Monday to Sunday (calendar)
             const lastMonday = new Date(today);
             const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             lastMonday.setDate(today.getDate() - daysToMonday);
@@ -525,18 +544,36 @@ class TagScheduleService {
             const prevMonday = new Date(lastMonday);
             prevMonday.setDate(lastMonday.getDate() - 7);
 
+            if (calcType === 'calendar') {
+                const prevSunday = new Date(lastMonday);
+                prevSunday.setDate(lastMonday.getDate() - 1);
+                return {
+                    start: formatDate(prevMonday),
+                    end: formatDate(prevSunday)
+                };
+            }
+
             return {
                 start: formatDate(prevMonday),
                 end: formatDate(lastMonday)
             };
         } else if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) {
-            // BI-WEEKLY: Monday to Monday (14 days)
+            // BI-WEEKLY: Monday to Monday (checkout) or Monday to Sunday (calendar)
             const lastMonday = new Date(today);
             const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             lastMonday.setDate(today.getDate() - daysToMonday);
 
             const twoWeeksAgo = new Date(lastMonday);
             twoWeeksAgo.setDate(lastMonday.getDate() - 14);
+
+            if (calcType === 'calendar') {
+                const endSunday = new Date(lastMonday);
+                endSunday.setDate(lastMonday.getDate() - 1);
+                return {
+                    start: formatDate(twoWeeksAgo),
+                    end: formatDate(endSunday)
+                };
+            }
 
             return {
                 start: formatDate(twoWeeksAgo),
@@ -939,6 +976,16 @@ class TagScheduleService {
         if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) return 'weekly';
         if (upperTag.includes('BI-WEEKLY') || upperTag.includes('BIWEEKLY')) return 'biweekly';
         return 'monthly';
+    }
+
+    /**
+     * Get default calculation type based on tag name.
+     * Monthly → calendar, Weekly/Bi-weekly → checkout.
+     */
+    getDefaultCalculationTypeForTag(tagName) {
+        const upper = (tagName || '').toUpperCase();
+        if (upper.includes('MONTHLY')) return 'calendar';
+        return 'checkout';
     }
 }
 

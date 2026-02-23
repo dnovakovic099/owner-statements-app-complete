@@ -66,21 +66,37 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   // Format date as YYYY-MM-DD in local timezone (avoids UTC shift)
   const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  // Helper function to calculate date range based on tag
-  const getDateRangeForTag = (tag: string): { start: string; end: string } => {
+  // Helper to derive default calculation type from tag name
+  const getCalculationTypeForTag = (tag: string): string => {
+    const upper = tag.toUpperCase();
+    if (upper.includes('MONTHLY')) return 'calendar';
+    return 'checkout'; // WEEKLY, BI-WEEKLY
+  };
+
+  // Helper function to calculate date range based on tag and calculation type
+  const getDateRangeForTag = (tag: string, calcType: string = 'checkout'): { start: string; end: string } => {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
     const upperTag = tag.toUpperCase();
 
     if (upperTag.includes('WEEKLY') && !upperTag.includes('BI')) {
-      // WEEKLY: Monday to Monday
+      // WEEKLY: Monday to Monday (checkout) or Monday to Sunday (calendar)
       const lastMonday = new Date(today);
       const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       lastMonday.setDate(today.getDate() - daysToMonday);
 
       const prevMonday = new Date(lastMonday);
       prevMonday.setDate(lastMonday.getDate() - 7);
+
+      if (calcType === 'calendar') {
+        const prevSunday = new Date(lastMonday);
+        prevSunday.setDate(lastMonday.getDate() - 1);
+        return {
+          start: formatDate(prevMonday),
+          end: formatDate(prevSunday)
+        };
+      }
 
       return {
         start: formatDate(prevMonday),
@@ -105,6 +121,15 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
       const startMonday = new Date(endMonday);
       startMonday.setDate(endMonday.getDate() - 14);
+
+      if (calcType === 'calendar') {
+        const endSunday = new Date(endMonday);
+        endSunday.setDate(endMonday.getDate() - 1);
+        return {
+          start: formatDate(startMonday),
+          end: formatDate(endSunday)
+        };
+      }
 
       return {
         start: formatDate(startMonday),
@@ -402,6 +427,25 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
     setEndDate(formatDate(lastDay));
   };
 
+  // When calculation type radio changes, recalculate dates if a tag or group is active
+  const handleCalculationTypeChange = (newCalcType: string) => {
+    setCalculationType(newCalcType);
+
+    // Recalculate dates based on active tag or group tag
+    if (selectedGroupId) {
+      const group = groups.find(g => g.id === selectedGroupId);
+      if (group?.tags && group.tags.length > 0) {
+        const dateRange = getDateRangeForTag(group.tags[0], newCalcType);
+        setStartDate(dateRange.start);
+        setEndDate(dateRange.end);
+      }
+    } else if (selectedTags.length > 0) {
+      const dateRange = getDateRangeForTag(selectedTags[0], newCalcType);
+      setStartDate(dateRange.start);
+      setEndDate(dateRange.end);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-[1200px] w-[95vw] max-h-[92vh] p-0 gap-0 overflow-hidden" hideCloseButton>
@@ -569,6 +613,12 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                                       } else {
                                         setSelectedTags([...selectedTags, tag]);
                                         setSelectedPropertyIds([]);
+                                        // Auto-set calculation type and dates based on tag
+                                        const calcType = getCalculationTypeForTag(tag);
+                                        setCalculationType(calcType);
+                                        const dateRange = getDateRangeForTag(tag, calcType);
+                                        setStartDate(dateRange.start);
+                                        setEndDate(dateRange.end);
                                       }
                                     }}
                                   >
@@ -754,15 +804,17 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                                   } else {
                                     setSelectedGroupId(group.id);
                                     setSelectedPropertyIds([]);
-                                    // Auto-set dates based on group's first tag
+                                    // Determine calculation type: group override, or tag-based default
+                                    const tagCalcType = group.tags && group.tags.length > 0
+                                      ? getCalculationTypeForTag(group.tags[0])
+                                      : 'checkout';
+                                    const calcType = group.calculationType || tagCalcType;
+                                    setCalculationType(calcType);
+                                    // Auto-set dates based on group's first tag and resolved calc type
                                     if (group.tags && group.tags.length > 0) {
-                                      const dateRange = getDateRangeForTag(group.tags[0]);
+                                      const dateRange = getDateRangeForTag(group.tags[0], calcType);
                                       setStartDate(dateRange.start);
                                       setEndDate(dateRange.end);
-                                    }
-                                    // Auto-set calculation type from group
-                                    if (group.calculationType) {
-                                      setCalculationType(group.calculationType);
                                     }
                                   }
                                 }}
@@ -1001,7 +1053,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                         name="calculationType"
                         value="checkout"
                         checked={calculationType === 'checkout'}
-                        onChange={(e) => setCalculationType(e.target.value)}
+                        onChange={(e) => handleCalculationTypeChange(e.target.value)}
                         className="mt-0.5 mr-2"
                       />
                       <div>
@@ -1021,7 +1073,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                         name="calculationType"
                         value="calendar"
                         checked={calculationType === 'calendar'}
-                        onChange={(e) => setCalculationType(e.target.value)}
+                        onChange={(e) => handleCalculationTypeChange(e.target.value)}
                         className="mt-0.5 mr-2"
                       />
                       <div>
