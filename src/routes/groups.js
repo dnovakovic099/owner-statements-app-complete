@@ -93,16 +93,18 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, tags, calculationType } = req.body;
+        const { name, tags, calculationType, stripeAccountId, stripeOnboardingStatus } = req.body;
 
-        if (name === undefined && tags === undefined && calculationType === undefined) {
-            return res.status(400).json({ error: 'At least one field (name, tags, or calculationType) is required to update' });
+        if (name === undefined && tags === undefined && calculationType === undefined && stripeAccountId === undefined && stripeOnboardingStatus === undefined) {
+            return res.status(400).json({ error: 'At least one field is required to update' });
         }
 
         const updates = {};
         if (name !== undefined) updates.name = name;
         if (tags !== undefined) updates.tags = tags;
         if (calculationType !== undefined) updates.calculationType = calculationType;
+        if (stripeAccountId !== undefined) updates.stripeAccountId = stripeAccountId;
+        if (stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = stripeOnboardingStatus;
 
         const group = await ListingGroupService.updateGroup(parseInt(id), updates);
 

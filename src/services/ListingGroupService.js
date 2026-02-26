@@ -41,15 +41,17 @@ class ListingGroupService {
                 order: [['name', 'ASC']]
             });
 
-            // Get member counts for each group
+            // Get member counts and listing IDs for each group
             const groupsWithCounts = await Promise.all(
                 groups.map(async (group) => {
-                    const memberCount = await this.Listing.count({
-                        where: { groupId: group.id }
+                    const members = await this.Listing.findAll({
+                        where: { groupId: group.id },
+                        attributes: ['id']
                     });
                     return {
                         ...group.toJSON(),
-                        memberCount
+                        memberCount: members.length,
+                        listingIds: members.map(m => m.id)
                     };
                 })
             );
@@ -84,6 +86,7 @@ class ListingGroupService {
             return {
                 ...group.toJSON(),
                 members: members.map(m => m.toJSON()),
+                listingIds: members.map(m => m.id),
                 memberCount: members.length
             };
         } catch (error) {
@@ -194,6 +197,16 @@ class ListingGroupService {
             // Update calculationType if provided
             if (updates.calculationType !== undefined) {
                 updateData.calculationType = updates.calculationType || 'checkout';
+            }
+
+            // Update stripeAccountId if provided
+            if (updates.stripeAccountId !== undefined) {
+                updateData.stripeAccountId = updates.stripeAccountId || null;
+            }
+
+            // Update stripeOnboardingStatus if provided
+            if (updates.stripeOnboardingStatus !== undefined) {
+                updateData.stripeOnboardingStatus = updates.stripeOnboardingStatus || 'missing';
             }
 
             if (Object.keys(updateData).length > 0) {

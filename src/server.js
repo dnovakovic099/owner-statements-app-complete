@@ -256,6 +256,85 @@ app.use('/api/financials', authenticate, require('./routes/financials'));
 app.use('/api/email', authenticate, require('./routes/email'));
 app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
 
+// Stripe Connect OAuth callback (public — owner's browser is redirected here by Stripe)
+app.get('/api/connect/callback', async (req, res) => {
+    const connectLogger = require('./utils/logger');
+    try {
+        const { code, state, error, error_description } = req.query;
+
+        if (error) {
+            connectLogger.warn('Stripe Connect OAuth denied', { error, error_description });
+            return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Connection Cancelled</h2><p>The Stripe account was not connected.</p></body></html>');
+        }
+
+        if (!code || !state) {
+            return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Invalid Request</h2><p>Missing authorization code or state.</p></body></html>');
+        }
+
+        const Stripe = require('stripe');
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        if (!stripeKey) {
+            return res.status(500).send('Stripe not configured');
+        }
+        const stripe = new Stripe(stripeKey);
+
+        // Decode state to get entity info
+        let entityInfo;
+        try {
+            entityInfo = JSON.parse(Buffer.from(state, 'base64url').toString());
+        } catch (e) {
+            return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Invalid State</h2><p>Could not decode connection state.</p></body></html>');
+        }
+
+        const { entityType, entityId } = entityInfo;
+        if (!['listing', 'group'].includes(entityType) || !entityId) {
+            return res.status(400).send('Invalid entity info in state');
+        }
+
+        // Exchange authorization code for connected account ID
+        const response = await stripe.oauth.token({
+            grant_type: 'authorization_code',
+            code,
+        });
+
+        const connectedAccountId = response.stripe_user_id;
+
+        // Save to entity
+        const { encryptOptional } = require('./utils/fieldEncryption');
+        const ListingGroup = require('./models/ListingGroup');
+        const { Listing } = require('./models');
+
+        if (entityType === 'group') {
+            const group = await ListingGroup.findByPk(parseInt(entityId, 10));
+            if (group) {
+                await group.update({ stripeAccountId: connectedAccountId, stripeOnboardingStatus: 'verified' });
+            }
+        } else {
+            const listing = await Listing.findByPk(parseInt(entityId, 10));
+            if (listing) {
+                await listing.update({ stripeAccountId: encryptOptional(connectedAccountId), stripeOnboardingStatus: 'verified' });
+            }
+        }
+
+        connectLogger.info('Stripe Connect OAuth completed', { entityType, entityId, connectedAccountId });
+
+        res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <div style="max-width:400px;margin:0 auto">
+                <div style="width:64px;height:64px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <h2 style="color:#111827;margin-bottom:8px">Stripe Account Connected!</h2>
+                <p style="color:#6b7280">Your Stripe account <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${connectedAccountId}</code> has been successfully linked.</p>
+                <p style="color:#9ca3af;font-size:14px;margin-top:24px">You can close this window.</p>
+            </div>
+        </body></html>`);
+    } catch (err) {
+        const connectLogger2 = require('./utils/logger');
+        connectLogger2.logError(err, { context: 'StripeConnectCallback' });
+        res.status(500).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Connection Failed</h2><p>${err.message || 'Something went wrong connecting your Stripe account.'}</p></body></html>`);
+    }
+});
+
 // Payouts - Stripe Connect onboarding and status
 app.use('/api/payouts', authenticate, require('./routes/payouts'));
 

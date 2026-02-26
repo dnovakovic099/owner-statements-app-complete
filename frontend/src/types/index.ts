@@ -61,7 +61,9 @@ export interface StatementItem {
   vendor?: string;
   listing?: string;
   hidden?: boolean;
-  hiddenReason?: string;
+  hiddenReason?: 'manual' | 'll_cover' | 'prior_statement';
+  priorStatementId?: number;
+  priorPeriod?: string;
 }
 
 export interface Statement {
@@ -108,12 +110,14 @@ export interface Statement {
   items?: StatementItem[];
   internalNotes?: string | null;
   // Payout tracking fields
-  payoutStatus?: 'pending' | 'paid' | 'failed' | null;
+  payoutStatus?: 'pending' | 'paid' | 'collected' | 'failed' | null;
   payoutTransferId?: string | null;
   paidAt?: string | null;
   payoutError?: string | null;
   stripeFee?: number | null;
   totalTransferAmount?: number | null;
+  hasPriorStatementDuplicates?: boolean;
+  priorStatementDuplicateCount?: number;
 }
 
 export interface DashboardSummary {
@@ -210,6 +214,8 @@ export interface ListingGroup {
   tags: string[];
   listingIds: number[];
   calculationType?: 'checkout' | 'calendar';
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   listings?: Listing[];
   memberCount?: number;
   createdAt?: string;

@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -42,6 +42,8 @@ interface ListingName {
   displayName?: string | null;
   nickname?: string | null;
   internalNotes?: string | null;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
 }
 
 interface PaginationState {
@@ -100,6 +102,7 @@ const getStatusBadge = (status: string) => {
     final: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
     sent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', dot: 'bg-green-500' },
     paid: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
+    collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
   };
 
   const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', dot: 'bg-gray-500' };
@@ -181,6 +184,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     'totalRevenue',
     'ownerPayout',
     'status',
+    'payoutStatus',
     'createdAt',
     'actions',
   ];
@@ -387,11 +391,21 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const needsReview = row.original.needsReview;
         const reviewDetails = row.original.reviewDetails;
         const cancelledCount = row.original.cancelledReservationCount || 0;
+        const hasPriorDuplicates = row.original.hasPriorStatementDuplicates;
+        const priorDuplicateCount = row.original.priorStatementDuplicateCount || 0;
         return (
           <span className="cursor-default inline-flex items-center justify-center gap-1.5 group/cell relative w-full">
             <span className="text-gray-700 truncate">
               {displayName}
             </span>
+            {hasPriorDuplicates && (
+              <span className="relative group/dup flex-shrink-0">
+                <Copy className="h-4 w-4 text-orange-500" />
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/dup:inline-flex items-center bg-orange-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                  {priorDuplicateCount} duplicate{priorDuplicateCount > 1 ? 's' : ''} from prior statement{priorDuplicateCount > 1 ? 's' : ''}
+                </span>
+              </span>
+            )}
             {shouldConvertToCalendar && (
               <span className="relative group/calendar flex-shrink-0">
                 <Calendar className="h-4 w-4 text-blue-500" />
@@ -520,20 +534,43 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const status = row.getValue('status') as string;
         const payoutStatus = row.original.payoutStatus;
+        const displayStatus = (payoutStatus === 'paid' || payoutStatus === 'collected') ? (payoutStatus) : status;
         return (
           <div className="flex flex-col items-center gap-1">
-            {getStatusBadge(status)}
-            {payoutStatus === 'paid' && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border bg-purple-50 text-purple-700 border-purple-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                Paid
-              </span>
-            )}
+            {getStatusBadge(displayStatus)}
           </div>
         );
       },
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
+      },
+    },
+    {
+      accessorKey: 'payoutStatus',
+      size: 120,
+      header: () => <span className="font-semibold text-gray-600">Payout</span>,
+      cell: ({ row }) => {
+        const payoutStatus = row.original.payoutStatus;
+        if (!payoutStatus) {
+          return <span className="text-xs text-gray-300">--</span>;
+        }
+        const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
+          paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Paid' },
+          collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', label: 'Collected' },
+          pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
+          failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Failed' },
+        };
+        const c = config[payoutStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400', label: payoutStatus };
+        return (
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${c.bg} ${c.text} ${c.border}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+            {c.label}
+          </span>
+        );
+      },
+      filterFn: (row, id, value) => {
+        const status = row.original.payoutStatus || 'unpaid';
+        return value.includes(status);
       },
     },
     {
@@ -615,23 +652,37 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               color="text-orange-600"
               disabled={statement.status === 'draft' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
-            <ActionButton
-              onClick={() => onAction(statement.id, 'pay-owner')}
-              tooltip={
-                statement.payoutStatus === 'paid' ? 'Already Paid' :
-                  statement.ownerPayout <= 0 ? 'No payout amount' :
-                    'Pay Owner via Stripe'
-              }
-              icon={<DollarSign className="w-[18px] h-[18px]" />}
-              color="text-green-600"
-              disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.ownerPayout <= 0}
-            />
+            {(() => {
+              const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+              const listing = listingId && listings ? listings.find(l => l.id === listingId) : null;
+              const hasStripeAccount = !!(listing?.stripeAccountId);
+              const isRestricted = listing?.stripeOnboardingStatus === 'requires_action' || listing?.stripeOnboardingStatus === 'pending';
+              const noStripe = !hasStripeAccount || isRestricted;
+              return (
+                <ActionButton
+                  onClick={() => onAction(statement.id, 'pay-owner')}
+                  tooltip={
+                    (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
+                      !hasStripeAccount ? 'No Stripe account connected' :
+                        isRestricted ? 'Stripe account not yet enabled' :
+                          statement.status !== 'final' ? 'Statement must be finalized first' :
+                            statement.ownerPayout === 0 ? 'No payout amount' :
+                              statement.ownerPayout < 0 ? `Collect $${Math.abs(statement.ownerPayout).toFixed(2)} from Owner` :
+                                'Pay Owner via Stripe'
+                  }
+                  icon={<DollarSign className="w-[18px] h-[18px]" />}
+                  color={noStripe ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.ownerPayout === 0 || noStripe}
+                />
+              );
+            })()}
+
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
-              tooltip={statement.payoutStatus === 'paid' ? 'Cannot Delete Paid Statement' : statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
+              tooltip={(statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Cannot Delete Settled Statement' : statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
               icon={<Trash2 className="w-[18px] h-[18px]" />}
               color="text-red-500"
-              disabled={statement.status !== 'draft' || statement.payoutStatus === 'paid'}
+              disabled={statement.status !== 'draft' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected'}
             />
           </div>
         );
@@ -648,6 +699,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       if (markerFilter.includes('cleaning') && s.cleaningMismatchWarning) return true;
       if (markerFilter.includes('review') && s.needsReview) return true;
       if (markerFilter.includes('calendar') && s.shouldConvertToCalendar) return true;
+      if (markerFilter.includes('duplicates') && s.hasPriorStatementDuplicates) return true;
       return false;
     });
   }, [statements, markerFilter]);
@@ -711,8 +763,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     week: 'Period',
     calculationType: 'Type',
     totalRevenue: 'Revenue',
-    ownerPayout: 'Payout',
+    ownerPayout: 'Payout Amount',
     status: 'Status',
+    payoutStatus: 'Payout Status',
     createdAt: 'Created',
   };
 
@@ -908,6 +961,44 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Payout Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                  Payout
+                  <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Payout</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {[
+                  { value: 'paid', label: 'Paid' },
+                  { value: 'collected', label: 'Collected' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'failed', label: 'Failed' },
+                  { value: 'unpaid', label: 'Unpaid' },
+                ].map(({ value, label }) => {
+                  const filterValue = (table.getColumn('payoutStatus')?.getFilterValue() as string[]) || [];
+                  const isChecked = filterValue.includes(value);
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={value}
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        const newValue = checked
+                          ? [...filterValue, value]
+                          : filterValue.filter((v) => v !== value);
+                        table.getColumn('payoutStatus')?.setFilterValue(newValue.length ? newValue : undefined);
+                      }}
+                    >
+                      {label}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Markers Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -953,6 +1044,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }}
                 >
                   Calendar Conversion
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={markerFilter.includes('duplicates')}
+                  onCheckedChange={(checked) => {
+                    setMarkerFilter(prev =>
+                      checked ? [...prev, 'duplicates'] : prev.filter(v => v !== 'duplicates')
+                    );
+                  }}
+                >
+                  Prior Statement Duplicates
                 </DropdownMenuCheckboxItem>
                 {markerFilter.length > 0 && (
                   <>
@@ -1033,7 +1134,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {markerFilter.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-md border border-purple-100">
                 Markers: {markerFilter.map(m =>
-                  m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : 'Calendar'
+                  m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : m === 'duplicates' ? 'Duplicates' : 'Calendar'
                 ).join(', ')}
                 <button onClick={() => setMarkerFilter([])} className="hover:text-purple-900 ml-0.5">×</button>
               </span>

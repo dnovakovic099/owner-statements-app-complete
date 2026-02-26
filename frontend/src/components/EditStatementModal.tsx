@@ -91,6 +91,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [selectedHiddenUpsellIndices, setSelectedHiddenUpsellIndices] = useState<number[]>([]);
   const [selectedLLCoverExpenseIndices, setSelectedLLCoverExpenseIndices] = useState<number[]>([]);
   const [selectedLLCoverUpsellIndices, setSelectedLLCoverUpsellIndices] = useState<number[]>([]);
+  const [selectedPriorExpenseIndices, setSelectedPriorExpenseIndices] = useState<number[]>([]);
+  const [selectedPriorUpsellIndices, setSelectedPriorUpsellIndices] = useState<number[]>([]);
   const [showHiddenExpenses, setShowHiddenExpenses] = useState(false);
   const [showHiddenUpsells, setShowHiddenUpsells] = useState(false);
   const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
@@ -188,6 +190,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
       setSelectedHiddenUpsellIndices([]);
       setSelectedLLCoverExpenseIndices([]);
       setSelectedLLCoverUpsellIndices([]);
+      setSelectedPriorExpenseIndices([]);
+      setSelectedPriorUpsellIndices([]);
       setSelectedReservationIdsToRemove([]);
       setSelectedReservationIdsToAdd([]);
       setAvailableReservations([]);
@@ -352,6 +356,22 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
 
   const handleLLCoverUpsellToggle = (index: number) => {
     setSelectedLLCoverUpsellIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handlePriorExpenseToggle = (index: number) => {
+    setSelectedPriorExpenseIndices(prev =>
+      prev.includes(index)
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handlePriorUpsellToggle = (index: number) => {
+    setSelectedPriorUpsellIndices(prev =>
       prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index]
@@ -714,6 +734,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     if (selectedLLCoverUpsellIndices.length > 0) {
       actions.push(`include ${selectedLLCoverUpsellIndices.length} LL Cover upsell(s)`);
     }
+    if (selectedPriorExpenseIndices.length > 0) {
+      actions.push(`restore ${selectedPriorExpenseIndices.length} prior statement expense(s)`);
+    }
+    if (selectedPriorUpsellIndices.length > 0) {
+      actions.push(`restore ${selectedPriorUpsellIndices.length} prior statement upsell(s)`);
+    }
     if (selectedReservationIdsToRemove.length > 0) {
       actions.push(`remove ${selectedReservationIdsToRemove.length} reservation(s)`);
     }
@@ -750,11 +776,19 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
             let hiddenUpsellCount = 0;
             let llCoverExpenseCount = 0;
             let llCoverUpsellCount = 0;
+            let priorExpenseCount = 0;
+            let priorUpsellCount = 0;
 
             statement.items.forEach((item, globalIndex) => {
               if (item.type === 'expense') {
                 if (item.hidden) {
-                  if (item.hiddenReason === 'll_cover') {
+                  if (item.hiddenReason === 'prior_statement') {
+                    // Prior statement duplicate expense
+                    if (selectedPriorExpenseIndices.includes(priorExpenseCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    priorExpenseCount++;
+                  } else if (item.hiddenReason === 'll_cover') {
                     // LL Cover expense
                     if (selectedLLCoverExpenseIndices.includes(llCoverExpenseCount)) {
                       itemVisibilityUpdates.push({ globalIndex, hidden: false });
@@ -775,7 +809,13 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                 }
               } else if (item.type === 'upsell') {
                 if (item.hidden) {
-                  if (item.hiddenReason === 'll_cover') {
+                  if (item.hiddenReason === 'prior_statement') {
+                    // Prior statement duplicate upsell
+                    if (selectedPriorUpsellIndices.includes(priorUpsellCount)) {
+                      itemVisibilityUpdates.push({ globalIndex, hidden: false });
+                    }
+                    priorUpsellCount++;
+                  } else if (item.hiddenReason === 'll_cover') {
                     // LL Cover upsell
                     if (selectedLLCoverUpsellIndices.includes(llCoverUpsellCount)) {
                       itemVisibilityUpdates.push({ globalIndex, hidden: false });
@@ -825,6 +865,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     setSelectedHiddenUpsellIndices([]);
     setSelectedLLCoverExpenseIndices([]);
     setSelectedLLCoverUpsellIndices([]);
+    setSelectedPriorExpenseIndices([]);
+    setSelectedPriorUpsellIndices([]);
     setSelectedReservationIdsToRemove([]);
     setSelectedReservationIdsToAdd([]);
     setAvailableReservations([]);
@@ -877,11 +919,13 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   if (!isOpen) return null;
 
   const expenses = statement?.items?.filter(item => item.type === 'expense' && !item.hidden) || [];
-  const hiddenExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason !== 'll_cover') || [];
+  const hiddenExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement') || [];
   const llCoverExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason === 'll_cover') || [];
+  const priorStatementExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason === 'prior_statement') || [];
   const upsells = statement?.items?.filter(item => item.type === 'upsell' && !item.hidden) || [];
-  const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover') || [];
+  const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement') || [];
   const llCoverUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'll_cover') || [];
+  const priorStatementUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'prior_statement') || [];
   const reservations = statement?.reservations || [];
 
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
@@ -908,6 +952,14 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     return sum + (llCoverUpsells[index]?.amount || 0);
   }, 0);
 
+  const selectedPriorExpensesTotal = selectedPriorExpenseIndices.reduce((sum, index) => {
+    return sum + (priorStatementExpenses[index]?.amount || 0);
+  }, 0);
+
+  const selectedPriorUpsellsTotal = selectedPriorUpsellIndices.reduce((sum, index) => {
+    return sum + (priorStatementUpsells[index]?.amount || 0);
+  }, 0);
+
   const selectedReservationsToRemoveTotal = selectedReservationIdsToRemove.reduce((sum, id) => {
     const res = reservations.find(r => (r.hostifyId || r.id) === id);
     return sum + (res?.grossAmount || res?.clientRevenue || 0);
@@ -925,7 +977,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     - selectedHiddenExpensesTotal
     + selectedHiddenUpsellsTotal
     - selectedLLCoverExpensesTotal
-    + selectedLLCoverUpsellsTotal;
+    + selectedLLCoverUpsellsTotal
+    - selectedPriorExpensesTotal
+    + selectedPriorUpsellsTotal;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
@@ -978,15 +1032,35 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       Revenue: ${statement.totalRevenue.toLocaleString()} - Expenses: ${statement.totalExpenses.toLocaleString()}
                     </div>
                     {/* Payout Status & Pay Button */}
-                    <div className="mt-2 flex items-center justify-end gap-2">
+                    <div className="mt-2 flex flex-col items-end gap-2">
                       {(statement as any).payoutStatus === 'paid' ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          ✓ Paid {(statement as any).paidAt ? new Date((statement as any).paidAt).toLocaleDateString() : ''}
-                        </span>
+                        <div className="text-right">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            ✓ Paid {(statement as any).paidAt ? new Date((statement as any).paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }) : ''}
+                          </span>
+                          <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
+                            {(statement as any).stripeFee > 0 && (
+                              <div>Stripe fee: <span className="font-medium text-gray-700">${(statement as any).stripeFee.toFixed(2)}</span></div>
+                            )}
+                            {(statement as any).totalTransferAmount > 0 && (
+                              <div>Total transferred: <span className="font-medium text-gray-700">${(statement as any).totalTransferAmount.toFixed(2)}</span></div>
+                            )}
+                            {(statement as any).payoutTransferId && (
+                              <div className="font-mono text-[10px] text-gray-400">{(statement as any).payoutTransferId}</div>
+                            )}
+                          </div>
+                        </div>
                       ) : (statement as any).payoutStatus === 'failed' ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(statement as any).payoutError || ''}>
-                          ✗ Failed
-                        </span>
+                        <div className="text-right">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            ✗ Failed
+                          </span>
+                          {(statement as any).payoutError && (
+                            <div className="mt-1 text-xs text-red-600 max-w-[250px] truncate" title={(statement as any).payoutError}>
+                              {(statement as any).payoutError}
+                            </div>
+                          )}
+                        </div>
                       ) : (statement as any).payoutStatus === 'pending' ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                           ⏳ Processing
@@ -1187,7 +1261,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               </div>
 
               {/* Selection Info */}
-              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedHiddenExpenseIndices.length > 0 || selectedHiddenUpsellIndices.length > 0 || selectedLLCoverExpenseIndices.length > 0 || selectedLLCoverUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0 || selectedCancelledIdsToAdd.length > 0) && (
+              {(selectedExpenseIndices.length > 0 || selectedUpsellIndices.length > 0 || selectedHiddenExpenseIndices.length > 0 || selectedHiddenUpsellIndices.length > 0 || selectedLLCoverExpenseIndices.length > 0 || selectedLLCoverUpsellIndices.length > 0 || selectedPriorExpenseIndices.length > 0 || selectedPriorUpsellIndices.length > 0 || selectedReservationIdsToRemove.length > 0 || selectedReservationIdsToAdd.length > 0 || selectedCancelledIdsToAdd.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -1269,6 +1343,26 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             </h4>
                             <p className="text-sm text-amber-700">
                               Revenue increase: ${selectedReservationsToAddTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </>
+                        )}
+                        {selectedPriorExpenseIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-orange-800">
+                              {selectedPriorExpenseIndices.length} prior statement expense(s) selected to restore
+                            </h4>
+                            <p className="text-sm text-orange-700">
+                              Expense increase: ${selectedPriorExpensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </>
+                        )}
+                        {selectedPriorUpsellIndices.length > 0 && (
+                          <>
+                            <h4 className="font-medium text-orange-800">
+                              {selectedPriorUpsellIndices.length} prior statement upsell(s) selected to restore
+                            </h4>
+                            <p className="text-sm text-orange-700">
+                              Revenue increase: ${selectedPriorUpsellsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                           </>
                         )}
@@ -1580,6 +1674,71 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Prior Statement Duplicate Expenses Section */}
+                {priorStatementExpenses.length > 0 && (
+                  <div className="mt-4 rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-orange-600 px-2.5 py-1 text-xs font-semibold text-white">
+                          Duplicate
+                        </span>
+                        <h4 className="text-sm font-semibold text-orange-900">
+                          Prior Statement Duplicates ({priorStatementExpenses.length})
+                        </h4>
+                      </div>
+                      <span className="text-xs text-orange-700">Select to include in statement</span>
+                    </div>
+                    <p className="text-xs text-orange-700 mb-3">
+                      These expenses were already included in a prior finalized statement and are excluded by default to prevent double-payment. Select to restore if legitimate.
+                    </p>
+                    <div className="space-y-2">
+                      {priorStatementExpenses.map((expense, index) => {
+                        const isSelected = selectedPriorExpenseIndices.includes(index);
+                        return (
+                          <div
+                            key={`prior-expense-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
+                              ? 'bg-orange-100 border-orange-400'
+                              : 'bg-white border-orange-200 hover:bg-orange-50'
+                              }`}
+                            onClick={() => handlePriorExpenseToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => handlePriorExpenseToggle(index)}
+                                    className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{expense.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{expense.category}</span> {expense.date && <>• {expense.date}</>}
+                                      {expense.vendor && <span> • {expense.vendor}</span>}
+                                    </div>
+                                    {expense.priorStatementId && (
+                                      <div className="mt-1">
+                                        <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-800">
+                                          Already in Statement #{expense.priorStatementId} ({expense.priorPeriod})
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-orange-700 font-semibold">
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                {expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Additional Revenue (Upsells) List */}
@@ -1831,6 +1990,71 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 </div>
                               </div>
                               <div className="flex items-center text-purple-700 font-semibold">
+                                <Plus className="w-4 h-4 mr-1" />
+                                {upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Prior Statement Duplicate Upsells Section */}
+                {priorStatementUpsells.length > 0 && (
+                  <div className="mt-4 rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-orange-600 px-2.5 py-1 text-xs font-semibold text-white">
+                          Duplicate
+                        </span>
+                        <h4 className="text-sm font-semibold text-orange-900">
+                          Prior Statement Duplicate Upsells ({priorStatementUpsells.length})
+                        </h4>
+                      </div>
+                      <span className="text-xs text-orange-700">Select to include in statement</span>
+                    </div>
+                    <p className="text-xs text-orange-700 mb-3">
+                      These upsells were already included in a prior finalized statement. Select to restore if legitimate.
+                    </p>
+                    <div className="space-y-2">
+                      {priorStatementUpsells.map((upsell, index) => {
+                        const isSelected = selectedPriorUpsellIndices.includes(index);
+                        return (
+                          <div
+                            key={`prior-upsell-${index}`}
+                            className={`border rounded-lg p-3 cursor-pointer ${isSelected
+                              ? 'bg-orange-100 border-orange-400'
+                              : 'bg-white border-orange-200 hover:bg-orange-50'
+                              }`}
+                            onClick={() => handlePriorUpsellToggle(index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => handlePriorUpsellToggle(index)}
+                                    className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                                  />
+                                  <div>
+                                    <h4 className="font-medium text-gray-800">{upsell.description}</h4>
+                                    <div className="text-xs text-gray-500">
+                                      <span className="capitalize">{upsell.category}</span> {upsell.date && <>• {upsell.date}</>}
+                                      {upsell.listing && <span> • {upsell.listing}</span>}
+                                    </div>
+                                    {upsell.priorStatementId && (
+                                      <div className="mt-1">
+                                        <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-800">
+                                          Already in Statement #{upsell.priorStatementId} ({upsell.priorPeriod})
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center text-orange-700 font-semibold">
                                 <Plus className="w-4 h-4 mr-1" />
                                 {upsell.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>

@@ -10,9 +10,11 @@ import {
   Bell,
   X,
   BarChart3,
+  FolderOpen,
+  CreditCard,
 } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials' | 'analytics';
+type Page = 'dashboard' | 'listings' | 'groups' | 'stripe' | 'email' | 'settings' | 'financials' | 'analytics';
 
 interface UserInfo {
   username: string;
@@ -57,6 +59,8 @@ interface SidebarProps {
 const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'listings', label: 'Listings', icon: <Home className="w-5 h-5" /> },
+  { id: 'groups', label: 'Groups', icon: <FolderOpen className="w-5 h-5" /> },
+  { id: 'stripe', label: 'Stripe', icon: <CreditCard className="w-5 h-5" /> },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, adminOnly: true },
   { id: 'email', label: 'Email', icon: <Mail className="w-5 h-5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },
@@ -195,28 +199,33 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Notification Dropdown */}
         {isNotificationOpen && (
-          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-32 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden`}>
-            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden`}>
+            <div className="px-4 py-3 border-b border-gray-100 bg-white">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">New Listings</h3>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">{unreadCount} unread</span>
-                  <button
-                    onClick={() => {
-                      setIsNotificationOpen(false);
-                      setShowAllNotifications(false);
-                    }}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <h3 className="font-semibold text-gray-900 text-sm">New Listings</h3>
+                  {unreadCount > 0 && (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[11px] font-semibold rounded-full">
+                      {unreadCount} new
+                    </span>
+                  )}
                 </div>
+                <button
+                  onClick={() => {
+                    setIsNotificationOpen(false);
+                    setShowAllNotifications(false);
+                  }}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            <div className="max-h-[528px] overflow-y-auto">
+            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50">
               {newListings.length === 0 ? (
-                <div className="px-4 py-6 text-center text-gray-500">
-                  No new listings
+                <div className="px-4 py-8 text-center">
+                  <Bell className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                  <p className="text-sm text-gray-400">No new listings</p>
                 </div>
               ) : (
                 (showAllNotifications ? newListings : newListings.slice(0, 5)).map((listing) => {
@@ -224,8 +233,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <div
                       key={listing.id}
-                      className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
-                        isRead ? 'bg-gray-50/50' : 'bg-white'
+                      className={`px-4 py-3 cursor-pointer transition-colors hover:bg-blue-50/50 ${
+                        isRead ? '' : 'bg-blue-50/30'
                       }`}
                       onClick={() => {
                         onNotificationClick(listing);
@@ -234,21 +243,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                         if (!isRead) onMarkAsRead(listing.id);
                       }}
                     >
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isRead ? 'bg-transparent' : 'bg-blue-500'}`} />
                         <div className="flex-1 min-w-0">
-                          <p className={`font-medium truncate ${isRead ? 'text-gray-500' : 'text-gray-900'}`}>
+                          <p className={`text-sm font-medium truncate ${isRead ? 'text-gray-500' : 'text-gray-900'}`}>
                             {listing.displayName}
                           </p>
-                          <p className={`text-sm truncate ${isRead ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-xs truncate mt-0.5 ${isRead ? 'text-gray-400' : 'text-gray-500'}`}>
                             {listing.city}{listing.state ? `, ${listing.state}` : ''}
                           </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            Added {new Date(listing.createdAt).toLocaleDateString()}
-                          </p>
                         </div>
-                        {!isRead && (
-                          <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2"></span>
-                        )}
+                        <span className={`text-[11px] whitespace-nowrap ${isRead ? 'text-gray-300' : 'text-gray-400'}`}>
+                          {new Date(listing.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                        </span>
                       </div>
                     </div>
                   );
@@ -256,7 +263,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
             {newListings.length > 0 && (
-              <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+              <div className="px-4 py-2.5 bg-gray-50/80 border-t border-gray-100 flex justify-between items-center">
                 {unreadCount > 0 ? (
                   <button
                     onClick={() => {
@@ -264,19 +271,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                       setIsNotificationOpen(false);
                       setShowAllNotifications(false);
                     }}
-                    className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                   >
                     Mark all read
                   </button>
                 ) : (
-                  <span className="text-sm text-gray-400">All read</span>
+                  <span className="text-xs text-gray-400">All read</span>
                 )}
                 {newListings.length > 5 && (
                   <button
                     onClick={() => setShowAllNotifications(!showAllNotifications)}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                   >
-                    {showAllNotifications ? 'Show Less' : `View All (${newListings.length})`}
+                    {showAllNotifications ? 'Show less' : `View all (${newListings.length})`}
                   </button>
                 )}
               </div>

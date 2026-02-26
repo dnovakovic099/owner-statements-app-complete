@@ -477,11 +477,13 @@ class FileDataService {
                     }
                 });
 
-                // Add imported reservations per property
-                for (const propId of propertyIds) {
-                    const imported = await this.getImportedReservations(startDate, endDate, propId);
-                    reservationsByProperty[propId].push(...imported);
-                }
+                // Add imported reservations per property (in parallel)
+                const importedResults = await Promise.all(
+                    propertyIds.map(propId => this.getImportedReservations(startDate, endDate, propId))
+                );
+                propertyIds.forEach((propId, i) => {
+                    reservationsByProperty[propId].push(...importedResults[i]);
+                });
 
                 return reservationsByProperty;
             }
@@ -504,9 +506,11 @@ class FileDataService {
      */
     async getExpensesBatch(startDate, endDate, propertyIds) {
 
-        // Fetch all expenses for the date range at once
-        const allApiExpenses = await this._fetchAllSecureStayExpenses(startDate, endDate);
-        const allUploadedExpenses = await this._fetchAllUploadedExpenses(startDate, endDate);
+        // Fetch all expenses for the date range in parallel
+        const [allApiExpenses, allUploadedExpenses] = await Promise.all([
+            this._fetchAllSecureStayExpenses(startDate, endDate),
+            this._fetchAllUploadedExpenses(startDate, endDate)
+        ]);
 
         // Group expenses by propertyId
         const result = {};
@@ -891,6 +895,10 @@ class FileDataService {
 
     async updateStatement(id, updates) {
         return await DatabaseService.updateStatement(id, updates);
+    }
+
+    async getPriorStatementExpenses(propertyIds, excludeStatementId = null) {
+        return await DatabaseService.getPriorStatementExpenses(propertyIds, excludeStatementId);
     }
 
     // Dashboard data - optimized to not fetch all reservations

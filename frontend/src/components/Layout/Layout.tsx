@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'email' | 'settings' | 'financials' | 'analytics';
+type Page = 'dashboard' | 'listings' | 'groups' | 'stripe' | 'email' | 'settings' | 'financials' | 'analytics';
 
 interface UserInfo {
   username: string;

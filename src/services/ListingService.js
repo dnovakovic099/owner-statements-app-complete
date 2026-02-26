@@ -321,8 +321,16 @@ class ListingService {
     async getListingNames() {
         try {
             const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'stripeAccountId', 'stripeOnboardingStatus']
+                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'stripeAccountId', 'stripeOnboardingStatus', 'groupId']
             });
+
+            // Load groups that have Stripe accounts for inheritance
+            const ListingGroup = require('../models/ListingGroup');
+            const groups = await ListingGroup.findAll({
+                attributes: ['id', 'stripeAccountId', 'stripeOnboardingStatus']
+            });
+            const groupMap = new Map(groups.map(g => [g.id, g.toJSON()]));
+
             return listings.map(l => {
                 const json = l.toJSON();
                 try {
@@ -331,6 +339,17 @@ class ListingService {
                     logger.warn('Failed to decrypt stripeAccountId for listing', { id: json.id });
                     json.stripeAccountId = null;
                 }
+
+                // Apply group Stripe account inheritance:
+                // If listing is in a group with a Stripe account, use that unless listing has its own
+                if (json.groupId && !json.stripeAccountId) {
+                    const group = groupMap.get(json.groupId);
+                    if (group && group.stripeAccountId) {
+                        json.stripeAccountId = group.stripeAccountId;
+                        json.stripeOnboardingStatus = group.stripeOnboardingStatus || json.stripeOnboardingStatus;
+                    }
+                }
+
                 return json;
             });
         } catch (error) {

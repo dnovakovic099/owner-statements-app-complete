@@ -17,6 +17,8 @@ const UploadModal = lazy(() => import('./UploadModal'));
 const EditStatementModal = lazy(() => import('./EditStatementModal'));
 // const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
+const GroupsPage = lazy(() => import('./GroupsPage'));
+const StripePage = lazy(() => import('./StripePage'));
 
 interface User {
   username: string;
@@ -38,6 +40,8 @@ interface ListingName {
   internalNotes?: string | null;
   ownerEmail?: string | null;
   tags?: string[] | null;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
 }
 
 // Newly added listing for notifications
@@ -65,7 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'stripe' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -623,42 +627,85 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return;
         }
 
-        if (statement.ownerPayout <= 0) {
+        if (statement.ownerPayout === 0) {
           showToast('No payout amount to transfer', 'error');
           return;
         }
 
-        if ((statement as any).payoutStatus === 'paid') {
-          showToast('This statement has already been paid', 'error');
+        const payoutStatus = (statement as any).payoutStatus;
+        if (payoutStatus === 'paid' || payoutStatus === 'collected') {
+          showToast('This statement has already been settled', 'error');
           return;
         }
 
-        // Show confirmation dialog with fee breakdown
+        // Check if listing has a connected Stripe account
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        if (listingId) {
+          const listing = listings.find(l => l.id === listingId);
+          if (!listing?.stripeAccountId) {
+            showToast('No Stripe account connected for this listing. Add a Stripe Account ID in Listings settings.', 'error');
+            return;
+          }
+          if (listing.stripeOnboardingStatus === 'requires_action' || listing.stripeOnboardingStatus === 'pending') {
+            showToast('Stripe account is not yet enabled. The owner needs to complete Stripe onboarding.', 'error');
+            return;
+          }
+        }
+
         const payoutAmount = Number(statement.ownerPayout) || 0;
-        const stripeFee = Math.round(payoutAmount * 0.0025 * 100) / 100; // 0.25%
-        const totalTransfer = payoutAmount + stripeFee;
-        setConfirmDialog({
-          isOpen: true,
-          title: 'Pay Owner via Stripe',
-          message: `Transfer to ${statement.ownerName || 'owner'}?\n\nOwner Payout: $${payoutAmount.toFixed(2)}\nStripe Fee (0.25%): $${stripeFee.toFixed(2)}\nTotal Transfer: $${totalTransfer.toFixed(2)}`,
-          type: 'info',
-          onConfirm: async () => {
-            const toastId = showToast('Processing Stripe transfer...', 'loading');
-            try {
-              const response = await payoutsAPI.transferToOwner(id);
-              if (response.success) {
-                const actualTotal = response.totalTransferAmount || totalTransfer;
-                updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
-                await loadStatements();
-              } else {
-                updateToast(toastId, response.error || 'Transfer failed', 'error');
+
+        if (payoutAmount > 0) {
+          // Positive payout — send money to owner
+          const stripeFee = Math.round(payoutAmount * 0.0025 * 100) / 100; // 0.25%
+          const totalTransfer = payoutAmount + stripeFee;
+          setConfirmDialog({
+            isOpen: true,
+            title: 'Pay Owner via Stripe',
+            message: `Transfer to ${statement.ownerName || 'owner'}?\n\nOwner Payout: $${payoutAmount.toFixed(2)}\nStripe Fee (0.25%): $${stripeFee.toFixed(2)}\nTotal Transfer: $${totalTransfer.toFixed(2)}`,
+            type: 'info',
+            onConfirm: async () => {
+              const toastId = showToast('Processing Stripe transfer...', 'loading');
+              try {
+                const response = await payoutsAPI.transferToOwner(id);
+                if (response.success) {
+                  const actualTotal = response.totalTransferAmount || totalTransfer;
+                  updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
+                  await loadStatements();
+                } else {
+                  updateToast(toastId, response.error || 'Transfer failed', 'error');
+                }
+              } catch (err: any) {
+                const errorMessage = err?.response?.data?.error || err?.message || 'Transfer failed';
+                updateToast(toastId, errorMessage, 'error');
               }
-            } catch (err: any) {
-              const errorMessage = err?.response?.data?.error || err?.message || 'Transfer failed';
-              updateToast(toastId, errorMessage, 'error');
-            }
-          },
-        });
+            },
+          });
+        } else {
+          // Negative payout — collect money from owner via Stripe
+          const collectAmount = Math.abs(payoutAmount);
+          setConfirmDialog({
+            isOpen: true,
+            title: 'Collect from Owner via Stripe',
+            message: `Owner ${statement.ownerName || ''} owes $${collectAmount.toFixed(2)} for this statement.\n\nCollect $${collectAmount.toFixed(2)} from their connected Stripe account?`,
+            type: 'warning',
+            confirmText: 'Collect',
+            onConfirm: async () => {
+              const toastId = showToast('Collecting payment via Stripe...', 'loading');
+              try {
+                const response = await payoutsAPI.collectFromOwner(id);
+                if (response.success) {
+                  updateToast(toastId, `Collected $${collectAmount.toFixed(2)} from owner`, 'success');
+                  await loadStatements();
+                } else {
+                  updateToast(toastId, response.error || 'Collection failed', 'error');
+                }
+              } catch (err: any) {
+                const errorMessage = err?.response?.data?.error || err?.message || 'Collection failed';
+                updateToast(toastId, errorMessage, 'error');
+              }
+            },
+          });
+        }
         return;
       }
     } catch (err) {
@@ -996,10 +1043,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } else if (action === 'pay-owner') {
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
-      // Filter for valid payouts
-      const validPayouts = selectedStatements.filter(s =>
-        s.ownerPayout > 0 && (s as any).payoutStatus !== 'paid'
-      );
+      // Filter for valid payouts (must have positive payout, not already paid, and have Stripe account)
+      const validPayouts = selectedStatements.filter(s => {
+        if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid') return false;
+        const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
+        if (!lid) return false;
+        const listing = listings.find(l => l.id === lid);
+        if (!listing?.stripeAccountId) return false;
+        if (listing.stripeOnboardingStatus === 'requires_action' || listing.stripeOnboardingStatus === 'pending') return false;
+        return true;
+      });
+
+      const noStripeCount = selectedStatements.filter(s => {
+        const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
+        const listing = lid ? listings.find(l => l.id === lid) : null;
+        return !listing?.stripeAccountId || listing?.stripeOnboardingStatus === 'requires_action' || listing?.stripeOnboardingStatus === 'pending';
+      }).length;
 
       const skippedCount = selectedStatements.length - validPayouts.length;
 
@@ -1008,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           isOpen: true,
           title: 'No Statements to Pay',
           message: skippedCount > 0
-            ? `None of the selected statements can be paid. They either have $0 payout or are already paid.`
+            ? `None of the selected statements can be paid. They may have $0 payout, are already paid, or have no Stripe account connected.`
             : 'No statements selected.',
           type: 'info',
           onConfirm: () => { },
@@ -1023,7 +1082,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       const message = `Are you sure you want to pay ${validPayouts.length} owners via Stripe?\n\n` +
         `Total Payout: $${totalAmount.toFixed(2)}\n\n` +
-        (skippedCount > 0 ? `(${skippedCount} statements skipped - $0 or already paid)` : '');
+        (skippedCount > 0 ? `(${skippedCount} skipped` + (noStripeCount > 0 ? `, ${noStripeCount} without Stripe` : '') + ` - $0, already paid, or no Stripe)` : '');
 
       setConfirmDialog({
         isOpen: true,
@@ -1224,6 +1283,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           onOpenEmailDashboard={() => setCurrentPage('email')}
           hideSidebar={true}
         />
+      );
+    }
+
+    if (currentPage === 'groups') {
+      return (
+        <Suspense fallback={<LoadingSpinner />}>
+          <GroupsPage />
+        </Suspense>
+      );
+    }
+
+    if (currentPage === 'stripe') {
+      return (
+        <Suspense fallback={<LoadingSpinner />}>
+          <StripePage />
+        </Suspense>
       );
     }
 

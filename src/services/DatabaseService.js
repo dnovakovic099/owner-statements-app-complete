@@ -65,7 +65,7 @@ class DatabaseService {
                     // Reload to get the updated timestamp
                     await existing.reload();
 
-                    logger.info(`Updated statement ${statementData.id} (updated_at: ${existing.updatedAt})`, logContext);
+                    logger.info(`Updated statement ${statementData.id} (updated_at: ${existing.updated_at})`, logContext);
                     return existing.toJSON();
                 } else {
                     logger.debug(`Statement with id=${statementData.id} not found, will create new`, logContext);
@@ -217,6 +217,60 @@ class DatabaseService {
         // But keep for compatibility
         const maxId = await Statement.max('id');
         return (maxId || 0) + 1;
+    }
+
+    /**
+     * Get expenses from prior finalized/sent/paid statements for duplicate detection.
+     * Checks both single-property and group statements that share any of the given property IDs.
+     * @param {number[]} propertyIds - Array of property IDs to check
+     * @param {number|null} excludeStatementId - Statement ID to exclude (the one being generated)
+     * @returns {Array<{id, expenses, weekStartDate, weekEndDate, propertyName}>}
+     */
+    async getPriorStatementExpenses(propertyIds, excludeStatementId = null) {
+        try {
+            const where = {
+                status: { [Op.in]: ['final', 'sent', 'paid'] }
+            };
+
+            if (excludeStatementId) {
+                where.id = { [Op.ne]: excludeStatementId };
+            }
+
+            const statements = await Statement.findAll({
+                where,
+                attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName', 'propertyId', 'propertyIds'],
+                order: [['created_at', 'DESC']],
+                limit: 20
+            });
+
+            // Filter to only statements that overlap with the given propertyIds
+            const propertyIdSet = new Set(propertyIds.map(id => parseInt(id)));
+            const matching = statements.filter(s => {
+                const json = s.toJSON();
+                // Check single propertyId
+                if (json.propertyId && propertyIdSet.has(parseInt(json.propertyId))) return true;
+                // Check propertyIds array (for group/combined statements)
+                const stmtPropertyIds = json.propertyIds || [];
+                if (Array.isArray(stmtPropertyIds)) {
+                    return stmtPropertyIds.some(pid => propertyIdSet.has(parseInt(pid)));
+                }
+                return false;
+            });
+
+            return matching.map(s => {
+                const json = s.toJSON();
+                return {
+                    id: json.id,
+                    expenses: json.expenses || [],
+                    weekStartDate: json.weekStartDate,
+                    weekEndDate: json.weekEndDate,
+                    propertyName: json.propertyName
+                };
+            });
+        } catch (error) {
+            logger.logError(error, { context: 'DatabaseService', action: 'getPriorStatementExpenses' });
+            return [];
+        }
     }
 
     // ==================== UPLOADED EXPENSES ====================

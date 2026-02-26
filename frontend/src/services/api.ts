@@ -510,7 +510,7 @@ export const listingsAPI = {
     return response.data;
   },
 
-  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes' | 'ownerEmail' | 'tags' | 'payoutStatus' | 'payoutNotes'>[] }> => {
+  getListingNames: async (): Promise<{ success: boolean; listings: Pick<Listing, 'id' | 'name' | 'displayName' | 'nickname' | 'internalNotes' | 'ownerEmail' | 'tags' | 'payoutStatus' | 'payoutNotes' | 'stripeAccountId' | 'stripeOnboardingStatus'>[] }> => {
     const response = await api.get('/listings/names');
     return response.data;
   },
@@ -587,6 +587,11 @@ export const listingsAPI = {
 
 // Payouts (Stripe Connect)
 export const payoutsAPI = {
+  getConfig: async (): Promise<{ stripeConfigured: boolean; connectOAuthEnabled: boolean }> => {
+    const response = await api.get('/payouts/config');
+    return response.data;
+  },
+
   createOnboardingLink: async (listingId: number): Promise<{ success: boolean; url: string; stripeAccountId: string; status: string }> => {
     const response = await api.post(`/payouts/listings/${listingId}/onboarding-link`);
     return response.data;
@@ -594,6 +599,18 @@ export const payoutsAPI = {
 
   refreshStatus: async (listingId: number): Promise<{ success: boolean; status: string; payoutStatus: string }> => {
     const response = await api.get(`/payouts/listings/${listingId}/status`);
+    return response.data;
+  },
+
+  refreshStripeStatus: async (data: { stripeAccountId: string; listingId?: number; groupId?: number }): Promise<{
+    success: boolean;
+    status: string;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    detailsSubmitted: boolean;
+    disabledReason: string | null;
+  }> => {
+    const response = await api.post('/payouts/refresh-status', data);
     return response.data;
   },
 
@@ -608,6 +625,30 @@ export const payoutsAPI = {
     error?: string;
   }> => {
     const response = await api.post(`/payouts/statements/${statementId}/transfer`);
+    return response.data;
+  },
+
+  collectFromOwner: async (statementId: number): Promise<{
+    success: boolean;
+    message: string;
+    transferId: string;
+    collectAmount: number;
+    paidAt: string;
+    error?: string;
+  }> => {
+    const response = await api.post(`/payouts/statements/${statementId}/collect`);
+    return response.data;
+  },
+
+  generateOAuthLink: async (data: {
+    email?: string;
+    entityType: 'listing' | 'group';
+    entityId: number;
+  }): Promise<{
+    success: boolean;
+    oauthUrl: string;
+  }> => {
+    const response = await api.post('/payouts/connect/oauth-link', data);
     return response.data;
   },
 };
@@ -628,6 +669,7 @@ export const groupsAPI = {
     name: string;
     tags: string[];
     listingIds: number[];
+    stripeAccountId?: string | null;
   }): Promise<{ group: any }> => {
     const response = await api.post('/groups', data);
     return response.data;
@@ -638,6 +680,7 @@ export const groupsAPI = {
     data: {
       name?: string;
       tags?: string[];
+      stripeAccountId?: string | null;
     }
   ): Promise<{ group: any }> => {
     const response = await api.put(`/groups/${id}`, data);

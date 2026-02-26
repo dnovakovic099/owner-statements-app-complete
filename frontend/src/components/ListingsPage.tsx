@@ -255,6 +255,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     name: string;
     tags: string[];
     listingIds: number[];
+    stripeAccountId?: string | null;
   }) => {
     try {
       if (data.id) {
@@ -262,6 +263,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         await groupsAPI.updateGroup(data.id, {
           name: data.name,
           tags: data.tags,
+          stripeAccountId: data.stripeAccountId,
         });
 
         // Handle listing membership changes
@@ -1181,18 +1183,23 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           </span>
                         )}
                       </div>
-                      {listing.tags && listing.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {listing.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {listing.tags && listing.tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {(listing as any).stripeAccountId && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {(listing as any).stripeAccountId.length > 12
+                              ? `${(listing as any).stripeAccountId.slice(0, 5)}...${(listing as any).stripeAccountId.slice(-4)}`
+                              : (listing as any).stripeAccountId}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
 
@@ -1247,18 +1254,23 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               </span>
                             )}
                           </div>
-                          {listing.tags && listing.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {listing.tags.map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {listing.tags && listing.tags.map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {(listing as any).stripeAccountId && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {(listing as any).stripeAccountId.length > 12
+                                  ? `${(listing as any).stripeAccountId.slice(0, 5)}...${(listing as any).stripeAccountId.slice(-4)}`
+                                  : (listing as any).stripeAccountId}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       ))}
                     </>

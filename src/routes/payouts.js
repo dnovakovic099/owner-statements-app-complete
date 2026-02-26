@@ -6,9 +6,49 @@ const ListingService = require('../services/ListingService');
 const { Listing } = require('../models');
 const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption');
 
+const ListingGroup = require('../models/ListingGroup');
+
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 // Use default API version from account; explicit version here caused invalid version errors.
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+
+/**
+ * Resolve the Stripe account ID for a statement.
+ * Priority: group Stripe account > individual listing Stripe account
+ */
+async function resolveStripeAccountId(statement) {
+    // Check group-level Stripe account first (if statement belongs to a group)
+    if (statement.groupId) {
+        try {
+            const group = await ListingGroup.findByPk(statement.groupId);
+            if (group && group.stripeAccountId) {
+                return { stripeAccountId: group.stripeAccountId, source: 'group' };
+            }
+        } catch (e) {
+            logger.warn('Failed to check group Stripe account', { groupId: statement.groupId, error: e.message });
+        }
+    }
+
+    // Fall back to individual listing Stripe account
+    const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+    if (!listingId) {
+        return { stripeAccountId: null, source: null, error: 'Statement has no associated listing' };
+    }
+
+    const listing = await Listing.findByPk(listingId);
+    if (!listing) {
+        return { stripeAccountId: null, source: null, error: 'Listing not found' };
+    }
+
+    let stripeAccountId = listing.stripeAccountId;
+    try {
+        stripeAccountId = decryptOptional(stripeAccountId);
+    } catch (e) {
+        stripeAccountId = null;
+    }
+
+    return { stripeAccountId: stripeAccountId || null, source: stripeAccountId ? 'listing' : null };
+}
 
 const getBaseReturnUrl = () => {
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
@@ -22,6 +62,14 @@ const ensureStripe = (res) => {
     }
     return true;
 };
+
+// Check which payout features are available based on env config
+router.get('/config', (req, res) => {
+    res.json({
+        stripeConfigured: !!stripeSecretKey,
+        connectOAuthEnabled: !!process.env.STRIPE_CONNECT_CLIENT_ID,
+    });
+});
 
 // Create or reuse a Connect account and generate onboarding link for a listing/owner
 router.post('/listings/:id/onboarding-link', async (req, res) => {
@@ -75,8 +123,7 @@ router.post('/listings/:id/onboarding-link', async (req, res) => {
     }
 });
 
-// Get current onboarding/payout status (stored values only - no Stripe API call)
-// Status must be updated manually via listing settings since we don't have Stripe read permissions
+// Get current onboarding/payout status for a listing
 router.get('/listings/:id/status', async (req, res) => {
     try {
         const listingId = parseInt(req.params.id, 10);
@@ -94,6 +141,125 @@ router.get('/listings/:id/status', async (req, res) => {
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'getStatus', listingId: req.params.id });
         res.status(500).json({ error: 'Failed to get payout status' });
+    }
+});
+
+// Refresh Stripe onboarding status by querying Stripe API for a specific account ID
+// Updates the status on both listing and group level
+router.post('/refresh-status', async (req, res) => {
+    if (!ensureStripe(res)) return;
+    try {
+        const { stripeAccountId, listingId, groupId } = req.body;
+
+        if (!stripeAccountId) {
+            return res.status(400).json({ error: 'stripeAccountId is required' });
+        }
+
+        // Query Stripe for the real account status
+        const account = await stripe.accounts.retrieve(stripeAccountId);
+
+        // Determine status from Stripe's response
+        let newStatus = 'pending';
+        if (account.charges_enabled && account.payouts_enabled) {
+            newStatus = 'verified';
+        } else if (account.requirements?.disabled_reason) {
+            newStatus = 'requires_action';
+        } else if (account.details_submitted) {
+            newStatus = 'pending';
+        } else {
+            newStatus = 'pending';
+        }
+
+        // Update listing if provided
+        if (listingId) {
+            const listing = await Listing.findByPk(parseInt(listingId, 10));
+            if (listing && listing.stripeAccountId) {
+                await listing.update({ stripeOnboardingStatus: newStatus });
+            }
+        }
+
+        // Update group if provided
+        if (groupId) {
+            const group = await ListingGroup.findByPk(parseInt(groupId, 10));
+            if (group && group.stripeAccountId) {
+                await group.update({ stripeOnboardingStatus: newStatus });
+            }
+        }
+
+        res.json({
+            success: true,
+            stripeAccountId,
+            status: newStatus,
+            chargesEnabled: account.charges_enabled,
+            payoutsEnabled: account.payouts_enabled,
+            detailsSubmitted: account.details_submitted,
+            disabledReason: account.requirements?.disabled_reason || null,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'refreshStatus' });
+        res.status(500).json({ error: error.message || 'Failed to refresh Stripe status' });
+    }
+});
+
+// Generate Stripe Connect OAuth link for an owner to connect their existing Stripe account
+router.post('/connect/oauth-link', async (req, res) => {
+    try {
+        const clientId = process.env.STRIPE_CONNECT_CLIENT_ID;
+        if (!clientId) {
+            return res.status(500).json({ error: 'STRIPE_CONNECT_CLIENT_ID is not configured' });
+        }
+
+        const { email, entityType, entityId } = req.body;
+
+        if (!entityType || !entityId) {
+            return res.status(400).json({ error: 'entityType and entityId are required' });
+        }
+        if (!['listing', 'group'].includes(entityType)) {
+            return res.status(400).json({ error: 'entityType must be "listing" or "group"' });
+        }
+
+        // Validate entity exists and doesn't already have an account
+        let entity;
+        if (entityType === 'group') {
+            entity = await ListingGroup.findByPk(parseInt(entityId, 10));
+        } else {
+            entity = await Listing.findByPk(parseInt(entityId, 10));
+        }
+        if (!entity) {
+            return res.status(404).json({ error: `${entityType} not found` });
+        }
+
+        let existingId = entity.stripeAccountId;
+        if (entityType === 'listing') {
+            try { existingId = decryptOptional(existingId); } catch (e) { existingId = null; }
+        }
+        if (existingId) {
+            return res.status(409).json({ error: 'This entity already has a Stripe account connected' });
+        }
+
+        // Encode entity info into state parameter
+        const state = Buffer.from(JSON.stringify({ entityType, entityId: parseInt(entityId, 10) })).toString('base64url');
+
+        const baseUrl = getBaseReturnUrl();
+        const redirectUri = `${baseUrl}/api/connect/callback`;
+
+        const params = new URLSearchParams({
+            response_type: 'code',
+            client_id: clientId,
+            scope: 'read_write',
+            redirect_uri: redirectUri,
+            state,
+        });
+        if (email) {
+            params.set('stripe_user[email]', email);
+        }
+
+        const oauthUrl = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
+
+        res.json({ success: true, oauthUrl });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'generateOAuthLink' });
+        res.status(500).json({ error: error.message || 'Failed to generate OAuth link' });
     }
 });
 
@@ -124,27 +290,16 @@ router.post('/statements/:id/transfer', async (req, res) => {
             });
         }
 
-        // Get the listing to find the connected Stripe account
+        // Resolve Stripe account (group-level takes priority over listing-level)
+        const resolved = await resolveStripeAccountId(statement);
+        if (resolved.error) {
+            return res.status(400).json({ error: resolved.error });
+        }
+        if (!resolved.stripeAccountId) {
+            return res.status(400).json({ error: 'No connected Stripe account (checked group and listing)' });
+        }
+        const stripeAccountId = resolved.stripeAccountId;
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-        if (!listingId) {
-            return res.status(400).json({ error: 'Statement has no associated listing' });
-        }
-
-        const listing = await Listing.findByPk(listingId);
-        if (!listing) {
-            return res.status(404).json({ error: 'Listing not found' });
-        }
-
-        let stripeAccountId = listing.stripeAccountId;
-        try {
-            stripeAccountId = decryptOptional(stripeAccountId);
-        } catch (e) {
-            stripeAccountId = null;
-        }
-
-        if (!stripeAccountId) {
-            return res.status(400).json({ error: 'Listing has no connected Stripe account' });
-        }
 
         // Mark as pending before attempting transfer
         await statement.update({ payoutStatus: 'pending', payoutError: null });
@@ -221,6 +376,108 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         logger.logError(error, { context: 'Payouts', action: 'transferToOwner', statementId: req.params.id });
         res.status(500).json({ error: error.message || 'Failed to transfer payout' });
+    }
+});
+
+// Collect payment from owner for negative balance statements
+// Uses Stripe Connect to debit the connected account's balance
+router.post('/statements/:id/collect', async (req, res) => {
+    if (!ensureStripe(res)) return;
+    try {
+        const statementId = parseInt(req.params.id, 10);
+        const { Statement, Listing } = require('../models');
+
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) {
+            return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        const payoutAmount = parseFloat(statement.ownerPayout);
+        if (payoutAmount >= 0) {
+            return res.status(400).json({ error: 'Cannot collect: payout amount is not negative. Use transfer instead.' });
+        }
+
+        if (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') {
+            return res.status(400).json({
+                error: 'Statement already settled',
+                transferId: statement.payoutTransferId,
+                paidAt: statement.paidAt
+            });
+        }
+
+        // Resolve Stripe account (group-level takes priority over listing-level)
+        const resolved = await resolveStripeAccountId(statement);
+        if (resolved.error) {
+            return res.status(400).json({ error: resolved.error });
+        }
+        if (!resolved.stripeAccountId) {
+            return res.status(400).json({ error: 'No connected Stripe account (checked group and listing)' });
+        }
+        const stripeAccountId = resolved.stripeAccountId;
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+
+        await statement.update({ payoutStatus: 'pending', payoutError: null });
+
+        const collectAmount = Math.abs(payoutAmount);
+        const amountInCents = Math.round(collectAmount * 100);
+
+        // Pull funds from connected account back to platform
+        const charge = await stripe.charges.create({
+            amount: amountInCents,
+            currency: 'usd',
+            source: stripeAccountId,
+            description: `Collection for statement #${statementId} - ${statement.propertyName || 'Property ' + (listingId || '')} (owner balance due)`,
+            metadata: {
+                statementId: statementId.toString(),
+                listingId: (listingId || '').toString(),
+                ownerName: statement.ownerName,
+                periodStart: statement.weekStartDate,
+                periodEnd: statement.weekEndDate,
+                collectAmount: collectAmount.toString(),
+                type: 'collection'
+            }
+        });
+
+        await statement.update({
+            payoutStatus: 'collected',
+            payoutTransferId: charge.id,
+            paidAt: new Date(),
+            payoutError: null,
+            stripeFee: 0,
+            totalTransferAmount: -collectAmount
+        });
+
+        logger.info('Payment collection successful', {
+            statementId,
+            chargeId: charge.id,
+            collectAmount,
+            source: stripeAccountId
+        });
+
+        res.json({
+            success: true,
+            message: 'Payment collected from owner',
+            transferId: charge.id,
+            collectAmount,
+            paidAt: new Date()
+        });
+
+    } catch (error) {
+        try {
+            const { Statement } = require('../models');
+            const statement = await Statement.findByPk(parseInt(req.params.id, 10));
+            if (statement) {
+                await statement.update({
+                    payoutStatus: 'failed',
+                    payoutError: error.message
+                });
+            }
+        } catch (updateError) {
+            logger.error('Failed to update statement after collection error', { error: updateError.message });
+        }
+
+        logger.logError(error, { context: 'Payouts', action: 'collectFromOwner', statementId: req.params.id });
+        res.status(500).json({ error: error.message || 'Failed to collect payment' });
     }
 });
 

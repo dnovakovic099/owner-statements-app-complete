@@ -24,6 +24,7 @@ interface GroupModalProps {
     tags: string[];
     listingIds: number[];
     calculationType: 'checkout' | 'calendar';
+    stripeAccountId?: string | null;
   }) => Promise<void>;
   allListings: Listing[];
   allGroups: ListingGroup[];
@@ -41,6 +42,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedListingIds, setSelectedListingIds] = useState<number[]>([]);
   const [calculationType, setCalculationType] = useState<'checkout' | 'calendar'>('checkout');
+  const [stripeAccountId, setStripeAccountId] = useState('');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; tags?: string; listings?: string }>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,11 +70,13 @@ const GroupModal: React.FC<GroupModalProps> = ({
         setSelectedTags(group.tags || []);
         setSelectedListingIds(group.listingIds || []);
         setCalculationType(group.calculationType || 'checkout');
+        setStripeAccountId(group.stripeAccountId || '');
       } else {
         setName('');
         setSelectedTags([]);
         setSelectedListingIds([]);
         setCalculationType('checkout');
+        setStripeAccountId('');
       }
       setErrors({});
       setSearchQuery('');
@@ -134,6 +138,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
         tags: selectedTags,
         listingIds: selectedListingIds,
         calculationType,
+        stripeAccountId: stripeAccountId.trim() || null,
       });
       onClose();
     } catch (error) {
@@ -261,6 +266,23 @@ const GroupModal: React.FC<GroupModalProps> = ({
                   </div>
                 </label>
               </div>
+            </div>
+
+            {/* Stripe Account ID */}
+            <div>
+              <Label htmlFor="stripeAccountId" className="text-sm font-medium text-gray-700">
+                Stripe Account ID
+              </Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Stripe Connect account for this group's owner. Overrides individual listing Stripe IDs.
+              </p>
+              <Input
+                id="stripeAccountId"
+                value={stripeAccountId}
+                onChange={(e) => setStripeAccountId(e.target.value)}
+                placeholder="acct_..."
+                className="mt-1 font-mono text-sm"
+              />
             </div>
 
             {/* Listings Selection */}
