@@ -114,7 +114,6 @@ const StripePage: React.FC = () => {
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [connectOAuthEnabled, setConnectOAuthEnabled] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   // Inline edit state
@@ -124,8 +123,7 @@ const StripePage: React.FC = () => {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteTarget, setInviteTarget] = useState<StripeConnectionRow | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteBusinessType, setInviteBusinessType] = useState<'individual' | 'company'>('individual');
-  const [inviteMode, setInviteMode] = useState<'existing' | 'new'>('existing');
+
   const [inviteLoading, setInviteLoading] = useState(false);
   const [onboardingResult, setOnboardingResult] = useState<{ stripeAccountId: string; onboardingUrl: string } | null>(null);
   const [oauthResult, setOauthResult] = useState<{ oauthUrl: string } | null>(null);
@@ -179,14 +177,12 @@ const StripePage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [groupsRes, listingsRes, configRes] = await Promise.all([
+      const [groupsRes, listingsRes] = await Promise.all([
         groupsAPI.getGroups(),
         listingsAPI.getListings(),
-        payoutsAPI.getConfig().catch(() => ({ stripeConfigured: false, connectOAuthEnabled: false })),
       ]);
       setGroups(groupsRes.groups || []);
       setAllListings(listingsRes.listings || []);
-      setConnectOAuthEnabled(configRes.connectOAuthEnabled);
     } catch (err) {
       console.error('Failed to fetch stripe connections data:', err);
       showToast('Failed to load stripe connections', 'error');
@@ -227,35 +223,9 @@ const StripePage: React.FC = () => {
   const openInviteModal = (row: StripeConnectionRow) => {
     setInviteTarget(row);
     setInviteEmail(row.ownerEmail || '');
-    setInviteBusinessType('individual');
-    setInviteMode('existing');
     setOnboardingResult(null);
     setOauthResult(null);
     setInviteModalOpen(true);
-  };
-
-  const handleCreateConnectAccount = async () => {
-    if (!inviteTarget || !inviteEmail.trim()) return;
-    setInviteLoading(true);
-    try {
-      const result = await payoutsAPI.createConnectAccount({
-        email: inviteEmail.trim(),
-        businessType: inviteBusinessType,
-        entityType: inviteTarget.type,
-        entityId: inviteTarget.id,
-      });
-      setOnboardingResult({
-        stripeAccountId: result.stripeAccountId,
-        onboardingUrl: result.onboardingUrl,
-      });
-      showToast('Stripe account created successfully', 'success');
-      await fetchData();
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to create Stripe account';
-      showToast(msg, 'error');
-    } finally {
-      setInviteLoading(false);
-    }
   };
 
   const handleGenerateOAuthLink = async () => {
