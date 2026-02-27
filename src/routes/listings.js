@@ -261,7 +261,13 @@ router.put('/:id/config', async (req, res) => {
             config.payoutStatus = payoutStatus;
         }
         if (payoutNotes !== undefined) config.payoutNotes = payoutNotes;
-        if (stripeAccountId !== undefined) config.stripeAccountId = stripeAccountId || null;
+        if (stripeAccountId !== undefined) {
+            config.stripeAccountId = stripeAccountId || null;
+            // Auto-set status when account ID is manually provided/cleared
+            if (stripeOnboardingStatus === undefined) {
+                config.stripeOnboardingStatus = stripeAccountId ? 'verified' : 'missing';
+            }
+        }
         if (stripeOnboardingStatus !== undefined) {
             const allowedStripeStatuses = ['missing', 'pending', 'verified', 'requires_action'];
             if (!allowedStripeStatuses.includes(stripeOnboardingStatus)) {

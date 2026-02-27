@@ -103,7 +103,13 @@ router.put('/:id', async (req, res) => {
         if (name !== undefined) updates.name = name;
         if (tags !== undefined) updates.tags = tags;
         if (calculationType !== undefined) updates.calculationType = calculationType;
-        if (stripeAccountId !== undefined) updates.stripeAccountId = stripeAccountId;
+        if (stripeAccountId !== undefined) {
+            updates.stripeAccountId = stripeAccountId;
+            // Auto-set status when account ID is manually provided/cleared
+            if (stripeOnboardingStatus === undefined) {
+                updates.stripeOnboardingStatus = stripeAccountId ? 'verified' : 'missing';
+            }
+        }
         if (stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = stripeOnboardingStatus;
 
         const group = await ListingGroupService.updateGroup(parseInt(id), updates);
