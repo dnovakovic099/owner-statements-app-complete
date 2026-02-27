@@ -627,4 +627,270 @@ router.post('/statements/:id/collect', async (req, res) => {
     }
 });
 
+/**
+ * Process all queued payout transfers.
+ * Called by the Stripe webhook when a top-up succeeds, or manually.
+ */
+async function processQueuedPayouts() {
+    if (!stripe) {
+        logger.error('Cannot process queued payouts: Stripe not configured');
+        return { success: false, error: 'Stripe not configured' };
+    }
+
+    const { Statement } = require('../models');
+    const { Op } = require('sequelize');
+
+    const queued = await Statement.findAll({ where: { payoutStatus: 'queued' } });
+    if (queued.length === 0) {
+        logger.info('No queued payouts to process');
+        return { success: true, processed: 0, failed: 0 };
+    }
+
+    // Verify balance is sufficient for all queued transfers
+    const STRIPE_FEE_PERCENT = 0.0025;
+    const totalNeededCents = queued.reduce((sum, s) => {
+        const payout = parseFloat(s.ownerPayout);
+        const fee = Math.round(payout * STRIPE_FEE_PERCENT * 100) / 100;
+        return sum + Math.round((payout + fee) * 100);
+    }, 0);
+
+    const balance = await stripe.balance.retrieve();
+    const availableUsd = balance.available.find(b => b.currency === 'usd');
+    const availableCents = availableUsd ? availableUsd.amount : 0;
+
+    if (availableCents < totalNeededCents) {
+        logger.warn('Insufficient balance to process all queued payouts', {
+            availableCents, totalNeededCents, queuedCount: queued.length
+        });
+        return { success: false, error: 'Insufficient balance', availableCents, totalNeededCents };
+    }
+
+    let processed = 0;
+    let failed = 0;
+
+    for (const statement of queued) {
+        try {
+            // Re-fetch to catch any changes since queuing (deleted, reverted, etc.)
+            await statement.reload();
+            if (statement.payoutStatus !== 'queued') {
+                logger.info('Skipping statement — no longer queued', { statementId: statement.id, status: statement.payoutStatus });
+                continue;
+            }
+            if (statement.status !== 'final') {
+                await statement.update({ payoutStatus: 'failed', payoutError: 'Statement is no longer final' });
+                failed++;
+                continue;
+            }
+
+            const payoutAmount = parseFloat(statement.ownerPayout);
+            if (payoutAmount <= 0) {
+                await statement.update({ payoutStatus: 'failed', payoutError: 'Payout amount is not positive' });
+                failed++;
+                continue;
+            }
+
+            const resolved = await resolveStripeAccountId(statement);
+            if (!resolved.stripeAccountId) {
+                await statement.update({ payoutStatus: 'failed', payoutError: 'No Stripe account found' });
+                failed++;
+                continue;
+            }
+
+            const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
+            const totalTransferAmount = payoutAmount + stripeFee;
+            const amountInCents = Math.round(totalTransferAmount * 100);
+            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+
+            const transfer = await stripe.transfers.create({
+                amount: amountInCents,
+                currency: 'usd',
+                destination: resolved.stripeAccountId,
+                description: `Payout for statement #${statement.id} - ${statement.propertyName || 'Property ' + listingId}`,
+                metadata: {
+                    statementId: statement.id.toString(),
+                    listingId: (listingId || '').toString(),
+                    ownerName: statement.ownerName,
+                    periodStart: statement.weekStartDate,
+                    periodEnd: statement.weekEndDate,
+                    ownerPayout: payoutAmount.toString(),
+                    stripeFee: stripeFee.toString(),
+                    totalTransfer: totalTransferAmount.toString()
+                }
+            });
+
+            await statement.update({
+                payoutStatus: 'paid',
+                payoutTransferId: transfer.id,
+                paidAt: new Date(),
+                payoutError: null,
+                stripeFee,
+                totalTransferAmount
+            });
+            processed++;
+            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
+        } catch (err) {
+            failed++;
+            await statement.update({ payoutStatus: 'failed', payoutError: err.message });
+            logger.error('Failed to process queued payout', { statementId: statement.id, error: err.message });
+        }
+    }
+
+    logger.info('Queued payouts processing complete', { processed, failed });
+    return { success: true, processed, failed };
+}
+
+// Fund and queue: batch payout endpoint
+router.post('/fund-and-queue', async (req, res) => {
+    if (!ensureStripe(res)) return;
+    try {
+        const { statementIds } = req.body;
+        if (!Array.isArray(statementIds) || statementIds.length === 0) {
+            return res.status(400).json({ error: 'statementIds array is required' });
+        }
+
+        const { Statement } = require('../models');
+        const statements = await Statement.findAll({ where: { id: statementIds } });
+
+        // Validate each statement
+        const STRIPE_FEE_PERCENT = 0.0025;
+        const valid = [];
+        const skipped = [];
+
+        for (const s of statements) {
+            const payoutAmount = parseFloat(s.ownerPayout);
+            if (payoutAmount <= 0) { skipped.push({ id: s.id, reason: 'non-positive payout' }); continue; }
+            if (s.payoutStatus === 'paid' || s.payoutStatus === 'collected') { skipped.push({ id: s.id, reason: 'already settled' }); continue; }
+            if (s.payoutStatus === 'queued') { skipped.push({ id: s.id, reason: 'already queued' }); continue; }
+            if (s.status !== 'final') { skipped.push({ id: s.id, reason: 'not final' }); continue; }
+
+            const resolved = await resolveStripeAccountId(s);
+            if (!resolved.stripeAccountId) { skipped.push({ id: s.id, reason: 'no Stripe account' }); continue; }
+
+            valid.push(s);
+        }
+
+        if (valid.length === 0) {
+            return res.status(400).json({ error: 'No valid statements to process', skipped });
+        }
+
+        // Calculate total needed in cents
+        const totalNeededCents = valid.reduce((sum, s) => {
+            const payout = parseFloat(s.ownerPayout);
+            const fee = Math.round(payout * STRIPE_FEE_PERCENT * 100) / 100;
+            return sum + Math.round((payout + fee) * 100);
+        }, 0);
+
+        // Check balance
+        const balance = await stripe.balance.retrieve();
+        const availableUsd = balance.available.find(b => b.currency === 'usd');
+        const availableCents = availableUsd ? availableUsd.amount : 0;
+
+        if (availableCents >= totalNeededCents) {
+            // Sufficient balance — process all transfers immediately
+            let processed = 0;
+            let failed = 0;
+            const results = [];
+
+            for (const s of valid) {
+                try {
+                    const payoutAmount = parseFloat(s.ownerPayout);
+                    const resolved = await resolveStripeAccountId(s);
+                    const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
+                    const totalTransferAmount = payoutAmount + stripeFee;
+                    const amountInCents = Math.round(totalTransferAmount * 100);
+                    const listingId = s.propertyId || (s.propertyIds && s.propertyIds[0]);
+
+                    await s.update({ payoutStatus: 'pending', payoutError: null });
+
+                    const transfer = await stripe.transfers.create({
+                        amount: amountInCents,
+                        currency: 'usd',
+                        destination: resolved.stripeAccountId,
+                        description: `Payout for statement #${s.id} - ${s.propertyName || 'Property ' + listingId}`,
+                        metadata: {
+                            statementId: s.id.toString(),
+                            listingId: (listingId || '').toString(),
+                            ownerName: s.ownerName,
+                            periodStart: s.weekStartDate,
+                            periodEnd: s.weekEndDate,
+                            ownerPayout: payoutAmount.toString(),
+                            stripeFee: stripeFee.toString(),
+                            totalTransfer: totalTransferAmount.toString()
+                        }
+                    });
+
+                    await s.update({
+                        payoutStatus: 'paid',
+                        payoutTransferId: transfer.id,
+                        paidAt: new Date(),
+                        payoutError: null,
+                        stripeFee,
+                        totalTransferAmount
+                    });
+                    processed++;
+                    results.push({ id: s.id, success: true, transferId: transfer.id });
+                } catch (err) {
+                    failed++;
+                    await s.update({ payoutStatus: 'failed', payoutError: err.message });
+                    results.push({ id: s.id, success: false, error: err.message });
+                }
+            }
+
+            return res.json({
+                queued: false,
+                processed,
+                failed,
+                results,
+                skipped
+            });
+        }
+
+        // Insufficient balance — create top-up and queue
+        const shortfallCents = totalNeededCents - availableCents;
+        const topupCents = Math.ceil(shortfallCents * 1.05); // 5% buffer
+
+        logger.info('Fund-and-queue: creating top-up', {
+            availableCents, totalNeededCents, shortfallCents, topupCents,
+            statementCount: valid.length
+        });
+
+        const topup = await stripe.topups.create({
+            amount: topupCents,
+            currency: 'usd',
+            description: `Fund & queue: ${valid.length} owner payouts`,
+            metadata: {
+                type: 'fund_and_queue',
+                statementCount: valid.length.toString(),
+                totalPayoutCents: totalNeededCents.toString()
+            }
+        });
+
+        // Mark all valid statements as queued
+        for (const s of valid) {
+            await s.update({ payoutStatus: 'queued', payoutError: null });
+        }
+
+        logger.info('Statements queued for payout', {
+            topupId: topup.id,
+            statementIds: valid.map(s => s.id),
+            topupAmount: topupCents
+        });
+
+        res.json({
+            queued: true,
+            topupId: topup.id,
+            topupAmount: topupCents / 100,
+            estimatedArrival: topup.expected_availability_date
+                ? new Date(topup.expected_availability_date * 1000).toISOString()
+                : null,
+            queuedCount: valid.length,
+            skipped
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'fundAndQueue' });
+        res.status(500).json({ error: error.message || 'Failed to fund and queue payouts' });
+    }
+});
+
 module.exports = router;
+module.exports.processQueuedPayouts = processQueuedPayouts;

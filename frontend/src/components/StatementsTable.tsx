@@ -558,7 +558,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Paid' },
           collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', label: 'Collected' },
           pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
+          queued: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500', label: 'Queued' },
           failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Failed' },
+          topup_failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Top-up Failed' },
         };
         const c = config[payoutStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400', label: payoutStatus };
         return (
@@ -663,6 +665,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   onClick={() => onAction(statement.id, 'pay-owner')}
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
+                      statement.payoutStatus === 'queued' ? 'Payout queued — waiting for funds' :
                       !hasStripeAccount ? 'No Stripe account connected' :
                         isRestricted ? 'Stripe account not yet enabled' :
                           statement.status !== 'final' ? 'Statement must be finalized first' :
@@ -672,7 +675,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noStripe ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.ownerPayout === 0 || noStripe}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'queued' || statement.ownerPayout === 0 || noStripe}
                 />
               );
             })()}
@@ -976,7 +979,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   { value: 'paid', label: 'Paid' },
                   { value: 'collected', label: 'Collected' },
                   { value: 'pending', label: 'Pending' },
+                  { value: 'queued', label: 'Queued' },
                   { value: 'failed', label: 'Failed' },
+                  { value: 'topup_failed', label: 'Top-up Failed' },
                   { value: 'unpaid', label: 'Unpaid' },
                 ].map(({ value, label }) => {
                   const filterValue = (table.getColumn('payoutStatus')?.getFilterValue() as string[]) || [];

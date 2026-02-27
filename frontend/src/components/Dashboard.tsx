@@ -1045,7 +1045,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       // Filter for valid payouts (must have positive payout, not already paid, and have Stripe account)
       const validPayouts = selectedStatements.filter(s => {
-        if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid') return false;
+        if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid' || (s as any).payoutStatus === 'queued') return false;
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
         if (!lid) return false;
         const listing = listings.find(l => l.id === lid);
@@ -1091,28 +1091,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         type: 'info',
         onConfirm: async () => {
           const toastId = showToast(`Processing ${validPayouts.length} payments...`, 'loading');
-          let successCount = 0;
-          let failCount = 0;
-
-          for (const statement of validPayouts) {
-            try {
-              const response = await payoutsAPI.transferToOwner(statement.id);
-              if (response.success) {
-                successCount++;
+          try {
+            const response = await payoutsAPI.fundAndQueue(validPayouts.map(s => s.id));
+            if (response.queued) {
+              updateToast(toastId, `Funds requested from bank. ${response.queuedCount} payouts will process automatically when funds arrive (1-2 business days).`, 'info');
+            } else {
+              const processed = response.processed || 0;
+              const failed = response.failed || 0;
+              if (failed === 0) {
+                updateToast(toastId, `Successfully paid ${processed} owners`, 'success');
               } else {
-                failCount++;
-                console.error(`Failed to pay statement ${statement.id}:`, response.error);
+                updateToast(toastId, `Paid ${processed} owners, failed ${failed}`, 'error');
               }
-            } catch (err: any) {
-              failCount++;
-              console.error(`Failed to pay statement ${statement.id}:`, err);
             }
-          }
-
-          if (failCount === 0) {
-            updateToast(toastId, `Successfully paid ${successCount} owners`, 'success');
-          } else {
-            updateToast(toastId, `Paid ${successCount} owners, failed ${failCount}`, 'error');
+          } catch (err: any) {
+            const errorMessage = err?.response?.data?.error || err?.message || 'Bulk payout failed';
+            updateToast(toastId, errorMessage, 'error');
           }
 
           await loadStatements();

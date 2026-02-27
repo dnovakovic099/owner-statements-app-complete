@@ -640,6 +640,22 @@ export const payoutsAPI = {
     return response.data;
   },
 
+  fundAndQueue: async (statementIds: number[]): Promise<{
+    queued: boolean;
+    processed?: number;
+    failed?: number;
+    results?: Array<{ id: number; success: boolean; transferId?: string; error?: string }>;
+    topupId?: string;
+    topupAmount?: number;
+    estimatedArrival?: string | null;
+    queuedCount?: number;
+    skipped?: Array<{ id: number; reason: string }>;
+    error?: string;
+  }> => {
+    const response = await api.post('/payouts/fund-and-queue', { statementIds });
+    return response.data;
+  },
+
   generateOAuthLink: async (data: {
     email?: string;
     entityType: 'listing' | 'group';

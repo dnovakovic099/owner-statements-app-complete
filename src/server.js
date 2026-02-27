@@ -72,8 +72,13 @@ app.use(cors({
 // Request logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
+// Body parsing (skip JSON parsing for Stripe webhook — it needs raw body)
+app.use((req, res, next) => {
+    if (req.originalUrl === '/api/stripe/webhook') {
+        return next();
+    }
+    express.json({ limit: '10mb' })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting configuration
@@ -333,6 +338,54 @@ app.get('/api/connect/callback', async (req, res) => {
         connectLogger2.logError(err, { context: 'StripeConnectCallback' });
         res.status(500).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Connection Failed</h2><p>${err.message || 'Something went wrong connecting your Stripe account.'}</p></body></html>`);
     }
+});
+
+// Stripe webhook — must be BEFORE body parsing for raw body verification
+// Note: express.json() is applied globally above, so we use express.raw() for this specific route
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+        logger.warn('Stripe webhook received but STRIPE_WEBHOOK_SECRET not configured');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const sig = req.headers['stripe-signature'];
+
+    let event;
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+        logger.warn('Stripe webhook signature verification failed', { error: err.message });
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+    }
+
+    logger.info('Stripe webhook received', { type: event.type, id: event.id });
+
+    if (event.type === 'topup.succeeded') {
+        try {
+            const { processQueuedPayouts } = require('./routes/payouts');
+            const result = await processQueuedPayouts();
+            logger.info('Processed queued payouts after top-up success', result);
+        } catch (err) {
+            logger.error('Failed to process queued payouts after top-up', { error: err.message });
+        }
+    } else if (event.type === 'topup.failed') {
+        try {
+            const { Statement } = require('./models');
+            const { Op } = require('sequelize');
+            const queued = await Statement.findAll({ where: { payoutStatus: 'queued' } });
+            for (const s of queued) {
+                await s.update({ payoutStatus: 'topup_failed', payoutError: 'Bank top-up failed' });
+            }
+            logger.warn('Top-up failed, marked queued statements as topup_failed', { count: queued.length });
+        } catch (err) {
+            logger.error('Failed to update queued statements after top-up failure', { error: err.message });
+        }
+    }
+
+    res.json({ received: true });
 });
 
 // Payouts - Stripe Connect onboarding and status
