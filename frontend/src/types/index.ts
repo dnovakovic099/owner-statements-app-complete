@@ -110,7 +110,7 @@ export interface Statement {
   items?: StatementItem[];
   internalNotes?: string | null;
   // Payout tracking fields
-  payoutStatus?: 'pending' | 'paid' | 'collected' | 'failed' | null;
+  payoutStatus?: 'pending' | 'paid' | 'collected' | 'failed' | 'queued' | 'topup_failed' | null;
   payoutTransferId?: string | null;
   paidAt?: string | null;
   payoutError?: string | null;
