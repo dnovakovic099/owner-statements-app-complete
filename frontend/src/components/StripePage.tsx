@@ -124,7 +124,10 @@ const StripePage: React.FC = () => {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteTarget, setInviteTarget] = useState<StripeConnectionRow | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusinessType, setInviteBusinessType] = useState<'individual' | 'company'>('individual');
+  const [inviteMode, setInviteMode] = useState<'existing' | 'new'>('existing');
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [onboardingResult, setOnboardingResult] = useState<{ stripeAccountId: string; onboardingUrl: string } | null>(null);
   const [oauthResult, setOauthResult] = useState<{ oauthUrl: string } | null>(null);
 
   // Filter state
@@ -224,8 +227,35 @@ const StripePage: React.FC = () => {
   const openInviteModal = (row: StripeConnectionRow) => {
     setInviteTarget(row);
     setInviteEmail(row.ownerEmail || '');
+    setInviteBusinessType('individual');
+    setInviteMode('existing');
+    setOnboardingResult(null);
     setOauthResult(null);
     setInviteModalOpen(true);
+  };
+
+  const handleCreateConnectAccount = async () => {
+    if (!inviteTarget || !inviteEmail.trim()) return;
+    setInviteLoading(true);
+    try {
+      const result = await payoutsAPI.createConnectAccount({
+        email: inviteEmail.trim(),
+        businessType: inviteBusinessType,
+        entityType: inviteTarget.type,
+        entityId: inviteTarget.id,
+      });
+      setOnboardingResult({
+        stripeAccountId: result.stripeAccountId,
+        onboardingUrl: result.onboardingUrl,
+      });
+      showToast('Stripe account created successfully', 'success');
+      await fetchData();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to create Stripe account';
+      showToast(msg, 'error');
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   const handleGenerateOAuthLink = async () => {
@@ -244,6 +274,17 @@ const StripePage: React.FC = () => {
       showToast(msg, 'error');
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  const handleResendOnboardingLink = async (stripeAccountId: string) => {
+    try {
+      const result = await payoutsAPI.generateOnboardingLink(stripeAccountId);
+      await navigator.clipboard.writeText(result.onboardingUrl);
+      showToast('Onboarding link copied to clipboard', 'success');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to generate onboarding link';
+      showToast(msg, 'error');
     }
   };
 
@@ -507,14 +548,10 @@ const StripePage: React.FC = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (connectOAuthEnabled) {
-                      openInviteModal(row.original);
-                    } else {
-                      showToast('Coming soon — Stripe Connect OAuth is not yet configured', 'info');
-                    }
+                    openInviteModal(row.original);
                   }}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                  title="Generate Stripe Connect link for owner"
+                  title="Send Stripe Connect invite to owner"
                 >
                   <Send className="w-3 h-3" />
                   Invite Owner
@@ -566,10 +603,24 @@ const StripePage: React.FC = () => {
           : { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', dot: 'bg-gray-400', label: 'Not Connected' };
 
         return (
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`} />
-            {statusConfig.label}
-          </span>
+          <div className="flex items-center gap-1.5 justify-center">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`} />
+              {statusConfig.label}
+            </span>
+            {hasAccount && !isVerified && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleResendOnboardingLink(row.original.stripeAccountId!);
+                }}
+                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                title="Resend onboarding link (copies to clipboard)"
+              >
+                <Send className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         );
       },
     },
@@ -992,51 +1043,66 @@ const StripePage: React.FC = () => {
       </div>
 
       {/* Connect Owner Modal */}
-      <Dialog open={inviteModalOpen} onOpenChange={(open) => { if (!open) { setInviteModalOpen(false); setOauthResult(null); } }}>
+      <Dialog open={inviteModalOpen} onOpenChange={(open) => { if (!open) { setInviteModalOpen(false); setOnboardingResult(null); setOauthResult(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="w-5 h-5 text-purple-600" />
-              Connect Owner's Stripe Account
+              Stripe Connect Invite
             </DialogTitle>
           </DialogHeader>
 
-          {!oauthResult ? (
+          {/* Result states */}
+          {onboardingResult ? (
             <div className="space-y-4 pt-2">
-              <div className="text-sm text-gray-500">
-                Generate a Stripe Connect link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span>. The owner will click the link and authorize their existing Stripe account.
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
+                <Check className="w-4 h-4 flex-shrink-0" />
+                Stripe account created successfully
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Owner Email (optional, pre-fills on Stripe)</label>
-                <Input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="owner@example.com"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding Link</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={onboardingResult.onboardingUrl}
+                    readOnly
+                    className="flex-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600 truncate"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(onboardingResult.onboardingUrl);
+                      showToast('Link copied to clipboard', 'success');
+                    }}
+                    className="flex-shrink-0"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll connect their Stripe account and be ready to receive payouts.</p>
+              </div>
+
+              <div className="text-xs text-gray-500">
+                Account ID: <code className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{onboardingResult.stripeAccountId}</code>
               </div>
 
               <Button
-                onClick={handleGenerateOAuthLink}
-                disabled={inviteLoading}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                variant="outline"
+                onClick={() => { setInviteModalOpen(false); setOnboardingResult(null); }}
+                className="w-full"
               >
-                {inviteLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    Generating...
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Link2 className="w-4 h-4" />
-                    Generate Connect Link
-                  </div>
-                )}
+                Done
               </Button>
             </div>
-          ) : (
+          ) : oauthResult ? (
             <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
+                <Check className="w-4 h-4 flex-shrink-0" />
+                Connect link generated
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Connect Link</label>
                 <div className="flex gap-2">
@@ -1058,7 +1124,7 @@ const StripePage: React.FC = () => {
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll authorize their Stripe account and it will be connected automatically.</p>
+                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll log into their existing Stripe account and authorize the connection. Their account ID will be saved automatically.</p>
               </div>
 
               <Button
@@ -1067,6 +1133,42 @@ const StripePage: React.FC = () => {
                 className="w-full"
               >
                 Done
+              </Button>
+            </div>
+          ) : (
+            /* Input form */
+            <div className="space-y-4 pt-2">
+              <div className="text-sm text-gray-500">
+                Send a Stripe Connect invite to <span className="font-medium text-gray-900">{inviteTarget?.name}</span>. The owner will connect their Stripe account to receive payouts.
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Owner Email (optional)</label>
+                <Input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="owner@example.com"
+                />
+                <p className="text-xs text-gray-400 mt-1">Pre-fills the email on the Stripe connect page.</p>
+              </div>
+
+              <Button
+                onClick={handleGenerateOAuthLink}
+                disabled={inviteLoading}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {inviteLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Generating...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Link2 className="w-4 h-4" />
+                    Generate Connect Link
+                  </div>
+                )}
               </Button>
             </div>
           )}

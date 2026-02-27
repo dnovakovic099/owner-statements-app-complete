@@ -651,6 +651,29 @@ export const payoutsAPI = {
     const response = await api.post('/payouts/connect/oauth-link', data);
     return response.data;
   },
+
+  createConnectAccount: async (data: {
+    email: string;
+    businessType: 'individual' | 'company';
+    entityType: 'listing' | 'group';
+    entityId: number;
+  }): Promise<{
+    success: boolean;
+    stripeAccountId: string;
+    onboardingUrl: string;
+    status: string;
+  }> => {
+    const response = await api.post('/payouts/connect/create', data);
+    return response.data;
+  },
+
+  generateOnboardingLink: async (stripeAccountId: string): Promise<{
+    success: boolean;
+    onboardingUrl: string;
+  }> => {
+    const response = await api.post('/payouts/connect/onboarding-link', { stripeAccountId });
+    return response.data;
+  },
 };
 
 // Groups API

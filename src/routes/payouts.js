@@ -71,6 +71,118 @@ router.get('/config', (req, res) => {
     });
 });
 
+// Create a new Stripe Connect Express account for a listing or group and generate onboarding link
+router.post('/connect/create', async (req, res) => {
+    if (!ensureStripe(res)) return;
+    try {
+        const { email, businessType, entityType, entityId } = req.body;
+
+        if (!email || !businessType || !entityType || !entityId) {
+            return res.status(400).json({ error: 'email, businessType, entityType, and entityId are required' });
+        }
+
+        if (!['individual', 'company'].includes(businessType)) {
+            return res.status(400).json({ error: 'businessType must be "individual" or "company"' });
+        }
+
+        if (!['listing', 'group'].includes(entityType)) {
+            return res.status(400).json({ error: 'entityType must be "listing" or "group"' });
+        }
+
+        // Look up entity and check it doesn't already have an account
+        let entity;
+        if (entityType === 'group') {
+            entity = await ListingGroup.findByPk(parseInt(entityId, 10));
+            if (!entity) return res.status(404).json({ error: 'Group not found' });
+            if (entity.stripeAccountId) {
+                return res.status(409).json({ error: 'This group already has a Stripe account. Use resend link instead.' });
+            }
+        } else {
+            entity = await Listing.findByPk(parseInt(entityId, 10));
+            if (!entity) return res.status(404).json({ error: 'Listing not found' });
+            let existingId = entity.stripeAccountId;
+            try { existingId = decryptOptional(existingId); } catch (e) { existingId = null; }
+            if (existingId) {
+                return res.status(409).json({ error: 'This listing already has a Stripe account. Use resend link instead.' });
+            }
+        }
+
+        // Create Stripe Connect Express account
+        const account = await stripe.accounts.create({
+            type: 'express',
+            email: email.trim(),
+            business_type: businessType,
+            capabilities: {
+                transfers: { requested: true },
+            },
+        });
+
+        // Save account ID to entity
+        if (entityType === 'group') {
+            // ListingGroup model setter handles encryption automatically
+            await entity.update({ stripeAccountId: account.id, stripeOnboardingStatus: 'pending' });
+        } else {
+            // Listing requires manual encryption at route level
+            await entity.update({ stripeAccountId: encryptOptional(account.id), stripeOnboardingStatus: 'pending' });
+        }
+
+        // Generate onboarding link
+        const baseUrl = getBaseReturnUrl();
+        const refreshUrl = process.env.STRIPE_ONBOARDING_REFRESH_URL || `${baseUrl}/payout-onboarding/refresh`;
+        const returnUrl = process.env.STRIPE_ONBOARDING_RETURN_URL || `${baseUrl}/payout-onboarding/complete`;
+
+        const accountLink = await stripe.accountLinks.create({
+            account: account.id,
+            refresh_url: refreshUrl,
+            return_url: returnUrl,
+            type: 'account_onboarding',
+        });
+
+        logger.info(`Created Stripe Connect account ${account.id} for ${entityType} ${entityId}`, { context: 'Payouts', action: 'connectCreate' });
+
+        res.json({
+            success: true,
+            stripeAccountId: account.id,
+            onboardingUrl: accountLink.url,
+            status: 'pending'
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'connectCreate' });
+        res.status(500).json({ error: error.message || 'Failed to create Stripe Connect account' });
+    }
+});
+
+// Regenerate onboarding link for an existing Stripe Connect account
+router.post('/connect/onboarding-link', async (req, res) => {
+    if (!ensureStripe(res)) return;
+    try {
+        const { stripeAccountId } = req.body;
+
+        if (!stripeAccountId) {
+            return res.status(400).json({ error: 'stripeAccountId is required' });
+        }
+
+        const baseUrl = getBaseReturnUrl();
+        const refreshUrl = process.env.STRIPE_ONBOARDING_REFRESH_URL || `${baseUrl}/payout-onboarding/refresh`;
+        const returnUrl = process.env.STRIPE_ONBOARDING_RETURN_URL || `${baseUrl}/payout-onboarding/complete`;
+
+        const accountLink = await stripe.accountLinks.create({
+            account: stripeAccountId,
+            refresh_url: refreshUrl,
+            return_url: returnUrl,
+            type: 'account_onboarding',
+        });
+
+        res.json({
+            success: true,
+            onboardingUrl: accountLink.url
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'connectOnboardingLink' });
+        res.status(500).json({ error: error.message || 'Failed to generate onboarding link' });
+    }
+});
+
 // Create or reuse a Connect account and generate onboarding link for a listing/owner
 router.post('/listings/:id/onboarding-link', async (req, res) => {
     if (!ensureStripe(res)) return;
