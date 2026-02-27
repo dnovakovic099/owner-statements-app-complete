@@ -421,10 +421,44 @@ router.post('/statements/:id/transfer', async (req, res) => {
         const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100; // Round to 2 decimals
         const totalTransferAmount = payoutAmount + stripeFee;
 
-        // Create Stripe transfer
         // Amount is in cents for Stripe
         const amountInCents = Math.round(totalTransferAmount * 100);
 
+        // Check platform balance and auto-top-up if insufficient
+        try {
+            const balance = await stripe.balance.retrieve();
+            const availableUsd = balance.available.find(b => b.currency === 'usd');
+            const availableCents = availableUsd ? availableUsd.amount : 0;
+
+            if (availableCents < amountInCents) {
+                const shortfallCents = amountInCents - availableCents;
+                // Add a small buffer (5%) to avoid repeated top-ups for rounding
+                const topupCents = Math.ceil(shortfallCents * 1.05);
+                logger.info('Insufficient Stripe balance, creating top-up', {
+                    context: 'Payouts',
+                    availableCents,
+                    neededCents: amountInCents,
+                    topupCents
+                });
+
+                const topup = await stripe.topups.create({
+                    amount: topupCents,
+                    currency: 'usd',
+                    description: `Auto top-up for statement #${statementId} payout`,
+                    metadata: { statementId: statementId.toString(), auto: 'true' }
+                });
+                logger.info('Top-up created', { topupId: topup.id, amount: topupCents, status: topup.status });
+            }
+        } catch (balanceError) {
+            // Log but don't block — the transfer may still succeed if balance is actually sufficient
+            // or if top-ups aren't enabled, the transfer error will be caught below
+            logger.warn('Balance check/top-up failed, proceeding with transfer anyway', {
+                context: 'Payouts',
+                error: balanceError.message
+            });
+        }
+
+        // Create Stripe transfer
         const transfer = await stripe.transfers.create({
             amount: amountInCents,
             currency: 'usd',
