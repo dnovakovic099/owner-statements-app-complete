@@ -5259,18 +5259,23 @@ router.get('/:id/view', async (req, res) => {
             </div>`;
             })()}
 
-    ${statement.duplicateWarnings && statement.duplicateWarnings.length > 0 ? `
+    ${(() => {
+        const crossSourceDups = (statement.duplicateWarnings || []).filter(d => d.expense1 && d.expense2);
+        const priorDups = (statement.duplicateWarnings || []).filter(d => d.type === 'prior_statement');
+        if (crossSourceDups.length === 0 && priorDups.length === 0) return '';
+        return `
     <!-- Duplicate Warnings Section -->
     <div class="section" style="margin-bottom: 20px;">
+        ${crossSourceDups.length > 0 ? `
         <div class="warning-box" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-            <h3 style="color: #856404; margin: 0 0 10px 0; font-size: 16px; display: flex; align-items: center;">
+            <h3 style="color: #856404; margin: 0 0 10px 0; font-size: 16px;">
                 Potential Duplicate Expenses Detected
             </h3>
             <p style="color: #856404; margin: 0 0 15px 0; font-size: 14px;">
-                We found ${statement.duplicateWarnings.length} potential duplicate expense${statement.duplicateWarnings.length > 1 ? 's' : ''} between different sources. Please review:
+                We found ${crossSourceDups.length} potential duplicate expense${crossSourceDups.length > 1 ? 's' : ''} between different sources. Please review:
             </p>
             <div class="duplicates-list">
-                ${statement.duplicateWarnings.map((dup, index) => `
+                ${crossSourceDups.map((dup, index) => `
                     <div style="background: white; border: 1px solid #e9ecef; border-radius: 4px; padding: 12px; margin-bottom: 10px;">
                         <div style="font-weight: 600; color: #495057; margin-bottom: 8px;">Duplicate ${index + 1}:</div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 13px;">
@@ -5293,8 +5298,30 @@ router.get('/:id/view', async (req, res) => {
                 `).join('')}
         </div>
         </div>
-    </div>
-    ` : ''}
+        ` : ''}
+        ${priorDups.length > 0 ? `
+        <div class="warning-box" style="background: #fff0e6; border: 1px solid #ffcc99; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="color: #c45200; margin: 0 0 10px 0; font-size: 16px;">
+                Prior Statement Duplicates (Auto-Hidden)
+            </h3>
+            <p style="color: #c45200; margin: 0 0 15px 0; font-size: 14px;">
+                ${priorDups.length} expense${priorDups.length > 1 ? 's were' : ' was'} found in prior statements and automatically excluded from this statement.
+            </p>
+            <div class="duplicates-list">
+                ${priorDups.map((dup, index) => `
+                    <div style="background: white; border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>${dup.description || 'Expense'}</div>
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <span style="color: #28a745; font-weight: 500;">$${(dup.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                            <span style="color: #6c757d; font-size: 12px;">Statement #${dup.priorStatementId} (${dup.priorPeriod || ''})</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
+    </div>`;
+    })()}
 
     <!-- Expenses Section - only show if there are expenses (excluding cleaning when pass-through enabled) -->
     ${statement.items?.filter(item => {
@@ -5339,6 +5366,7 @@ router.get('/:id/view', async (req, res) => {
             }).map(expense => {
                 // Check if this expense is part of a duplicate warning
                 const isDuplicate = statement.duplicateWarnings && statement.duplicateWarnings.some(dup => {
+                    if (!dup.expense1 || !dup.expense2) return false;
                     const matchesExpense1 = dup.expense1.description === expense.description &&
                         Math.abs(dup.expense1.amount - expense.amount) < 0.01 &&
                         dup.expense1.date === expense.date;
