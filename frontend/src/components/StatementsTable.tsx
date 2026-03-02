@@ -103,6 +103,7 @@ const getStatusBadge = (status: string) => {
     sent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', dot: 'bg-green-500' },
     paid: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
     collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500' },
+    invoice_sent: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
   };
 
   const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', dot: 'bg-gray-500' };
@@ -110,7 +111,7 @@ const getStatusBadge = (status: string) => {
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${config.bg} ${config.text} ${config.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`}></span>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {status === 'invoice_sent' ? 'Invoice Sent' : status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
 };
@@ -534,7 +535,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       cell: ({ row }) => {
         const status = row.getValue('status') as string;
         const payoutStatus = row.original.payoutStatus;
-        const displayStatus = (payoutStatus === 'paid' || payoutStatus === 'collected') ? (payoutStatus) : status;
+        const displayStatus = (payoutStatus === 'paid' || payoutStatus === 'collected' || payoutStatus === 'invoice_sent') ? (payoutStatus) : status;
         return (
           <div className="flex flex-col items-center gap-1">
             {getStatusBadge(displayStatus)}
@@ -561,6 +562,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           queued: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500', label: 'Queued' },
           failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Failed' },
           topup_failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Top-up Failed' },
+          invoice_sent: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Invoice Sent' },
         };
         const c = config[payoutStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400', label: payoutStatus };
         return (
@@ -656,7 +658,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             />
             {(() => {
               const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-              const listing = listingId && listings ? listings.find(l => l.id === listingId) : null;
+              const listing = listingId && listings ? listings.find(l => Number(l.id) === Number(listingId)) : null;
               const hasStripeAccount = !!(listing?.stripeAccountId);
               const isRestricted = listing?.stripeOnboardingStatus === 'requires_action' || listing?.stripeOnboardingStatus === 'pending';
               const noStripe = !hasStripeAccount || isRestricted;
@@ -665,6 +667,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   onClick={() => onAction(statement.id, 'pay-owner')}
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
+                      statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
                       statement.payoutStatus === 'queued' ? 'Payout queued — waiting for funds' :
                       !hasStripeAccount ? 'No Stripe account connected' :
                         isRestricted ? 'Stripe account not yet enabled' :
@@ -675,17 +678,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noStripe ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'queued' || statement.ownerPayout === 0 || noStripe}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent' || statement.payoutStatus === 'queued' || statement.ownerPayout === 0 || noStripe}
                 />
               );
             })()}
 
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
-              tooltip={(statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Cannot Delete Settled Statement' : statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
+              tooltip={(statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent') ? 'Cannot Delete Settled Statement' : statement.status === 'sent' ? 'Cannot Delete Sent Statement' : statement.status !== 'draft' ? 'Cannot Delete Final Statement' : 'Delete'}
               icon={<Trash2 className="w-[18px] h-[18px]" />}
               color="text-red-500"
-              disabled={statement.status !== 'draft' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected'}
+              disabled={statement.status !== 'draft' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent'}
             />
           </div>
         );
@@ -982,6 +985,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   { value: 'queued', label: 'Queued' },
                   { value: 'failed', label: 'Failed' },
                   { value: 'topup_failed', label: 'Top-up Failed' },
+                  { value: 'invoice_sent', label: 'Invoice Sent' },
                   { value: 'unpaid', label: 'Unpaid' },
                 ].map(({ value, label }) => {
                   const filterValue = (table.getColumn('payoutStatus')?.getFilterValue() as string[]) || [];
