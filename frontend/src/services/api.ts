@@ -631,10 +631,13 @@ export const payoutsAPI = {
   collectFromOwner: async (statementId: number): Promise<{
     success: boolean;
     message: string;
-    transferId: string;
+    transferId?: string;
     collectAmount: number;
-    paidAt: string;
+    paidAt?: string;
     error?: string;
+    invoiceSent?: boolean;
+    invoiceUrl?: string;
+    recipientEmail?: string;
   }> => {
     const response = await api.post(`/payouts/statements/${statementId}/collect`);
     return response.data;
