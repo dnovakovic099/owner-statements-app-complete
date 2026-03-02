@@ -5260,9 +5260,13 @@ router.get('/:id/view', async (req, res) => {
             })()}
 
     ${(() => {
+        if (isPdf) return ''; // Hide all duplicate warnings from PDF/download
         const crossSourceDups = (statement.duplicateWarnings || []).filter(d => d.expense1 && d.expense2);
-        if (crossSourceDups.length === 0) return '';
-        return `
+        const priorDups = (statement.duplicateWarnings || []).filter(d => d.type === 'prior_statement');
+        if (crossSourceDups.length === 0 && priorDups.length === 0) return '';
+        let html = '';
+        if (crossSourceDups.length > 0) {
+        html += `
     <!-- Duplicate Warnings Section -->
     <div class="section" style="margin-bottom: 20px;">
         <div class="warning-box" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
@@ -5296,6 +5300,32 @@ router.get('/:id/view', async (req, res) => {
                 `).join('')}
         </div>
     </div>`;
+        }
+        if (priorDups.length > 0) {
+        html += `
+    <div class="section" style="margin-bottom: 20px;">
+        <div class="warning-box" style="background: #fff0e6; border: 1px solid #ffcc99; border-radius: 8px; padding: 15px;">
+            <h3 style="color: #c45200; margin: 0 0 10px 0; font-size: 16px;">
+                Prior Statement Duplicates (Auto-Hidden)
+            </h3>
+            <p style="color: #c45200; margin: 0 0 15px 0; font-size: 14px;">
+                ${priorDups.length} expense${priorDups.length > 1 ? 's were' : ' was'} found in prior statements and automatically excluded from this statement.
+            </p>
+            <div class="duplicates-list">
+                ${priorDups.map(dup => `
+                    <div style="background: white; border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>${dup.description || 'Expense'}</div>
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <span style="color: #28a745; font-weight: 500;">$${Math.abs(dup.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                            <span style="color: #6c757d; font-size: 12px;">Statement #${dup.priorStatementId} (${dup.priorPeriod || ''})</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    </div>`;
+        }
+        return html;
     })()}
 
     <!-- Expenses Section - only show if there are expenses (excluding cleaning when pass-through enabled) -->
