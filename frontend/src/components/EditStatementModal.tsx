@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check } from 'lucide-react';
+import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 import { Checkbox } from './ui/checkbox';
@@ -93,6 +93,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [selectedLLCoverUpsellIndices, setSelectedLLCoverUpsellIndices] = useState<number[]>([]);
   const [selectedPriorExpenseIndices, setSelectedPriorExpenseIndices] = useState<number[]>([]);
   const [selectedPriorUpsellIndices, setSelectedPriorUpsellIndices] = useState<number[]>([]);
+  const [showPriorExpenses, setShowPriorExpenses] = useState(false);
+  const [showPriorUpsells, setShowPriorUpsells] = useState(false);
   const [showHiddenExpenses, setShowHiddenExpenses] = useState(false);
   const [showHiddenUpsells, setShowHiddenUpsells] = useState(false);
   const [selectedReservationIdsToRemove, setSelectedReservationIdsToRemove] = useState<number[]>([]);
@@ -1675,11 +1677,15 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   </div>
                 )}
 
-                {/* Prior Statement Duplicate Expenses Section */}
+                {/* Prior Statement Duplicate Expenses Section - Collapsed by default */}
                 {priorStatementExpenses.length > 0 && (
                   <div className="mt-4 rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
-                    <div className="flex items-center justify-between mb-3">
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setShowPriorExpenses(!showPriorExpenses)}
+                    >
                       <div className="flex items-center gap-2">
+                        {showPriorExpenses ? <ChevronDown className="w-4 h-4 text-orange-600" /> : <ChevronRight className="w-4 h-4 text-orange-600" />}
                         <span className="inline-flex items-center rounded-full bg-orange-600 px-2.5 py-1 text-xs font-semibold text-white">
                           Duplicate
                         </span>
@@ -1687,10 +1693,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           Prior Statement Duplicates ({priorStatementExpenses.length})
                         </h4>
                       </div>
-                      <span className="text-xs text-orange-700">Select to include in statement</span>
+                      <span className="text-xs text-orange-700">Auto-excluded from computation</span>
                     </div>
-                    <p className="text-xs text-orange-700 mb-3">
-                      These expenses were already included in a prior finalized statement and are excluded by default to prevent double-payment. Select to restore if legitimate.
+                    {showPriorExpenses && (
+                    <>
+                    <p className="text-xs text-orange-700 mb-3 mt-3">
+                      These expenses were already included in a prior finalized statement and are excluded by default to prevent double-payment. Select to restore if needed.
                     </p>
                     <div className="space-y-2">
                       {priorStatementExpenses.map((expense, index) => {
@@ -1737,6 +1745,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         );
                       })}
                     </div>
+                    </>
+                    )}
                   </div>
                 )}
               </div>
@@ -2004,8 +2014,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                 {/* Prior Statement Duplicate Upsells Section */}
                 {priorStatementUpsells.length > 0 && (
                   <div className="mt-4 rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
-                    <div className="flex items-center justify-between mb-3">
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setShowPriorUpsells(!showPriorUpsells)}
+                    >
                       <div className="flex items-center gap-2">
+                        {showPriorUpsells ? <ChevronDown className="w-4 h-4 text-orange-600" /> : <ChevronRight className="w-4 h-4 text-orange-600" />}
                         <span className="inline-flex items-center rounded-full bg-orange-600 px-2.5 py-1 text-xs font-semibold text-white">
                           Duplicate
                         </span>
@@ -2013,10 +2027,12 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           Prior Statement Duplicate Upsells ({priorStatementUpsells.length})
                         </h4>
                       </div>
-                      <span className="text-xs text-orange-700">Select to include in statement</span>
+                      <span className="text-xs text-orange-700">Auto-excluded from computation</span>
                     </div>
-                    <p className="text-xs text-orange-700 mb-3">
-                      These upsells were already included in a prior finalized statement. Select to restore if legitimate.
+                    {showPriorUpsells && (
+                    <>
+                    <p className="text-xs text-orange-700 mb-3 mt-3">
+                      These upsells were already included in a prior finalized statement. Select to restore if needed.
                     </p>
                     <div className="space-y-2">
                       {priorStatementUpsells.map((upsell, index) => {
@@ -2063,6 +2079,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                         );
                       })}
                     </div>
+                    </>
+                    )}
                   </div>
                 )}
               </div>

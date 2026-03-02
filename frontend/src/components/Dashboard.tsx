@@ -668,8 +668,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               try {
                 const response = await payoutsAPI.transferToOwner(id);
                 if (response.success) {
-                  const actualTotal = response.totalTransferAmount || totalTransfer;
-                  updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
+                  if ((response as any).queued) {
+                    updateToast(toastId, (response as any).message || 'Insufficient balance — payout queued. Will process when top-up arrives.', 'info');
+                  } else {
+                    const actualTotal = response.totalTransferAmount || totalTransfer;
+                    updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
+                  }
                   await loadStatements();
                 } else {
                   updateToast(toastId, response.error || 'Transfer failed', 'error');
@@ -694,7 +698,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               try {
                 const response = await payoutsAPI.collectFromOwner(id);
                 if (response.success) {
-                  updateToast(toastId, `Collected $${collectAmount.toFixed(2)} from owner`, 'success');
+                  if (response.invoiceSent) {
+                    updateToast(toastId, `Invoice sent to ${response.recipientEmail}`, 'success');
+                  } else {
+                    updateToast(toastId, `Collected $${collectAmount.toFixed(2)} from owner`, 'success');
+                  }
                   await loadStatements();
                 } else {
                   updateToast(toastId, response.error || 'Collection failed', 'error');
