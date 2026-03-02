@@ -641,16 +641,16 @@ export const payoutsAPI = {
   },
 
   fundAndQueue: async (statementIds: number[]): Promise<{
-    queued: boolean;
+    success: boolean;
+    mode: 'immediate' | 'queued' | 'none';
     processed?: number;
     failed?: number;
-    results?: Array<{ id: number; success: boolean; transferId?: string; error?: string }>;
+    queuedCount?: number;
     topupId?: string;
     topupAmount?: number;
-    estimatedArrival?: string | null;
-    queuedCount?: number;
+    totalPayout?: number;
+    message?: string;
     skipped?: Array<{ id: number; reason: string }>;
-    error?: string;
   }> => {
     const response = await api.post('/payouts/fund-and-queue', { statementIds });
     return response.data;

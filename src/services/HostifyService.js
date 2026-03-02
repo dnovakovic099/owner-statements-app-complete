@@ -532,7 +532,7 @@ class HostifyService {
         // Step 1: Fetch ALL reservations with PARALLEL pagination (much faster!)
         let allRawReservations = [];
         const perPage = 100;
-        const parallelBatchSize = 10; // Fetch 10 pages at a time to avoid API rate limits
+        const parallelBatchSize = 20; // Fetch 20 pages at a time (2x faster than 10)
 
         console.log('[BULK-FETCH] Step 1: Fetching all reservations with PARALLEL pagination...');
 
@@ -588,7 +588,7 @@ class HostifyService {
 
             // Small delay between batches to avoid overwhelming the API
             if (batchEnd < totalPages) {
-                await new Promise(resolve => setTimeout(resolve, 200));
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
 
@@ -607,8 +607,8 @@ class HostifyService {
         const childToParentMap = new Map();
         const parentListingIds = allListings.map(l => parseInt(l.id));
 
-        // Fetch children for all listings in parallel batches (20 at a time to avoid API rate limits)
-        const batchSize = 20;
+        // Fetch children for all listings in parallel batches
+        const batchSize = 40;
         for (let i = 0; i < parentListingIds.length; i += batchSize) {
             const batch = parentListingIds.slice(i, i + batchSize);
             const childResults = await Promise.all(
@@ -624,9 +624,9 @@ class HostifyService {
                 });
             });
 
-            // Small delay between batches to avoid overwhelming the API
+            // Small delay between batches
             if (i + batchSize < parentListingIds.length) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
 
             if (progressCallback) {

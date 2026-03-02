@@ -228,45 +228,70 @@ class DatabaseService {
      */
     async getPriorStatementExpenses(propertyIds, excludeStatementId = null) {
         try {
+            const parsedIds = propertyIds.map(id => parseInt(id));
+
             const where = {
-                status: { [Op.in]: ['final', 'sent', 'paid'] }
+                status: { [Op.in]: ['final', 'sent', 'paid'] },
+                // Filter at DB level: match single propertyId
+                propertyId: { [Op.in]: parsedIds }
             };
 
             if (excludeStatementId) {
                 where.id = { [Op.ne]: excludeStatementId };
             }
 
-            const statements = await Statement.findAll({
+            // Query 1: Statements that match by single propertyId (fast, indexed)
+            const singlePropertyStmts = await Statement.findAll({
                 where,
-                attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName', 'propertyId', 'propertyIds'],
+                attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName'],
                 order: [['created_at', 'DESC']],
                 limit: 20
             });
 
-            // Filter to only statements that overlap with the given propertyIds
-            const propertyIdSet = new Set(propertyIds.map(id => parseInt(id)));
-            const matching = statements.filter(s => {
-                const json = s.toJSON();
-                // Check single propertyId
-                if (json.propertyId && propertyIdSet.has(parseInt(json.propertyId))) return true;
-                // Check propertyIds array (for group/combined statements)
-                const stmtPropertyIds = json.propertyIds || [];
-                if (Array.isArray(stmtPropertyIds)) {
-                    return stmtPropertyIds.some(pid => propertyIdSet.has(parseInt(pid)));
-                }
-                return false;
-            });
+            // Query 2: Combined/group statements that contain any of these propertyIds
+            // propertyIds is a JSON array field — check with LIKE for each ID (limited to 20)
+            const groupWhere = {
+                status: { [Op.in]: ['final', 'sent', 'paid'] },
+                propertyIds: { [Op.ne]: null }
+            };
+            if (excludeStatementId) {
+                groupWhere.id = { [Op.ne]: excludeStatementId };
+            }
 
-            return matching.map(s => {
+            let groupStmts = [];
+            try {
+                const candidateGroupStmts = await Statement.findAll({
+                    where: groupWhere,
+                    attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName', 'propertyIds'],
+                    order: [['created_at', 'DESC']],
+                    limit: 20
+                });
+                // Filter in memory for JSON array overlap (lightweight — no expenses blob needed for check)
+                const propertyIdSet = new Set(parsedIds);
+                groupStmts = candidateGroupStmts.filter(s => {
+                    const ids = s.toJSON().propertyIds || [];
+                    return Array.isArray(ids) && ids.some(pid => propertyIdSet.has(parseInt(pid)));
+                });
+            } catch (e) {
+                // If propertyIds column doesn't exist or query fails, skip group matching
+            }
+
+            // Deduplicate by ID and return
+            const seen = new Set();
+            const results = [];
+            for (const s of [...singlePropertyStmts, ...groupStmts]) {
                 const json = s.toJSON();
-                return {
+                if (seen.has(json.id)) continue;
+                seen.add(json.id);
+                results.push({
                     id: json.id,
                     expenses: json.expenses || [],
                     weekStartDate: json.weekStartDate,
                     weekEndDate: json.weekEndDate,
                     propertyName: json.propertyName
-                };
-            });
+                });
+            }
+            return results;
         } catch (error) {
             logger.logError(error, { context: 'DatabaseService', action: 'getPriorStatementExpenses' });
             return [];

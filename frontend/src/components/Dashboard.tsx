@@ -1093,8 +1093,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           const toastId = showToast(`Processing ${validPayouts.length} payments...`, 'loading');
           try {
             const response = await payoutsAPI.fundAndQueue(validPayouts.map(s => s.id));
-            if (response.queued) {
-              updateToast(toastId, `Funds requested from bank. ${response.queuedCount} payouts will process automatically when funds arrive (1-2 business days).`, 'info');
+            if (response.mode === 'queued') {
+              updateToast(toastId, `Funds requested from bank ($${response.topupAmount?.toFixed(2)}). ${response.queuedCount} payouts queued — will process automatically when funds arrive.`, 'info');
             } else {
               const processed = response.processed || 0;
               const failed = response.failed || 0;
