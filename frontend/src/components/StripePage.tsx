@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Link2, Copy } from 'lucide-react';
+import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Link2, Copy, Download } from 'lucide-react';
 import { groupsAPI, listingsAPI, payoutsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types/index';
 import { Button } from './ui/button';
@@ -127,6 +127,8 @@ const StripePage: React.FC = () => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [onboardingResult, setOnboardingResult] = useState<{ stripeAccountId: string; onboardingUrl: string } | null>(null);
   const [oauthResult, setOauthResult] = useState<{ oauthUrl: string } | null>(null);
+
+  const [csvExporting, setCsvExporting] = useState(false);
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -255,6 +257,96 @@ const StripePage: React.FC = () => {
     } catch (err: any) {
       const msg = err?.response?.data?.error || 'Failed to generate onboarding link';
       showToast(msg, 'error');
+    }
+  };
+
+  const exportCSV = async () => {
+    setCsvExporting(true);
+    try {
+      // Group rows by client (ownerEmail)
+      const clientMap = new Map<string, { name: string; listings: string[]; email: string; stripeAccountId: string | null; entityType: 'listing' | 'group'; entityId: number }>();
+
+      for (const row of table.getFilteredRowModel().rows) {
+        const data = row.original;
+        const clientKey = data.ownerEmail || data.name;
+        if (!clientMap.has(clientKey)) {
+          clientMap.set(clientKey, {
+            name: data.name,
+            listings: [],
+            email: data.ownerEmail || '',
+            stripeAccountId: data.stripeAccountId || null,
+            entityType: data.type,
+            entityId: data.id,
+          });
+        }
+        const client = clientMap.get(clientKey)!;
+        if (data.type === 'group') {
+          client.listings.push(...data.listings.map(l => l.nickname || l.displayName || l.name));
+        } else {
+          client.listings.push(data.name);
+        }
+      }
+
+      // Generate invite links in parallel
+      // - With Stripe account: onboarding link
+      // - Without Stripe account: OAuth invite link
+      const clients = Array.from(clientMap.values());
+      let failedLinks = 0;
+      const linkResults = await Promise.all(
+        clients.map(async (client) => {
+          if (client.stripeAccountId) {
+            try {
+              const result = await payoutsAPI.generateOnboardingLink(client.stripeAccountId);
+              return result.onboardingUrl || '';
+            } catch {
+              failedLinks++;
+              return '';
+            }
+          }
+          // No Stripe account — generate OAuth invite link
+          try {
+            const result = await payoutsAPI.generateOAuthLink({
+              email: client.email || undefined,
+              entityType: client.entityType,
+              entityId: client.entityId,
+            });
+            return result.oauthUrl || '';
+          } catch {
+            failedLinks++;
+            return '';
+          }
+        })
+      );
+
+      // Build CSV with BOM for Excel compatibility
+      const csvRows = [['client name', 'listings', 'email', 'stripe account invite link'].join(',')];
+      clients.forEach((client, i) => {
+        const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
+        csvRows.push([
+          escapeCsv(client.name),
+          escapeCsv(client.listings.join('; ')),
+          escapeCsv(client.email),
+          escapeCsv(linkResults[i]),
+        ].join(','));
+      });
+
+      const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stripe-invite-links.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      if (failedLinks > 0) {
+        showToast(`CSV exported (${failedLinks} invite link(s) could not be generated)`, 'info');
+      } else {
+        showToast('CSV exported', 'success');
+      }
+    } catch (err) {
+      showToast('Failed to export CSV', 'error');
+    } finally {
+      setCsvExporting(false);
     }
   };
 
@@ -776,6 +868,18 @@ const StripePage: React.FC = () => {
                 </button>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Export CSV */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 border-gray-200 bg-white"
+              onClick={exportCSV}
+              disabled={csvExporting}
+            >
+              <Download className="mr-2 h-4 w-4 text-gray-400" />
+              {csvExporting ? 'Exporting...' : 'Export CSV'}
+            </Button>
 
           </div>
         </div>
