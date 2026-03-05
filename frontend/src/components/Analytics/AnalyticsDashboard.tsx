@@ -33,6 +33,7 @@ import { useStatementStatus } from './hooks/useStatementStatus';
 import { useRecentStatements } from './hooks/useRecentStatements';
 import { useAnalyticsFilters } from './hooks/useAnalyticsFilters';
 import { usePayoutTrend } from './hooks/usePayoutTrend';
+import { useDamageCoverage, DamageCoverageItem } from './hooks/useDamageCoverage';
 
 interface AnalyticsDashboardProps {
   onBack?: () => void;
@@ -694,6 +695,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     endDate: dateRange.end,
   });
 
+  const { data: damageCoverageData, loading: damageCoverageLoading } = useDamageCoverage({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+  });
+
   const { data: statementStatusData, loading: statementStatusLoading } = useStatementStatus({
     startDate: dateRange.start,
     endDate: dateRange.end,
@@ -1019,12 +1025,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   }, [statementStatusData]);
 
   // Property performance data
-  const propertyChartData = useMemo(() => {
-    // API returns array directly or { properties: [...] }
+  const allPropertyData = useMemo(() => {
     const raw = propertyData as any;
-    const properties = Array.isArray(raw) ? raw : (raw?.properties || raw?.data || []);
-    return properties.slice(0, 10);
+    return Array.isArray(raw) ? raw : (raw?.properties || raw?.data || []);
   }, [propertyData]);
+
+  const propertyChartData = useMemo(() => {
+    return allPropertyData.slice(0, 10);
+  }, [allPropertyData]);
+
+  // PM Commission data sorted by pmFee descending
+  const pmCommissionData = useMemo(() => {
+    return [...allPropertyData]
+      .filter((p: any) => p.pmFee > 0 || p.revenue > 0)
+      .sort((a: any, b: any) => (b.pmFee || 0) - (a.pmFee || 0));
+  }, [allPropertyData]);
 
   // Property performance horizontal bar chart options
   const propertyBarChartOption = useMemo(() => {
@@ -1728,6 +1743,197 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <div className="h-80 flex flex-col items-center justify-center text-gray-400">
               <Building2 className="w-8 h-8 mb-2" />
               <span className="text-sm">No property data</span>
+            </div>
+          )}
+        </div>
+
+        {/* PM Commission Report */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Percent className="w-4 h-4 text-gray-400" />
+              <h3 className="text-sm font-medium text-gray-900">PM Commission by Property</h3>
+              {pmCommissionData.length > 0 && (
+                <span className="text-xs text-gray-400">({pmCommissionData.length} properties)</span>
+              )}
+            </div>
+            {pmCommissionData.length > 0 && (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-gray-500">
+                  Total: <span className="font-semibold text-gray-900">{formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.pmFee || 0), 0))}</span>
+                </span>
+                <button
+                  onClick={() => {
+                    const csvRows = ['Property,Owner,Revenue,PM Fee %,PM Commission'];
+                    pmCommissionData.forEach((p: any) => {
+                      const name = (p.propertyName || p.name || '').replace(/,/g, ' ');
+                      const owner = (p.ownerName || '').replace(/,/g, ' ');
+                      csvRows.push(`${name},${owner},${(p.revenue || 0).toFixed(2)},${p.pmFeePercentage != null ? p.pmFeePercentage : ''},${(p.pmFee || 0).toFixed(2)}`);
+                    });
+                    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `pm-commission-report-${dateRange.start}-to-${dateRange.end}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                >
+                  <Download className="w-3 h-3" />
+                  CSV
+                </button>
+              </div>
+            )}
+          </div>
+          {propertyLoading ? (
+            <div className="h-48 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+            </div>
+          ) : pmCommissionData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">PM Fee %</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">PM Commission</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {pmCommissionData.map((p: any) => (
+                    <tr key={p.propertyId} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 max-w-[250px] truncate">
+                        {p.propertyName || p.name || `Property ${p.propertyId}`}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-600 max-w-[180px] truncate">
+                        {p.ownerName || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
+                        {formatFullCurrency(p.revenue || 0)}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
+                        {p.pmFeePercentage != null ? `${p.pmFeePercentage}%` : '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-green-700 text-right tabular-nums">
+                        {formatFullCurrency(p.pmFee || 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900" colSpan={2}>Total</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
+                      {formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.revenue || 0), 0))}
+                    </td>
+                    <td className="px-4 py-2"></td>
+                    <td className="px-4 py-2 text-sm font-semibold text-green-700 text-right tabular-nums">
+                      {formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.pmFee || 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
+              <Percent className="w-8 h-8 mb-2" />
+              <span className="text-sm">No PM commission data for selected period</span>
+            </div>
+          )}
+        </div>
+
+        {/* Guest Paid Damage Coverage Report */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-gray-400" />
+              <h3 className="text-sm font-medium text-gray-900">Guest Paid Damage Coverage</h3>
+              {damageCoverageData && damageCoverageData.length > 0 && (
+                <span className="text-xs text-gray-400">({damageCoverageData.length} properties)</span>
+              )}
+            </div>
+            {damageCoverageData && damageCoverageData.length > 0 && (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-gray-500">
+                  Total: <span className="font-semibold text-gray-900">{formatFullCurrency(damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</span>
+                </span>
+                <button
+                  onClick={() => {
+                    const csvRows = ['Property,Owner,Reservations,Damage Coverage'];
+                    damageCoverageData.forEach((p: DamageCoverageItem) => {
+                      const name = (p.name || '').replace(/,/g, ' ');
+                      const owner = (p.ownerName || '').replace(/,/g, ' ');
+                      csvRows.push(`${name},${owner},${p.reservationCount},${p.totalDamageCoverage.toFixed(2)}`);
+                    });
+                    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `damage-coverage-report-${dateRange.start}-to-${dateRange.end}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                >
+                  <Download className="w-3 h-3" />
+                  CSV
+                </button>
+              </div>
+            )}
+          </div>
+          {damageCoverageLoading ? (
+            <div className="h-48 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+            </div>
+          ) : damageCoverageData && damageCoverageData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Reservations</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Damage Coverage</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {damageCoverageData.map((p: DamageCoverageItem) => (
+                    <tr key={p.propertyId} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 max-w-[250px] truncate">
+                        {p.name}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-600 max-w-[180px] truncate">
+                        {p.ownerName || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
+                        {p.reservationCount}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-amber-700 text-right tabular-nums">
+                        {formatFullCurrency(p.totalDamageCoverage)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900" colSpan={2}>Total</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
+                      {damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}
+                    </td>
+                    <td className="px-4 py-2 text-sm font-semibold text-amber-700 text-right tabular-nums">
+                      {formatFullCurrency(damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
+              <AlertTriangle className="w-8 h-8 mb-2" />
+              <span className="text-sm">No damage coverage data for selected period</span>
             </div>
           )}
         </div>

@@ -710,7 +710,7 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
             const propertyIds = performance.map(p => parseInt(p.propertyId)).filter(id => id && !isNaN(id));
             if (propertyIds.length > 0) {
                 const listings = await Listing.findAll({
-                    attributes: ['id', 'name', 'displayName', 'nickname'],
+                    attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage'],
                     where: {
                         id: { [Op.in]: propertyIds }
                     },
@@ -720,13 +720,30 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
                 // Create map with integer keys
                 const listingMap = new Map(listings.map(l => [parseInt(l.id), l]));
 
+                // Get owner names from statements (not on listings table)
+                const ownerResults = await Statement.findAll({
+                    attributes: [
+                        'propertyId',
+                        [fn('MAX', col('owner_name')), 'ownerName']
+                    ],
+                    where: {
+                        propertyId: { [Op.in]: propertyIds },
+                        ownerName: { [Op.ne]: null }
+                    },
+                    group: ['propertyId'],
+                    raw: true
+                });
+                const ownerMap = new Map(ownerResults.map(r => [parseInt(r.propertyId), r.ownerName]));
+
                 performance = performance.map(p => {
                     const listing = listingMap.get(parseInt(p.propertyId));
                     const propertyName = listing?.displayName || listing?.nickname || listing?.name || p.name;
                     return {
                         ...p,
                         propertyName: propertyName,
-                        name: propertyName
+                        name: propertyName,
+                        pmFeePercentage: listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
+                        ownerName: ownerMap.get(parseInt(p.propertyId)) || null,
                     };
                 });
             }
@@ -740,6 +757,115 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
     } catch (error) {
         logger.logError(error, { context: 'Analytics', action: 'getPropertyPerformance' });
         res.status(500).json({ error: 'Failed to fetch property performance' });
+    }
+});
+
+/**
+ * GET /api/analytics/damage-coverage
+ *
+ * Returns Guest Paid Damage Coverage totals grouped by property.
+ * Extracts resortFee from the reservations JSON for statements
+ * that have guestPaidDamageCoverage enabled.
+ *
+ * Query params:
+ *   - startDate: Start date (YYYY-MM-DD)
+ *   - endDate: End date (YYYY-MM-DD)
+ */
+router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({
+                error: 'Missing required parameters',
+                message: 'startDate and endDate are required'
+            });
+        }
+
+        const start = parseDate(startDate);
+        const end = parseDate(endDate);
+
+        if (!start || !end) {
+            return res.status(400).json({
+                error: 'Invalid date format',
+                message: 'Dates must be in YYYY-MM-DD format'
+            });
+        }
+
+        // Fetch all statements in date range (resortFee is inside reservations JSON)
+        const statements = await Statement.findAll({
+            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations'],
+            where: {
+                weekStartDate: { [Op.lte]: end },
+                weekEndDate: { [Op.gte]: start },
+                propertyId: { [Op.ne]: null },
+            },
+            raw: true
+        });
+
+        // Aggregate resortFee per property from reservations JSON
+        const propertyMap = new Map();
+
+        for (const stmt of statements) {
+            const reservations = typeof stmt.reservations === 'string'
+                ? JSON.parse(stmt.reservations)
+                : (stmt.reservations || []);
+
+            for (const reservation of reservations) {
+                const resortFee = parseFloat(reservation.resortFee) || 0;
+                if (resortFee === 0) continue;
+
+                // Determine property ID for this reservation (for combined statements)
+                const propId = reservation.propertyId || stmt.propertyId;
+                const propName = reservation.propertyName || stmt.propertyName;
+
+                if (!propertyMap.has(propId)) {
+                    propertyMap.set(propId, {
+                        propertyId: propId,
+                        name: propName || `Property ${propId}`,
+                        ownerName: stmt.ownerName || null,
+                        totalDamageCoverage: 0,
+                        reservationCount: 0,
+                    });
+                }
+                const entry = propertyMap.get(propId);
+                entry.totalDamageCoverage += resortFee;
+                entry.reservationCount += 1;
+            }
+        }
+
+        let results = Array.from(propertyMap.values());
+
+        // Enrich with listing display names
+        try {
+            const propertyIds = results.map(p => parseInt(p.propertyId)).filter(id => id && !isNaN(id));
+            if (propertyIds.length > 0) {
+                const listings = await Listing.findAll({
+                    attributes: ['id', 'name', 'displayName', 'nickname'],
+                    where: { id: { [Op.in]: propertyIds } },
+                    raw: true
+                });
+                const listingMap = new Map(listings.map(l => [parseInt(l.id), l]));
+                results = results.map(p => {
+                    const listing = listingMap.get(parseInt(p.propertyId));
+                    return {
+                        ...p,
+                        name: listing?.displayName || listing?.nickname || listing?.name || p.name,
+                    };
+                });
+            }
+        } catch (e) {
+            logger.warn('Could not enrich damage coverage with listing names', { error: e.message });
+        }
+
+        // Sort by totalDamageCoverage descending
+        results.sort((a, b) => b.totalDamageCoverage - a.totalDamageCoverage);
+
+        res.json(results);
+
+    } catch (error) {
+        logger.logError(error, { context: 'Analytics', action: 'getDamageCoverage' });
+        res.status(500).json({ error: 'Failed to fetch damage coverage data' });
     }
 });
 
