@@ -34,6 +34,7 @@ import { useRecentStatements } from './hooks/useRecentStatements';
 import { useAnalyticsFilters } from './hooks/useAnalyticsFilters';
 import { usePayoutTrend } from './hooks/usePayoutTrend';
 import { useDamageCoverage, DamageCoverageItem } from './hooks/useDamageCoverage';
+import { usePropertyFinancials, PropertyFinancialItem } from './hooks/usePropertyFinancials';
 
 interface AnalyticsDashboardProps {
   onBack?: () => void;
@@ -691,6 +692,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   });
 
   const { data: ownerData, loading: ownerLoading } = useOwnerBreakdown({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+  });
+
+  const { data: propertyFinancialsData, loading: propertyFinancialsLoading } = usePropertyFinancials({
     startDate: dateRange.start,
     endDate: dateRange.end,
   });
@@ -1743,6 +1749,104 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <div className="h-80 flex flex-col items-center justify-center text-gray-400">
               <Building2 className="w-8 h-8 mb-2" />
               <span className="text-sm">No property data</span>
+            </div>
+          )}
+        </div>
+
+        {/* Property Financial Breakdown */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-gray-400" />
+              <h3 className="text-sm font-medium text-gray-900">Property Financial Breakdown</h3>
+              {propertyFinancialsData && propertyFinancialsData.length > 0 && (
+                <span className="text-xs text-gray-400">({propertyFinancialsData.length} properties)</span>
+              )}
+            </div>
+            {propertyFinancialsData && propertyFinancialsData.length > 0 && (
+              <button
+                onClick={() => {
+                  const csvRows = ['Property,Owner,Base Rate,Guest Fees,Platform Fees,Revenue,PM Commission,Taxes,Gross Payout,Expenses,Owner Payout,Reservations'];
+                  propertyFinancialsData.forEach((p: PropertyFinancialItem) => {
+                    const name = (p.name || '').replace(/,/g, ' ');
+                    const owner = (p.ownerName || '').replace(/,/g, ' ');
+                    csvRows.push(`${name},${owner},${p.baseRate.toFixed(2)},${p.guestFees.toFixed(2)},${p.platformFees.toFixed(2)},${p.revenue.toFixed(2)},${p.pmCommission.toFixed(2)},${p.taxes.toFixed(2)},${p.grossPayout.toFixed(2)},${p.expenses.toFixed(2)},${p.ownerPayout.toFixed(2)},${p.reservationCount}`);
+                  });
+                  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `property-financials-${dateRange.start}-to-${dateRange.end}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              >
+                <Download className="w-3 h-3" />
+                CSV
+              </button>
+            )}
+          </div>
+          {propertyFinancialsLoading ? (
+            <div className="h-48 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+            </div>
+          ) : propertyFinancialsData && propertyFinancialsData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-xs">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50">Property</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Base Rate</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Guest Fees</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Platform Fees</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">PM Commission</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Taxes</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Gross Payout</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Expenses</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Owner Payout</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Res.</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {propertyFinancialsData.map((p: PropertyFinancialItem) => (
+                    <tr key={p.propertyId} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium text-gray-900 max-w-[200px] truncate sticky left-0 bg-white">{p.name}</td>
+                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.baseRate)}</td>
+                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.guestFees)}</td>
+                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.platformFees)}</td>
+                      <td className="px-3 py-2 text-gray-900 font-medium text-right tabular-nums">{formatFullCurrency(p.revenue)}</td>
+                      <td className="px-3 py-2 text-green-700 font-medium text-right tabular-nums">{formatFullCurrency(p.pmCommission)}</td>
+                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.taxes)}</td>
+                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.grossPayout)}</td>
+                      <td className="px-3 py-2 text-red-600 text-right tabular-nums">{formatFullCurrency(p.expenses)}</td>
+                      <td className="px-3 py-2 text-blue-700 font-medium text-right tabular-nums">{formatFullCurrency(p.ownerPayout)}</td>
+                      <td className="px-3 py-2 text-gray-500 text-right tabular-nums">{p.reservationCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr className="font-semibold">
+                    <td className="px-3 py-2 text-gray-900 sticky left-0 bg-gray-50">Total</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.baseRate, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.guestFees, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.platformFees, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.revenue, 0))}</td>
+                    <td className="px-3 py-2 text-green-700 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.pmCommission, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.taxes, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.grossPayout, 0))}</td>
+                    <td className="px-3 py-2 text-red-600 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.expenses, 0))}</td>
+                    <td className="px-3 py-2 text-blue-700 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.ownerPayout, 0))}</td>
+                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.reservationCount, 0)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
+              <FileText className="w-8 h-8 mb-2" />
+              <span className="text-sm">No financial data for selected period</span>
             </div>
           )}
         </div>

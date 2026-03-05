@@ -870,6 +870,149 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
 });
 
 /**
+ * GET /api/analytics/property-financials
+ *
+ * Comprehensive per-property financial breakdown extracted from reservation data.
+ * Returns base rate, guest fees, platform fees, taxes, gross payout per property.
+ *
+ * Query params:
+ *   - startDate: Start date (YYYY-MM-DD)
+ *   - endDate: End date (YYYY-MM-DD)
+ */
+router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({
+                error: 'Missing required parameters',
+                message: 'startDate and endDate are required'
+            });
+        }
+
+        const start = parseDate(startDate);
+        const end = parseDate(endDate);
+
+        if (!start || !end) {
+            return res.status(400).json({
+                error: 'Invalid date format',
+                message: 'Dates must be in YYYY-MM-DD format'
+            });
+        }
+
+        // Fetch statements with reservations in date range
+        const statements = await Statement.findAll({
+            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
+                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout',
+                         'techFees', 'insuranceFees'],
+            where: {
+                weekStartDate: { [Op.lte]: end },
+                weekEndDate: { [Op.gte]: start },
+                propertyId: { [Op.ne]: null },
+                [Op.or]: [
+                    { totalRevenue: { [Op.ne]: 0 } },
+                    { ownerPayout: { [Op.ne]: 0 } }
+                ]
+            },
+            raw: true
+        });
+
+        // Aggregate per property
+        const propertyMap = new Map();
+
+        for (const stmt of statements) {
+            const propId = stmt.propertyId;
+            if (!propertyMap.has(propId)) {
+                propertyMap.set(propId, {
+                    propertyId: propId,
+                    name: stmt.propertyName || `Property ${propId}`,
+                    ownerName: stmt.ownerName || null,
+                    baseRate: 0,
+                    guestFees: 0,
+                    platformFees: 0,
+                    revenue: 0,
+                    pmCommission: 0,
+                    taxes: 0,
+                    grossPayout: 0,
+                    expenses: 0,
+                    ownerPayout: 0,
+                    reservationCount: 0,
+                    statementCount: 0,
+                });
+            }
+            const entry = propertyMap.get(propId);
+            entry.statementCount += 1;
+            entry.revenue += parseFloat(stmt.totalRevenue) || 0;
+            entry.pmCommission += parseFloat(stmt.pmCommission) || 0;
+            entry.expenses += parseFloat(stmt.totalExpenses) || 0;
+            entry.ownerPayout += parseFloat(stmt.ownerPayout) || 0;
+
+            // Extract detailed breakdown from reservations JSON
+            const reservations = typeof stmt.reservations === 'string'
+                ? JSON.parse(stmt.reservations)
+                : (stmt.reservations || []);
+
+            for (const r of reservations) {
+                entry.baseRate += parseFloat(r.baseRate || r.accommodationTotal || 0);
+                entry.guestFees += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
+                entry.platformFees += parseFloat(r.platformFees || r.hostServiceFee || 0);
+                entry.taxes += parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
+                entry.grossPayout += parseFloat(r.clientPayout || r.hostPayoutAmount || 0);
+                entry.reservationCount += 1;
+            }
+        }
+
+        let results = Array.from(propertyMap.values());
+
+        // Round all numeric values
+        results = results.map(p => ({
+            ...p,
+            baseRate: Math.round(p.baseRate * 100) / 100,
+            guestFees: Math.round(p.guestFees * 100) / 100,
+            platformFees: Math.round(p.platformFees * 100) / 100,
+            revenue: Math.round(p.revenue * 100) / 100,
+            pmCommission: Math.round(p.pmCommission * 100) / 100,
+            taxes: Math.round(p.taxes * 100) / 100,
+            grossPayout: Math.round(p.grossPayout * 100) / 100,
+            expenses: Math.round(p.expenses * 100) / 100,
+            ownerPayout: Math.round(p.ownerPayout * 100) / 100,
+        }));
+
+        // Enrich with listing display names
+        try {
+            const propertyIds = results.map(p => parseInt(p.propertyId)).filter(id => id && !isNaN(id));
+            if (propertyIds.length > 0) {
+                const listings = await Listing.findAll({
+                    attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage'],
+                    where: { id: { [Op.in]: propertyIds } },
+                    raw: true
+                });
+                const listingMap = new Map(listings.map(l => [parseInt(l.id), l]));
+                results = results.map(p => {
+                    const listing = listingMap.get(parseInt(p.propertyId));
+                    return {
+                        ...p,
+                        name: listing?.displayName || listing?.nickname || listing?.name || p.name,
+                        pmFeePercentage: listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
+                    };
+                });
+            }
+        } catch (e) {
+            logger.warn('Could not enrich property financials with listing names', { error: e.message });
+        }
+
+        // Sort by revenue descending
+        results.sort((a, b) => b.revenue - a.revenue);
+
+        res.json(results);
+
+    } catch (error) {
+        logger.logError(error, { context: 'Analytics', action: 'getPropertyFinancials' });
+        res.status(500).json({ error: 'Failed to fetch property financials' });
+    }
+});
+
+/**
  * GET /api/analytics/owner-breakdown
  *
  * Returns revenue and payout breakdown by owner.
