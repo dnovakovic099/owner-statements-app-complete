@@ -1851,8 +1851,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           )}
         </div>
 
-        {/* PM Commission Report */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+        {/* PM Commission Report - Hidden for now, verifying numbers */}
+        {false && <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Percent className="w-4 h-4 text-gray-400" />
@@ -1947,7 +1947,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               <span className="text-sm">No PM commission data for selected period</span>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Guest Paid Damage Coverage Report */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
