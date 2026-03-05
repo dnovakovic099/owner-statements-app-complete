@@ -11,10 +11,9 @@ import {
   X,
   BarChart3,
   FolderOpen,
-  CreditCard,
 } from 'lucide-react';
 
-type Page = 'dashboard' | 'listings' | 'groups' | 'stripe' | 'email' | 'settings' | 'financials' | 'analytics';
+type Page = 'dashboard' | 'listings' | 'groups' | 'email' | 'settings' | 'financials' | 'analytics';
 
 interface UserInfo {
   username: string;
@@ -60,7 +59,6 @@ const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: bo
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'listings', label: 'Listings', icon: <Home className="w-5 h-5" /> },
   { id: 'groups', label: 'Groups', icon: <FolderOpen className="w-5 h-5" /> },
-  { id: 'stripe', label: 'Stripe', icon: <CreditCard className="w-5 h-5" /> },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, adminOnly: true },
   { id: 'email', label: 'Email', icon: <Mail className="w-5 h-5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },

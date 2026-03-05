@@ -18,7 +18,6 @@ const EditStatementModal = lazy(() => import('./EditStatementModal'));
 // const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
 const GroupsPage = lazy(() => import('./GroupsPage'));
-const StripePage = lazy(() => import('./StripePage'));
 
 interface User {
   username: string;
@@ -69,7 +68,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'stripe' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -1292,14 +1291,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       return (
         <Suspense fallback={<LoadingSpinner />}>
           <GroupsPage />
-        </Suspense>
-      );
-    }
-
-    if (currentPage === 'stripe') {
-      return (
-        <Suspense fallback={<LoadingSpinner />}>
-          <StripePage />
         </Suspense>
       );
     }
