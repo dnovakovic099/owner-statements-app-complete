@@ -42,8 +42,8 @@ interface ListingName {
   displayName?: string | null;
   nickname?: string | null;
   internalNotes?: string | null;
-  stripeAccountId?: string | null;
-  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
+  wiseRecipientId?: string | null;
+  wiseStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
 }
 
 interface PaginationState {
@@ -659,26 +659,25 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {(() => {
               const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
               const listing = listingId && listings ? listings.find(l => Number(l.id) === Number(listingId)) : null;
-              const hasStripeAccount = !!(listing?.stripeAccountId);
-              const isRestricted = listing?.stripeOnboardingStatus === 'requires_action' || listing?.stripeOnboardingStatus === 'pending';
-              const noStripe = !hasStripeAccount || isRestricted;
+              const hasWiseRecipient = !!(listing?.wiseRecipientId);
+              const isRestricted = listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending';
+              const noWise = !hasWiseRecipient || isRestricted;
               return (
                 <ActionButton
                   onClick={() => onAction(statement.id, 'pay-owner')}
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
-                      statement.payoutStatus === 'queued' ? 'Payout queued — waiting for funds' :
-                      !hasStripeAccount ? 'No Stripe account connected' :
-                        isRestricted ? 'Stripe account not yet enabled' :
+                      !hasWiseRecipient ? 'No Wise recipient connected' :
+                        isRestricted ? 'Wise recipient not yet verified' :
                           statement.status !== 'final' ? 'Statement must be finalized first' :
                             statement.ownerPayout === 0 ? 'No payout amount' :
                               statement.ownerPayout < 0 ? `Collect $${Math.abs(statement.ownerPayout).toFixed(2)} from Owner` :
-                                'Pay Owner via Stripe'
+                                'Pay Owner via Wise'
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
-                  color={noStripe ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent' || statement.payoutStatus === 'queued' || statement.ownerPayout === 0 || noStripe}
+                  color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
                 />
               );
             })()}

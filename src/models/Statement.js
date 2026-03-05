@@ -136,7 +136,6 @@ const Statement = sequelize.define('Statement', {
         allowNull: true,
         field: 'sent_at'
     },
-    // Store complex data as JSON
     reservations: {
         type: DataTypes.JSON,
         allowNull: false,
@@ -177,7 +176,6 @@ const Statement = sequelize.define('Statement', {
         field: 'internal_notes',
         comment: 'Snapshot of internal notes at time of statement creation/finalization'
     },
-    // Group fields for auto-generated group statements
     groupId: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -201,7 +199,7 @@ const Statement = sequelize.define('Statement', {
         type: DataTypes.STRING,
         allowNull: true,
         field: 'payout_transfer_id',
-        comment: 'Stripe transfer ID when owner has been paid'
+        comment: 'Wise transfer ID when owner has been paid'
     },
     payoutStatus: {
         type: DataTypes.STRING,
@@ -221,19 +219,19 @@ const Statement = sequelize.define('Statement', {
         field: 'payout_error',
         comment: 'Error message if payout failed'
     },
-    stripeFee: {
+    wiseFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
-        field: 'stripe_fee',
-        comment: 'Stripe Connect fee (0.25%) added on top of payout'
+        field: 'wise_fee',
+        comment: 'Wise transfer fee'
     },
     totalTransferAmount: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
         field: 'total_transfer_amount',
-        comment: 'Total amount transferred (ownerPayout + stripeFee)'
+        comment: 'Total amount transferred (ownerPayout + wiseFee)'
     },
-    // Snapshot listing settings at generation time (prevents retroactive changes)
+    // Snapshot listing settings at generation time
     waiveCommission: {
         type: DataTypes.BOOLEAN,
         allowNull: true,
@@ -288,23 +286,18 @@ const Statement = sequelize.define('Statement', {
         { fields: ['status'] },
         { fields: ['week_start_date', 'week_end_date'] },
         { fields: ['property_id', 'week_start_date', 'week_end_date'] },
-        // Composite indexes for analytics queries (overlap conditions)
         { fields: ['week_start_date', 'property_id'] },
         { fields: ['group_id', 'week_start_date'] },
         { fields: ['status', 'week_start_date'] },
-        // For owner payment queries and reporting
         { fields: ['owner_id', 'week_start_date'] },
-        // For filtering by total_revenue/owner_payout (excludes $0 activity)
         { fields: ['week_start_date', 'total_revenue'] },
         { fields: ['week_start_date', 'owner_payout'] },
-        // Prevent duplicate statements for the same group + date range
         {
             name: 'unique_group_statement_period',
             unique: true,
             fields: ['group_id', 'week_start_date', 'week_end_date'],
             where: { group_id: { [require('sequelize').Op.ne]: null } }
         },
-        // Prevent duplicate statements for the same individual listing + date range
         {
             name: 'unique_individual_statement_period',
             unique: true,
@@ -318,4 +311,3 @@ const Statement = sequelize.define('Statement', {
 });
 
 module.exports = Statement;
-

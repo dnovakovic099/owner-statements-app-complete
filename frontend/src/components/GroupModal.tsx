@@ -24,7 +24,7 @@ interface GroupModalProps {
     tags: string[];
     listingIds: number[];
     calculationType: 'checkout' | 'calendar';
-    stripeAccountId?: string | null;
+    wiseRecipientId?: string | null;
   }) => Promise<void>;
   allListings: Listing[];
   allGroups: ListingGroup[];
@@ -42,7 +42,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedListingIds, setSelectedListingIds] = useState<number[]>([]);
   const [calculationType, setCalculationType] = useState<'checkout' | 'calendar'>('checkout');
-  const [stripeAccountId, setStripeAccountId] = useState('');
+  const [wiseRecipientId, setWiseRecipientId] = useState('');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; tags?: string; listings?: string }>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,13 +70,13 @@ const GroupModal: React.FC<GroupModalProps> = ({
         setSelectedTags(group.tags || []);
         setSelectedListingIds(group.listingIds || []);
         setCalculationType(group.calculationType || 'checkout');
-        setStripeAccountId(group.stripeAccountId || '');
+        setWiseRecipientId(group.wiseRecipientId || '');
       } else {
         setName('');
         setSelectedTags([]);
         setSelectedListingIds([]);
         setCalculationType('checkout');
-        setStripeAccountId('');
+        setWiseRecipientId('');
       }
       setErrors({});
       setSearchQuery('');
@@ -138,7 +138,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
         tags: selectedTags,
         listingIds: selectedListingIds,
         calculationType,
-        stripeAccountId: stripeAccountId.trim() || null,
+        wiseRecipientId: wiseRecipientId.trim() || null,
       });
       onClose();
     } catch (error) {
@@ -268,19 +268,19 @@ const GroupModal: React.FC<GroupModalProps> = ({
               </div>
             </div>
 
-            {/* Stripe Account ID */}
+            {/* Wise Recipient ID */}
             <div>
-              <Label htmlFor="stripeAccountId" className="text-sm font-medium text-gray-700">
-                Stripe Account ID
+              <Label htmlFor="wiseRecipientId" className="text-sm font-medium text-gray-700">
+                Wise Recipient ID
               </Label>
               <p className="text-xs text-gray-500 mb-2">
-                Stripe Connect account for this group's owner. Overrides individual listing Stripe IDs.
+                Wise recipient for this group's owner. Overrides individual listing recipients.
               </p>
               <Input
-                id="stripeAccountId"
-                value={stripeAccountId}
-                onChange={(e) => setStripeAccountId(e.target.value)}
-                placeholder="acct_..."
+                id="wiseRecipientId"
+                value={wiseRecipientId}
+                onChange={(e) => setWiseRecipientId(e.target.value)}
+                placeholder="Recipient ID..."
                 className="mt-1 font-mono text-sm"
               />
             </div>

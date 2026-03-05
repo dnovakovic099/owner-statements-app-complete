@@ -72,13 +72,8 @@ app.use(cors({
 // Request logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Body parsing (skip JSON parsing for Stripe webhook — it needs raw body)
-app.use((req, res, next) => {
-    if (req.originalUrl === '/api/stripe/webhook') {
-        return next();
-    }
-    express.json({ limit: '10mb' })(req, res, next);
-});
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting configuration
@@ -261,135 +256,368 @@ app.use('/api/financials', authenticate, require('./routes/financials'));
 app.use('/api/email', authenticate, require('./routes/email'));
 app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
 
-// Stripe Connect OAuth callback (public — owner's browser is redirected here by Stripe)
-app.get('/api/connect/callback', async (req, res) => {
-    const connectLogger = require('./utils/logger');
+// Payout setup page (public — owner visits this link to add bank details)
+app.get('/payout-setup/:token', async (req, res) => {
     try {
-        const { code, state, error, error_description } = req.query;
+        const { token } = req.params;
+        const { Listing } = require('./models');
+        const ListingGroup = require('./models/ListingGroup');
 
-        if (error) {
-            connectLogger.warn('Stripe Connect OAuth denied', { error, error_description });
-            return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Connection Cancelled</h2><p>The Stripe account was not connected.</p></body></html>');
+        // Find entity by invite token
+        let entity = await Listing.findOne({ where: { payoutInviteToken: token } });
+        let entityType = 'listing';
+        if (!entity) {
+            entity = await ListingGroup.findOne({ where: { payoutInviteToken: token } });
+            entityType = 'group';
         }
 
-        if (!code || !state) {
-            return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Invalid Request</h2><p>Missing authorization code or state.</p></body></html>');
+        if (!entity) {
+            return res.status(404).send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
+                <h2>Invalid or Expired Link</h2><p style="color:#6b7280">This payout setup link is no longer valid. Please contact your property manager for a new link.</p>
+            </body></html>`);
         }
 
-        const Stripe = require('stripe');
-        const stripeKey = process.env.STRIPE_SECRET_KEY;
-        if (!stripeKey) {
-            return res.status(500).send('Stripe not configured');
-        }
-        const stripe = new Stripe(stripeKey);
-
-        // Decode state to get entity info
-        let entityInfo;
-        try {
-            entityInfo = JSON.parse(Buffer.from(state, 'base64url').toString());
-        } catch (e) {
-            return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Invalid State</h2><p>Could not decode connection state.</p></body></html>');
+        // If already set up, show success
+        if (entity.wiseRecipientId && entity.wiseStatus === 'verified') {
+            return res.send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
+                <div style="max-width:400px;margin:0 auto">
+                    <div style="width:64px;height:64px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+                        <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <h2 style="margin-bottom:8px">Bank Account Already Connected</h2>
+                    <p style="color:#6b7280">Your bank details are already on file. You can close this window.</p>
+                </div>
+            </body></html>`);
         }
 
-        const { entityType, entityId } = entityInfo;
-        if (!['listing', 'group'].includes(entityType) || !entityId) {
-            return res.status(400).send('Invalid entity info in state');
+        const entityName = entity.name || entity.displayName || 'Owner';
+
+        res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Up Payout - Luxury Lodging PM</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 460px; width: 100%; overflow: hidden; }
+        .header { background: linear-gradient(135deg, #9333ea, #7c3aed); padding: 24px; color: white; text-align: center; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header p { font-size: 14px; opacity: 0.9; margin-top: 4px; }
+        .body { padding: 24px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 4px; }
+        .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.15s; }
+        .field input:focus, .field select:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+        .field .hint { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+        .btn { width: 100%; padding: 12px; background: #7c3aed; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+        .btn:hover { background: #6d28d9; }
+        .btn:disabled { background: #c4b5fd; cursor: not-allowed; }
+        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+        .success { text-align: center; padding: 40px 24px; }
+        .success .icon { width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+        .secure { font-size: 11px; color: #9ca3af; text-align: center; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <h1>Set Up Your Payout</h1>
+            <p>${entityName}</p>
+        </div>
+        <div class="body" id="formSection">
+            <div class="error" id="errorBox"></div>
+            <form id="payoutForm" onsubmit="submitForm(event)">
+                <div class="field">
+                    <label for="name">Full Name (Account Holder)</label>
+                    <input type="text" id="name" name="name" required placeholder="John Smith" />
+                </div>
+                <div class="field">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="john@example.com" />
+                </div>
+                <div class="field">
+                    <label for="accountType">Account Type</label>
+                    <select id="accountType" name="accountType">
+                        <option value="CHECKING">Checking</option>
+                        <option value="SAVINGS">Savings</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="routingNumber">Routing Number</label>
+                    <input type="text" id="routingNumber" name="routingNumber" required pattern="[0-9]{9}" maxlength="9" placeholder="9-digit routing number" />
+                    <div class="hint">9-digit ABA routing number</div>
+                </div>
+                <div class="field">
+                    <label for="accountNumber">Account Number</label>
+                    <input type="text" id="accountNumber" name="accountNumber" required pattern="[0-9]{4,17}" placeholder="Account number" />
+                </div>
+                <div class="field">
+                    <label for="confirmAccountNumber">Confirm Account Number</label>
+                    <input type="text" id="confirmAccountNumber" name="confirmAccountNumber" required placeholder="Re-enter account number" />
+                </div>
+                <button type="submit" class="btn" id="submitBtn">Connect Bank Account</button>
+                <div class="secure">Your bank details are sent securely and stored encrypted.</div>
+            </form>
+        </div>
+    </div>
+    <script>
+        async function submitForm(e) {
+            e.preventDefault();
+            const errorBox = document.getElementById('errorBox');
+            errorBox.style.display = 'none';
+            const acct = document.getElementById('accountNumber').value;
+            const confirm = document.getElementById('confirmAccountNumber').value;
+            if (acct !== confirm) {
+                errorBox.textContent = 'Account numbers do not match.';
+                errorBox.style.display = 'block';
+                return;
+            }
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+            try {
+                const resp = await fetch('/api/payouts/setup/${token}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: document.getElementById('name').value,
+                        email: document.getElementById('email').value,
+                        accountType: document.getElementById('accountType').value,
+                        routingNumber: document.getElementById('routingNumber').value,
+                        accountNumber: acct,
+                    }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    document.getElementById('formSection').innerHTML = '<div class="success"><div class="icon"><svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg></div><h2 style="color:#111;margin-bottom:8px">Bank Account Connected!</h2><p style="color:#6b7280">Your payout details have been saved. You can close this window.</p></div>';
+                } else {
+                    throw new Error(data.error || 'Something went wrong');
+                }
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Connect Bank Account';
+            }
+        }
+    </script>
+</body>
+</html>`);
+    } catch (err) {
+        logger.error('Payout setup page error', { error: err.message });
+        res.status(500).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Error</h2><p>Something went wrong. Please try again later.</p></body></html>');
+    }
+});
+
+// Payout setup form submission (public — no auth)
+app.post('/api/payouts/setup/:token', async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { name, email, accountType, routingNumber, accountNumber } = req.body;
+
+        if (!name || !routingNumber || !accountNumber) {
+            return res.status(400).json({ error: 'Name, routing number, and account number are required' });
         }
 
-        // Exchange authorization code for connected account ID
-        const response = await stripe.oauth.token({
-            grant_type: 'authorization_code',
-            code,
+        if (!/^[0-9]{9}$/.test(routingNumber)) {
+            return res.status(400).json({ error: 'Routing number must be exactly 9 digits' });
+        }
+
+        const { Listing } = require('./models');
+        const ListingGroup = require('./models/ListingGroup');
+        const WiseService = require('./services/WiseService');
+        const { encryptOptional } = require('./utils/fieldEncryption');
+
+        // Find entity by token
+        let entity = await Listing.findOne({ where: { payoutInviteToken: token } });
+        let entityType = 'listing';
+        if (!entity) {
+            entity = await ListingGroup.findOne({ where: { payoutInviteToken: token } });
+            entityType = 'group';
+        }
+
+        if (!entity) {
+            return res.status(404).json({ error: 'Invalid or expired link' });
+        }
+
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Payment system not configured' });
+        }
+
+        // Create Wise recipient
+        const recipient = await WiseService.createRecipient({
+            name,
+            email,
+            routingNumber,
+            accountNumber,
+            accountType: accountType || 'CHECKING',
         });
 
-        const connectedAccountId = response.stripe_user_id;
+        logger.info('Wise recipient created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
 
-        // Save to entity
-        const { encryptOptional } = require('./utils/fieldEncryption');
-        const ListingGroup = require('./models/ListingGroup');
-        const { Listing } = require('./models');
-
+        // Save recipient ID and clear the invite token (one-time use)
         if (entityType === 'group') {
-            const group = await ListingGroup.findByPk(parseInt(entityId, 10));
-            if (group) {
-                await group.update({ stripeAccountId: connectedAccountId, stripeOnboardingStatus: 'verified' });
-            }
+            await entity.update({
+                wiseRecipientId: String(recipient.id),
+                wiseStatus: 'verified',
+                payoutInviteToken: null,
+            });
         } else {
-            const listing = await Listing.findByPk(parseInt(entityId, 10));
-            if (listing) {
-                await listing.update({ stripeAccountId: encryptOptional(connectedAccountId), stripeOnboardingStatus: 'verified' });
-            }
+            await entity.update({
+                wiseRecipientId: encryptOptional(String(recipient.id)),
+                wiseStatus: 'verified',
+                payoutInviteToken: null,
+            });
         }
 
-        connectLogger.info('Stripe Connect OAuth completed', { entityType, entityId, connectedAccountId });
-
-        res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px">
-            <div style="max-width:400px;margin:0 auto">
-                <div style="width:64px;height:64px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
-                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>
-                </div>
-                <h2 style="color:#111827;margin-bottom:8px">Stripe Account Connected!</h2>
-                <p style="color:#6b7280">Your Stripe account <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${connectedAccountId}</code> has been successfully linked.</p>
-                <p style="color:#9ca3af;font-size:14px;margin-top:24px">You can close this window.</p>
-            </div>
-        </body></html>`);
+        res.json({ success: true, message: 'Bank account connected successfully' });
     } catch (err) {
-        const connectLogger2 = require('./utils/logger');
-        connectLogger2.logError(err, { context: 'StripeConnectCallback' });
-        res.status(500).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Connection Failed</h2><p>${err.message || 'Something went wrong connecting your Stripe account.'}</p></body></html>`);
+        logger.error('Payout setup submission error', { error: err.response?.data || err.message });
+        const msg = err.response?.data?.errors?.[0]?.message || err.response?.data?.message || err.message || 'Failed to connect bank account';
+        res.status(500).json({ error: msg });
     }
 });
 
-// Stripe webhook — must be BEFORE body parsing for raw body verification
-// Note: express.json() is applied globally above, so we use express.raw() for this specific route
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-        logger.warn('Stripe webhook received but STRIPE_WEBHOOK_SECRET not configured');
-        return res.status(500).json({ error: 'Webhook secret not configured' });
-    }
-
-    const Stripe = require('stripe');
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const sig = req.headers['stripe-signature'];
-
-    let event;
+// Payment page (public — owner visits to see amount owed and Wise bank details)
+app.get('/pay/:token', async (req, res) => {
     try {
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        const { token } = req.params;
+        const { Statement } = require('./models');
+        const { Op } = require('sequelize');
+
+        // Find statement by payment token stored in payoutError field
+        const statement = await Statement.findOne({
+            where: {
+                payoutError: { [Op.like]: `payment_token:${token}` },
+            },
+        });
+
+        if (!statement) {
+            return res.status(404).send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
+                <h2>Invalid or Expired Link</h2><p style="color:#6b7280">This payment link is no longer valid.</p>
+            </body></html>`);
+        }
+
+        const collectAmount = Math.abs(parseFloat(statement.ownerPayout) || 0);
+        const ownerName = statement.ownerName || 'Owner';
+
+        // Try to get Wise bank details
+        let bankDetailsHtml = '';
+        try {
+            const WiseService = require('./services/WiseService');
+            const bankDetails = await WiseService.getAccountBankDetails();
+            if (bankDetails && bankDetails.length > 0) {
+                const bd = bankDetails[0];
+                bankDetailsHtml = `
+                    <div class="bank-details">
+                        <h3>Wire Transfer Details</h3>
+                        <div class="detail-row"><span class="label">Bank</span><span class="value">${bd.bankName || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${bd.routingNumber || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${bd.accountNumber || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Account Type</span><span class="value">${bd.accountType || 'Checking'}</span></div>
+                        ${bd.address ? `<div class="detail-row"><span class="label">Bank Address</span><span class="value">${bd.address}</span></div>` : ''}
+                        <div class="reference">
+                            <strong>Important:</strong> Include <code>Statement #${statement.id} - ${ownerName}</code> as the payment reference/memo.
+                        </div>
+                    </div>`;
+            }
+        } catch (e) {
+            // Use env fallback
+            if (process.env.WISE_BANK_ROUTING && process.env.WISE_BANK_ACCOUNT) {
+                bankDetailsHtml = `
+                    <div class="bank-details">
+                        <h3>Wire Transfer Details</h3>
+                        <div class="detail-row"><span class="label">Bank</span><span class="value">${process.env.WISE_BANK_NAME || 'Community Federal Savings Bank'}</span></div>
+                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${process.env.WISE_BANK_ROUTING}</span></div>
+                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${process.env.WISE_BANK_ACCOUNT}</span></div>
+                        <div class="reference">
+                            <strong>Important:</strong> Include <code>Statement #${statement.id} - ${ownerName}</code> as the payment reference/memo.
+                        </div>
+                    </div>`;
+            }
+        }
+
+        if (!bankDetailsHtml) {
+            bankDetailsHtml = `<div class="bank-details"><p style="color:#6b7280">Bank details are being configured. Please contact your property manager for wire transfer instructions.</p></div>`;
+        }
+
+        res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Due - Luxury Lodging PM</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 500px; width: 100%; overflow: hidden; }
+        .header { background: linear-gradient(135deg, #dc2626, #b91c1c); padding: 24px; color: white; text-align: center; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header .amount { font-size: 36px; font-weight: 700; margin-top: 8px; }
+        .header .period { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+        .body { padding: 24px; }
+        .bank-details { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .bank-details h3 { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 12px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+        .detail-row .label { color: #64748b; font-size: 13px; }
+        .detail-row .value { font-family: ui-monospace, monospace; font-size: 13px; font-weight: 600; color: #1e293b; }
+        .reference { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-top: 12px; font-size: 12px; color: #92400e; }
+        .reference code { background: white; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+        .footer { text-align: center; padding: 0 24px 24px; color: #9ca3af; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <h1>Balance Due</h1>
+            <div class="amount">$${collectAmount.toFixed(2)}</div>
+            <div class="period">${ownerName} — ${statement.weekStartDate} to ${statement.weekEndDate}</div>
+        </div>
+        <div class="body">
+            <p style="color:#475569;font-size:14px;margin-bottom:16px">
+                Please send payment using the bank details below. Once received, your statement will be updated automatically.
+            </p>
+            ${bankDetailsHtml}
+        </div>
+        <div class="footer">
+            <p>Luxury Lodging PM — Property Management</p>
+        </div>
+    </div>
+</body>
+</html>`);
     } catch (err) {
-        logger.warn('Stripe webhook signature verification failed', { error: err.message });
-        return res.status(400).json({ error: 'Webhook signature verification failed' });
+        logger.error('Payment page error', { error: err.message });
+        res.status(500).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Error</h2><p>Something went wrong.</p></body></html>');
     }
+});
 
-    logger.info('Stripe webhook received', { type: event.type, id: event.id });
+// Payouts - Wise payout management
+app.use('/api/payouts', authenticate, require('./routes/payouts'));
 
-    if (event.type === 'topup.succeeded') {
+// Queued payout processor - checks every 5 minutes for queued payouts when balance is sufficient
+const startQueuedPayoutChecker = () => {
+    const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    setInterval(async () => {
         try {
             const { processQueuedPayouts } = require('./routes/payouts');
-            const result = await processQueuedPayouts();
-            logger.info('Processed queued payouts after top-up success', result);
-        } catch (err) {
-            logger.error('Failed to process queued payouts after top-up', { error: err.message });
-        }
-    } else if (event.type === 'topup.failed') {
-        try {
             const { Statement } = require('./models');
-            const { Op } = require('sequelize');
-            const queued = await Statement.findAll({ where: { payoutStatus: 'queued' } });
-            for (const s of queued) {
-                await s.update({ payoutStatus: 'topup_failed', payoutError: 'Bank top-up failed' });
+            const queuedCount = await Statement.count({ where: { payoutStatus: 'queued' } });
+            if (queuedCount === 0) return;
+
+            logger.info(`[QueuedPayoutChecker] ${queuedCount} queued payouts found, attempting to process...`);
+            const result = await processQueuedPayouts();
+            if (result.processed > 0 || result.failed > 0) {
+                logger.info('[QueuedPayoutChecker] Processing complete', result);
             }
-            logger.warn('Top-up failed, marked queued statements as topup_failed', { count: queued.length });
         } catch (err) {
-            logger.error('Failed to update queued statements after top-up failure', { error: err.message });
+            logger.error('[QueuedPayoutChecker] Error', { error: err.message });
         }
-    }
-
-    res.json({ received: true });
-});
-
-// Payouts - Stripe Connect onboarding and status
-app.use('/api/payouts', authenticate, require('./routes/payouts'));
+    }, CHECK_INTERVAL);
+    logger.info('Queued payout checker started - checking every 5 minutes');
+};
+startQueuedPayoutChecker();
 
 // Tag Schedules - Editors/Admins
 app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));

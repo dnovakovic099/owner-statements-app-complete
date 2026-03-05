@@ -151,9 +151,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
         }
 
         try {
-            listing.stripeAccountId = decryptOptional(listing.stripeAccountId);
+            listing.wiseRecipientId = decryptOptional(listing.wiseRecipientId);
         } catch (e) {
-            listing.stripeAccountId = null;
+            listing.wiseRecipientId = null;
         }
 
         res.json({ success: true, listing });
@@ -223,7 +223,7 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, stripeAccountId, stripeOnboardingStatus } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -261,19 +261,18 @@ router.put('/:id/config', async (req, res) => {
             config.payoutStatus = payoutStatus;
         }
         if (payoutNotes !== undefined) config.payoutNotes = payoutNotes;
-        if (stripeAccountId !== undefined) {
-            config.stripeAccountId = stripeAccountId || null;
-            // Auto-set status when account ID is manually provided/cleared
-            if (stripeOnboardingStatus === undefined) {
-                config.stripeOnboardingStatus = stripeAccountId ? 'verified' : 'missing';
+        if (wiseRecipientId !== undefined) {
+            config.wiseRecipientId = wiseRecipientId || null;
+            if (wiseStatus === undefined) {
+                config.wiseStatus = wiseRecipientId ? 'verified' : 'missing';
             }
         }
-        if (stripeOnboardingStatus !== undefined) {
-            const allowedStripeStatuses = ['missing', 'pending', 'verified', 'requires_action'];
-            if (!allowedStripeStatuses.includes(stripeOnboardingStatus)) {
-                return res.status(400).json({ error: 'stripeOnboardingStatus must be missing, pending, verified, or requires_action' });
+        if (wiseStatus !== undefined) {
+            const allowedWiseStatuses = ['missing', 'pending', 'verified', 'requires_action'];
+            if (!allowedWiseStatuses.includes(wiseStatus)) {
+                return res.status(400).json({ error: 'wiseStatus must be missing, pending, verified, or requires_action' });
             }
-            config.stripeOnboardingStatus = stripeOnboardingStatus;
+            config.wiseStatus = wiseStatus;
         }
         // Handle groupId: can be number (assign to group), null (remove from group), or undefined (no change)
         if (groupId !== undefined) {

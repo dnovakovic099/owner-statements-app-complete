@@ -126,8 +126,8 @@ class FileDataService {
                         listing.internalNotes = dbListing.internalNotes || null;
                         listing.payoutStatus = dbListing.payoutStatus || 'missing';
                         listing.payoutNotes = dbListing.payoutNotes || null;
-                        listing.stripeAccountId = dbListing.stripeAccountId || null;
-                        listing.stripeOnboardingStatus = dbListing.stripeOnboardingStatus || 'missing';
+                        listing.wiseRecipientId = dbListing.wiseRecipientId || null;
+                        listing.wiseStatus = dbListing.wiseStatus || 'missing';
                     } else {
                         listing.tags = [];
                         listing.pmFeePercentage = 15.00;
@@ -141,8 +141,8 @@ class FileDataService {
                         listing.internalNotes = null;
                         listing.payoutStatus = 'missing';
                         listing.payoutNotes = null;
-                        listing.stripeAccountId = null;
-                        listing.stripeOnboardingStatus = 'missing';
+                        listing.wiseRecipientId = null;
+                        listing.wiseStatus = 'missing';
                     }
                 });
 
@@ -184,8 +184,8 @@ class FileDataService {
                         internalNotes: db.internalNotes || null,
                         payoutStatus: db.payoutStatus || 'missing',
                         payoutNotes: db.payoutNotes || null,
-                        stripeAccountId: db.stripeAccountId || null,
-                        stripeOnboardingStatus: db.stripeOnboardingStatus || 'missing',
+                        wiseRecipientId: db.wiseRecipientId || null,
+                        wiseStatus: db.wiseStatus || 'missing',
                         syncedAt: new Date().toISOString()
                     });
                 });
@@ -203,8 +203,8 @@ class FileDataService {
                     listing.internalNotes = null;
                     listing.payoutStatus = 'missing';
                     listing.payoutNotes = null;
-                    listing.stripeAccountId = null;
-                    listing.stripeOnboardingStatus = 'missing';
+                    listing.wiseRecipientId = null;
+                    listing.wiseStatus = 'missing';
                 });
             }
 

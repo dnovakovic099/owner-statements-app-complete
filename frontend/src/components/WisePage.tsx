@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Link2, Copy, Download } from 'lucide-react';
+import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Copy, Download, ExternalLink, RefreshCw } from 'lucide-react';
 import { groupsAPI, listingsAPI, payoutsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types/index';
 import { Button } from './ui/button';
@@ -40,11 +40,11 @@ import {
   DialogTitle,
 } from './ui/dialog';
 
-const COLUMN_SIZING_KEY = 'stripe_column_sizing';
-const COLUMN_ORDER_KEY = 'stripe_column_order';
-const COLUMN_VISIBILITY_KEY = 'stripe_column_visibility';
+const COLUMN_SIZING_KEY = 'wise_column_sizing';
+const COLUMN_ORDER_KEY = 'wise_column_order';
+const COLUMN_VISIBILITY_KEY = 'wise_column_visibility';
 
-const defaultColumnOrder = ['expand', 'name', 'type', 'ownerEmail', 'schedule', 'stripeAccount', 'stripeStatus', 'listingCount'];
+const defaultColumnOrder = ['expand', 'name', 'type', 'ownerEmail', 'schedule', 'wiseRecipient', 'wiseStatus', 'listingCount'];
 
 const tagColors: Record<string, { bg: string; text: string; border: string }> = {
   WEEKLY: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
@@ -52,21 +52,21 @@ const tagColors: Record<string, { bg: string; text: string; border: string }> = 
   MONTHLY: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
 };
 
-type StripeConnectionRow = {
+type WiseConnectionRow = {
   type: 'group' | 'listing';
   id: number;
   name: string;
   ownerEmail: string | null;
-  stripeAccountId: string | null;
+  wiseRecipientId: string | null;
   connected: boolean;
-  stripeOnboardingStatus: string;
+  wiseStatus: string;
   schedule: string[];
   listingCount: number;
   listings: Listing[];
 };
 
 // Separate component for inline editing to avoid re-renders killing focus
-const InlineStripeEditor: React.FC<{
+const InlineRecipientEditor: React.FC<{
   initialValue: string;
   onSave: (value: string) => void;
   onCancel: () => void;
@@ -89,7 +89,7 @@ const InlineStripeEditor: React.FC<{
           if (e.key === 'Enter') onSave(value);
           if (e.key === 'Escape') onCancel();
         }}
-        placeholder="acct_..."
+        placeholder="Recipient ID..."
         className="w-full border border-blue-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
       <button
@@ -110,7 +110,7 @@ const InlineStripeEditor: React.FC<{
   );
 };
 
-const StripePage: React.FC = () => {
+const WisePage: React.FC = () => {
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,12 +121,9 @@ const StripePage: React.FC = () => {
 
   // Invite modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [inviteTarget, setInviteTarget] = useState<StripeConnectionRow | null>(null);
-  const [inviteEmail, setInviteEmail] = useState('');
-
+  const [inviteTarget, setInviteTarget] = useState<WiseConnectionRow | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [onboardingResult, setOnboardingResult] = useState<{ stripeAccountId: string; onboardingUrl: string } | null>(null);
-  const [oauthResult, setOauthResult] = useState<{ oauthUrl: string } | null>(null);
+  const [inviteResult, setInviteResult] = useState<{ inviteUrl: string } | null>(null);
 
   const [csvExporting, setCsvExporting] = useState(false);
 
@@ -186,8 +183,8 @@ const StripePage: React.FC = () => {
       setGroups(groupsRes.groups || []);
       setAllListings(listingsRes.listings || []);
     } catch (err) {
-      console.error('Failed to fetch stripe connections data:', err);
-      showToast('Failed to load stripe connections', 'error');
+      console.error('Failed to fetch wise connections data:', err);
+      showToast('Failed to load Wise connections', 'error');
     } finally {
       setLoading(false);
     }
@@ -197,7 +194,7 @@ const StripePage: React.FC = () => {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startEditing = (row: StripeConnectionRow) => {
+  const startEditing = (row: WiseConnectionRow) => {
     setEditingRowKey(getRowKey(row));
   };
 
@@ -205,66 +202,67 @@ const StripePage: React.FC = () => {
     setEditingRowKey(null);
   };
 
-  const saveStripeAccountId = async (row: StripeConnectionRow, value: string) => {
+  const saveWiseRecipientId = async (row: WiseConnectionRow, value: string) => {
     const newId = value.trim() || null;
     try {
       if (row.type === 'group') {
-        await groupsAPI.updateGroup(row.id, { stripeAccountId: newId });
+        await groupsAPI.updateGroup(row.id, { wiseRecipientId: newId });
       } else {
-        await listingsAPI.updateListingConfig(row.id, { stripeAccountId: newId });
+        await listingsAPI.updateListingConfig(row.id, { wiseRecipientId: newId });
       }
-      showToast(newId ? 'Stripe Account ID saved' : 'Stripe Account ID removed', 'success');
+      showToast(newId ? 'Wise Recipient ID saved' : 'Wise Recipient ID removed', 'success');
       await fetchData();
     } catch (err) {
-      console.error('Failed to save Stripe Account ID:', err);
-      showToast('Failed to save Stripe Account ID', 'error');
+      console.error('Failed to save Wise Recipient ID:', err);
+      showToast('Failed to save Wise Recipient ID', 'error');
     }
     setEditingRowKey(null);
   };
 
-  const openInviteModal = (row: StripeConnectionRow) => {
+  const openInviteModal = (row: WiseConnectionRow) => {
     setInviteTarget(row);
-    setInviteEmail(row.ownerEmail || '');
-    setOnboardingResult(null);
-    setOauthResult(null);
+    setInviteResult(null);
     setInviteModalOpen(true);
   };
 
-  const handleGenerateOAuthLink = async () => {
+  const handleGenerateInvite = async () => {
     if (!inviteTarget) return;
     setInviteLoading(true);
     try {
-      const result = await payoutsAPI.generateOAuthLink({
-        email: inviteEmail.trim() || undefined,
+      const result = await payoutsAPI.generateInvite({
         entityType: inviteTarget.type,
         entityId: inviteTarget.id,
+        email: inviteTarget.ownerEmail || undefined,
       });
-      setOauthResult({ oauthUrl: result.oauthUrl });
-      showToast('OAuth link generated', 'success');
+      setInviteResult({ inviteUrl: result.inviteUrl });
+      showToast('Invite link generated', 'success');
+      fetchData();
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to generate connect link';
+      const msg = err?.response?.data?.error || 'Failed to generate invite link';
       showToast(msg, 'error');
     } finally {
       setInviteLoading(false);
     }
   };
 
-  const handleResendOnboardingLink = async (stripeAccountId: string) => {
+  const handleRefreshStatus = async (row: WiseConnectionRow) => {
+    if (!row.wiseRecipientId) return;
     try {
-      const result = await payoutsAPI.generateOnboardingLink(stripeAccountId);
-      await navigator.clipboard.writeText(result.onboardingUrl);
-      showToast('Onboarding link copied to clipboard', 'success');
+      await payoutsAPI.refreshWiseStatus({
+        wiseRecipientId: row.wiseRecipientId,
+        ...(row.type === 'group' ? { groupId: row.id } : { listingId: row.id }),
+      });
+      showToast('Status refreshed', 'success');
+      fetchData();
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to generate onboarding link';
-      showToast(msg, 'error');
+      showToast(err?.response?.data?.error || 'Failed to refresh status', 'error');
     }
   };
 
   const exportCSV = async () => {
     setCsvExporting(true);
     try {
-      // Group rows by client (ownerEmail)
-      const clientMap = new Map<string, { name: string; listings: string[]; email: string; stripeAccountId: string | null; entityType: 'listing' | 'group'; entityId: number }>();
+      const clientMap = new Map<string, { name: string; listings: string[]; email: string; wiseRecipientId: string | null; entityType: 'listing' | 'group'; entityId: number }>();
 
       for (const row of table.getFilteredRowModel().rows) {
         const data = row.original;
@@ -274,7 +272,7 @@ const StripePage: React.FC = () => {
             name: data.name,
             listings: [],
             email: data.ownerEmail || '',
-            stripeAccountId: data.stripeAccountId || null,
+            wiseRecipientId: data.wiseRecipientId || null,
             entityType: data.type,
             entityId: data.id,
           });
@@ -287,30 +285,20 @@ const StripePage: React.FC = () => {
         }
       }
 
-      // Generate invite links in parallel
-      // - With Stripe account: onboarding link
-      // - Without Stripe account: OAuth invite link
       const clients = Array.from(clientMap.values());
       let failedLinks = 0;
       const linkResults = await Promise.all(
         clients.map(async (client) => {
-          if (client.stripeAccountId) {
-            try {
-              const result = await payoutsAPI.generateOnboardingLink(client.stripeAccountId);
-              return result.onboardingUrl || '';
-            } catch {
-              failedLinks++;
-              return '';
-            }
+          if (client.wiseRecipientId) {
+            return '(already connected)';
           }
-          // No Stripe account — generate OAuth invite link
           try {
-            const result = await payoutsAPI.generateOAuthLink({
-              email: client.email || undefined,
+            const result = await payoutsAPI.generateInvite({
               entityType: client.entityType,
               entityId: client.entityId,
+              email: client.email || undefined,
             });
-            return result.oauthUrl || '';
+            return result.inviteUrl || '';
           } catch {
             failedLinks++;
             return '';
@@ -318,14 +306,14 @@ const StripePage: React.FC = () => {
         })
       );
 
-      // Build CSV with BOM for Excel compatibility
-      const csvRows = [['client name', 'listings', 'email', 'stripe account invite link'].join(',')];
+      const csvRows = [['client name', 'listings', 'email', 'wise recipient id', 'invite link'].join(',')];
       clients.forEach((client, i) => {
         const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
         csvRows.push([
           escapeCsv(client.name),
           escapeCsv(client.listings.join('; ')),
           escapeCsv(client.email),
+          escapeCsv(client.wiseRecipientId || ''),
           escapeCsv(linkResults[i]),
         ].join(','));
       });
@@ -334,7 +322,7 @@ const StripePage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'stripe-invite-links.csv';
+      a.download = 'wise-invite-links.csv';
       a.click();
       URL.revokeObjectURL(url);
 
@@ -351,10 +339,9 @@ const StripePage: React.FC = () => {
   };
 
   // Build unified row model
-  const rows: StripeConnectionRow[] = useMemo(() => {
-    const result: StripeConnectionRow[] = [];
+  const rows: WiseConnectionRow[] = useMemo(() => {
+    const result: WiseConnectionRow[] = [];
 
-    // Collect all listing IDs that belong to a group
     const groupedListingIds = new Set<number>();
     for (const group of groups) {
       for (const id of group.listingIds || []) {
@@ -362,7 +349,6 @@ const StripePage: React.FC = () => {
       }
     }
 
-    // Group rows
     for (const group of groups) {
       const memberListings = allListings.filter(l => (group.listingIds || []).includes(l.id));
       const firstListingEmail = memberListings.length > 0 ? (memberListings[0].ownerEmail || null) : null;
@@ -371,16 +357,15 @@ const StripePage: React.FC = () => {
         id: group.id,
         name: group.name,
         ownerEmail: firstListingEmail,
-        stripeAccountId: group.stripeAccountId || null,
-        connected: !!group.stripeAccountId,
-        stripeOnboardingStatus: group.stripeOnboardingStatus || 'missing',
+        wiseRecipientId: group.wiseRecipientId || null,
+        connected: !!(group.wiseRecipientId && group.wiseStatus === 'verified'),
+        wiseStatus: group.wiseStatus || 'missing',
         schedule: group.tags || [],
         listingCount: (group.listingIds || []).length,
         listings: memberListings,
       });
     }
 
-    // Ungrouped listing rows
     for (const listing of allListings) {
       if (listing.groupId != null) continue;
       if (groupedListingIds.has(listing.id)) continue;
@@ -389,9 +374,9 @@ const StripePage: React.FC = () => {
         id: listing.id,
         name: listing.displayName || listing.nickname || listing.name,
         ownerEmail: listing.ownerEmail || null,
-        stripeAccountId: listing.stripeAccountId || null,
-        connected: !!listing.stripeAccountId,
-        stripeOnboardingStatus: listing.stripeOnboardingStatus || 'missing',
+        wiseRecipientId: (listing as any).wiseRecipientId || null,
+        connected: !!((listing as any).wiseRecipientId && (listing as any).wiseStatus === 'verified'),
+        wiseStatus: (listing as any).wiseStatus || 'missing',
         schedule: listing.tags || [],
         listingCount: 1,
         listings: [listing],
@@ -415,7 +400,6 @@ const StripePage: React.FC = () => {
     return filtered;
   }, [rows, statusFilter, typeFilter]);
 
-  // Summary stats
   const stats = useMemo(() => {
     const total = rows.length;
     const connected = rows.filter(r => r.connected).length;
@@ -423,21 +407,21 @@ const StripePage: React.FC = () => {
     return { total, connected, notConnected };
   }, [rows]);
 
-  const maskStripeId = (id: string | null | undefined): string => {
+  const maskRecipientId = (id: string | null | undefined): string => {
     if (!id) return '';
     if (id.length <= 8) return id;
     return `${id.slice(0, 5)}...${id.slice(-4)}`;
   };
 
-  const getRowKey = (row: StripeConnectionRow) => `${row.type}-${row.id}`;
+  const getRowKey = (row: WiseConnectionRow) => `${row.type}-${row.id}`;
 
-  const toggleExpand = (row: StripeConnectionRow) => {
+  const toggleExpand = (row: WiseConnectionRow) => {
     const key = getRowKey(row);
     setExpandedRowId(prev => prev === key ? null : key);
   };
 
   // Column definitions
-  const columns: ColumnDef<StripeConnectionRow>[] = useMemo(() => [
+  const columns: ColumnDef<WiseConnectionRow>[] = useMemo(() => [
     {
       id: 'expand',
       size: 40,
@@ -562,28 +546,28 @@ const StripePage: React.FC = () => {
       ),
     },
     {
-      id: 'stripeAccount',
-      accessorFn: (row) => row.stripeAccountId || '',
+      id: 'wiseRecipient',
+      accessorFn: (row) => row.wiseRecipientId || '',
       size: 220,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Stripe Account
+          Wise Recipient
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => {
         const rowKey = getRowKey(row.original);
         const isEditing = editingRowKey === rowKey;
-        const stripeId = row.original.stripeAccountId;
+        const recipientId = row.original.wiseRecipientId;
 
         if (isEditing) {
           return (
-            <InlineStripeEditor
-              initialValue={stripeId || ''}
-              onSave={(value) => saveStripeAccountId(row.original, value)}
+            <InlineRecipientEditor
+              initialValue={recipientId || ''}
+              onSave={(value) => saveWiseRecipientId(row.original, value)}
               onCancel={cancelEditing}
             />
           );
@@ -591,16 +575,16 @@ const StripePage: React.FC = () => {
 
         return (
           <div className="flex items-center gap-1.5 justify-center">
-            {stripeId ? (
+            {recipientId ? (
               <>
-                <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskStripeId(stripeId)}</code>
+                <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskRecipientId(recipientId)}</code>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     startEditing(row.original);
                   }}
                   className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                  title="Edit Stripe Account ID"
+                  title="Edit Wise Recipient ID"
                 >
                   <Pencil className="w-3 h-3" />
                 </button>
@@ -613,7 +597,7 @@ const StripePage: React.FC = () => {
                     openInviteModal(row.original);
                   }}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                  title="Send Stripe Connect invite to owner"
+                  title="Send payout setup invite to owner"
                 >
                   <Send className="w-3 h-3" />
                   Invite Owner
@@ -624,7 +608,7 @@ const StripePage: React.FC = () => {
                     startEditing(row.original);
                   }}
                   className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                  title="Manually enter Stripe Account ID"
+                  title="Manually enter Wise Recipient ID"
                 >
                   <Pencil className="w-3 h-3" />
                 </button>
@@ -635,7 +619,7 @@ const StripePage: React.FC = () => {
       },
     },
     {
-      id: 'stripeStatus',
+      id: 'wiseStatus',
       accessorFn: (row) => row.connected ? 'connected' : 'not_connected',
       size: 140,
       header: ({ column }) => (
@@ -648,8 +632,8 @@ const StripePage: React.FC = () => {
         </button>
       ),
       cell: ({ row }) => {
-        const status = row.original.stripeOnboardingStatus;
-        const hasAccount = !!row.original.stripeAccountId;
+        const status = row.original.wiseStatus;
+        const hasRecipient = !!row.original.wiseRecipientId;
         const isVerified = status === 'verified';
         const isPending = status === 'pending';
         const needsAction = status === 'requires_action';
@@ -660,7 +644,7 @@ const StripePage: React.FC = () => {
           ? { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Pending' }
           : needsAction
           ? { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Action Needed' }
-          : hasAccount
+          : hasRecipient
           ? { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', dot: 'bg-blue-500', label: 'Connected' }
           : { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', dot: 'bg-gray-400', label: 'Not Connected' };
 
@@ -670,16 +654,16 @@ const StripePage: React.FC = () => {
               <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`} />
               {statusConfig.label}
             </span>
-            {hasAccount && !isVerified && (
+            {hasRecipient && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleResendOnboardingLink(row.original.stripeAccountId!);
+                  handleRefreshStatus(row.original);
                 }}
                 className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                title="Resend onboarding link (copies to clipboard)"
+                title="Refresh status from Wise"
               >
-                <Send className="w-3 h-3" />
+                <RefreshCw className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -721,8 +705,8 @@ const StripePage: React.FC = () => {
     type: 'Type',
     ownerEmail: 'Owner Email',
     schedule: 'Schedule',
-    stripeAccount: 'Stripe Account',
-    stripeStatus: 'Status',
+    wiseRecipient: 'Wise Recipient',
+    wiseStatus: 'Status',
     listingCount: 'Listings',
   };
 
@@ -765,7 +749,7 @@ const StripePage: React.FC = () => {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-purple-600" />
-              Stripe Connections
+              Wise Connections
             </h2>
             <p className="text-sm text-gray-500 mt-0.5">
               {rows.length} total connection{rows.length !== 1 ? 's' : ''}
@@ -913,7 +897,7 @@ const StripePage: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No connections found</h3>
               <p className="text-gray-500 text-sm mb-6 max-w-sm">
-                Create groups or add listings to see their Stripe connection status here.
+                Create groups or add listings to see their Wise connection status here.
               </p>
             </div>
           </div>
@@ -1022,7 +1006,7 @@ const StripePage: React.FC = () => {
                               style={{ width: cell.column.getSize() }}
                               className="py-2.5 px-2 text-center align-middle"
                               onClick={(e) => {
-                                if (cell.column.id === 'stripeAccount') e.stopPropagation();
+                                if (cell.column.id === 'wiseRecipient') e.stopPropagation();
                               }}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1048,8 +1032,8 @@ const StripePage: React.FC = () => {
                                 ) : (
                                   <div className="divide-y divide-purple-100/50">
                                     {rowListings.map((listing) => {
-                                      const hasOwnStripe = !!(listing as any).stripeAccountId;
-                                      const inheritsFromGroup = !hasOwnStripe && rowData.type === 'group' && !!rowData.stripeAccountId;
+                                      const hasOwnRecipient = !!(listing as any).wiseRecipientId;
+                                      const inheritsFromGroup = !hasOwnRecipient && rowData.type === 'group' && !!rowData.wiseRecipientId;
                                       return (
                                         <div
                                           key={listing.id}
@@ -1074,7 +1058,7 @@ const StripePage: React.FC = () => {
                                                 {listing.ownerEmail}
                                               </span>
                                             )}
-                                            {hasOwnStripe ? (
+                                            {hasOwnRecipient ? (
                                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                                                 <span className="w-1 h-1 rounded-full bg-emerald-500" />
                                                 Own ID
@@ -1116,30 +1100,29 @@ const StripePage: React.FC = () => {
         )}
       </div>
 
-      {/* Connect Owner Modal */}
-      <Dialog open={inviteModalOpen} onOpenChange={(open) => { if (!open) { setInviteModalOpen(false); setOnboardingResult(null); setOauthResult(null); } }}>
+      {/* Invite Modal */}
+      <Dialog open={inviteModalOpen} onOpenChange={(open) => { if (!open) { setInviteModalOpen(false); setInviteResult(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="w-5 h-5 text-purple-600" />
-              Stripe Connect Invite
+              Payout Setup Invite
             </DialogTitle>
           </DialogHeader>
 
-          {/* Result states */}
-          {onboardingResult ? (
+          {inviteResult ? (
             <div className="space-y-4 pt-2">
               <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
                 <Check className="w-4 h-4 flex-shrink-0" />
-                Stripe account created successfully
+                Invite link generated successfully
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding Link</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Invite Link</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={onboardingResult.onboardingUrl}
+                    value={inviteResult.inviteUrl}
                     readOnly
                     className="flex-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600 truncate"
                   />
@@ -1147,88 +1130,47 @@ const StripePage: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={async () => {
-                      await navigator.clipboard.writeText(onboardingResult.onboardingUrl);
+                      await navigator.clipboard.writeText(inviteResult.inviteUrl);
                       showToast('Link copied to clipboard', 'success');
                     }}
                     className="flex-shrink-0"
                   >
                     <Copy className="w-4 h-4" />
                   </Button>
-                </div>
-                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll connect their Stripe account and be ready to receive payouts.</p>
-              </div>
-
-              <div className="text-xs text-gray-500">
-                Account ID: <code className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{onboardingResult.stripeAccountId}</code>
-              </div>
-
-              <Button
-                variant="outline"
-                onClick={() => { setInviteModalOpen(false); setOnboardingResult(null); }}
-                className="w-full"
-              >
-                Done
-              </Button>
-            </div>
-          ) : oauthResult ? (
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
-                <Check className="w-4 h-4 flex-shrink-0" />
-                Connect link generated
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Connect Link</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={oauthResult.oauthUrl}
-                    readOnly
-                    className="flex-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600 truncate"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(oauthResult.oauthUrl);
-                      showToast('Link copied to clipboard', 'success');
-                    }}
-                    className="flex-shrink-0"
+                  <a
+                    href={inviteResult.inviteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-gray-200 bg-white px-3 hover:bg-gray-50"
                   >
-                    <Copy className="w-4 h-4" />
-                  </Button>
+                    <ExternalLink className="w-4 h-4 text-gray-500" />
+                  </a>
                 </div>
-                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll log into their existing Stripe account and authorize the connection. Their account ID will be saved automatically.</p>
+                <p className="text-xs text-gray-400 mt-1.5">Send this link to the owner. They'll enter their bank details and the connection will be automatic. The link is single-use.</p>
               </div>
 
               <Button
                 variant="outline"
-                onClick={() => { setInviteModalOpen(false); setOauthResult(null); }}
+                onClick={() => { setInviteModalOpen(false); setInviteResult(null); }}
                 className="w-full"
               >
                 Done
               </Button>
             </div>
           ) : (
-            /* Input form */
             <div className="space-y-4 pt-2">
               <div className="text-sm text-gray-500">
-                Send a Stripe Connect invite to <span className="font-medium text-gray-900">{inviteTarget?.name}</span>. The owner will connect their Stripe account to receive payouts.
+                Generate a secure link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to connect their bank account for Wise payouts.
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Owner Email (optional)</label>
-                <Input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="owner@example.com"
-                />
-                <p className="text-xs text-gray-400 mt-1">Pre-fills the email on the Stripe connect page.</p>
-              </div>
+              {inviteTarget?.ownerEmail && (
+                <div className="text-xs text-gray-400">
+                  Owner email: <span className="font-mono">{inviteTarget.ownerEmail}</span>
+                </div>
+              )}
 
               <Button
-                onClick={handleGenerateOAuthLink}
+                onClick={handleGenerateInvite}
                 disabled={inviteLoading}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white"
               >
@@ -1239,8 +1181,8 @@ const StripePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <Link2 className="w-4 h-4" />
-                    Generate Connect Link
+                    <Send className="w-4 h-4" />
+                    Generate Invite Link
                   </div>
                 )}
               </Button>
@@ -1252,4 +1194,4 @@ const StripePage: React.FC = () => {
   );
 };
 
-export default StripePage;
+export default WisePage;

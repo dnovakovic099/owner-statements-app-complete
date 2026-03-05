@@ -281,9 +281,9 @@ class ListingService {
                     return listings.map(l => {
                         const listingJson = l.toJSON();
                         try {
-                            listingJson.stripeAccountId = decryptOptional(listingJson.stripeAccountId);
+                            listingJson.wiseRecipientId = decryptOptional(listingJson.wiseRecipientId);
                         } catch (e) {
-                            listingJson.stripeAccountId = null;
+                            listingJson.wiseRecipientId = null;
                         }
                         if (listingJson.groupId && groupMap.has(listingJson.groupId)) {
                             const group = groupMap.get(listingJson.groupId);
@@ -303,9 +303,9 @@ class ListingService {
             return listings.map(l => {
                 const json = { ...l.toJSON(), group: null };
                 try {
-                    json.stripeAccountId = decryptOptional(json.stripeAccountId);
+                    json.wiseRecipientId = decryptOptional(json.wiseRecipientId);
                 } catch (e) {
-                    json.stripeAccountId = null;
+                    json.wiseRecipientId = null;
                 }
                 return json;
             });
@@ -321,32 +321,32 @@ class ListingService {
     async getListingNames() {
         try {
             const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'stripeAccountId', 'stripeOnboardingStatus', 'groupId']
+                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'wiseRecipientId', 'wiseStatus', 'groupId']
             });
 
-            // Load groups that have Stripe accounts for inheritance
+            // Load groups that have Wise recipients for inheritance
             const ListingGroup = require('../models/ListingGroup');
             const groups = await ListingGroup.findAll({
-                attributes: ['id', 'stripeAccountId', 'stripeOnboardingStatus']
+                attributes: ['id', 'wiseRecipientId', 'wiseStatus']
             });
             const groupMap = new Map(groups.map(g => [g.id, g.toJSON()]));
 
             return listings.map(l => {
                 const json = l.toJSON();
                 try {
-                    json.stripeAccountId = decryptOptional(json.stripeAccountId);
+                    json.wiseRecipientId = decryptOptional(json.wiseRecipientId);
                 } catch (e) {
-                    logger.warn('Failed to decrypt stripeAccountId for listing', { id: json.id });
-                    json.stripeAccountId = null;
+                    logger.warn('Failed to decrypt wiseRecipientId for listing', { id: json.id });
+                    json.wiseRecipientId = null;
                 }
 
-                // Apply group Stripe account inheritance:
-                // If listing is in a group with a Stripe account, use that unless listing has its own
-                if (json.groupId && !json.stripeAccountId) {
+                // Apply group Wise recipient inheritance:
+                // If listing is in a group with a Wise recipient, use that unless listing has its own
+                if (json.groupId && !json.wiseRecipientId) {
                     const group = groupMap.get(json.groupId);
-                    if (group && group.stripeAccountId) {
-                        json.stripeAccountId = group.stripeAccountId;
-                        json.stripeOnboardingStatus = group.stripeOnboardingStatus || json.stripeOnboardingStatus;
+                    if (group && group.wiseRecipientId) {
+                        json.wiseRecipientId = group.wiseRecipientId;
+                        json.wiseStatus = group.wiseStatus || json.wiseStatus;
                     }
                 }
 
@@ -498,13 +498,13 @@ class ListingService {
             if (config.internalNotes !== undefined) updates.internalNotes = config.internalNotes;
             if (config.payoutStatus !== undefined) updates.payoutStatus = config.payoutStatus;
             if (config.payoutNotes !== undefined) updates.payoutNotes = config.payoutNotes;
-            if (config.stripeAccountId !== undefined) {
-                updates.stripeAccountId = encryptOptional(config.stripeAccountId);
+            if (config.wiseRecipientId !== undefined) {
+                updates.wiseRecipientId = encryptOptional(config.wiseRecipientId);
             }
             if (config.newPmFeeEnabled !== undefined) updates.newPmFeeEnabled = config.newPmFeeEnabled;
             if (config.newPmFeePercentage !== undefined) updates.newPmFeePercentage = config.newPmFeePercentage;
             if (config.newPmFeeStartDate !== undefined) updates.newPmFeeStartDate = config.newPmFeeStartDate;
-            if (config.stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = config.stripeOnboardingStatus;
+            if (config.wiseStatus !== undefined) updates.wiseStatus = config.wiseStatus;
             // Support groupId assignment (null to remove from group, number to assign to group)
             if (config.groupId !== undefined) updates.groupId = config.groupId;
 

@@ -199,14 +199,14 @@ class ListingGroupService {
                 updateData.calculationType = updates.calculationType || 'checkout';
             }
 
-            // Update stripeAccountId if provided
-            if (updates.stripeAccountId !== undefined) {
-                updateData.stripeAccountId = updates.stripeAccountId || null;
+            // Update wiseRecipientId if provided
+            if (updates.wiseRecipientId !== undefined) {
+                updateData.wiseRecipientId = updates.wiseRecipientId || null;
             }
 
-            // Update stripeOnboardingStatus if provided
-            if (updates.stripeOnboardingStatus !== undefined) {
-                updateData.stripeOnboardingStatus = updates.stripeOnboardingStatus || 'missing';
+            // Update wiseStatus if provided
+            if (updates.wiseStatus !== undefined) {
+                updateData.wiseStatus = updates.wiseStatus || 'missing';
             }
 
             if (Object.keys(updateData).length > 0) {

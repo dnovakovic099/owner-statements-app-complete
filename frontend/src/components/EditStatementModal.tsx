@@ -1041,8 +1041,8 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             ✓ Paid {(statement as any).paidAt ? new Date((statement as any).paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }) : ''}
                           </span>
                           <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
-                            {(statement as any).stripeFee > 0 && (
-                              <div>Stripe fee: <span className="font-medium text-gray-700">${(statement as any).stripeFee.toFixed(2)}</span></div>
+                            {(statement as any).wiseFee > 0 && (
+                              <div>Transfer fee: <span className="font-medium text-gray-700">${(statement as any).wiseFee.toFixed(2)}</span></div>
                             )}
                             {(statement as any).totalTransferAmount > 0 && (
                               <div>Total transferred: <span className="font-medium text-gray-700">${(statement as any).totalTransferAmount.toFixed(2)}</span></div>

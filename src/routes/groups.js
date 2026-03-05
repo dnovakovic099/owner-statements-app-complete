@@ -93,9 +93,9 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, tags, calculationType, stripeAccountId, stripeOnboardingStatus } = req.body;
+        const { name, tags, calculationType, wiseRecipientId, wiseStatus } = req.body;
 
-        if (name === undefined && tags === undefined && calculationType === undefined && stripeAccountId === undefined && stripeOnboardingStatus === undefined) {
+        if (name === undefined && tags === undefined && calculationType === undefined && wiseRecipientId === undefined && wiseStatus === undefined) {
             return res.status(400).json({ error: 'At least one field is required to update' });
         }
 
@@ -103,14 +103,13 @@ router.put('/:id', async (req, res) => {
         if (name !== undefined) updates.name = name;
         if (tags !== undefined) updates.tags = tags;
         if (calculationType !== undefined) updates.calculationType = calculationType;
-        if (stripeAccountId !== undefined) {
-            updates.stripeAccountId = stripeAccountId;
-            // Auto-set status when account ID is manually provided/cleared
-            if (stripeOnboardingStatus === undefined) {
-                updates.stripeOnboardingStatus = stripeAccountId ? 'verified' : 'missing';
+        if (wiseRecipientId !== undefined) {
+            updates.wiseRecipientId = wiseRecipientId;
+            if (wiseStatus === undefined) {
+                updates.wiseStatus = wiseRecipientId ? 'verified' : 'missing';
             }
         }
-        if (stripeOnboardingStatus !== undefined) updates.stripeOnboardingStatus = stripeOnboardingStatus;
+        if (wiseStatus !== undefined) updates.wiseStatus = wiseStatus;
 
         const group = await ListingGroupService.updateGroup(parseInt(id), updates);
 

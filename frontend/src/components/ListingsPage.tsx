@@ -113,7 +113,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [internalNotes, setInternalNotes] = useState('');
   const [payoutStatus, setPayoutStatus] = useState<'missing' | 'pending' | 'on_file'>('missing');
   const [payoutNotes, setPayoutNotes] = useState('');
-  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [wiseRecipientId, setWiseRecipientId] = useState<string | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const payoutLabel = (status: 'missing' | 'pending' | 'on_file') => {
@@ -255,7 +255,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     name: string;
     tags: string[];
     listingIds: number[];
-    stripeAccountId?: string | null;
+    wiseRecipientId?: string | null;
   }) => {
     try {
       if (data.id) {
@@ -263,7 +263,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         await groupsAPI.updateGroup(data.id, {
           name: data.name,
           tags: data.tags,
-          stripeAccountId: data.stripeAccountId,
+          wiseRecipientId: data.wiseRecipientId,
         });
 
         // Handle listing membership changes
@@ -346,7 +346,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setInternalNotes(listing.internalNotes || '');
         setPayoutStatus((listing.payoutStatus as any) || 'missing');
         setPayoutNotes(listing.payoutNotes || '');
-        setStripeAccountId((listing.stripeAccountId as any) || null);
+        setWiseRecipientId((listing.wiseRecipientId as any) || null);
       }
     } else {
       resetForm();
@@ -365,7 +365,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         ...l,
         payoutStatus: (l as any).payoutStatus || 'missing',
         payoutNotes: l.payoutNotes || '',
-        stripeAccountId: (l as any).stripeAccountId || null
+        wiseRecipientId: (l as any).wiseRecipientId || null
       })));
 
       if (updateOptions) {
@@ -439,7 +439,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setInternalNotes('');
     setPayoutStatus('missing');
     setPayoutNotes('');
-    setStripeAccountId(null);
+    setWiseRecipientId(null);
   };
 
   const handleSave = async () => {
@@ -469,7 +469,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         internalNotes: internalNotes.trim() || null,
         payoutStatus,
         payoutNotes: payoutNotes.trim() || null,
-        stripeAccountId: stripeAccountId || undefined
+        wiseRecipientId: wiseRecipientId || undefined
       };
 
       const response = await listingsAPI.updateListingConfig(selectedListingId, config);
@@ -1192,11 +1192,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             {tag}
                           </span>
                         ))}
-                        {(listing as any).stripeAccountId && (
+                        {(listing as any).wiseRecipientId && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {(listing as any).stripeAccountId.length > 12
-                              ? `${(listing as any).stripeAccountId.slice(0, 5)}...${(listing as any).stripeAccountId.slice(-4)}`
-                              : (listing as any).stripeAccountId}
+                            Wise: {(listing as any).wiseRecipientId.length > 10
+                              ? `...${(listing as any).wiseRecipientId.slice(-6)}`
+                              : (listing as any).wiseRecipientId}
                           </span>
                         )}
                       </div>
@@ -1263,11 +1263,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 {tag}
                               </span>
                             ))}
-                            {(listing as any).stripeAccountId && (
+                            {(listing as any).wiseRecipientId && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                {(listing as any).stripeAccountId.length > 12
-                                  ? `${(listing as any).stripeAccountId.slice(0, 5)}...${(listing as any).stripeAccountId.slice(-4)}`
-                                  : (listing as any).stripeAccountId}
+                                Wise: ...{(listing as any).wiseRecipientId.slice(-6)}
                               </span>
                             )}
                           </div>
@@ -1637,39 +1635,38 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-900">Payout Info</p>
-                            <p className="text-xs text-slate-600">Enter Stripe account ID (provided by client) and track onboarding status.</p>
+                            <p className="text-xs text-slate-600">Wise recipient ID and payout tracking status.</p>
                           </div>
                         </div>
 
 
-                        {/* Stripe Account ID Input */}
+                        {/* Wise Recipient ID Input */}
                         <div className="flex flex-col gap-2">
                           <label className="text-sm font-medium text-slate-700">
-                            Stripe Account ID
+                            Wise Recipient ID
                           </label>
                           <input
                             type="text"
-                            value={stripeAccountId || ''}
-                            onChange={(e) => setStripeAccountId(e.target.value.trim() || null)}
+                            value={wiseRecipientId || ''}
+                            onChange={(e) => setWiseRecipientId(e.target.value.trim() || null)}
                             onBlur={async () => {
-                              if (!selectedListingId || !stripeAccountId) return;
-                              // Auto-save on blur
+                              if (!selectedListingId || !wiseRecipientId) return;
                               try {
                                 setSaving(true);
-                                await listingsAPI.updateListingConfig(selectedListingId, { stripeAccountId });
-                                setListings(prev => prev.map(l => l.id === selectedListingId ? { ...l, stripeAccountId } : l));
-                                showToast('Stripe ID stored', 'success');
+                                await listingsAPI.updateListingConfig(selectedListingId, { wiseRecipientId });
+                                setListings(prev => prev.map(l => l.id === selectedListingId ? { ...l, wiseRecipientId } as any : l));
+                                showToast('Wise recipient ID stored', 'success');
                               } catch (error) {
                                 console.error('Auto-save failed:', error);
                               } finally {
                                 setSaving(false);
                               }
                             }}
-                            placeholder="acct_xxxxxxxxxxxxx"
+                            placeholder="Recipient ID"
                             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           />
                           <p className="text-xs text-slate-500">
-                            Client creates Express account in Stripe Dashboard and provides this ID.
+                            Generated automatically when owner completes payout setup via invite link.
                           </p>
                         </div>
 

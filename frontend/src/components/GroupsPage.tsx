@@ -40,7 +40,7 @@ const COLUMN_SIZING_KEY = 'groups_column_sizing';
 const COLUMN_ORDER_KEY = 'groups_column_order';
 const COLUMN_VISIBILITY_KEY = 'groups_column_visibility';
 
-const defaultColumnOrder = ['expand', 'name', 'tags', 'calculationType', 'stripeAccount', 'stripeStatus', 'listingCount', 'actions'];
+const defaultColumnOrder = ['expand', 'name', 'tags', 'calculationType', 'wiseRecipient', 'wiseStatus', 'listingCount', 'actions'];
 
 const tagColors: Record<string, { bg: string; text: string; border: string }> = {
   WEEKLY: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
@@ -133,13 +133,13 @@ const GroupsPage: React.FC = () => {
     tags: string[];
     listingIds: number[];
     calculationType: 'checkout' | 'calendar';
-    stripeAccountId?: string | null;
+    wiseRecipientId?: string | null;
   }) => {
     if (data.id) {
       await groupsAPI.updateGroup(data.id, {
         name: data.name,
         tags: data.tags,
-        stripeAccountId: data.stripeAccountId,
+        wiseRecipientId: data.wiseRecipientId,
       });
 
       const currentGroup = groups.find(g => g.id === data.id);
@@ -162,7 +162,7 @@ const GroupsPage: React.FC = () => {
         name: data.name,
         tags: data.tags,
         listingIds: data.listingIds,
-        stripeAccountId: data.stripeAccountId,
+        wiseRecipientId: data.wiseRecipientId,
       });
       showToast(`Group "${data.name}" created`, 'success');
     }
@@ -181,7 +181,7 @@ const GroupsPage: React.FC = () => {
     }
   };
 
-  const maskStripeId = (id: string | null | undefined): string => {
+  const maskRecipientId = (id: string | null | undefined): string => {
     if (!id) return '';
     if (id.length <= 8) return id;
     return `${id.slice(0, 5)}...${id.slice(-4)}`;
@@ -294,46 +294,46 @@ const GroupsPage: React.FC = () => {
       },
     },
     {
-      id: 'stripeAccount',
-      accessorFn: (row) => row.stripeAccountId || '',
+      id: 'wiseRecipient',
+      accessorFn: (row) => row.wiseRecipientId || '',
       size: 170,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Stripe Account
+          Wise Recipient
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => {
-        const stripeId = row.original.stripeAccountId;
-        return stripeId ? (
-          <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskStripeId(stripeId)}</code>
+        const recipientId = row.original.wiseRecipientId;
+        return recipientId ? (
+          <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskRecipientId(recipientId)}</code>
         ) : (
           <span className="text-xs text-gray-300">--</span>
         );
       },
     },
     {
-      id: 'stripeStatus',
-      accessorFn: (row) => row.stripeAccountId ? (row.stripeOnboardingStatus || 'pending') : 'none',
+      id: 'wiseStatus',
+      accessorFn: (row) => row.wiseRecipientId ? (row.wiseStatus || 'pending') : 'none',
       size: 140,
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Stripe Status
+          Wise Status
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => {
         const group = row.original;
-        if (!group.stripeAccountId) {
+        if (!group.wiseRecipientId) {
           return <span className="text-xs text-gray-300">--</span>;
         }
-        const status = group.stripeOnboardingStatus || 'pending';
+        const status = group.wiseStatus || 'pending';
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
           verified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Connected' },
           pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
@@ -413,8 +413,8 @@ const GroupsPage: React.FC = () => {
     name: 'Group Name',
     tags: 'Schedule',
     calculationType: 'Calc Type',
-    stripeAccount: 'Stripe Account',
-    stripeStatus: 'Stripe Status',
+    wiseRecipient: 'Wise Recipient',
+    wiseStatus: 'Wise Status',
     listingCount: 'Listings',
   };
 
@@ -536,7 +536,7 @@ const GroupsPage: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No groups yet</h3>
               <p className="text-gray-500 text-sm mb-6 max-w-sm">
-                Groups let you combine multiple listings into a single statement with shared schedule tags and Stripe accounts.
+                Groups let you combine multiple listings into a single statement with shared schedule tags and Wise recipients.
               </p>
               <Button
                 onClick={() => {

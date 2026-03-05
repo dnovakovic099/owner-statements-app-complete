@@ -42,7 +42,6 @@ const Listing = sequelize.define('Listing', {
     pmFeePercentage: {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
-        // NO defaultValue - prevents Sequelize from ever auto-applying defaults
         field: 'pm_fee_percentage',
         comment: 'Property Management fee percentage (e.g., 15.00 for 15%)'
     },
@@ -202,18 +201,24 @@ const Listing = sequelize.define('Listing', {
         field: 'payout_notes',
         comment: 'Notes about payout collection/status'
     },
-    stripeAccountId: {
+    wiseRecipientId: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        field: 'stripe_account_id',
-        comment: 'Stripe Connect account ID for owner payouts'
+        field: 'wise_recipient_id',
+        comment: 'Wise recipient account ID for owner payouts'
     },
-    stripeOnboardingStatus: {
+    wiseStatus: {
         type: DataTypes.STRING(30),
         allowNull: false,
         defaultValue: 'missing',
-        field: 'stripe_onboarding_status',
-        comment: 'Stripe onboarding status: missing, pending, verified, requires_action'
+        field: 'wise_status',
+        comment: 'Wise setup status: missing, pending, verified, requires_action'
+    },
+    payoutInviteToken: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'payout_invite_token',
+        comment: 'Token for payout setup invite link'
     },
     lastSyncedAt: {
         type: DataTypes.DATE,

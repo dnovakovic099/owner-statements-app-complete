@@ -397,7 +397,7 @@ router.get('/', async (req, res) => {
                 payoutStatus: s.payoutStatus || null,
                 paidAt: s.paidAt || null,
                 payoutTransferId: s.payoutTransferId || null,
-                stripeFee: s.stripeFee || null,
+                wiseFee: s.wiseFee || null,
                 totalTransferAmount: s.totalTransferAmount || null,
                 sentAt: s.sentAt,
                 createdAt: s.createdAt || s.created_at,
@@ -3390,33 +3390,31 @@ router.get('/:id/view', async (req, res) => {
             }
         }
 
-        // Check if listing/group has a connected Stripe account for pay button
-        let hasStripeAccount = false;
+        // Check if listing/group has a connected Wise recipient for pay button
+        let hasWiseRecipient = false;
         try {
-            // Check group-level Stripe account first
             if (statement.groupId) {
                 const ListingGroupModel = require('../models/ListingGroup');
                 const group = await ListingGroupModel.findByPk(parseInt(statement.groupId));
-                if (group && group.stripeAccountId) {
-                    const status = group.stripeOnboardingStatus || 'missing';
-                    hasStripeAccount = status !== 'requires_action' && status !== 'pending';
+                if (group && group.wiseRecipientId) {
+                    const status = group.wiseStatus || 'missing';
+                    hasWiseRecipient = status !== 'requires_action' && status !== 'pending';
                 }
             }
-            // Fall back to individual listing Stripe account
-            if (!hasStripeAccount) {
+            if (!hasWiseRecipient) {
                 const primaryListingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
                 if (primaryListingId) {
                     const { Listing: ListingModel } = require('../models');
                     const dbListing = await ListingModel.findByPk(parseInt(primaryListingId));
                     if (dbListing) {
-                        let acctId = dbListing.stripeAccountId;
-                        try { acctId = decryptOptional(acctId); } catch (e) { acctId = null; }
-                        hasStripeAccount = !!(acctId) && dbListing.stripeOnboardingStatus !== 'requires_action' && dbListing.stripeOnboardingStatus !== 'pending';
+                        let recipientId = dbListing.wiseRecipientId;
+                        try { recipientId = decryptOptional(recipientId); } catch (e) { recipientId = null; }
+                        hasWiseRecipient = !!(recipientId) && dbListing.wiseStatus !== 'requires_action' && dbListing.wiseStatus !== 'pending';
                     }
                 }
             }
         } catch (e) {
-            logger.warn('Failed to check Stripe account for view', { error: e.message });
+            logger.warn('Failed to check Wise recipient for view', { error: e.message });
         }
 
         // Generate HTML view of the statement
@@ -5598,10 +5596,10 @@ router.get('/:id/view', async (req, res) => {
                     ${statement.ownerPayout > 0 ? `
                         <button onclick="payOwner()" class="action-btn pay-owner" id="pay-owner-btn"
                                 ${statement.payoutStatus === 'paid' ? 'disabled title="Already paid"' :
-                        !hasStripeAccount ? 'disabled title="No Stripe account connected"' :
+                        !hasWiseRecipient ? 'disabled title="No Wise recipient connected"' :
                         statement.status !== 'final' ? 'disabled title="Statement must be finalized first"' : ''}>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                            ${statement.payoutStatus === 'paid' ? 'Paid' : !hasStripeAccount ? 'No Stripe' : 'Pay Owner'}
+                            ${statement.payoutStatus === 'paid' ? 'Paid' : !hasWiseRecipient ? 'No Wise' : 'Pay Owner'}
                         </button>
                     ` : ''}
                     <button onclick="finalizeStatement()" class="action-btn finalize" id="finalize-btn" ${statement.status === 'final' ? 'disabled title="Already finalized"' : ''}>

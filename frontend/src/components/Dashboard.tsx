@@ -18,6 +18,7 @@ const EditStatementModal = lazy(() => import('./EditStatementModal'));
 // const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
 const GroupsPage = lazy(() => import('./GroupsPage'));
+const WisePage = lazy(() => import('./WisePage'));
 
 interface User {
   username: string;
@@ -39,8 +40,8 @@ interface ListingName {
   internalNotes?: string | null;
   ownerEmail?: string | null;
   tags?: string[] | null;
-  stripeAccountId?: string | null;
-  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
+  wiseRecipientId?: string | null;
+  wiseStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
 }
 
 // Newly added listing for notifications
@@ -68,7 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -637,16 +638,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return;
         }
 
-        // Check if listing has a connected Stripe account
+        // Check if listing has a connected Wise recipient
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
         if (listingId) {
           const listing = listings.find(l => l.id === listingId);
-          if (!listing?.stripeAccountId) {
-            showToast('No Stripe account connected for this listing. Add a Stripe Account ID in Listings settings.', 'error');
+          if (!listing?.wiseRecipientId) {
+            showToast('No Wise recipient connected for this listing. Set up payout in Wise page.', 'error');
             return;
           }
-          if (listing.stripeOnboardingStatus === 'requires_action' || listing.stripeOnboardingStatus === 'pending') {
-            showToast('Stripe account is not yet enabled. The owner needs to complete Stripe onboarding.', 'error');
+          if (listing.wiseStatus === 'requires_action' || listing.wiseStatus === 'pending') {
+            showToast('Wise recipient is not yet verified. The owner needs to complete payout setup.', 'error');
             return;
           }
         }
@@ -654,23 +655,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const payoutAmount = Number(statement.ownerPayout) || 0;
 
         if (payoutAmount > 0) {
-          // Positive payout — send money to owner
-          const stripeFee = Math.round(payoutAmount * 0.0025 * 100) / 100; // 0.25%
-          const totalTransfer = payoutAmount + stripeFee;
           setConfirmDialog({
             isOpen: true,
-            title: 'Pay Owner via Stripe',
-            message: `Transfer to ${statement.ownerName || 'owner'}?\n\nOwner Payout: $${payoutAmount.toFixed(2)}\nStripe Fee (0.25%): $${stripeFee.toFixed(2)}\nTotal Transfer: $${totalTransfer.toFixed(2)}`,
+            title: 'Pay Owner via Wise',
+            message: `Transfer $${payoutAmount.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
             type: 'info',
             onConfirm: async () => {
-              const toastId = showToast('Processing Stripe transfer...', 'loading');
+              const toastId = showToast('Processing Wise transfer...', 'loading');
               try {
                 const response = await payoutsAPI.transferToOwner(id);
                 if (response.success) {
                   if ((response as any).queued) {
-                    updateToast(toastId, (response as any).message || 'Insufficient balance — payout queued. Will process when top-up arrives.', 'info');
+                    updateToast(toastId, (response as any).message || 'Insufficient balance — payout queued. Will process automatically when funds arrive.', 'info');
                   } else {
-                    const actualTotal = response.totalTransferAmount || totalTransfer;
+                    const actualTotal = response.totalTransferAmount || payoutAmount;
                     updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
                   }
                   await loadStatements();
@@ -684,23 +682,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             },
           });
         } else {
-          // Negative payout — collect money from owner via Stripe
+          // Negative payout — send invoice to owner
           const collectAmount = Math.abs(payoutAmount);
           setConfirmDialog({
             isOpen: true,
-            title: 'Collect from Owner via Stripe',
-            message: `Owner ${statement.ownerName || ''} owes $${collectAmount.toFixed(2)} for this statement.\n\nCollect $${collectAmount.toFixed(2)} from their connected Stripe account?`,
+            title: 'Collect from Owner',
+            message: `Owner ${statement.ownerName || ''} owes $${collectAmount.toFixed(2)} for this statement.\n\nSend an invoice email?`,
             type: 'warning',
-            confirmText: 'Collect',
+            confirmText: 'Send Invoice',
             onConfirm: async () => {
-              const toastId = showToast('Collecting payment via Stripe...', 'loading');
+              const toastId = showToast('Sending invoice...', 'loading');
               try {
                 const response = await payoutsAPI.collectFromOwner(id);
                 if (response.success) {
                   if (response.invoiceSent) {
                     updateToast(toastId, `Invoice sent to ${response.recipientEmail}`, 'success');
                   } else {
-                    updateToast(toastId, `Collected $${collectAmount.toFixed(2)} from owner`, 'success');
+                    updateToast(toastId, `Marked as collected ($${collectAmount.toFixed(2)})`, 'success');
                   }
                   await loadStatements();
                 } else {
@@ -1050,21 +1048,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } else if (action === 'pay-owner') {
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
-      // Filter for valid payouts (must have positive payout, not already paid, and have Stripe account)
+      // Filter for valid payouts (must have positive payout, not already paid, and have Wise recipient)
       const validPayouts = selectedStatements.filter(s => {
-        if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid' || (s as any).payoutStatus === 'queued') return false;
+        if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid') return false;
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
         if (!lid) return false;
         const listing = listings.find(l => l.id === lid);
-        if (!listing?.stripeAccountId) return false;
-        if (listing.stripeOnboardingStatus === 'requires_action' || listing.stripeOnboardingStatus === 'pending') return false;
+        if (!listing?.wiseRecipientId) return false;
+        if (listing.wiseStatus === 'requires_action' || listing.wiseStatus === 'pending') return false;
         return true;
       });
 
-      const noStripeCount = selectedStatements.filter(s => {
+      const noWiseCount = selectedStatements.filter(s => {
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
         const listing = lid ? listings.find(l => l.id === lid) : null;
-        return !listing?.stripeAccountId || listing?.stripeOnboardingStatus === 'requires_action' || listing?.stripeOnboardingStatus === 'pending';
+        return !listing?.wiseRecipientId || listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending';
       }).length;
 
       const skippedCount = selectedStatements.length - validPayouts.length;
@@ -1074,7 +1072,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           isOpen: true,
           title: 'No Statements to Pay',
           message: skippedCount > 0
-            ? `None of the selected statements can be paid. They may have $0 payout, are already paid, or have no Stripe account connected.`
+            ? `None of the selected statements can be paid. They may have $0 payout, are already paid, or have no Wise recipient connected.`
             : 'No statements selected.',
           type: 'info',
           onConfirm: () => { },
@@ -1087,9 +1085,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       const totalAmount = validPayouts.reduce((sum, s) => sum + s.ownerPayout, 0);
 
-      const message = `Are you sure you want to pay ${validPayouts.length} owners via Stripe?\n\n` +
+      const message = `Are you sure you want to pay ${validPayouts.length} owners via Wise?\n\n` +
         `Total Payout: $${totalAmount.toFixed(2)}\n\n` +
-        (skippedCount > 0 ? `(${skippedCount} skipped` + (noStripeCount > 0 ? `, ${noStripeCount} without Stripe` : '') + ` - $0, already paid, or no Stripe)` : '');
+        (skippedCount > 0 ? `(${skippedCount} skipped` + (noWiseCount > 0 ? `, ${noWiseCount} without Wise` : '') + ` - $0, already paid, or no Wise)` : '');
 
       setConfirmDialog({
         isOpen: true,
@@ -1100,8 +1098,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           const toastId = showToast(`Processing ${validPayouts.length} payments...`, 'loading');
           try {
             const response = await payoutsAPI.fundAndQueue(validPayouts.map(s => s.id));
-            if (response.mode === 'queued') {
-              updateToast(toastId, `Funds requested from bank ($${response.topupAmount?.toFixed(2)}). ${response.queuedCount} payouts queued — will process automatically when funds arrive.`, 'info');
+            if (response.mode === 'none') {
+              updateToast(toastId, response.message || 'No valid statements to process', 'info');
+            } else if (response.mode === 'queued') {
+              updateToast(toastId, response.message || `Funds requested from bank. ${response.queuedCount} payouts queued — will process automatically when funds arrive.`, 'info');
             } else {
               const processed = response.processed || 0;
               const failed = response.failed || 0;
@@ -1291,6 +1291,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       return (
         <Suspense fallback={<LoadingSpinner />}>
           <GroupsPage />
+        </Suspense>
+      );
+    }
+
+    if (currentPage === 'wise') {
+      return (
+        <Suspense fallback={<LoadingSpinner />}>
+          <WisePage />
         </Suspense>
       );
     }

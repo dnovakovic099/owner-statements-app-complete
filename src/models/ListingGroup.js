@@ -39,13 +39,13 @@ const ListingGroup = sequelize.define('ListingGroup', {
         field: 'calculation_type',
         comment: 'Statement calculation method: checkout or calendar'
     },
-    stripeAccountId: {
+    wiseRecipientId: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        field: 'stripe_account_id',
-        comment: 'Stripe Connect account ID for the group owner (overrides individual listings)',
+        field: 'wise_recipient_id',
+        comment: 'Wise recipient ID for the group owner (overrides individual listings)',
         get() {
-            const value = this.getDataValue('stripeAccountId');
+            const value = this.getDataValue('wiseRecipientId');
             if (!value) return null;
             try {
                 return decryptOptional(value);
@@ -55,18 +55,24 @@ const ListingGroup = sequelize.define('ListingGroup', {
         },
         set(value) {
             if (value) {
-                this.setDataValue('stripeAccountId', encryptOptional(value));
+                this.setDataValue('wiseRecipientId', encryptOptional(value));
             } else {
-                this.setDataValue('stripeAccountId', null);
+                this.setDataValue('wiseRecipientId', null);
             }
         }
     },
-    stripeOnboardingStatus: {
+    wiseStatus: {
         type: DataTypes.STRING(30),
         allowNull: true,
         defaultValue: 'missing',
-        field: 'stripe_onboarding_status',
-        comment: 'Stripe onboarding status: missing, pending, verified, requires_action'
+        field: 'wise_status',
+        comment: 'Wise setup status: missing, pending, verified, requires_action'
+    },
+    payoutInviteToken: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'payout_invite_token',
+        comment: 'Token for payout setup invite link'
     }
 }, {
     tableName: 'listing_groups',

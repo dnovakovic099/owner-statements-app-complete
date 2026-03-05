@@ -114,7 +114,7 @@ export interface Statement {
   payoutTransferId?: string | null;
   paidAt?: string | null;
   payoutError?: string | null;
-  stripeFee?: number | null;
+  wiseFee?: number | null;
   totalTransferAmount?: number | null;
   hasPriorStatementDuplicates?: boolean;
   priorStatementDuplicateCount?: number;
@@ -196,8 +196,8 @@ export interface Listing {
   internalNotes?: string | null;
   payoutStatus?: 'missing' | 'pending' | 'on_file';
   payoutNotes?: string | null;
-  stripeAccountId?: string | null;
-  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
+  wiseRecipientId?: string | null;
+  wiseStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   isActive: boolean;
   isOffboarded?: boolean;
   lastSyncedAt?: string;
@@ -214,8 +214,8 @@ export interface ListingGroup {
   tags: string[];
   listingIds: number[];
   calculationType?: 'checkout' | 'calendar';
-  stripeAccountId?: string | null;
-  stripeOnboardingStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
+  wiseRecipientId?: string | null;
+  wiseStatus?: 'missing' | 'pending' | 'verified' | 'requires_action';
   listings?: Listing[];
   memberCount?: number;
   createdAt?: string;

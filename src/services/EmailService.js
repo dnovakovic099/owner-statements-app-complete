@@ -601,10 +601,10 @@ This is an auto-generated email. If you have any questions or need clarification
     /**
      * Co-Host Negative Balance Email Template
      * Used when isCohostOnAirbnb is true and statement has negative balance
-     * Includes Stripe invoice link placeholder
+     * Includes invoice link placeholder
      */
     getCohostNegativeBalanceTemplate(data) {
-        const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName, stripeInvoiceUrl } = data;
+        const { ownerName, propertyName, periodStart, periodEnd, ownerPayout, companyName, invoiceUrl } = data;
 
         // Format period as "Nov 17-Dec 1, 2025" style
         const formatPeriod = (start, end) => {
@@ -643,11 +643,11 @@ This is an auto-generated email. If you have any questions or need clarification
         const subjectPeriod = formatSubjectPeriod(periodStart, periodEnd);
         const balanceAmount = this.formatCurrency(ownerPayout);
 
-        // Stripe invoice link - use provided URL or placeholder
-        const invoiceLink = stripeInvoiceUrl || '[Stripe Invoice Link]';
-        const invoiceLinkHtml = stripeInvoiceUrl
-            ? `<a href="${stripeInvoiceUrl}" style="color: #2563eb;">this secure Stripe invoice link</a>`
-            : '<strong>[Stripe Invoice Link]</strong>';
+        // Invoice link - use provided URL or placeholder
+        const invoiceLink = invoiceUrl || '[Invoice Link]';
+        const invoiceLinkHtml = invoiceUrl
+            ? `<a href="${invoiceUrl}" style="color: #2563eb;">this secure invoice link</a>`
+            : '<strong>[Invoice Link]</strong>';
 
         return {
             subject: `Owner Statement - ${subjectPeriod}`,

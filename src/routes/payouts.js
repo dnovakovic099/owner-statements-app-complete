@@ -1,908 +1,752 @@
 const express = require('express');
 const router = express.Router();
-const Stripe = require('stripe');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 const ListingService = require('../services/ListingService');
+const WiseService = require('../services/WiseService');
 const { Listing } = require('../models');
 const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption');
 
 const ListingGroup = require('../models/ListingGroup');
-
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-// Use default API version from account; explicit version here caused invalid version errors.
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+const { Statement } = require('../models');
 
 /**
- * Resolve the Stripe account ID for a statement.
- * Priority: group Stripe account > individual listing Stripe account
+ * Resolve the Wise recipient ID for a statement.
+ * Priority: group recipient > individual listing recipient
  */
-async function resolveStripeAccountId(statement) {
-    // Check group-level Stripe account first (if statement belongs to a group)
+async function resolveWiseRecipientId(statement) {
+    // Check group-level Wise recipient first
     if (statement.groupId) {
         try {
             const group = await ListingGroup.findByPk(statement.groupId);
-            if (group && group.stripeAccountId) {
-                return { stripeAccountId: group.stripeAccountId, source: 'group' };
+            if (group && group.wiseRecipientId) {
+                return { wiseRecipientId: group.wiseRecipientId, source: 'group' };
             }
         } catch (e) {
-            logger.warn('Failed to check group Stripe account', { groupId: statement.groupId, error: e.message });
+            logger.warn('Failed to check group Wise recipient', { groupId: statement.groupId, error: e.message });
         }
     }
 
-    // Fall back to individual listing Stripe account
+    // Fall back to individual listing
     const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
     if (!listingId) {
-        return { stripeAccountId: null, source: null, error: 'Statement has no associated listing' };
+        return { wiseRecipientId: null, source: null, error: 'Statement has no associated listing' };
     }
 
     const listing = await Listing.findByPk(listingId);
     if (!listing) {
-        return { stripeAccountId: null, source: null, error: 'Listing not found' };
+        return { wiseRecipientId: null, source: null, error: 'Listing not found' };
     }
 
-    let stripeAccountId = listing.stripeAccountId;
-    try {
-        stripeAccountId = decryptOptional(stripeAccountId);
-    } catch (e) {
-        stripeAccountId = null;
+    let recipientId = listing.wiseRecipientId;
+    if (recipientId) {
+        try {
+            recipientId = decryptOptional(recipientId);
+        } catch (e) {
+            // already decrypted
+        }
     }
 
-    return { stripeAccountId: stripeAccountId || null, source: stripeAccountId ? 'listing' : null };
+    if (!recipientId) {
+        return { wiseRecipientId: null, source: null, error: 'No Wise recipient configured for this listing' };
+    }
+
+    return { wiseRecipientId: recipientId, source: 'listing' };
 }
 
-const getBaseReturnUrl = () => {
-    const appUrl = process.env.APP_URL || 'http://localhost:3000';
-    return appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
-};
-
-const ensureStripe = (res) => {
-    if (!stripe) {
-        res.status(500).json({ error: 'Stripe is not configured. Set STRIPE_SECRET_KEY.' });
-        return false;
-    }
-    return true;
-};
-
-// Check which payout features are available based on env config
-router.get('/config', (req, res) => {
+// ─── GET /config ─────────────────────────────────────────────
+router.get('/config', async (req, res) => {
     res.json({
-        stripeConfigured: !!stripeSecretKey,
-        connectOAuthEnabled: !!process.env.STRIPE_CONNECT_CLIENT_ID,
+        wiseConfigured: WiseService.isConfigured(),
     });
 });
 
-// Create a new Stripe Connect Express account for a listing or group and generate onboarding link
-router.post('/connect/create', async (req, res) => {
-    if (!ensureStripe(res)) return;
+// ─── POST /generate-invite ──────────────────────────────────
+// Generate an invite link for an owner to add their bank details
+router.post('/generate-invite', async (req, res) => {
     try {
-        const { email, businessType, entityType, entityId } = req.body;
+        const { entityType, entityId, email } = req.body;
 
-        if (!email || !businessType || !entityType || !entityId) {
-            return res.status(400).json({ error: 'email, businessType, entityType, and entityId are required' });
+        if (!['listing', 'group'].includes(entityType) || !entityId) {
+            return res.status(400).json({ error: 'entityType (listing|group) and entityId are required' });
         }
 
-        if (!['individual', 'company'].includes(businessType)) {
-            return res.status(400).json({ error: 'businessType must be "individual" or "company"' });
-        }
+        const token = crypto.randomBytes(32).toString('hex');
+        const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 3003}`;
 
-        if (!['listing', 'group'].includes(entityType)) {
-            return res.status(400).json({ error: 'entityType must be "listing" or "group"' });
-        }
-
-        // Look up entity and check it doesn't already have an account
-        let entity;
         if (entityType === 'group') {
-            entity = await ListingGroup.findByPk(parseInt(entityId, 10));
-            if (!entity) return res.status(404).json({ error: 'Group not found' });
-            if (entity.stripeAccountId) {
-                return res.status(409).json({ error: 'This group already has a Stripe account. Use resend link instead.' });
-            }
+            const group = await ListingGroup.findByPk(parseInt(entityId));
+            if (!group) return res.status(404).json({ error: 'Group not found' });
+            await group.update({ payoutInviteToken: token, wiseStatus: 'pending' });
         } else {
-            entity = await Listing.findByPk(parseInt(entityId, 10));
-            if (!entity) return res.status(404).json({ error: 'Listing not found' });
-            let existingId = entity.stripeAccountId;
-            try { existingId = decryptOptional(existingId); } catch (e) { existingId = null; }
-            if (existingId) {
-                return res.status(409).json({ error: 'This listing already has a Stripe account. Use resend link instead.' });
-            }
+            const listing = await Listing.findByPk(parseInt(entityId));
+            if (!listing) return res.status(404).json({ error: 'Listing not found' });
+            await listing.update({ payoutInviteToken: token, wiseStatus: 'pending' });
         }
 
-        // Create Stripe Connect Express account
-        const account = await stripe.accounts.create({
-            type: 'express',
-            email: email.trim(),
-            business_type: businessType,
-            capabilities: {
-                transfers: { requested: true },
-            },
-        });
+        const inviteUrl = `${appUrl}/payout-setup/${token}`;
 
-        // Save account ID to entity
-        if (entityType === 'group') {
-            // ListingGroup model setter handles encryption automatically
-            await entity.update({ stripeAccountId: account.id, stripeOnboardingStatus: 'pending' });
-        } else {
-            // Listing requires manual encryption at route level
-            await entity.update({ stripeAccountId: encryptOptional(account.id), stripeOnboardingStatus: 'pending' });
-        }
-
-        // Generate onboarding link
-        const baseUrl = getBaseReturnUrl();
-        const refreshUrl = process.env.STRIPE_ONBOARDING_REFRESH_URL || `${baseUrl}/payout-onboarding/refresh`;
-        const returnUrl = process.env.STRIPE_ONBOARDING_RETURN_URL || `${baseUrl}/payout-onboarding/complete`;
-
-        const accountLink = await stripe.accountLinks.create({
-            account: account.id,
-            refresh_url: refreshUrl,
-            return_url: returnUrl,
-            type: 'account_onboarding',
-        });
-
-        logger.info(`Created Stripe Connect account ${account.id} for ${entityType} ${entityId}`, { context: 'Payouts', action: 'connectCreate' });
+        logger.info('Payout invite generated', { entityType, entityId, inviteUrl });
 
         res.json({
             success: true,
-            stripeAccountId: account.id,
-            onboardingUrl: accountLink.url,
-            status: 'pending'
+            inviteUrl,
+            token,
         });
     } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'connectCreate' });
-        res.status(500).json({ error: error.message || 'Failed to create Stripe Connect account' });
+        logger.logError(error, { context: 'Payouts', action: 'generateInvite' });
+        res.status(500).json({ error: 'Failed to generate invite link' });
     }
 });
 
-// Regenerate onboarding link for an existing Stripe Connect account
-router.post('/connect/onboarding-link', async (req, res) => {
-    if (!ensureStripe(res)) return;
-    try {
-        const { stripeAccountId } = req.body;
-
-        if (!stripeAccountId) {
-            return res.status(400).json({ error: 'stripeAccountId is required' });
-        }
-
-        const baseUrl = getBaseReturnUrl();
-        const refreshUrl = process.env.STRIPE_ONBOARDING_REFRESH_URL || `${baseUrl}/payout-onboarding/refresh`;
-        const returnUrl = process.env.STRIPE_ONBOARDING_RETURN_URL || `${baseUrl}/payout-onboarding/complete`;
-
-        const accountLink = await stripe.accountLinks.create({
-            account: stripeAccountId,
-            refresh_url: refreshUrl,
-            return_url: returnUrl,
-            type: 'account_onboarding',
-        });
-
-        res.json({
-            success: true,
-            onboardingUrl: accountLink.url
-        });
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'connectOnboardingLink' });
-        res.status(500).json({ error: error.message || 'Failed to generate onboarding link' });
-    }
-});
-
-// Create or reuse a Connect account and generate onboarding link for a listing/owner
-router.post('/listings/:id/onboarding-link', async (req, res) => {
-    if (!ensureStripe(res)) return;
-    try {
-        const listingId = parseInt(req.params.id, 10);
-        const listing = await Listing.findByPk(listingId);
-        if (!listing) {
-            return res.status(404).json({ error: 'Listing not found' });
-        }
-
-        let stripeAccountId = listing.stripeAccountId;
-        try {
-            stripeAccountId = decryptOptional(stripeAccountId);
-        } catch (e) {
-            stripeAccountId = null;
-        }
-
-        // Require pre-created Stripe account ID (client must enter it manually)
-        if (!stripeAccountId) {
-            return res.status(400).json({
-                error: 'No Stripe account configured. Enter the Stripe Account ID first in the listing settings.'
-            });
-        }
-
-        const baseUrl = getBaseReturnUrl();
-        const refreshUrl = process.env.STRIPE_ONBOARDING_REFRESH_URL || `${baseUrl}/payout-onboarding/refresh`;
-        const returnUrl = process.env.STRIPE_ONBOARDING_RETURN_URL || `${baseUrl}/payout-onboarding/complete`;
-
-        const accountLink = await stripe.accountLinks.create({
-            account: stripeAccountId,
-            refresh_url: refreshUrl,
-            return_url: returnUrl,
-            type: 'account_onboarding'
-        });
-
-        // Update status to pending when onboarding link is generated
-        if (listing.stripeOnboardingStatus === 'missing') {
-            await listing.update({ stripeOnboardingStatus: 'pending' });
-        }
-
-        res.json({
-            success: true,
-            url: accountLink.url,
-            stripeAccountId,
-            status: listing.stripeOnboardingStatus === 'missing' ? 'pending' : listing.stripeOnboardingStatus
-        });
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'createOnboardingLink', listingId: req.params.id });
-        res.status(500).json({ error: 'Failed to create onboarding link' });
-    }
-});
-
-// Get current onboarding/payout status for a listing
-router.get('/listings/:id/status', async (req, res) => {
-    try {
-        const listingId = parseInt(req.params.id, 10);
-        const listing = await Listing.findByPk(listingId);
-        if (!listing) {
-            return res.status(404).json({ error: 'Listing not found' });
-        }
-
-        res.json({
-            success: true,
-            status: listing.stripeOnboardingStatus || 'missing',
-            payoutStatus: listing.payoutStatus || 'missing',
-            stripeAccountId: listing.stripeAccountId ? '[configured]' : null
-        });
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'getStatus', listingId: req.params.id });
-        res.status(500).json({ error: 'Failed to get payout status' });
-    }
-});
-
-// Refresh Stripe onboarding status by querying Stripe API for a specific account ID
-// Updates the status on both listing and group level
+// ─── POST /refresh-status ───────────────────────────────────
+// Check Wise recipient status
 router.post('/refresh-status', async (req, res) => {
-    if (!ensureStripe(res)) return;
     try {
-        const { stripeAccountId, listingId, groupId } = req.body;
+        const { wiseRecipientId, listingId, groupId } = req.body;
 
-        if (!stripeAccountId) {
-            return res.status(400).json({ error: 'stripeAccountId is required' });
+        if (!wiseRecipientId) {
+            return res.status(400).json({ error: 'wiseRecipientId is required' });
         }
 
-        // Query Stripe for the real account status
-        const account = await stripe.accounts.retrieve(stripeAccountId);
-
-        // Determine status from Stripe's response
-        let newStatus = 'pending';
-        if (account.charges_enabled && account.payouts_enabled) {
-            newStatus = 'verified';
-        } else if (account.requirements?.disabled_reason) {
-            newStatus = 'requires_action';
-        } else if (account.details_submitted) {
-            newStatus = 'pending';
-        } else {
-            newStatus = 'pending';
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
         }
 
-        // Update listing if provided
-        if (listingId) {
-            const listing = await Listing.findByPk(parseInt(listingId, 10));
-            if (listing && listing.stripeAccountId) {
-                await listing.update({ stripeOnboardingStatus: newStatus });
-            }
-        }
+        const recipient = await WiseService.getRecipient(wiseRecipientId);
+        const isActive = recipient.active !== false;
+        const newStatus = isActive ? 'verified' : 'requires_action';
 
-        // Update group if provided
+        // Update entity
         if (groupId) {
-            const group = await ListingGroup.findByPk(parseInt(groupId, 10));
-            if (group && group.stripeAccountId) {
-                await group.update({ stripeOnboardingStatus: newStatus });
+            const group = await ListingGroup.findByPk(parseInt(groupId));
+            if (group) await group.update({ wiseStatus: newStatus });
+        }
+        if (listingId) {
+            const listing = await Listing.findByPk(parseInt(listingId));
+            if (listing) {
+                await listing.update({ wiseStatus: newStatus });
             }
         }
 
         res.json({
             success: true,
-            stripeAccountId,
             status: newStatus,
-            chargesEnabled: account.charges_enabled,
-            payoutsEnabled: account.payouts_enabled,
-            detailsSubmitted: account.details_submitted,
-            disabledReason: account.requirements?.disabled_reason || null,
+            recipientActive: isActive,
+            recipientName: recipient.accountHolderName,
         });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'refreshStatus' });
-        res.status(500).json({ error: error.message || 'Failed to refresh Stripe status' });
+        res.status(500).json({ error: 'Failed to refresh Wise status' });
     }
 });
 
-// Generate Stripe Connect OAuth link for an owner to connect their existing Stripe account
-router.post('/connect/oauth-link', async (req, res) => {
+// ─── GET /listings/:id/status ───────────────────────────────
+router.get('/listings/:id/status', async (req, res) => {
     try {
-        const clientId = process.env.STRIPE_CONNECT_CLIENT_ID;
-        if (!clientId) {
-            return res.status(500).json({ error: 'STRIPE_CONNECT_CLIENT_ID is not configured' });
-        }
+        const listing = await Listing.findByPk(parseInt(req.params.id));
+        if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
-        const { email, entityType, entityId } = req.body;
+        let recipientId = listing.wiseRecipientId;
+        try { recipientId = decryptOptional(recipientId); } catch (e) { /* already plain */ }
 
-        if (!entityType || !entityId) {
-            return res.status(400).json({ error: 'entityType and entityId are required' });
-        }
-        if (!['listing', 'group'].includes(entityType)) {
-            return res.status(400).json({ error: 'entityType must be "listing" or "group"' });
-        }
-
-        // Validate entity exists and doesn't already have an account
-        let entity;
-        if (entityType === 'group') {
-            entity = await ListingGroup.findByPk(parseInt(entityId, 10));
-        } else {
-            entity = await Listing.findByPk(parseInt(entityId, 10));
-        }
-        if (!entity) {
-            return res.status(404).json({ error: `${entityType} not found` });
-        }
-
-        let existingId = entity.stripeAccountId;
-        if (entityType === 'listing') {
-            try { existingId = decryptOptional(existingId); } catch (e) { existingId = null; }
-        }
-        if (existingId) {
-            return res.status(409).json({ error: 'This entity already has a Stripe account connected' });
-        }
-
-        // Encode entity info into state parameter
-        const state = Buffer.from(JSON.stringify({ entityType, entityId: parseInt(entityId, 10) })).toString('base64url');
-
-        const baseUrl = getBaseReturnUrl();
-        const redirectUri = `${baseUrl}/api/connect/callback`;
-
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: clientId,
-            scope: 'read_write',
-            redirect_uri: redirectUri,
-            state,
+        res.json({
+            success: true,
+            wiseRecipientId: recipientId,
+            wiseStatus: listing.wiseStatus,
+            payoutStatus: listing.payoutStatus,
         });
-        if (email) {
-            params.set('stripe_user[email]', email);
-        }
-
-        const oauthUrl = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
-
-        res.json({ success: true, oauthUrl });
     } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'generateOAuthLink' });
-        res.status(500).json({ error: error.message || 'Failed to generate OAuth link' });
+        logger.logError(error, { context: 'Payouts', action: 'listingStatus' });
+        res.status(500).json({ error: 'Failed to fetch listing status' });
     }
 });
 
-// Transfer statement payout to listing's connected Stripe account
+// ─── POST /statements/:id/transfer ─────────────────────────
+// Pay owner via Wise for a single statement
 router.post('/statements/:id/transfer', async (req, res) => {
-    if (!ensureStripe(res)) return;
     try {
-        const statementId = parseInt(req.params.id, 10);
-        const { Statement, Listing } = require('../models');
-
+        const statementId = parseInt(req.params.id);
         const statement = await Statement.findByPk(statementId);
-        if (!statement) {
-            return res.status(404).json({ error: 'Statement not found' });
-        }
 
-        // Validate payout amount
-        const payoutAmount = parseFloat(statement.ownerPayout);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
         if (payoutAmount <= 0) {
-            return res.status(400).json({ error: 'Cannot transfer: payout amount must be positive' });
+            return res.status(400).json({ error: 'Statement has no positive payout amount' });
         }
 
-        // Already paid?
         if (statement.payoutStatus === 'paid') {
-            return res.status(400).json({
-                error: 'Statement already paid',
-                transferId: statement.payoutTransferId,
-                paidAt: statement.paidAt
-            });
+            return res.status(400).json({ error: 'Statement already paid' });
         }
 
-        // Resolve Stripe account (group-level takes priority over listing-level)
-        const resolved = await resolveStripeAccountId(statement);
-        if (resolved.error) {
-            return res.status(400).json({ error: resolved.error });
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
         }
-        if (!resolved.stripeAccountId) {
-            return res.status(400).json({ error: 'No connected Stripe account (checked group and listing)' });
-        }
-        const stripeAccountId = resolved.stripeAccountId;
-        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
 
-        // Mark as pending before attempting transfer
+        // Resolve recipient
+        const { wiseRecipientId, error: resolveError } = await resolveWiseRecipientId(statement);
+        if (!wiseRecipientId) {
+            return res.status(400).json({ error: resolveError || 'No Wise recipient found' });
+        }
+
+        // Mark as pending
         await statement.update({ payoutStatus: 'pending', payoutError: null });
 
-        // Calculate Stripe Connect fee (0.25%) and add on top of payout
-        const STRIPE_FEE_PERCENT = 0.0025; // 0.25%
-        const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100; // Round to 2 decimals
-        const totalTransferAmount = payoutAmount + stripeFee;
-
-        // Amount is in cents for Stripe
-        const amountInCents = Math.round(totalTransferAmount * 100);
-
-        // Check platform balance and auto-top-up if insufficient
+        // Check balance and auto-top-up if needed
+        let balance;
         try {
-            const balance = await stripe.balance.retrieve();
-            const availableUsd = balance.available.find(b => b.currency === 'usd');
-            const availableCents = availableUsd ? availableUsd.amount : 0;
-
-            if (availableCents < amountInCents) {
-                const shortfallCents = amountInCents - availableCents;
-                // Add a small buffer (5%) to avoid repeated top-ups for rounding
-                const topupCents = Math.ceil(shortfallCents * 1.05);
-                logger.info('Insufficient Stripe balance, creating top-up', {
-                    context: 'Payouts',
-                    availableCents,
-                    neededCents: amountInCents,
-                    topupCents
-                });
-
-                const topup = await stripe.topups.create({
-                    amount: topupCents,
-                    currency: 'usd',
-                    description: `Auto top-up for statement #${statementId} payout`,
-                    metadata: { statementId: statementId.toString(), auto: 'true' }
-                });
-                logger.info('Top-up created', { topupId: topup.id, amount: topupCents, status: topup.status });
-            }
-        } catch (balanceError) {
-            // Log but don't block — the transfer may still succeed if balance is actually sufficient
-            // or if top-ups aren't enabled, the transfer error will be caught below
-            logger.warn('Balance check/top-up failed, proceeding with transfer anyway', {
-                context: 'Payouts',
-                error: balanceError.message
-            });
+            balance = await WiseService.getBalance();
+        } catch (e) {
+            logger.warn('Failed to check Wise balance', { error: e.message });
+            balance = null;
         }
 
-        // Create Stripe transfer
-        const transfer = await stripe.transfers.create({
-            amount: amountInCents,
-            currency: 'usd',
-            destination: stripeAccountId,
-            description: `Payout for statement #${statementId} - ${statement.propertyName || 'Property ' + listingId}`,
-            metadata: {
-                statementId: statementId.toString(),
-                listingId: listingId.toString(),
-                ownerName: statement.ownerName,
-                periodStart: statement.weekStartDate,
-                periodEnd: statement.weekEndDate,
-                ownerPayout: payoutAmount.toString(),
-                stripeFee: stripeFee.toString(),
-                totalTransfer: totalTransferAmount.toString()
+        if (balance !== null && balance < payoutAmount) {
+            // Insufficient balance — auto top-up
+            const shortfall = payoutAmount - balance;
+            const topupAmount = Math.ceil(shortfall * 1.05 * 100) / 100; // 5% buffer
+
+            try {
+                const topup = await WiseService.topUpBalance(topupAmount);
+                logger.info('Auto top-up completed for single payout', {
+                    statementId, topupAmount, balance, needed: payoutAmount,
+                    transferId: topup.transfer.id, fundingMethod: topup.fundingMethod,
+                    estimatedArrival: topup.estimatedArrival,
+                });
+
+                // If funded via debit card (instant), wait briefly then continue with payout
+                if (topup.fundingMethod === 'DEBIT' || topup.estimatedArrival === 'instant') {
+                    logger.info('Instant top-up detected, proceeding with payout immediately');
+                    // Balance should be available instantly, fall through to payout below
+                } else {
+                    // Non-instant top-up — queue for later processing
+                    await statement.update({ payoutStatus: 'queued', payoutError: null });
+                    return res.json({
+                        success: true,
+                        queued: true,
+                        message: `Insufficient balance ($${balance.toFixed(2)}). Top-up of $${topupAmount.toFixed(2)} initiated via ${topup.fundingMethod}. Payout will process automatically when funds arrive.`,
+                        topupAmount,
+                        topupTransferId: topup.transfer.id,
+                        estimatedArrival: topup.estimatedArrival,
+                        fundingMethod: topup.fundingMethod,
+                    });
+                }
+            } catch (topupErr) {
+                logger.error('Auto top-up failed', { error: topupErr.message, statementId });
+                await statement.update({ payoutStatus: 'failed', payoutError: `Insufficient balance and top-up failed: ${topupErr.message}` });
+                return res.status(400).json({
+                    error: `Insufficient Wise balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)}). Auto top-up failed: ${topupErr.message}`,
+                    balance,
+                    needed: payoutAmount,
+                });
             }
+        }
+
+        // Execute payout
+        const ownerName = statement.ownerName || 'Owner';
+        const reference = `Payout - ${ownerName} - Stmt #${statementId}`;
+
+        const { transfer, wiseFee } = await WiseService.sendPayout({
+            recipientId: parseInt(wiseRecipientId),
+            amount: payoutAmount,
+            reference,
+            statementId,
         });
 
-        // Update statement with success and fee info
+        const totalTransferAmount = payoutAmount + wiseFee;
+
         await statement.update({
             payoutStatus: 'paid',
-            payoutTransferId: transfer.id,
+            payoutTransferId: String(transfer.id),
             paidAt: new Date(),
+            wiseFee: wiseFee,
+            totalTransferAmount: totalTransferAmount,
             payoutError: null,
-            stripeFee: stripeFee,
-            totalTransferAmount: totalTransferAmount
         });
 
-        logger.info('Payout transfer successful', {
-            statementId,
-            transferId: transfer.id,
+        logger.info('Wise payout completed', { statementId, transferId: transfer.id, amount: payoutAmount, wiseFee });
+
+        res.json({
+            success: true,
+            queued: false,
+            message: 'Payout sent via Wise',
+            transferId: String(transfer.id),
             ownerPayout: payoutAmount,
-            stripeFee,
+            wiseFee,
             totalTransferAmount,
-            destination: stripeAccountId
+            paidAt: new Date().toISOString(),
+        });
+    } catch (error) {
+        // Update statement with error
+        try {
+            const statement = await Statement.findByPk(parseInt(req.params.id));
+            if (statement && statement.payoutStatus === 'pending') {
+                await statement.update({
+                    payoutStatus: 'failed',
+                    payoutError: error.response?.data?.message || error.message || 'Wise transfer failed',
+                });
+            }
+        } catch (e) { /* ignore */ }
+
+        logger.logError(error, { context: 'Payouts', action: 'transfer', statementId: req.params.id });
+        const msg = error.response?.data?.message || error.message || 'Transfer failed';
+        res.status(500).json({ error: msg });
+    }
+});
+
+// ─── POST /statements/:id/collect ───────────────────────────
+// For negative balance — generate payment page + send invoice with Wise bank details
+router.post('/statements/:id/collect', async (req, res) => {
+    try {
+        const statementId = parseInt(req.params.id);
+        const statement = await Statement.findByPk(statementId);
+
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
+        if (payoutAmount >= 0) {
+            return res.status(400).json({ error: 'Statement does not have a negative balance' });
+        }
+
+        if (statement.payoutStatus === 'collected' || statement.payoutStatus === 'paid') {
+            return res.status(400).json({ error: 'Already settled' });
+        }
+
+        const collectAmount = Math.abs(payoutAmount);
+
+        // Generate a payment token for the collection page
+        const paymentToken = crypto.randomBytes(32).toString('hex');
+        await statement.update({ payoutError: `payment_token:${paymentToken}` }); // Store token temporarily
+
+        const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 3003}`;
+        const paymentPageUrl = `${appUrl}/pay/${paymentToken}`;
+
+        // Look up owner email
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        let recipientEmail = null;
+        if (listingId) {
+            const listing = await Listing.findByPk(listingId);
+            recipientEmail = listing?.ownerEmail || null;
+        }
+
+        // Get Wise bank details for the payment page
+        let bankDetails = null;
+        try {
+            bankDetails = await WiseService.getAccountBankDetails();
+        } catch (e) {
+            logger.warn('Could not fetch Wise bank details', { error: e.message });
+        }
+
+        // Send invoice email with payment link and Wise bank details
+        let invoiceSent = false;
+        if (recipientEmail && process.env.SENDGRID_API_KEY) {
+            try {
+                const sgMail = require('@sendgrid/mail');
+                sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+                const bankDetailsHtml = bankDetails && bankDetails.length > 0
+                    ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0">
+                        <p style="font-weight:600;margin:0 0 8px">Wire Transfer Details:</p>
+                        <p style="margin:4px 0;font-family:monospace">Bank: ${bankDetails[0].bankName || 'N/A'}</p>
+                        <p style="margin:4px 0;font-family:monospace">Routing: ${bankDetails[0].routingNumber || 'N/A'}</p>
+                        <p style="margin:4px 0;font-family:monospace">Account: ${bankDetails[0].accountNumber || 'N/A'}</p>
+                        <p style="margin:4px 0;font-size:12px;color:#6b7280">Reference: Statement #${statementId} - ${statement.ownerName}</p>
+                    </div>`
+                    : '';
+
+                await sgMail.send({
+                    to: recipientEmail,
+                    from: process.env.SENDGRID_FROM_EMAIL || 'statements@luxurylodgingpm.com',
+                    subject: `Balance Due: $${collectAmount.toFixed(2)} - ${statement.ownerName}`,
+                    html: `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto">
+                        <p>Dear ${statement.ownerName},</p>
+                        <p>Your statement for ${statement.weekStartDate} to ${statement.weekEndDate} shows a balance due of <strong style="color:#dc2626">$${collectAmount.toFixed(2)}</strong>.</p>
+                        <p>Please send payment using one of the following methods:</p>
+                        <div style="text-align:center;margin:20px 0">
+                            <a href="${paymentPageUrl}" style="display:inline-block;background:#7c3aed;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">View Payment Details</a>
+                        </div>
+                        ${bankDetailsHtml}
+                        <p style="color:#6b7280;font-size:14px">When making a wire transfer, please include "Statement #${statementId}" as the reference so we can match your payment.</p>
+                        <p>Thank you,<br/>Luxury Lodging PM</p>
+                    </div>`,
+                });
+                invoiceSent = true;
+            } catch (emailErr) {
+                logger.warn('Failed to send collection email', { error: emailErr.message });
+            }
+        }
+
+        await statement.update({
+            payoutStatus: invoiceSent ? 'invoice_sent' : 'collected',
+            paidAt: new Date(),
+            payoutError: `payment_token:${paymentToken}`,
         });
 
         res.json({
             success: true,
-            message: 'Payout transfer completed',
-            transferId: transfer.id,
-            ownerPayout: payoutAmount,
-            stripeFee,
-            totalTransferAmount,
-            paidAt: new Date()
+            message: invoiceSent ? 'Invoice sent to owner with payment details' : 'Marked as collected',
+            collectAmount,
+            invoiceSent,
+            recipientEmail,
+            paymentPageUrl,
+            paidAt: new Date().toISOString(),
         });
-
     } catch (error) {
-        // Update statement with failure
-        try {
-            const { Statement } = require('../models');
-            const statement = await Statement.findByPk(parseInt(req.params.id, 10));
-            if (statement) {
-                await statement.update({
-                    payoutStatus: 'failed',
-                    payoutError: error.message
-                });
-            }
-        } catch (updateError) {
-            logger.error('Failed to update statement after transfer error', { error: updateError.message });
-        }
-
-        logger.logError(error, { context: 'Payouts', action: 'transferToOwner', statementId: req.params.id });
-        res.status(500).json({ error: error.message || 'Failed to transfer payout' });
+        logger.logError(error, { context: 'Payouts', action: 'collect', statementId: req.params.id });
+        res.status(500).json({ error: error.message || 'Collection failed' });
     }
 });
 
-// Process all queued payouts (called by webhook or manually)
-async function processQueuedPayouts() {
-    if (!stripe) {
-        logger.warn('Stripe not configured, cannot process queued payouts');
-        return { processed: 0, failed: 0 };
-    }
-
-    const { Statement } = require('../models');
-    const queuedStatements = await Statement.findAll({
-        where: { payoutStatus: 'queued' },
-        order: [['created_at', 'ASC']]
-    });
-
-    if (queuedStatements.length === 0) {
-        logger.info('No queued payouts to process');
-        return { processed: 0, failed: 0 };
-    }
-
-    // Check balance first
-    const balance = await stripe.balance.retrieve();
-    const availableUsd = balance.available.find(b => b.currency === 'usd');
-    const availableCents = availableUsd ? availableUsd.amount : 0;
-
-    const STRIPE_FEE_PERCENT = 0.0025;
-    const totalNeededCents = queuedStatements.reduce((sum, s) => {
-        const payout = parseFloat(s.ownerPayout);
-        const fee = payout * STRIPE_FEE_PERCENT;
-        return sum + Math.round((payout + fee) * 100);
-    }, 0);
-
-    if (availableCents < totalNeededCents) {
-        logger.warn('Insufficient balance for queued payouts', {
-            availableCents, totalNeededCents, queuedCount: queuedStatements.length
-        });
-        return { processed: 0, failed: 0, error: 'Insufficient balance' };
-    }
-
-    let processed = 0;
-    let failed = 0;
-
-    for (const statement of queuedStatements) {
-        try {
-            const payoutAmount = parseFloat(statement.ownerPayout);
-            if (payoutAmount <= 0) {
-                await statement.update({ payoutStatus: 'failed', payoutError: 'Payout amount must be positive' });
-                failed++;
-                continue;
-            }
-
-            const resolved = await resolveStripeAccountId(statement);
-            if (resolved.error || !resolved.stripeAccountId) {
-                await statement.update({ payoutStatus: 'failed', payoutError: resolved.error || 'No Stripe account' });
-                failed++;
-                continue;
-            }
-
-            const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
-            const totalTransferAmount = payoutAmount + stripeFee;
-            const amountInCents = Math.round(totalTransferAmount * 100);
-            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-
-            const transfer = await stripe.transfers.create({
-                amount: amountInCents,
-                currency: 'usd',
-                destination: resolved.stripeAccountId,
-                description: `Payout for statement #${statement.id} - ${statement.propertyName || 'Property ' + listingId}`,
-                metadata: {
-                    statementId: statement.id.toString(),
-                    listingId: listingId ? listingId.toString() : '',
-                    ownerPayout: payoutAmount.toString(),
-                    stripeFee: stripeFee.toString(),
-                    queuedPayout: 'true'
-                }
-            });
-
-            await statement.update({
-                payoutStatus: 'paid',
-                payoutTransferId: transfer.id,
-                paidAt: new Date(),
-                payoutError: null,
-                stripeFee,
-                totalTransferAmount
-            });
-            processed++;
-            logger.info(`Queued payout processed: statement #${statement.id}`, { transferId: transfer.id });
-        } catch (err) {
-            failed++;
-            await statement.update({ payoutStatus: 'failed', payoutError: err.message });
-            logger.logError(err, { context: 'Payouts', action: 'processQueuedPayout', statementId: statement.id });
+// ─── GET /bank-details ──────────────────────────────────────
+// Get Wise bank details for receiving payments
+router.get('/bank-details', async (req, res) => {
+    try {
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
         }
+        const details = await WiseService.getAccountBankDetails();
+        res.json({ success: true, bankDetails: details });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'bankDetails' });
+        res.status(500).json({ error: 'Failed to get bank details' });
     }
+});
 
-    logger.info(`Queued payouts complete: ${processed} processed, ${failed} failed`);
-    return { processed, failed };
-}
+// ─── GET /inbound-transactions ──────────────────────────────
+// Check for inbound payments (for reconciliation)
+router.get('/inbound-transactions', async (req, res) => {
+    try {
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
+        }
 
-// Fund & Queue: check balance, top-up if needed, queue or process immediately
+        const days = parseInt(req.query.days) || 30;
+        const end = new Date();
+        const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+
+        const statementData = await WiseService.getBalanceStatement(start, end);
+
+        // Filter for inbound (CREDIT) transactions
+        const inbound = (statementData.transactions || []).filter(t => t.type === 'CREDIT');
+
+        res.json({
+            success: true,
+            transactions: inbound,
+            period: { start: start.toISOString(), end: end.toISOString() },
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'inboundTransactions' });
+        res.status(500).json({ error: 'Failed to fetch inbound transactions' });
+    }
+});
+
+// ─── POST /fund-and-queue ───────────────────────────────────
+// Bulk pay multiple statements via Wise
 router.post('/fund-and-queue', async (req, res) => {
-    if (!ensureStripe(res)) return;
     try {
         const { statementIds } = req.body;
         if (!statementIds || !Array.isArray(statementIds) || statementIds.length === 0) {
             return res.status(400).json({ error: 'statementIds array is required' });
         }
 
-        const { Statement } = require('../models');
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
+        }
+
         const statements = await Statement.findAll({
-            where: { id: { [require('sequelize').Op.in]: statementIds } }
+            where: { id: statementIds }
         });
 
-        // Validate each statement
+        // Filter valid payouts
         const valid = [];
         const skipped = [];
-        const STRIPE_FEE_PERCENT = 0.0025;
 
-        for (const s of statements) {
-            const payout = parseFloat(s.ownerPayout);
-            if (payout <= 0) { skipped.push({ id: s.id, reason: 'Non-positive payout' }); continue; }
-            if (s.payoutStatus === 'paid') { skipped.push({ id: s.id, reason: 'Already paid' }); continue; }
-            if (s.payoutStatus === 'queued') { skipped.push({ id: s.id, reason: 'Already queued' }); continue; }
-
-            const resolved = await resolveStripeAccountId(s);
-            if (resolved.error || !resolved.stripeAccountId) {
-                skipped.push({ id: s.id, reason: resolved.error || 'No Stripe account' });
+        for (const stmt of statements) {
+            const amount = parseFloat(stmt.ownerPayout) || 0;
+            if (amount <= 0) {
+                skipped.push({ id: stmt.id, reason: 'Non-positive payout' });
                 continue;
             }
-            valid.push(s);
+            if (stmt.payoutStatus === 'paid' || stmt.payoutStatus === 'queued') {
+                skipped.push({ id: stmt.id, reason: 'Already paid/queued' });
+                continue;
+            }
+
+            const { wiseRecipientId, error: resolveError } = await resolveWiseRecipientId(stmt);
+            if (!wiseRecipientId) {
+                skipped.push({ id: stmt.id, reason: resolveError || 'No Wise recipient' });
+                continue;
+            }
+
+            valid.push({ statement: stmt, wiseRecipientId });
         }
 
         if (valid.length === 0) {
-            return res.json({ success: true, mode: 'none', message: 'No valid statements to process', skipped });
+            return res.json({
+                success: true,
+                mode: 'none',
+                processed: 0,
+                failed: 0,
+                skipped,
+                message: 'No valid statements to process',
+            });
         }
 
-        // Calculate total needed
-        const totalPayoutAmount = valid.reduce((sum, s) => sum + parseFloat(s.ownerPayout), 0);
-        const totalFees = Math.round(totalPayoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
-        const totalNeeded = totalPayoutAmount + totalFees;
-        const totalNeededCents = Math.round(totalNeeded * 100);
-
         // Check balance
-        const balance = await stripe.balance.retrieve();
-        const availableUsd = balance.available.find(b => b.currency === 'usd');
-        const availableCents = availableUsd ? availableUsd.amount : 0;
+        const totalAmount = valid.reduce((sum, v) => sum + parseFloat(v.statement.ownerPayout), 0);
+        let balance;
+        try {
+            balance = await WiseService.getBalance();
+        } catch (e) {
+            logger.warn('Failed to check Wise balance', { error: e.message });
+            balance = null;
+        }
 
-        if (availableCents >= totalNeededCents) {
-            // Sufficient balance — process immediately
-            let processed = 0;
-            let failed = 0;
-            const results = [];
+        if (balance !== null && balance < totalAmount) {
+            // Insufficient balance — auto top-up
+            const shortfall = totalAmount - balance;
+            const topupAmount = Math.ceil(shortfall * 1.05 * 100) / 100; // 5% buffer
 
-            for (const statement of valid) {
+            try {
+                const topup = await WiseService.topUpBalance(topupAmount);
+
+                logger.info('Fund & Queue: top-up completed', {
+                    topupAmount, balance, totalAmount,
+                    topupTransferId: topup.transfer.id,
+                    fundingMethod: topup.fundingMethod,
+                    estimatedArrival: topup.estimatedArrival,
+                });
+
+                // If instant (debit card), fall through to process immediately
+                if (topup.fundingMethod === 'DEBIT' || topup.estimatedArrival === 'instant') {
+                    logger.info('Instant top-up detected, processing all payouts immediately');
+                    // Fall through to the immediate processing block below
+                } else {
+                    // Non-instant — queue for later
+                    for (const { statement } of valid) {
+                        await statement.update({ payoutStatus: 'queued', payoutError: null });
+                    }
+
+                    return res.json({
+                        success: true,
+                        mode: 'queued',
+                        topupTransferId: topup.transfer.id,
+                        topupAmount,
+                        estimatedArrival: topup.estimatedArrival,
+                        fundingMethod: topup.fundingMethod,
+                        queuedCount: valid.length,
+                        totalPayout: totalAmount,
+                        skipped,
+                        message: `Insufficient balance ($${balance.toFixed(2)}). Top-up of $${topupAmount.toFixed(2)} initiated via ${topup.fundingMethod}. ${valid.length} payouts will process automatically when funds arrive.`,
+                    });
+                }
+            } catch (topupErr) {
+                logger.error('Fund & Queue: top-up failed', { error: topupErr.message });
+                return res.status(400).json({
+                    error: `Insufficient Wise balance ($${balance.toFixed(2)}, need $${totalAmount.toFixed(2)}). Auto top-up failed: ${topupErr.message}`,
+                    balance,
+                    needed: totalAmount,
+                });
+            }
+        }
+
+        // Sufficient balance — process all transfers
+        let processed = 0;
+        let failed = 0;
+        const results = [];
+
+        // Use batch payments for 3+ payouts, individual for fewer
+        const USE_BATCH_THRESHOLD = 3;
+
+        if (valid.length >= USE_BATCH_THRESHOLD) {
+            // ── BATCH PAYMENT MODE ──
+            try {
+                // Mark all as pending
+                for (const { statement } of valid) {
+                    await statement.update({ payoutStatus: 'pending', payoutError: null });
+                }
+
+                const batchPayouts = valid.map(({ statement, wiseRecipientId }) => ({
+                    recipientId: parseInt(wiseRecipientId),
+                    amount: parseFloat(statement.ownerPayout),
+                    reference: `Payout - ${statement.ownerName} - Stmt #${statement.id}`,
+                    statementId: statement.id,
+                }));
+
+                const { transfers } = await WiseService.sendBatchPayouts(batchPayouts);
+
+                // Update each statement with its transfer result
+                for (const t of transfers) {
+                    const match = valid.find(v => v.statement.id === t.statementId);
+                    if (match) {
+                        await match.statement.update({
+                            payoutStatus: 'paid',
+                            payoutTransferId: String(t.transfer.id),
+                            paidAt: new Date(),
+                            wiseFee: t.wiseFee,
+                            totalTransferAmount: parseFloat(match.statement.ownerPayout) + t.wiseFee,
+                            payoutError: null,
+                        });
+                        processed++;
+                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id });
+                    }
+                }
+
+                logger.info('Batch payout completed', { batchSize: valid.length, processed });
+            } catch (batchErr) {
+                // Batch failed — fall back to individual transfers
+                logger.warn('Batch payment failed, falling back to individual transfers', { error: batchErr.message });
+
+                for (const { statement, wiseRecipientId } of valid) {
+                    if (statement.payoutStatus === 'paid') continue; // Already processed
+                    try {
+                        await statement.update({ payoutStatus: 'pending', payoutError: null });
+                        const amount = parseFloat(statement.ownerPayout);
+                        const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
+
+                        const { transfer, wiseFee } = await WiseService.sendPayout({
+                            recipientId: parseInt(wiseRecipientId),
+                            amount,
+                            reference,
+                            statementId: statement.id,
+                        });
+
+                        await statement.update({
+                            payoutStatus: 'paid',
+                            payoutTransferId: String(transfer.id),
+                            paidAt: new Date(),
+                            wiseFee,
+                            totalTransferAmount: amount + wiseFee,
+                            payoutError: null,
+                        });
+                        processed++;
+                        results.push({ id: statement.id, success: true, transferId: transfer.id });
+                    } catch (err) {
+                        failed++;
+                        const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
+                        await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
+                        results.push({ id: statement.id, success: false, error: errorMsg });
+                    }
+                }
+            }
+        } else {
+            // ── INDIVIDUAL TRANSFER MODE (1-2 payouts) ──
+            for (const { statement, wiseRecipientId } of valid) {
                 try {
-                    const payoutAmount = parseFloat(statement.ownerPayout);
-                    const resolved = await resolveStripeAccountId(statement);
-                    const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
-                    const totalTransferAmount = payoutAmount + stripeFee;
-                    const amountInCents = Math.round(totalTransferAmount * 100);
-                    const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-
                     await statement.update({ payoutStatus: 'pending', payoutError: null });
 
-                    const transfer = await stripe.transfers.create({
-                        amount: amountInCents,
-                        currency: 'usd',
-                        destination: resolved.stripeAccountId,
-                        description: `Payout for statement #${statement.id} - ${statement.propertyName || 'Property ' + listingId}`,
-                        metadata: {
-                            statementId: statement.id.toString(),
-                            listingId: listingId ? listingId.toString() : ''
-                        }
+                    const amount = parseFloat(statement.ownerPayout);
+                    const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
+
+                    const { transfer, wiseFee } = await WiseService.sendPayout({
+                        recipientId: parseInt(wiseRecipientId),
+                        amount,
+                        reference,
+                        statementId: statement.id,
                     });
 
                     await statement.update({
                         payoutStatus: 'paid',
-                        payoutTransferId: transfer.id,
+                        payoutTransferId: String(transfer.id),
                         paidAt: new Date(),
+                        wiseFee,
+                        totalTransferAmount: amount + wiseFee,
                         payoutError: null,
-                        stripeFee,
-                        totalTransferAmount
                     });
+
                     processed++;
-                    results.push({ id: statement.id, status: 'paid', transferId: transfer.id });
+                    results.push({ id: statement.id, success: true, transferId: transfer.id });
                 } catch (err) {
                     failed++;
-                    await statement.update({ payoutStatus: 'failed', payoutError: err.message });
-                    results.push({ id: statement.id, status: 'failed', error: err.message });
+                    const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
+                    await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
+                    results.push({ id: statement.id, success: false, error: errorMsg });
+                    logger.error('Bulk payout failed for statement', { statementId: statement.id, error: errorMsg });
                 }
             }
-
-            return res.json({
-                success: true,
-                mode: 'immediate',
-                processed,
-                failed,
-                skipped,
-                results
-            });
         }
-
-        // Insufficient balance — top-up and queue
-        const shortfallCents = totalNeededCents - availableCents;
-        const topupCents = Math.ceil(shortfallCents * 1.05); // 5% buffer
-
-        const topup = await stripe.topups.create({
-            amount: topupCents,
-            currency: 'usd',
-            description: `Fund payouts for ${valid.length} statements`,
-            metadata: {
-                statementIds: valid.map(s => s.id).join(','),
-                totalPayout: totalPayoutAmount.toFixed(2),
-                auto: 'true'
-            }
-        });
-
-        // Mark all valid statements as queued
-        for (const s of valid) {
-            await s.update({ payoutStatus: 'queued', payoutError: null });
-        }
-
-        logger.info(`Fund & Queue: created top-up ${topup.id} for ${valid.length} statements`, {
-            topupCents, shortfallCents, availableCents, totalNeededCents
-        });
-
-        return res.json({
-            success: true,
-            mode: 'queued',
-            topupId: topup.id,
-            topupAmount: topupCents / 100,
-            queuedCount: valid.length,
-            totalPayout: totalPayoutAmount,
-            skipped,
-            message: `Funds requested from bank ($${(topupCents / 100).toFixed(2)}). ${valid.length} payouts will process automatically when funds arrive.`
-        });
-
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'fundAndQueue' });
-        res.status(500).json({ error: error.message || 'Failed to fund and queue payouts' });
-    }
-});
-
-// Collect payment from owner for negative balance statements
-// Uses Stripe Connect to debit the connected account's balance
-router.post('/statements/:id/collect', async (req, res) => {
-    if (!ensureStripe(res)) return;
-    try {
-        const statementId = parseInt(req.params.id, 10);
-        const { Statement, Listing } = require('../models');
-
-        const statement = await Statement.findByPk(statementId);
-        if (!statement) {
-            return res.status(404).json({ error: 'Statement not found' });
-        }
-
-        const payoutAmount = parseFloat(statement.ownerPayout);
-        if (payoutAmount >= 0) {
-            return res.status(400).json({ error: 'Cannot collect: payout amount is not negative. Use transfer instead.' });
-        }
-
-        if (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') {
-            return res.status(400).json({
-                error: 'Statement already settled',
-                transferId: statement.payoutTransferId,
-                paidAt: statement.paidAt
-            });
-        }
-
-        // Resolve Stripe account (group-level takes priority over listing-level)
-        const resolved = await resolveStripeAccountId(statement);
-        if (resolved.error) {
-            return res.status(400).json({ error: resolved.error });
-        }
-        if (!resolved.stripeAccountId) {
-            return res.status(400).json({ error: 'No connected Stripe account (checked group and listing)' });
-        }
-        const stripeAccountId = resolved.stripeAccountId;
-        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-
-        await statement.update({ payoutStatus: 'pending', payoutError: null });
-
-        const collectAmount = Math.abs(payoutAmount);
-        const amountInCents = Math.round(collectAmount * 100);
-
-        // Pull funds from connected account back to platform
-        const charge = await stripe.charges.create({
-            amount: amountInCents,
-            currency: 'usd',
-            source: stripeAccountId,
-            description: `Collection for statement #${statementId} - ${statement.propertyName || 'Property ' + (listingId || '')} (owner balance due)`,
-            metadata: {
-                statementId: statementId.toString(),
-                listingId: (listingId || '').toString(),
-                ownerName: statement.ownerName,
-                periodStart: statement.weekStartDate,
-                periodEnd: statement.weekEndDate,
-                collectAmount: collectAmount.toString(),
-                type: 'collection'
-            }
-        });
-
-        await statement.update({
-            payoutStatus: 'collected',
-            payoutTransferId: charge.id,
-            paidAt: new Date(),
-            payoutError: null,
-            stripeFee: 0,
-            totalTransferAmount: -collectAmount
-        });
-
-        logger.info('Payment collection successful', {
-            statementId,
-            chargeId: charge.id,
-            collectAmount,
-            source: stripeAccountId
-        });
 
         res.json({
             success: true,
-            message: 'Payment collected from owner',
-            transferId: charge.id,
-            collectAmount,
-            paidAt: new Date()
+            mode: 'immediate',
+            processed,
+            failed,
+            totalPayout: totalAmount,
+            skipped,
+            results,
         });
-
     } catch (error) {
-        try {
-            const { Statement } = require('../models');
-            const statement = await Statement.findByPk(parseInt(req.params.id, 10));
-            if (statement) {
-                await statement.update({
-                    payoutStatus: 'failed',
-                    payoutError: error.message
-                });
-            }
-        } catch (updateError) {
-            logger.error('Failed to update statement after collection error', { error: updateError.message });
-        }
+        logger.logError(error, { context: 'Payouts', action: 'fundAndQueue' });
+        res.status(500).json({ error: error.message || 'Bulk payout failed' });
+    }
+});
 
-        logger.logError(error, { context: 'Payouts', action: 'collectFromOwner', statementId: req.params.id });
-        res.status(500).json({ error: error.message || 'Failed to collect payment' });
+// ─── POST /process-queued ─────────────────────────────────
+// Process all queued payouts (called manually or by scheduler)
+router.post('/process-queued', async (req, res) => {
+    try {
+        const result = await processQueuedPayouts();
+        res.json(result);
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'processQueued' });
+        res.status(500).json({ error: error.message || 'Failed to process queued payouts' });
+    }
+});
+
+// ─── GET /balance ──────────────────────────────────────────
+router.get('/balance', async (req, res) => {
+    try {
+        if (!WiseService.isConfigured()) {
+            return res.status(500).json({ error: 'Wise is not configured' });
+        }
+        const balance = await WiseService.getBalance();
+        const { Op } = require('sequelize');
+        const queuedCount = await Statement.count({ where: { payoutStatus: 'queued' } });
+        const queuedTotal = queuedCount > 0
+            ? (await Statement.sum('ownerPayout', { where: { payoutStatus: 'queued' } })) || 0
+            : 0;
+
+        res.json({
+            success: true,
+            balance,
+            queuedCount,
+            queuedTotal,
+            canProcessQueued: balance >= queuedTotal && queuedCount > 0,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'getBalance' });
+        res.status(500).json({ error: 'Failed to get balance' });
     }
 });
 
 /**
  * Process all queued payout transfers.
- * Called by the Stripe webhook when a top-up succeeds, or manually.
+ * Checks balance, and if sufficient, processes all queued statements.
  */
 async function processQueuedPayouts() {
-    if (!stripe) {
-        logger.error('Cannot process queued payouts: Stripe not configured');
-        return { success: false, error: 'Stripe not configured' };
+    if (!WiseService.isConfigured()) {
+        logger.warn('Wise not configured, cannot process queued payouts');
+        return { success: false, error: 'Wise not configured' };
     }
 
-    const { Statement } = require('../models');
     const { Op } = require('sequelize');
+    const queued = await Statement.findAll({
+        where: { payoutStatus: 'queued' },
+        order: [['created_at', 'ASC']],
+    });
 
-    const queued = await Statement.findAll({ where: { payoutStatus: 'queued' } });
     if (queued.length === 0) {
         logger.info('No queued payouts to process');
         return { success: true, processed: 0, failed: 0 };
     }
 
-    // Verify balance is sufficient for all queued transfers
-    const STRIPE_FEE_PERCENT = 0.0025;
-    const totalNeededCents = queued.reduce((sum, s) => {
-        const payout = parseFloat(s.ownerPayout);
-        const fee = Math.round(payout * STRIPE_FEE_PERCENT * 100) / 100;
-        return sum + Math.round((payout + fee) * 100);
-    }, 0);
+    const totalNeeded = queued.reduce((sum, s) => sum + parseFloat(s.ownerPayout), 0);
+    const balance = await WiseService.getBalance();
 
-    const balance = await stripe.balance.retrieve();
-    const availableUsd = balance.available.find(b => b.currency === 'usd');
-    const availableCents = availableUsd ? availableUsd.amount : 0;
-
-    if (availableCents < totalNeededCents) {
-        logger.warn('Insufficient balance to process all queued payouts', {
-            availableCents, totalNeededCents, queuedCount: queued.length
-        });
-        return { success: false, error: 'Insufficient balance', availableCents, totalNeededCents };
+    if (balance < totalNeeded) {
+        logger.warn('Insufficient balance for queued payouts', { balance, totalNeeded, queuedCount: queued.length });
+        return { success: false, error: 'Insufficient balance', balance, totalNeeded };
     }
 
     let processed = 0;
@@ -910,227 +754,54 @@ async function processQueuedPayouts() {
 
     for (const statement of queued) {
         try {
-            // Re-fetch to catch any changes since queuing (deleted, reverted, etc.)
             await statement.reload();
-            if (statement.payoutStatus !== 'queued') {
-                logger.info('Skipping statement — no longer queued', { statementId: statement.id, status: statement.payoutStatus });
-                continue;
-            }
-            if (statement.status !== 'final') {
-                await statement.update({ payoutStatus: 'failed', payoutError: 'Statement is no longer final' });
-                failed++;
-                continue;
-            }
+            if (statement.payoutStatus !== 'queued') continue;
 
             const payoutAmount = parseFloat(statement.ownerPayout);
             if (payoutAmount <= 0) {
-                await statement.update({ payoutStatus: 'failed', payoutError: 'Payout amount is not positive' });
+                await statement.update({ payoutStatus: 'failed', payoutError: 'Payout amount not positive' });
                 failed++;
                 continue;
             }
 
-            const resolved = await resolveStripeAccountId(statement);
-            if (!resolved.stripeAccountId) {
-                await statement.update({ payoutStatus: 'failed', payoutError: 'No Stripe account found' });
+            const { wiseRecipientId } = await resolveWiseRecipientId(statement);
+            if (!wiseRecipientId) {
+                await statement.update({ payoutStatus: 'failed', payoutError: 'No Wise recipient found' });
                 failed++;
                 continue;
             }
 
-            const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
-            const totalTransferAmount = payoutAmount + stripeFee;
-            const amountInCents = Math.round(totalTransferAmount * 100);
-            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+            await statement.update({ payoutStatus: 'pending', payoutError: null });
 
-            const transfer = await stripe.transfers.create({
-                amount: amountInCents,
-                currency: 'usd',
-                destination: resolved.stripeAccountId,
-                description: `Payout for statement #${statement.id} - ${statement.propertyName || 'Property ' + listingId}`,
-                metadata: {
-                    statementId: statement.id.toString(),
-                    listingId: (listingId || '').toString(),
-                    ownerName: statement.ownerName,
-                    periodStart: statement.weekStartDate,
-                    periodEnd: statement.weekEndDate,
-                    ownerPayout: payoutAmount.toString(),
-                    stripeFee: stripeFee.toString(),
-                    totalTransfer: totalTransferAmount.toString()
-                }
+            const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
+            const { transfer, wiseFee } = await WiseService.sendPayout({
+                recipientId: parseInt(wiseRecipientId),
+                amount: payoutAmount,
+                reference,
+                statementId: statement.id,
             });
 
             await statement.update({
                 payoutStatus: 'paid',
-                payoutTransferId: transfer.id,
+                payoutTransferId: String(transfer.id),
                 paidAt: new Date(),
                 payoutError: null,
-                stripeFee,
-                totalTransferAmount
+                wiseFee,
+                totalTransferAmount: payoutAmount + wiseFee,
             });
             processed++;
             logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
         } catch (err) {
             failed++;
-            await statement.update({ payoutStatus: 'failed', payoutError: err.message });
-            logger.error('Failed to process queued payout', { statementId: statement.id, error: err.message });
+            const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
+            await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
+            logger.error('Failed to process queued payout', { statementId: statement.id, error: errorMsg });
         }
     }
 
     logger.info('Queued payouts processing complete', { processed, failed });
     return { success: true, processed, failed };
 }
-
-// Fund and queue: batch payout endpoint
-router.post('/fund-and-queue', async (req, res) => {
-    if (!ensureStripe(res)) return;
-    try {
-        const { statementIds } = req.body;
-        if (!Array.isArray(statementIds) || statementIds.length === 0) {
-            return res.status(400).json({ error: 'statementIds array is required' });
-        }
-
-        const { Statement } = require('../models');
-        const statements = await Statement.findAll({ where: { id: statementIds } });
-
-        // Validate each statement
-        const STRIPE_FEE_PERCENT = 0.0025;
-        const valid = [];
-        const skipped = [];
-
-        for (const s of statements) {
-            const payoutAmount = parseFloat(s.ownerPayout);
-            if (payoutAmount <= 0) { skipped.push({ id: s.id, reason: 'non-positive payout' }); continue; }
-            if (s.payoutStatus === 'paid' || s.payoutStatus === 'collected') { skipped.push({ id: s.id, reason: 'already settled' }); continue; }
-            if (s.payoutStatus === 'queued') { skipped.push({ id: s.id, reason: 'already queued' }); continue; }
-            if (s.status !== 'final') { skipped.push({ id: s.id, reason: 'not final' }); continue; }
-
-            const resolved = await resolveStripeAccountId(s);
-            if (!resolved.stripeAccountId) { skipped.push({ id: s.id, reason: 'no Stripe account' }); continue; }
-
-            valid.push(s);
-        }
-
-        if (valid.length === 0) {
-            return res.status(400).json({ error: 'No valid statements to process', skipped });
-        }
-
-        // Calculate total needed in cents
-        const totalNeededCents = valid.reduce((sum, s) => {
-            const payout = parseFloat(s.ownerPayout);
-            const fee = Math.round(payout * STRIPE_FEE_PERCENT * 100) / 100;
-            return sum + Math.round((payout + fee) * 100);
-        }, 0);
-
-        // Check balance
-        const balance = await stripe.balance.retrieve();
-        const availableUsd = balance.available.find(b => b.currency === 'usd');
-        const availableCents = availableUsd ? availableUsd.amount : 0;
-
-        if (availableCents >= totalNeededCents) {
-            // Sufficient balance — process all transfers immediately
-            let processed = 0;
-            let failed = 0;
-            const results = [];
-
-            for (const s of valid) {
-                try {
-                    const payoutAmount = parseFloat(s.ownerPayout);
-                    const resolved = await resolveStripeAccountId(s);
-                    const stripeFee = Math.round(payoutAmount * STRIPE_FEE_PERCENT * 100) / 100;
-                    const totalTransferAmount = payoutAmount + stripeFee;
-                    const amountInCents = Math.round(totalTransferAmount * 100);
-                    const listingId = s.propertyId || (s.propertyIds && s.propertyIds[0]);
-
-                    await s.update({ payoutStatus: 'pending', payoutError: null });
-
-                    const transfer = await stripe.transfers.create({
-                        amount: amountInCents,
-                        currency: 'usd',
-                        destination: resolved.stripeAccountId,
-                        description: `Payout for statement #${s.id} - ${s.propertyName || 'Property ' + listingId}`,
-                        metadata: {
-                            statementId: s.id.toString(),
-                            listingId: (listingId || '').toString(),
-                            ownerName: s.ownerName,
-                            periodStart: s.weekStartDate,
-                            periodEnd: s.weekEndDate,
-                            ownerPayout: payoutAmount.toString(),
-                            stripeFee: stripeFee.toString(),
-                            totalTransfer: totalTransferAmount.toString()
-                        }
-                    });
-
-                    await s.update({
-                        payoutStatus: 'paid',
-                        payoutTransferId: transfer.id,
-                        paidAt: new Date(),
-                        payoutError: null,
-                        stripeFee,
-                        totalTransferAmount
-                    });
-                    processed++;
-                    results.push({ id: s.id, success: true, transferId: transfer.id });
-                } catch (err) {
-                    failed++;
-                    await s.update({ payoutStatus: 'failed', payoutError: err.message });
-                    results.push({ id: s.id, success: false, error: err.message });
-                }
-            }
-
-            return res.json({
-                queued: false,
-                processed,
-                failed,
-                results,
-                skipped
-            });
-        }
-
-        // Insufficient balance — create top-up and queue
-        const shortfallCents = totalNeededCents - availableCents;
-        const topupCents = Math.ceil(shortfallCents * 1.05); // 5% buffer
-
-        logger.info('Fund-and-queue: creating top-up', {
-            availableCents, totalNeededCents, shortfallCents, topupCents,
-            statementCount: valid.length
-        });
-
-        const topup = await stripe.topups.create({
-            amount: topupCents,
-            currency: 'usd',
-            description: `Fund & queue: ${valid.length} owner payouts`,
-            metadata: {
-                type: 'fund_and_queue',
-                statementCount: valid.length.toString(),
-                totalPayoutCents: totalNeededCents.toString()
-            }
-        });
-
-        // Mark all valid statements as queued
-        for (const s of valid) {
-            await s.update({ payoutStatus: 'queued', payoutError: null });
-        }
-
-        logger.info('Statements queued for payout', {
-            topupId: topup.id,
-            statementIds: valid.map(s => s.id),
-            topupAmount: topupCents
-        });
-
-        res.json({
-            queued: true,
-            topupId: topup.id,
-            topupAmount: topupCents / 100,
-            estimatedArrival: topup.expected_availability_date
-                ? new Date(topup.expected_availability_date * 1000).toISOString()
-                : null,
-            queuedCount: valid.length,
-            skipped
-        });
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'fundAndQueue' });
-        res.status(500).json({ error: error.message || 'Failed to fund and queue payouts' });
-    }
-});
 
 module.exports = router;
 module.exports.processQueuedPayouts = processQueuedPayouts;
