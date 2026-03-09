@@ -80,8 +80,8 @@ class WiseService {
         // customerTransactionId must be a valid UUID
         const crypto = require('crypto');
         const txnId = crypto.randomUUID();
-        // Wise reference max ~35 chars for USD domestic transfers
-        const shortRef = (reference || `Stmt ${statementId}`).substring(0, 35);
+        // Wise reference max ~10 chars for USD domestic (ACH) transfers
+        const shortRef = (reference || `S${statementId}`).substring(0, 10);
         const res = await this._client().post('/v1/transfers', {
             targetAccount: recipientId,
             quoteUuid: quoteId,

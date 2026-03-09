@@ -156,6 +156,35 @@ router.get('/listings/:id/status', async (req, res) => {
     }
 });
 
+// ─── POST /statements/:id/mark-paid ─────────────────────────
+// Manually mark a statement as paid (admin use — for transfers done outside the app)
+router.post('/statements/:id/mark-paid', async (req, res) => {
+    try {
+        const statementId = parseInt(req.params.id);
+        const { transferId, wiseFee } = req.body;
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
+        const fee = parseFloat(wiseFee) || 0;
+
+        await statement.update({
+            payoutStatus: 'paid',
+            payoutTransferId: transferId ? String(transferId) : null,
+            paidAt: new Date(),
+            wiseFee: fee,
+            totalTransferAmount: payoutAmount + fee,
+            payoutError: null,
+        });
+
+        logger.info('Statement manually marked as paid', { statementId, transferId, wiseFee: fee });
+        res.json({ success: true, message: `Statement ${statementId} marked as paid` });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'markPaid' });
+        res.status(500).json({ error: 'Failed to mark statement as paid' });
+    }
+});
+
 // ─── POST /statements/:id/transfer ─────────────────────────
 // Pay owner via Wise for a single statement
 router.post('/statements/:id/transfer', async (req, res) => {
