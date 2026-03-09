@@ -28,6 +28,8 @@ class TagScheduleService {
         this.CHECK_INTERVAL_MS = 60000; // Check every minute
         this.TIMEZONE = 'America/New_York'; // Always use EST/EDT
         this._isChecking = false; // Concurrency guard
+        this._runningSchedules = new Set(); // Per-schedule concurrency guard
+        this.SCHEDULE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minute timeout per schedule
     }
 
     /**
@@ -99,9 +101,8 @@ class TagScheduleService {
      * Always uses EST/EDT timezone
      */
     async checkSchedules() {
-        // Prevent overlapping runs if previous check is still in progress
+        // Prevent overlapping check loops (but individual schedules run independently)
         if (this._isChecking) {
-            logger.warn('[TagScheduleService] Previous schedule check still running, skipping this cycle');
             return;
         }
 
@@ -115,10 +116,22 @@ class TagScheduleService {
             });
 
             for (const schedule of schedules) {
-                const isDue = await this.isScheduleDue(schedule, now);
+                try {
+                    // Skip if this specific schedule is already being processed
+                    if (this._runningSchedules.has(schedule.tagName)) {
+                        logger.info(`[TagScheduleService] Schedule "${schedule.tagName}" still processing from previous cycle, skipping`);
+                        continue;
+                    }
 
-                if (isDue) {
-                    await this.triggerNotification(schedule, now);
+                    const isDue = await this.isScheduleDue(schedule, now);
+
+                    if (isDue) {
+                        // Run each schedule's notification/generation in the background
+                        // so one slow schedule doesn't block others
+                        this._runScheduleWithTimeout(schedule, now);
+                    }
+                } catch (schedError) {
+                    logger.error(`[TagScheduleService] Error checking schedule "${schedule.tagName}":`, schedError.message);
                 }
             }
         } catch (error) {
@@ -129,12 +142,37 @@ class TagScheduleService {
     }
 
     /**
-     * Check if a schedule is due to trigger
+     * Run a schedule's notification/generation with a timeout.
+     * Runs in the background so it doesn't block other schedules.
+     */
+    _runScheduleWithTimeout(schedule, now) {
+        const tagName = schedule.tagName;
+        this._runningSchedules.add(tagName);
+
+        const timeoutId = setTimeout(() => {
+            logger.warn(`[TagScheduleService] Schedule "${tagName}" timed out after ${this.SCHEDULE_TIMEOUT_MS / 1000}s`);
+            this._runningSchedules.delete(tagName);
+        }, this.SCHEDULE_TIMEOUT_MS);
+
+        this.triggerNotification(schedule, now)
+            .then(() => {
+                clearTimeout(timeoutId);
+                this._runningSchedules.delete(tagName);
+                logger.info(`[TagScheduleService] Schedule "${tagName}" completed successfully`);
+            })
+            .catch((err) => {
+                clearTimeout(timeoutId);
+                this._runningSchedules.delete(tagName);
+                logger.error(`[TagScheduleService] Schedule "${tagName}" failed:`, err.message);
+            });
+    }
+
+    /**
+     * Check if a schedule is due to trigger.
+     * Uses catch-up logic: if the scheduled time has PASSED today and we haven't run yet,
+     * the schedule will still trigger (not limited to exact minute match).
      */
     async isScheduleDue(schedule, now) {
-        // If never notified, check if current time matches
-        // If previously notified, check if enough time has passed
-
         const lastNotified = schedule.lastNotifiedAt;
         const [scheduleHour, scheduleMinute] = schedule.timeOfDay.split(':').map(Number);
 
@@ -142,12 +180,10 @@ class TagScheduleService {
         const currentMinute = now.getMinutes();
         const currentDay = now.getDay(); // 0 = Sunday
         const currentDate = now.getDate();
-        const currentWeek = this.getWeekNumber(now);
 
-        // Check if time matches (within the same minute)
-        if (currentHour !== scheduleHour || currentMinute !== scheduleMinute) {
-            return false;
-        }
+        const scheduledMinuteOfDay = scheduleHour * 60 + scheduleMinute;
+        const currentMinuteOfDay = currentHour * 60 + currentMinute;
+        const timeReachedToday = currentMinuteOfDay >= scheduledMinuteOfDay;
 
         // Check if today is in the skip dates list
         const skipDates = schedule.skipDates || [];
@@ -159,36 +195,54 @@ class TagScheduleService {
             }
         }
 
-        // Check if already notified today for this time slot
+        // Check if already notified today (prevents running multiple times on same day)
         if (lastNotified) {
-            const lastNotifiedDate = new Date(lastNotified);
-            const sameDay = lastNotifiedDate.toDateString() === now.toDateString();
-            const sameHour = lastNotifiedDate.getHours() === currentHour;
-            const sameMinute = lastNotifiedDate.getMinutes() === currentMinute;
+            const lastDate = new Date(lastNotified);
+            const lastNotifiedEST = this._dateToEST(lastDate);
 
-            if (sameDay && sameHour && sameMinute) {
-                return false; // Already notified for this time slot
+            const sameDayEST = lastNotifiedEST.getFullYear() === now.getFullYear() &&
+                               lastNotifiedEST.getMonth() === now.getMonth() &&
+                               lastNotifiedEST.getDate() === now.getDate();
+            const sameDayDirect = lastDate.getFullYear() === now.getFullYear() &&
+                                  lastDate.getMonth() === now.getMonth() &&
+                                  lastDate.getDate() === now.getDate();
+
+            if (sameDayEST || sameDayDirect) {
+                return false; // Already ran today
             }
         }
 
-        // Check frequency type
+        // Check if today matches the frequency pattern
+        const todayMatchesPattern = this._todayMatchesPattern(schedule, now, currentDay, currentDate);
+
+        if (todayMatchesPattern && timeReachedToday) {
+            return true; // Normal trigger: correct day AND time has passed
+        }
+
+        // Catch-up: check if we missed a run since the last notification
+        // This fires regardless of today's day/time — if nextScheduledAt is overdue, we catch up
+        return this._hasMissedRun(schedule, now);
+    }
+
+    /**
+     * Check if today matches the schedule frequency pattern
+     */
+    _todayMatchesPattern(schedule, now, currentDay, currentDate) {
         switch (schedule.frequencyType) {
             case 'weekly':
                 return currentDay === schedule.dayOfWeek;
 
-            case 'biweekly':
+            case 'biweekly': {
                 if (currentDay !== schedule.dayOfWeek) return false;
-                // Bi-weekly runs every 2 weeks from the reference start date (Jan 19, 2026)
-                // This replaces the old A/B week system
                 const biweeklyStartDate = schedule.biweeklyStartDate
                     ? this._parseLocalDate(typeof schedule.biweeklyStartDate === 'string'
                         ? schedule.biweeklyStartDate
                         : schedule.biweeklyStartDate.toISOString().split('T')[0])
-                    : new Date(2026, 0, 19); // Default reference: Jan 19, 2026 (local)
+                    : new Date(2026, 0, 19);
                 const daysSinceStart = Math.floor((now - biweeklyStartDate) / (1000 * 60 * 60 * 24));
                 const weeksSinceStart = Math.floor(daysSinceStart / 7);
-                // Run on weeks 0, 2, 4, 6... (every 2 weeks)
                 return weeksSinceStart >= 0 && weeksSinceStart % 2 === 0;
+            }
 
             case 'monthly':
                 return currentDate === schedule.dayOfMonth;
@@ -196,6 +250,41 @@ class TagScheduleService {
             default:
                 return false;
         }
+    }
+
+    /**
+     * Check if a schedule has missed a run since the last notification.
+     * This handles catch-up for server downtime or missed windows.
+     */
+    _hasMissedRun(schedule, now) {
+        if (!schedule.nextScheduledAt) {
+            return false;
+        }
+
+        // Direct comparison — nextScheduledAt and lastNotifiedAt are stored
+        // using the same EST-local Date objects produced by getESTTime() and
+        // calculateNextScheduledTime(). Sequelize preserves them as-is in SQLite/Postgres.
+        const nextTime = new Date(schedule.nextScheduledAt).getTime();
+        const nowTime = now.getTime();
+
+        if (nowTime < nextTime) {
+            return false; // Next run is still in the future
+        }
+
+        if (!schedule.lastNotifiedAt) {
+            logger.info(`[TagScheduleService] Catch-up: schedule "${schedule.tagName}" missed run at ${schedule.nextScheduledAt}, triggering now`);
+            return true;
+        }
+
+        const lastTime = new Date(schedule.lastNotifiedAt).getTime();
+
+        if (lastTime < nextTime) {
+            // Last notification was BEFORE the missed scheduled time — need to catch up
+            logger.info(`[TagScheduleService] Catch-up: schedule "${schedule.tagName}" missed run at ${schedule.nextScheduledAt}, triggering now`);
+            return true;
+        }
+
+        return false;
     }
 
     /**
