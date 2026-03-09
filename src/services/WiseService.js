@@ -41,7 +41,7 @@ class WiseService {
     /**
      * Create a recipient (owner's US bank account)
      */
-    async createRecipient({ name, email, routingNumber, accountNumber, accountType = 'CHECKING' }) {
+    async createRecipient({ name, email, routingNumber, accountNumber, accountType = 'CHECKING', address = {} }) {
         const res = await this._client().post('/v1/accounts', {
             profile: parseInt(this.profileId),
             accountHolderName: name,
@@ -53,6 +53,13 @@ class WiseService {
                 accountNumber: accountNumber,
                 accountType: accountType,
                 email: email || undefined,
+                address: {
+                    country: address.country || 'US',
+                    city: address.city,
+                    firstLine: address.street,
+                    state: address.state || undefined,
+                    postCode: address.zip,
+                },
             },
         });
         return res.data;

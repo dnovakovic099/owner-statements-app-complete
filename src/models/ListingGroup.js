@@ -78,31 +78,67 @@ const ListingGroup = sequelize.define('ListingGroup', {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_account_holder',
-        comment: 'Encrypted: account holder name for payouts'
+        comment: 'Encrypted: account holder name for payouts',
+        get() {
+            const v = this.getDataValue('bankAccountHolder');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAccountHolder', value ? encryptOptional(value) : null); }
     },
     bankEmail: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_email',
-        comment: 'Encrypted: email associated with bank account'
+        comment: 'Encrypted: email associated with bank account',
+        get() {
+            const v = this.getDataValue('bankEmail');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankEmail', value ? encryptOptional(value) : null); }
     },
     bankRoutingNumber: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_routing_number',
-        comment: 'Encrypted: ABA routing number'
+        comment: 'Encrypted: ABA routing number',
+        get() {
+            const v = this.getDataValue('bankRoutingNumber');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankRoutingNumber', value ? encryptOptional(value) : null); }
     },
     bankAccountNumber: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_account_number',
-        comment: 'Encrypted: bank account number'
+        comment: 'Encrypted: bank account number',
+        get() {
+            const v = this.getDataValue('bankAccountNumber');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAccountNumber', value ? encryptOptional(value) : null); }
     },
     bankAccountType: {
         type: DataTypes.STRING(20),
         allowNull: true,
         field: 'bank_account_type',
         comment: 'CHECKING or SAVINGS'
+    },
+    bankAddress: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_address',
+        comment: 'Encrypted: JSON with street, city, state, zip',
+        get() {
+            const v = this.getDataValue('bankAddress');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAddress', value ? encryptOptional(value) : null); }
     }
 }, {
     tableName: 'listing_groups',

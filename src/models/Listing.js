@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption');
 
 const Listing = sequelize.define('Listing', {
     id: {
@@ -205,7 +206,15 @@ const Listing = sequelize.define('Listing', {
         type: DataTypes.STRING(255),
         allowNull: true,
         field: 'wise_recipient_id',
-        comment: 'Wise recipient account ID for owner payouts'
+        comment: 'Encrypted: Wise recipient account ID for owner payouts',
+        get() {
+            const value = this.getDataValue('wiseRecipientId');
+            if (!value) return null;
+            try { return decryptOptional(value); } catch (e) { return value; }
+        },
+        set(value) {
+            this.setDataValue('wiseRecipientId', value ? encryptOptional(value) : null);
+        }
     },
     wiseStatus: {
         type: DataTypes.STRING(30),
@@ -224,31 +233,67 @@ const Listing = sequelize.define('Listing', {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_account_holder',
-        comment: 'Encrypted: account holder name for payouts'
+        comment: 'Encrypted: account holder name for payouts',
+        get() {
+            const v = this.getDataValue('bankAccountHolder');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAccountHolder', value ? encryptOptional(value) : null); }
     },
     bankEmail: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_email',
-        comment: 'Encrypted: email associated with bank account'
+        comment: 'Encrypted: email associated with bank account',
+        get() {
+            const v = this.getDataValue('bankEmail');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankEmail', value ? encryptOptional(value) : null); }
     },
     bankRoutingNumber: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_routing_number',
-        comment: 'Encrypted: ABA routing number'
+        comment: 'Encrypted: ABA routing number',
+        get() {
+            const v = this.getDataValue('bankRoutingNumber');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankRoutingNumber', value ? encryptOptional(value) : null); }
     },
     bankAccountNumber: {
         type: DataTypes.TEXT,
         allowNull: true,
         field: 'bank_account_number',
-        comment: 'Encrypted: bank account number'
+        comment: 'Encrypted: bank account number',
+        get() {
+            const v = this.getDataValue('bankAccountNumber');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAccountNumber', value ? encryptOptional(value) : null); }
     },
     bankAccountType: {
         type: DataTypes.STRING(20),
         allowNull: true,
         field: 'bank_account_type',
         comment: 'CHECKING or SAVINGS'
+    },
+    bankAddress: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_address',
+        comment: 'Encrypted: JSON with street, city, state, zip',
+        get() {
+            const v = this.getDataValue('bankAddress');
+            if (!v) return null;
+            try { return decryptOptional(v); } catch (e) { return v; }
+        },
+        set(value) { this.setDataValue('bankAddress', value ? encryptOptional(value) : null); }
     },
     lastSyncedAt: {
         type: DataTypes.DATE,

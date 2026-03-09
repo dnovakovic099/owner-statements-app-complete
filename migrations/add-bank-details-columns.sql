@@ -8,6 +8,7 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS bank_email TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS bank_routing_number TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS bank_account_number TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS bank_account_type VARCHAR(20);
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS bank_address TEXT;
 
 -- Listing groups table
 ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_account_holder TEXT;
@@ -15,3 +16,4 @@ ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_email TEXT;
 ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_routing_number TEXT;
 ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_account_number TEXT;
 ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_account_type VARCHAR(20);
+ALTER TABLE listing_groups ADD COLUMN IF NOT EXISTS bank_address TEXT;

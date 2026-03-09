@@ -310,7 +310,7 @@ app.get('/payout-setup/:token', async (req, res) => {
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); max-width: 440px; width: 100%; overflow: hidden; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); max-width: 480px; width: 100%; overflow: hidden; }
         .header { background: #111827; padding: 28px 24px; text-align: center; }
         .header-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); border-radius: 20px; padding: 5px 14px; margin-bottom: 14px; }
         .header-badge svg { flex-shrink: 0; }
@@ -318,21 +318,53 @@ app.get('/payout-setup/:token', async (req, res) => {
         .header h1 { font-size: 18px; font-weight: 600; color: #fff; line-height: 1.3; }
         .header .property { font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px; font-weight: 400; }
         .body { padding: 28px 24px; }
-        .field { margin-bottom: 18px; }
-        .field label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
-        .field input, .field select {
+        .section-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 5px; }
+        .field input {
             width: 100%; padding: 11px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
             font-size: 14px; font-family: inherit; color: #111827; outline: none;
             transition: border-color 0.15s, box-shadow 0.15s; background: #fff;
         }
         .field input::placeholder { color: #9ca3af; }
-        .field input:focus, .field select:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,0.08); }
-        .field .hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,0.08); }
+        .field .hint { font-size: 11px; color: #9ca3af; margin-top: 3px; }
         .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        /* Custom dropdown */
+        .custom-select { position: relative; }
+        .custom-select .select-trigger {
+            width: 100%; padding: 11px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
+            font-size: 14px; font-family: inherit; color: #111827; background: #fff;
+            cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+            transition: border-color 0.15s, box-shadow 0.15s; user-select: none;
+        }
+        .custom-select .select-trigger:hover { border-color: #d1d5db; }
+        .custom-select.open .select-trigger { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,0.08); }
+        .custom-select .select-trigger svg { width: 16px; height: 16px; color: #9ca3af; transition: transform 0.15s; }
+        .custom-select.open .select-trigger svg { transform: rotate(180deg); }
+        .custom-select .select-options {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10;
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow: hidden;
+            display: none; animation: dropIn 0.12s ease-out;
+        }
+        .custom-select.open .select-options { display: block; }
+        .custom-select .select-option {
+            padding: 11px 14px; font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: space-between;
+            transition: background 0.1s;
+        }
+        .custom-select .select-option:hover { background: #f9fafb; }
+        .custom-select .select-option.selected { background: #f3f4f6; font-weight: 500; }
+        .custom-select .select-option .check { color: #111827; display: none; }
+        .custom-select .select-option.selected .check { display: block; }
+        @keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .sep { height: 1px; background: #f3f4f6; margin: 20px 0; }
         .btn {
             width: 100%; padding: 13px; background: #111827; color: white; border: none;
             border-radius: 10px; font-size: 14px; font-weight: 600; font-family: inherit;
-            cursor: pointer; transition: background 0.15s, transform 0.1s; margin-top: 4px;
+            cursor: pointer; transition: background 0.15s, transform 0.1s; margin-top: 6px;
         }
         .btn:hover { background: #1f2937; }
         .btn:active { transform: scale(0.99); }
@@ -343,7 +375,6 @@ app.get('/payout-setup/:token', async (req, res) => {
         .footer { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 24px 20px; }
         .footer svg { flex-shrink: 0; }
         .footer span { font-size: 11px; color: #9ca3af; }
-        .divider { height: 1px; background: #f3f4f6; margin: 0 24px 18px; }
     </style>
 </head>
 <body>
@@ -359,6 +390,7 @@ app.get('/payout-setup/:token', async (req, res) => {
         <div class="body" id="formSection">
             <div class="error" id="errorBox"></div>
             <form id="payoutForm" onsubmit="submitForm(event)">
+                <div class="section-label">Personal Information</div>
                 <div class="field-row">
                     <div class="field">
                         <label for="name">Account Holder Name</label>
@@ -369,24 +401,58 @@ app.get('/payout-setup/:token', async (req, res) => {
                         <input type="email" id="email" name="email" required placeholder="you@email.com" value="${ownerEmail}" />
                     </div>
                 </div>
-                <div class="divider" style="margin:2px 0 18px"></div>
+                <div class="field">
+                    <label for="street">Street Address</label>
+                    <input type="text" id="street" name="street" required placeholder="123 Main St" />
+                </div>
+                <div class="field-row-3">
+                    <div class="field">
+                        <label for="city">City</label>
+                        <input type="text" id="city" name="city" required placeholder="City" />
+                    </div>
+                    <div class="field">
+                        <label for="state">State</label>
+                        <input type="text" id="state" name="state" maxlength="2" placeholder="FL" style="text-transform:uppercase" />
+                    </div>
+                    <div class="field">
+                        <label for="zip">ZIP Code</label>
+                        <input type="text" id="zip" name="zip" required maxlength="10" inputmode="numeric" placeholder="33601" />
+                    </div>
+                </div>
+
+                <div class="sep"></div>
+                <div class="section-label">Bank Details</div>
+
                 <div class="field-row">
                     <div class="field">
                         <label for="routingNumber">Routing Number</label>
-                        <input type="text" id="routingNumber" name="routingNumber" required pattern="[0-9]{9}" maxlength="9" inputmode="numeric" placeholder="9 digits" />
+                        <input type="text" id="routingNumber" name="routingNumber" required maxlength="9" inputmode="numeric" placeholder="9 digits" />
                         <div class="hint">ABA routing number</div>
                     </div>
                     <div class="field">
-                        <label for="accountType">Account Type</label>
-                        <select id="accountType" name="accountType">
-                            <option value="CHECKING">Checking</option>
-                            <option value="SAVINGS">Savings</option>
-                        </select>
+                        <label>Account Type</label>
+                        <input type="hidden" id="accountType" name="accountType" value="CHECKING" />
+                        <div class="custom-select" id="accountTypeSelect">
+                            <div class="select-trigger" onclick="toggleDropdown()">
+                                <span id="selectedLabel">Checking</span>
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                            <div class="select-options">
+                                <div class="select-option selected" data-value="CHECKING" onclick="selectOption(this)">
+                                    <span>Checking</span>
+                                    <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </div>
+                                <div class="select-option" data-value="SAVINGS" onclick="selectOption(this)">
+                                    <span>Savings</span>
+                                    <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="field">
                     <label for="accountNumber">Account Number</label>
-                    <input type="text" id="accountNumber" name="accountNumber" required pattern="[0-9]{4,17}" inputmode="numeric" placeholder="Enter account number" />
+                    <input type="text" id="accountNumber" name="accountNumber" required inputmode="numeric" placeholder="Enter account number" />
                 </div>
                 <div class="field">
                     <label for="confirmAccountNumber">Confirm Account Number</label>
@@ -401,23 +467,50 @@ app.get('/payout-setup/:token', async (req, res) => {
         </div>
     </div>
     <script>
+        function toggleDropdown() {
+            document.getElementById('accountTypeSelect').classList.toggle('open');
+        }
+        function selectOption(el) {
+            const value = el.dataset.value;
+            document.getElementById('accountType').value = value;
+            document.getElementById('selectedLabel').textContent = el.querySelector('span').textContent;
+            document.querySelectorAll('.select-option').forEach(o => o.classList.remove('selected'));
+            el.classList.add('selected');
+            document.getElementById('accountTypeSelect').classList.remove('open');
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const sel = document.getElementById('accountTypeSelect');
+            if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+        });
+
         async function submitForm(e) {
             e.preventDefault();
             const errorBox = document.getElementById('errorBox');
             errorBox.style.display = 'none';
-            const acct = document.getElementById('accountNumber').value;
-            const confirm = document.getElementById('confirmAccountNumber').value;
-            if (acct !== confirm) {
+
+            const acct = document.getElementById('accountNumber').value.trim();
+            const confirmAcct = document.getElementById('confirmAccountNumber').value.trim();
+            if (acct !== confirmAcct) {
                 errorBox.textContent = 'Account numbers do not match.';
                 errorBox.style.display = 'block';
                 return;
             }
-            const routing = document.getElementById('routingNumber').value;
+            const routing = document.getElementById('routingNumber').value.trim();
             if (!/^[0-9]{9}$/.test(routing)) {
                 errorBox.textContent = 'Please enter a valid 9-digit routing number.';
                 errorBox.style.display = 'block';
                 return;
             }
+            const street = document.getElementById('street').value.trim();
+            const city = document.getElementById('city').value.trim();
+            const zip = document.getElementById('zip').value.trim();
+            if (!street || !city || !zip) {
+                errorBox.textContent = 'Please fill in your street address, city, and ZIP code.';
+                errorBox.style.display = 'block';
+                return;
+            }
+
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
             btn.textContent = 'Connecting...';
@@ -426,11 +519,15 @@ app.get('/payout-setup/:token', async (req, res) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: document.getElementById('name').value,
-                        email: document.getElementById('email').value,
+                        name: document.getElementById('name').value.trim(),
+                        email: document.getElementById('email').value.trim(),
                         accountType: document.getElementById('accountType').value,
                         routingNumber: routing,
                         accountNumber: acct,
+                        street: street,
+                        city: city,
+                        state: (document.getElementById('state').value || '').trim().toUpperCase(),
+                        zip: zip,
                     }),
                 });
                 const data = await resp.json();
@@ -459,10 +556,14 @@ app.get('/payout-setup/:token', async (req, res) => {
 app.post('/api/payouts/setup/:token', async (req, res) => {
     try {
         const { token } = req.params;
-        const { name, email, accountType, routingNumber, accountNumber } = req.body;
+        const { name, email, accountType, routingNumber, accountNumber, street, city, state, zip } = req.body;
 
         if (!name || !routingNumber || !accountNumber) {
             return res.status(400).json({ error: 'Name, routing number, and account number are required' });
+        }
+
+        if (!street || !city || !zip) {
+            return res.status(400).json({ error: 'Street address, city, and ZIP code are required' });
         }
 
         if (!/^[0-9]{9}$/.test(routingNumber)) {
@@ -472,7 +573,6 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
         const { Listing } = require('./models');
         const ListingGroup = require('./models/ListingGroup');
         const WiseService = require('./services/WiseService');
-        const { encryptOptional } = require('./utils/fieldEncryption');
 
         // Find entity by token
         let entity = await Listing.findOne({ where: { payoutInviteToken: token } });
@@ -490,29 +590,30 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
             return res.status(500).json({ error: 'Payment system not configured' });
         }
 
-        // Create Wise recipient
+        // Create Wise recipient (address required by Wise API)
         const recipient = await WiseService.createRecipient({
             name,
             email,
             routingNumber,
             accountNumber,
             accountType: accountType || 'CHECKING',
+            address: { street, city, state, zip, country: 'US' },
         });
 
         logger.info('Wise recipient created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
 
-        // Save recipient ID + encrypted bank details, clear the invite token (one-time use)
-        const updateData = {
-            wiseRecipientId: entityType === 'group' ? String(recipient.id) : encryptOptional(String(recipient.id)),
+        // Save recipient ID + bank details (model setters handle encryption automatically)
+        await entity.update({
+            wiseRecipientId: String(recipient.id),
             wiseStatus: 'verified',
             payoutInviteToken: null,
-            bankAccountHolder: encryptOptional(name),
-            bankEmail: encryptOptional(email),
-            bankRoutingNumber: encryptOptional(routingNumber),
-            bankAccountNumber: encryptOptional(accountNumber),
+            bankAccountHolder: name,
+            bankEmail: email,
+            bankRoutingNumber: routingNumber,
+            bankAccountNumber: accountNumber,
             bankAccountType: accountType || 'CHECKING',
-        };
-        await entity.update(updateData);
+            bankAddress: JSON.stringify({ street, city, state, zip }),
+        });
 
         res.json({ success: true, message: 'Bank account connected successfully' });
     } catch (err) {
