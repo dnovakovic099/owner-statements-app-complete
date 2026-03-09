@@ -73,6 +73,36 @@ const ListingGroup = sequelize.define('ListingGroup', {
         allowNull: true,
         field: 'payout_invite_token',
         comment: 'Token for payout setup invite link'
+    },
+    bankAccountHolder: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_account_holder',
+        comment: 'Encrypted: account holder name for payouts'
+    },
+    bankEmail: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_email',
+        comment: 'Encrypted: email associated with bank account'
+    },
+    bankRoutingNumber: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_routing_number',
+        comment: 'Encrypted: ABA routing number'
+    },
+    bankAccountNumber: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'bank_account_number',
+        comment: 'Encrypted: bank account number'
+    },
+    bankAccountType: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'bank_account_type',
+        comment: 'CHECKING or SAVINGS'
     }
 }, {
     tableName: 'listing_groups',

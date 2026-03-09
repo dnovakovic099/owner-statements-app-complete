@@ -501,20 +501,18 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
 
         logger.info('Wise recipient created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
 
-        // Save recipient ID and clear the invite token (one-time use)
-        if (entityType === 'group') {
-            await entity.update({
-                wiseRecipientId: String(recipient.id),
-                wiseStatus: 'verified',
-                payoutInviteToken: null,
-            });
-        } else {
-            await entity.update({
-                wiseRecipientId: encryptOptional(String(recipient.id)),
-                wiseStatus: 'verified',
-                payoutInviteToken: null,
-            });
-        }
+        // Save recipient ID + encrypted bank details, clear the invite token (one-time use)
+        const updateData = {
+            wiseRecipientId: entityType === 'group' ? String(recipient.id) : encryptOptional(String(recipient.id)),
+            wiseStatus: 'verified',
+            payoutInviteToken: null,
+            bankAccountHolder: encryptOptional(name),
+            bankEmail: encryptOptional(email),
+            bankRoutingNumber: encryptOptional(routingNumber),
+            bankAccountNumber: encryptOptional(accountNumber),
+            bankAccountType: accountType || 'CHECKING',
+        };
+        await entity.update(updateData);
 
         res.json({ success: true, message: 'Bank account connected successfully' });
     } catch (err) {
