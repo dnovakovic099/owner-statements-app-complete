@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -534,11 +534,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: () => <span className="font-semibold text-gray-600">Status</span>,
       cell: ({ row }) => {
         const status = row.getValue('status') as string;
-        const payoutStatus = row.original.payoutStatus;
-        const displayStatus = (payoutStatus === 'paid' || payoutStatus === 'collected' || payoutStatus === 'invoice_sent') ? (payoutStatus) : status;
         return (
           <div className="flex flex-col items-center gap-1">
-            {getStatusBadge(displayStatus)}
+            {getStatusBadge(status)}
           </div>
         );
       },
@@ -681,6 +679,18 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 />
               );
             })()}
+
+            {(statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') && (
+              <ActionButton
+                onClick={() => {
+                  const url = `/api/payouts/statements/${statement.id}/receipt`;
+                  window.open(url, '_blank');
+                }}
+                tooltip="View Payout Receipt"
+                icon={<Receipt className="w-[18px] h-[18px]" />}
+                color="text-teal-600"
+              />
+            )}
 
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
