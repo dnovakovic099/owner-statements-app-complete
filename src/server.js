@@ -279,18 +279,25 @@ app.get('/payout-setup/:token', async (req, res) => {
 
         // If already set up, show success
         if (entity.wiseRecipientId && entity.wiseStatus === 'verified') {
-            return res.send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
-                <div style="max-width:400px;margin:0 auto">
-                    <div style="width:64px;height:64px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
-                        <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>
-                    </div>
-                    <h2 style="margin-bottom:8px">Bank Account Already Connected</h2>
-                    <p style="color:#6b7280">Your bank details are already on file. You can close this window.</p>
+            const connectedName = entity.displayName || entity.nickname || entity.name || 'Your Property';
+            return res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Payout Connected</title>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+            <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}</style></head>
+            <body><div style="background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.06);max-width:440px;width:100%;text-align:center;padding:48px 32px">
+                <div style="width:56px;height:56px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+                    <svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>
                 </div>
-            </body></html>`);
+                <h2 style="color:#111827;font-size:17px;font-weight:600;margin-bottom:6px">Bank Account Connected</h2>
+                <p style="color:#6b7280;font-size:14px;margin-bottom:4px">${connectedName}</p>
+                <p style="color:#9ca3af;font-size:13px">Your bank details are already on file. You can close this window.</p>
+            </div></body></html>`);
         }
 
-        const entityName = entity.name || entity.displayName || 'Owner';
+        // Use displayName or nickname (friendly name), fall back to raw name
+        const entityName = entity.displayName || entity.nickname || entity.name || 'Your Property';
+        // Owner name for pre-filling
+        const ownerName = entity.ownerName || '';
+        const ownerEmail = entity.ownerEmail || '';
 
         res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -298,68 +305,99 @@ app.get('/payout-setup/:token', async (req, res) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Set Up Payout - Luxury Lodging PM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 460px; width: 100%; overflow: hidden; }
-        .header { background: linear-gradient(135deg, #9333ea, #7c3aed); padding: 24px; color: white; text-align: center; }
-        .header h1 { font-size: 20px; font-weight: 600; }
-        .header p { font-size: 14px; opacity: 0.9; margin-top: 4px; }
-        .body { padding: 24px; }
-        .field { margin-bottom: 16px; }
-        .field label { display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 4px; }
-        .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.15s; }
-        .field input:focus, .field select:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
-        .field .hint { font-size: 12px; color: #9ca3af; margin-top: 2px; }
-        .btn { width: 100%; padding: 12px; background: #7c3aed; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
-        .btn:hover { background: #6d28d9; }
-        .btn:disabled { background: #c4b5fd; cursor: not-allowed; }
-        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
-        .success { text-align: center; padding: 40px 24px; }
-        .success .icon { width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-        .secure { font-size: 11px; color: #9ca3af; text-align: center; margin-top: 16px; }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); max-width: 440px; width: 100%; overflow: hidden; }
+        .header { background: #111827; padding: 28px 24px; text-align: center; }
+        .header-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); border-radius: 20px; padding: 5px 14px; margin-bottom: 14px; }
+        .header-badge svg { flex-shrink: 0; }
+        .header-badge span { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500; letter-spacing: 0.02em; }
+        .header h1 { font-size: 18px; font-weight: 600; color: #fff; line-height: 1.3; }
+        .header .property { font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px; font-weight: 400; }
+        .body { padding: 28px 24px; }
+        .field { margin-bottom: 18px; }
+        .field label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+        .field input, .field select {
+            width: 100%; padding: 11px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
+            font-size: 14px; font-family: inherit; color: #111827; outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s; background: #fff;
+        }
+        .field input::placeholder { color: #9ca3af; }
+        .field input:focus, .field select:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,0.08); }
+        .field .hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .btn {
+            width: 100%; padding: 13px; background: #111827; color: white; border: none;
+            border-radius: 10px; font-size: 14px; font-weight: 600; font-family: inherit;
+            cursor: pointer; transition: background 0.15s, transform 0.1s; margin-top: 4px;
+        }
+        .btn:hover { background: #1f2937; }
+        .btn:active { transform: scale(0.99); }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
+        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; display: none; line-height: 1.4; }
+        .success { text-align: center; padding: 48px 24px; }
+        .success .icon { width: 56px; height: 56px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+        .footer { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 24px 20px; }
+        .footer svg { flex-shrink: 0; }
+        .footer span { font-size: 11px; color: #9ca3af; }
+        .divider { height: 1px; background: #f3f4f6; margin: 0 24px 18px; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
+            <div class="header-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-10h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>LUXURY LODGING PM</span>
+            </div>
             <h1>Set Up Your Payout</h1>
-            <p>${entityName}</p>
+            <p class="property">${entityName}</p>
         </div>
         <div class="body" id="formSection">
             <div class="error" id="errorBox"></div>
             <form id="payoutForm" onsubmit="submitForm(event)">
-                <div class="field">
-                    <label for="name">Full Name (Account Holder)</label>
-                    <input type="text" id="name" name="name" required placeholder="John Smith" />
+                <div class="field-row">
+                    <div class="field">
+                        <label for="name">Account Holder Name</label>
+                        <input type="text" id="name" name="name" required placeholder="Full legal name" value="${ownerName}" />
+                    </div>
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required placeholder="you@email.com" value="${ownerEmail}" />
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" name="email" required placeholder="john@example.com" />
-                </div>
-                <div class="field">
-                    <label for="accountType">Account Type</label>
-                    <select id="accountType" name="accountType">
-                        <option value="CHECKING">Checking</option>
-                        <option value="SAVINGS">Savings</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label for="routingNumber">Routing Number</label>
-                    <input type="text" id="routingNumber" name="routingNumber" required pattern="[0-9]{9}" maxlength="9" placeholder="9-digit routing number" />
-                    <div class="hint">9-digit ABA routing number</div>
+                <div class="divider" style="margin:2px 0 18px"></div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="routingNumber">Routing Number</label>
+                        <input type="text" id="routingNumber" name="routingNumber" required pattern="[0-9]{9}" maxlength="9" inputmode="numeric" placeholder="9 digits" />
+                        <div class="hint">ABA routing number</div>
+                    </div>
+                    <div class="field">
+                        <label for="accountType">Account Type</label>
+                        <select id="accountType" name="accountType">
+                            <option value="CHECKING">Checking</option>
+                            <option value="SAVINGS">Savings</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="field">
                     <label for="accountNumber">Account Number</label>
-                    <input type="text" id="accountNumber" name="accountNumber" required pattern="[0-9]{4,17}" placeholder="Account number" />
+                    <input type="text" id="accountNumber" name="accountNumber" required pattern="[0-9]{4,17}" inputmode="numeric" placeholder="Enter account number" />
                 </div>
                 <div class="field">
                     <label for="confirmAccountNumber">Confirm Account Number</label>
-                    <input type="text" id="confirmAccountNumber" name="confirmAccountNumber" required placeholder="Re-enter account number" />
+                    <input type="text" id="confirmAccountNumber" name="confirmAccountNumber" required inputmode="numeric" placeholder="Re-enter account number" />
                 </div>
                 <button type="submit" class="btn" id="submitBtn">Connect Bank Account</button>
-                <div class="secure">Your bank details are sent securely and stored encrypted.</div>
             </form>
+        </div>
+        <div class="footer">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#9ca3af" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Bank details are encrypted and sent securely</span>
         </div>
     </div>
     <script>
@@ -374,6 +412,12 @@ app.get('/payout-setup/:token', async (req, res) => {
                 errorBox.style.display = 'block';
                 return;
             }
+            const routing = document.getElementById('routingNumber').value;
+            if (!/^[0-9]{9}$/.test(routing)) {
+                errorBox.textContent = 'Please enter a valid 9-digit routing number.';
+                errorBox.style.display = 'block';
+                return;
+            }
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
             btn.textContent = 'Connecting...';
@@ -385,13 +429,13 @@ app.get('/payout-setup/:token', async (req, res) => {
                         name: document.getElementById('name').value,
                         email: document.getElementById('email').value,
                         accountType: document.getElementById('accountType').value,
-                        routingNumber: document.getElementById('routingNumber').value,
+                        routingNumber: routing,
                         accountNumber: acct,
                     }),
                 });
                 const data = await resp.json();
                 if (data.success) {
-                    document.getElementById('formSection').innerHTML = '<div class="success"><div class="icon"><svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg></div><h2 style="color:#111;margin-bottom:8px">Bank Account Connected!</h2><p style="color:#6b7280">Your payout details have been saved. You can close this window.</p></div>';
+                    document.getElementById('formSection').innerHTML = '<div class="success"><div class="icon"><svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg></div><h2 style="color:#111827;font-size:17px;margin-bottom:8px">Bank Account Connected</h2><p style="color:#6b7280;font-size:14px;line-height:1.5">Your payout details have been saved successfully. You can close this window.</p></div>';
                 } else {
                     throw new Error(data.error || 'Something went wrong');
                 }
