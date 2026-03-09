@@ -713,7 +713,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
 
   const handleSaveChanges = () => {
-    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedHiddenExpenseIndices.length === 0 && selectedHiddenUpsellIndices.length === 0 && selectedLLCoverExpenseIndices.length === 0 && selectedLLCoverUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0 && selectedCancelledIdsToAdd.length === 0)) {
+    if (!statement || (selectedExpenseIndices.length === 0 && selectedUpsellIndices.length === 0 && selectedHiddenExpenseIndices.length === 0 && selectedHiddenUpsellIndices.length === 0 && selectedLLCoverExpenseIndices.length === 0 && selectedLLCoverUpsellIndices.length === 0 && selectedPriorExpenseIndices.length === 0 && selectedPriorUpsellIndices.length === 0 && selectedReservationIdsToRemove.length === 0 && selectedReservationIdsToAdd.length === 0 && selectedCancelledIdsToAdd.length === 0)) {
       return;
     }
 
