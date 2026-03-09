@@ -110,8 +110,8 @@ router.post('/bulk-update-pm-fees', async (req, res) => {
 // GET /api/listings/names - Get lightweight listing names for lookups (id, name, displayName, nickname only)
 // NOTE: This must come BEFORE /:id routes
 router.get('/names', asyncHandler(async (req, res) => {
-    // Cache listing names for 10 minutes - rarely changes
-    res.set('Cache-Control', 'private, max-age=600');
+    // Short cache - Wise status can change anytime via payout setup
+    res.set('Cache-Control', 'private, max-age=30');
     const listings = await ListingService.getListingNames();
     res.json({ success: true, listings });
 }));
@@ -150,11 +150,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
             return res.status(404).json({ error: 'Listing not found' });
         }
 
-        try {
-            listing.wiseRecipientId = decryptOptional(listing.wiseRecipientId);
-        } catch (e) {
-            listing.wiseRecipientId = null;
-        }
+        // Model getters auto-decrypt wiseRecipientId — no manual decrypt needed
 
         res.json({ success: true, listing });
 }));

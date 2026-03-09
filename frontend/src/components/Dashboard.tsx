@@ -672,6 +672,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
                   }
                   await loadStatements();
+                  loadInitialData(); // Refresh listings (Wise status may have changed)
                 } else {
                   updateToast(toastId, response.error || 'Transfer failed', 'error');
                 }

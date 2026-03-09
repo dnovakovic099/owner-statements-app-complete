@@ -333,12 +333,7 @@ class ListingService {
 
             return listings.map(l => {
                 const json = l.toJSON();
-                try {
-                    json.wiseRecipientId = decryptOptional(json.wiseRecipientId);
-                } catch (e) {
-                    logger.warn('Failed to decrypt wiseRecipientId for listing', { id: json.id });
-                    json.wiseRecipientId = null;
-                }
+                // Model getters auto-decrypt wiseRecipientId, so no manual decrypt needed
 
                 // Apply group Wise recipient inheritance:
                 // If listing is in a group with a Wise recipient, use that unless listing has its own
