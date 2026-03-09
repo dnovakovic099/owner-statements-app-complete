@@ -30,6 +30,14 @@ class TagScheduleService {
         this._isChecking = false; // Concurrency guard
         this._runningSchedules = new Set(); // Per-schedule concurrency guard
         this.SCHEDULE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minute timeout per schedule
+        this.API_DELAY_MS = 2000; // 2 second delay between Hostify API calls to avoid 500 errors
+    }
+
+    /**
+     * Delay helper to throttle API calls
+     */
+    _delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms || this.API_DELAY_MS));
     }
 
     /**
@@ -463,6 +471,11 @@ class TagScheduleService {
                     logger.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
                     results.errors++;
                 }
+
+                // Throttle between groups to avoid Hostify API rate limits
+                if (groups.indexOf(group) < groups.length - 1) {
+                    await this._delay();
+                }
             }
 
             logger.info(`[TagScheduleService] Auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
@@ -592,6 +605,11 @@ class TagScheduleService {
                 } catch (listingError) {
                     logger.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
                     results.errors++;
+                }
+
+                // Throttle between listings to avoid Hostify API rate limits
+                if (listings.indexOf(listing) < listings.length - 1) {
+                    await this._delay();
                 }
             }
 
