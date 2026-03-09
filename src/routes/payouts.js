@@ -38,14 +38,8 @@ async function resolveWiseRecipientId(statement) {
         return { wiseRecipientId: null, source: null, error: 'Listing not found' };
     }
 
-    let recipientId = listing.wiseRecipientId;
-    if (recipientId) {
-        try {
-            recipientId = decryptOptional(recipientId);
-        } catch (e) {
-            // already decrypted
-        }
-    }
+    // Model getter auto-decrypts wiseRecipientId
+    const recipientId = listing.wiseRecipientId;
 
     if (!recipientId) {
         return { wiseRecipientId: null, source: null, error: 'No Wise recipient configured for this listing' };
@@ -289,8 +283,12 @@ router.post('/statements/:id/transfer', async (req, res) => {
             }
         } catch (e) { /* ignore */ }
 
-        logger.logError(error, { context: 'Payouts', action: 'transfer', statementId: req.params.id });
-        const msg = error.response?.data?.message || error.message || 'Transfer failed';
+        logger.logError(error, {
+            context: 'Payouts', action: 'transfer', statementId: req.params.id,
+            wiseResponse: error.response?.data,
+            wiseStatus: error.response?.status,
+        });
+        const msg = error.response?.data?.errors?.[0]?.message || error.response?.data?.message || error.message || 'Transfer failed';
         res.status(500).json({ error: msg });
     }
 });

@@ -77,12 +77,17 @@ class WiseService {
      * Create a transfer using a quote and recipient
      */
     async createTransfer({ recipientId, quoteId, reference, statementId }) {
+        // customerTransactionId must be a valid UUID
+        const crypto = require('crypto');
+        const txnId = crypto.randomUUID();
+        // Wise reference max ~35 chars for USD domestic transfers
+        const shortRef = (reference || `Stmt ${statementId}`).substring(0, 35);
         const res = await this._client().post('/v1/transfers', {
             targetAccount: recipientId,
             quoteUuid: quoteId,
-            customerTransactionId: `stmt-${statementId}-${Date.now()}`,
+            customerTransactionId: txnId,
             details: {
-                reference: reference || 'Owner Statement Payout',
+                reference: shortRef,
             },
         });
         return res.data;
