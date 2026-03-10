@@ -876,13 +876,20 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
 
 // Token generator for receipts (authenticated)
 app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) => {
-    const jwt = require('jsonwebtoken');
-    const token = jwt.sign(
-        { purpose: 'receipt', statementId: req.params.id },
-        process.env.JWT_SECRET,
-        { expiresIn: '10m' }
-    );
-    res.json({ token });
+    try {
+        const jwt = require('jsonwebtoken');
+        const secret = process.env.JWT_SECRET;
+        if (!secret) return res.status(500).json({ error: 'JWT_SECRET not configured' });
+        const token = jwt.sign(
+            { purpose: 'receipt', statementId: req.params.id },
+            secret,
+            { expiresIn: '10m' }
+        );
+        res.json({ token });
+    } catch (err) {
+        console.error('Receipt token error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.use('/api/payouts', authenticate, require('./routes/payouts'));
