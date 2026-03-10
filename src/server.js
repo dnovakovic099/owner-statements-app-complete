@@ -766,6 +766,18 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
         const ownerName = statement.ownerName || 'Owner';
         const periodStart = statement.weekStartDate ? new Date(statement.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
         const periodEnd = statement.weekEndDate ? new Date(statement.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+
+        // Get listing nickname for PDF filename
+        let listingNickname = propertyName;
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        if (listingId) {
+            const { Listing } = require('./models');
+            const listing = await Listing.findByPk(listingId);
+            if (listing) listingNickname = listing.nickname || listing.displayName || listing.name || propertyName;
+        }
+        const fileStart = statement.weekStartDate ? new Date(statement.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const fileEnd = statement.weekEndDate ? new Date(statement.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const pdfFilename = (listingNickname + ' ' + fileStart + '-' + fileEnd).replace(/[^a-zA-Z0-9 \-]/g, '').replace(/\s+/g, ' ').trim();
         const paidDate = paidAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         const revenue = (parseFloat(statement.totalRevenue) || 0);
         const pmCommission = (parseFloat(statement.pmCommission) || 0);
@@ -900,7 +912,7 @@ async function downloadPDF(){
     var imgH=(canvas.height*imgW)/canvas.width;
     var pdf=new jsPDF('p','mm','a4');
     pdf.addImage(canvas.toDataURL('image/png'),'PNG',10,10,imgW,imgH);
-    pdf.save('receipt-#${statementId}.pdf');
+    pdf.save('${pdfFilename}.pdf');
   }catch(e){console.error(e);window.print();}
   btn.innerHTML=orig;btn.disabled=false;
 }
