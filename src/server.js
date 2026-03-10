@@ -743,7 +743,8 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
         const token = req.query.token;
         if (!token) return res.status(401).json({ error: 'Token required. Open receipts from the app.' });
         const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const { JWT_SECRET } = require('./middleware/auth');
+        const decoded = jwt.verify(token, JWT_SECRET);
         if (decoded.purpose !== 'receipt' || String(decoded.statementId) !== String(req.params.id)) {
             return res.status(403).json({ error: 'Invalid receipt token' });
         }
@@ -878,11 +879,10 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
 app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) => {
     try {
         const jwt = require('jsonwebtoken');
-        const secret = process.env.JWT_SECRET;
-        if (!secret) return res.status(500).json({ error: 'JWT_SECRET not configured' });
+        const { JWT_SECRET } = require('./middleware/auth');
         const token = jwt.sign(
             { purpose: 'receipt', statementId: req.params.id },
-            secret,
+            JWT_SECRET,
             { expiresIn: '10m' }
         );
         res.json({ token });
