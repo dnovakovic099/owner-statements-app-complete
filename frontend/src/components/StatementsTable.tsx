@@ -680,17 +680,26 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               );
             })()}
 
-            {(statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') && (
-              <ActionButton
-                onClick={() => {
-                  const url = `/api/payouts/statements/${statement.id}/receipt`;
-                  window.open(url, '_blank');
-                }}
-                tooltip="View Payout Receipt"
-                icon={<Receipt className="w-[18px] h-[18px]" />}
-                color="text-teal-600"
-              />
-            )}
+            <ActionButton
+              onClick={async () => {
+                try {
+                  const authData = localStorage.getItem('luxury-lodging-auth');
+                  const authToken = authData ? JSON.parse(authData).token : null;
+                  if (!authToken) return;
+                  const resp = await fetch(`/api/payouts/statements/${statement.id}/receipt-token`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                  });
+                  const data = await resp.json();
+                  if (data.token) {
+                    window.open(`/api/payouts/statements/${statement.id}/receipt?token=${data.token}`, '_blank');
+                  }
+                } catch (e) { console.error('Failed to open receipt', e); }
+              }}
+              tooltip={statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' ? 'View Payout Receipt' : 'Receipt available after payout'}
+              icon={<Receipt className="w-[18px] h-[18px]" />}
+              color={statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' ? 'text-teal-600' : 'text-gray-400'}
+              disabled={statement.payoutStatus !== 'paid' && statement.payoutStatus !== 'collected'}
+            />
 
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}

@@ -737,6 +737,154 @@ app.get('/pay/:token', async (req, res) => {
 });
 
 // Payouts - Wise payout management
+// Public receipt endpoint — uses short-lived JWT token in query string so it works in a new browser tab
+app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
+    try {
+        const token = req.query.token;
+        if (!token) return res.status(401).json({ error: 'Token required. Open receipts from the app.' });
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded.purpose !== 'receipt' || String(decoded.statementId) !== String(req.params.id)) {
+            return res.status(403).json({ error: 'Invalid receipt token' });
+        }
+
+        const { Statement } = require('./models');
+        const statement = await Statement.findByPk(parseInt(req.params.id));
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+        if (statement.payoutStatus !== 'paid' && statement.payoutStatus !== 'collected') {
+            return res.status(400).json({ error: 'Statement has not been paid yet' });
+        }
+
+        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
+        const wiseFee = parseFloat(statement.wiseFee) || 0;
+        const totalAmount = parseFloat(statement.totalTransferAmount) || (payoutAmount + wiseFee);
+        const paidAt = statement.paidAt ? new Date(statement.paidAt) : new Date();
+        const transferId = statement.payoutTransferId || 'N/A';
+        const statementId = statement.id;
+        const propertyName = statement.propertyName || 'Unknown Property';
+        const ownerName = statement.ownerName || 'Owner';
+        const periodStart = statement.weekStartDate ? new Date(statement.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        const periodEnd = statement.weekEndDate ? new Date(statement.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        const paidDate = paidAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const revenue = (parseFloat(statement.totalRevenue) || 0);
+        const pmCommission = (parseFloat(statement.pmCommission) || 0);
+        const expenses = (parseFloat(statement.totalExpenses) || 0);
+        const pmRate = revenue > 0 ? Math.round((pmCommission / revenue) * 100) : 0;
+        const isPaid = statement.payoutStatus === 'paid';
+        const fmt = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receipt #${statementId} - Luxury Lodging PM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:#f6f9fc;color:#1a1a1a;padding:40px 20px;-webkit-font-smoothing:antialiased}
+  .receipt{max-width:480px;margin:0 auto;background:#fff;border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 8px rgba(0,0,0,0.06),0 8px 24px rgba(0,0,0,0.04);overflow:hidden}
+  .inner{padding:40px 48px}
+  .brand-header{display:flex;align-items:center;gap:10px;padding-bottom:28px;border-bottom:1px solid #e6ebf1}
+  .brand-logo{width:36px;height:36px;background:linear-gradient(135deg,#0a2540,#1a3a5c);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .brand-logo span{color:#fff;font-size:15px;font-weight:700;letter-spacing:-0.5px}
+  .brand-name{font-size:14px;font-weight:600;color:#0a2540}
+  .brand-label{font-size:12px;color:#8898aa}
+  .status-amount{text-align:center;padding:32px 0;border-bottom:1px solid #e6ebf1}
+  .paid-badge{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:#1ea672;margin-bottom:12px}
+  .paid-badge svg{width:24px;height:24px}
+  .paid-text{font-size:15px;font-weight:600;color:#1ea672;margin-bottom:16px}
+  .amount{font-size:48px;font-weight:600;color:#0a2540;letter-spacing:-1px;line-height:1;margin-bottom:6px}
+  .amount-date{font-size:13px;color:#8898aa}
+  .summary{padding:24px 0;border-bottom:1px solid #e6ebf1}
+  .section-title{font-size:12px;font-weight:600;color:#3c4257;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px}
+  .line-item{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
+  .line-item .desc{color:#697386}
+  .line-item .amt{color:#0a2540;font-weight:500}
+  .line-item.total{border-top:1px solid #e6ebf1;margin-top:8px;padding-top:12px}
+  .line-item.total .desc{color:#0a2540;font-weight:600}
+  .line-item.total .amt{font-weight:600;color:#1ea672}
+  .details{padding:24px 0;border-bottom:1px solid #e6ebf1}
+  .detail-row{display:flex;justify-content:space-between;padding:5px 0;font-size:14px}
+  .detail-row .label{color:#697386}
+  .detail-row .value{color:#0a2540;font-weight:500}
+  .fee-note{font-size:11px;color:#8898aa;margin-top:10px;padding:8px 12px;background:#f6f9fc;border-radius:6px;line-height:1.5}
+  .footer{padding:24px 0 0;text-align:center}
+  .footer p{font-size:12px;color:#8898aa;line-height:1.6}
+  .footer a{color:#556cd6;text-decoration:none}
+  .footer-divider{border:none;border-top:1px solid #e6ebf1;margin:20px 0 0}
+  .footer-brand{padding:16px 0 0;font-size:11px;color:#c1c9d2;text-align:center}
+  @media print{body{background:#fff;padding:0}.receipt{box-shadow:none;border:1px solid #e6ebf1}}
+  @media(max-width:520px){body{padding:24px 16px}.inner{padding:28px 24px}.amount{font-size:38px}}
+</style>
+</head>
+<body>
+<div class="receipt">
+  <div class="inner">
+    <div class="brand-header">
+      <div class="brand-logo"><span>LL</span></div>
+      <div>
+        <div class="brand-name">Luxury Lodging PM</div>
+        <div class="brand-label">Payout Receipt</div>
+      </div>
+    </div>
+    <div class="status-amount">
+      <div class="paid-badge">
+        <svg fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      </div>
+      <div class="paid-text">${isPaid ? 'Payment Sent' : 'Collected'}</div>
+      <div class="amount">$${fmt(payoutAmount)}</div>
+      <div class="amount-date">Paid on ${paidDate}</div>
+    </div>
+    <div class="summary">
+      <div class="section-title">Payment Summary</div>
+      <div class="line-item"><span class="desc">Revenue</span><span class="amt">$${fmt(revenue)}</span></div>
+      <div class="line-item"><span class="desc">PM Commission${pmRate ? ' (' + pmRate + '%)' : ''}</span><span class="amt">-$${fmt(pmCommission)}</span></div>
+      <div class="line-item"><span class="desc">Expenses</span><span class="amt">-$${fmt(expenses)}</span></div>
+      <div class="line-item total"><span class="desc">Owner Payout</span><span class="amt">$${fmt(payoutAmount)}</span></div>
+    </div>
+    <div class="details">
+      <div class="section-title">Statement Details</div>
+      <div class="detail-row"><span class="label">Statement</span><span class="value">#${statementId}</span></div>
+      <div class="detail-row"><span class="label">Property</span><span class="value">${propertyName}</span></div>
+      <div class="detail-row"><span class="label">Owner</span><span class="value">${ownerName}</span></div>
+      <div class="detail-row"><span class="label">Period</span><span class="value">${periodStart} – ${periodEnd}</span></div>
+    </div>
+    <div class="details" style="border-bottom:none;padding-bottom:0">
+      <div class="section-title">Payment Method</div>
+      <div class="detail-row"><span class="label">Method</span><span class="value">Wise (ACH Transfer)</span></div>
+      <div class="detail-row"><span class="label">Transfer ID</span><span class="value">${transferId}</span></div>
+      <div class="detail-row"><span class="label">Transfer fee</span><span class="value">$${fmt(wiseFee)}</span></div>
+      <div class="detail-row"><span class="label">Total debited</span><span class="value">$${fmt(totalAmount)}</span></div>
+      <div class="fee-note">The transfer fee ($${fmt(wiseFee)}) is charged by Wise for processing the ACH bank transfer. Total debited = Owner Payout + Transfer fee.</div>
+    </div>
+    <div class="footer">
+      <p>Questions about this payout? Contact<br><a href="mailto:statements@luxurylodgingpm.com">statements@luxurylodgingpm.com</a></p>
+      <hr class="footer-divider">
+      <div class="footer-brand">Luxury Lodging PM</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+        res.set('Content-Type', 'text/html');
+        res.send(html);
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') return res.status(401).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Link Expired</h2><p>This receipt link has expired. Please open it again from the app.</p></body></html>');
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
+// Token generator for receipts (authenticated)
+app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) => {
+    const jwt = require('jsonwebtoken');
+    const token = jwt.sign(
+        { purpose: 'receipt', statementId: req.params.id },
+        process.env.JWT_SECRET,
+        { expiresIn: '10m' }
+    );
+    res.json({ token });
+});
+
 app.use('/api/payouts', authenticate, require('./routes/payouts'));
 
 // Queued payout processor - checks every 5 minutes for queued payouts when balance is sufficient
