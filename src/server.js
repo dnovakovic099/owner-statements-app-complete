@@ -814,7 +814,14 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
   .footer a{color:#556cd6;text-decoration:none}
   .footer-divider{border:none;border-top:1px solid #e6ebf1;margin:20px 0 0}
   .footer-brand{padding:16px 0 0;font-size:11px;color:#c1c9d2;text-align:center}
-  @media print{body{background:#fff;padding:0}.receipt{box-shadow:none;border:1px solid #e6ebf1}}
+  .actions{display:flex;gap:12px;padding:24px 0 0;border-top:1px solid #e6ebf1;margin-top:24px}
+  .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:background 0.15s}
+  .btn-primary{background:#0a2540;color:#fff}
+  .btn-primary:hover{background:#0d3050}
+  .btn-secondary{background:#fff;color:#0a2540;border:1px solid #e6ebf1}
+  .btn-secondary:hover{background:#f6f9fc}
+  .btn svg{width:16px;height:16px}
+  @media print{body{background:#fff;padding:0}.receipt{box-shadow:none;border:none}.actions{display:none!important}}
   @media(max-width:520px){body{padding:24px 16px}.inner{padding:28px 24px}.amount{font-size:38px}}
 </style>
 </head>
@@ -858,6 +865,16 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
       <div class="detail-row"><span class="label">Total debited</span><span class="value">$${fmt(totalAmount)}</span></div>
       <div class="fee-note">The transfer fee ($${fmt(wiseFee)}) is charged by Wise for processing the ACH bank transfer. Total debited = Owner Payout + Transfer fee.</div>
     </div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="window.print()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+        Print
+      </button>
+      <button class="btn btn-primary" onclick="downloadPDF()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Download PDF
+      </button>
+    </div>
     <div class="footer">
       <p>Questions about this payout? Contact<br><a href="mailto:statements@luxurylodgingpm.com">statements@luxurylodgingpm.com</a></p>
       <hr class="footer-divider">
@@ -865,6 +882,29 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
     </div>
   </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+<script>
+async function downloadPDF(){
+  var btn=document.querySelector('.btn-primary');
+  var orig=btn.innerHTML;
+  btn.innerHTML='Generating...';btn.disabled=true;
+  try{
+    var el=document.querySelector('.receipt');
+    var actions=document.querySelector('.actions');
+    actions.style.display='none';
+    var canvas=await html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+    actions.style.display='';
+    var jsPDF=window.jspdf.jsPDF;
+    var imgW=190;
+    var imgH=(canvas.height*imgW)/canvas.width;
+    var pdf=new jsPDF('p','mm','a4');
+    pdf.addImage(canvas.toDataURL('image/png'),'PNG',10,10,imgW,imgH);
+    pdf.save('receipt-#${statementId}.pdf');
+  }catch(e){console.error(e);window.print();}
+  btn.innerHTML=orig;btn.disabled=false;
+}
+<\/script>
 </body></html>`;
 
         res.set('Content-Type', 'text/html');
