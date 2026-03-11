@@ -8,11 +8,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  CalendarClock,
   X,
   BarChart3,
   FolderOpen,
   CreditCard,
+  Info,
+  XCircle,
 } from 'lucide-react';
+import { tagScheduleAPI } from '../../services/api';
 
 type Page = 'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics';
 
@@ -91,12 +95,41 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
+  // Tag schedule notification state
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [scheduleNotifications, setScheduleNotifications] = useState<any[]>([]);
+  const [scheduleUnreadCount, setScheduleUnreadCount] = useState(0);
+  const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
+  const scheduleRef = useRef<HTMLDivElement>(null);
+
+  // Fetch tag schedule notifications
+  const fetchScheduleNotifications = async () => {
+    try {
+      const response = await tagScheduleAPI.getNotifications(undefined, 20);
+      const notifications = (response.notifications || []).filter((n: any) => n.status !== 'dismissed');
+      setScheduleNotifications(notifications);
+      setScheduleUnreadCount(response.unreadCount || 0);
+    } catch (err) {
+      // Silent fail
+    }
+  };
+
+  useEffect(() => {
+    fetchScheduleNotifications();
+    const interval = setInterval(fetchScheduleNotifications, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Close notification dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setIsNotificationOpen(false);
         setShowAllNotifications(false);
+      }
+      if (scheduleRef.current && !scheduleRef.current.contains(event.target as Node)) {
+        setIsScheduleOpen(false);
+        setExpandedReportId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -164,23 +197,45 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Bottom Actions Bar */}
       <div className="px-2 py-2 border-t border-gray-100 flex-shrink-0 relative" ref={notificationRef}>
         <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between'}`}>
-          {/* Notifications Button */}
-          <button
-            onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-            className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
-              isNotificationOpen
-                ? 'bg-blue-100 text-blue-600'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-            }`}
-            title="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-1">
+            {/* New Listings Notifications Button */}
+            <button
+              onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
+              className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
+                isNotificationOpen
+                  ? 'bg-blue-100 text-blue-600'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+              }`}
+              title="New Listings"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Schedule Reminders Button */}
+            <div ref={scheduleRef} className="relative">
+              <button
+                onClick={() => { setIsScheduleOpen(!isScheduleOpen); setIsNotificationOpen(false); }}
+                className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
+                  isScheduleOpen
+                    ? 'bg-amber-100 text-amber-600'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                }`}
+                title="Schedule Reminders"
+              >
+                <CalendarClock className="w-5 h-5" />
+                {scheduleUnreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
+                    {scheduleUnreadCount > 9 ? '9+' : scheduleUnreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
 
           {/* Collapse Toggle */}
           <button
@@ -288,6 +343,140 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Schedule Reminders Dropdown */}
+        {isScheduleOpen && (
+          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden`}>
+            <div className="px-4 py-3 border-b border-gray-100 bg-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-900 text-sm">Schedule Reminders</h3>
+                  {scheduleUnreadCount > 0 && (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[11px] font-semibold rounded-full">
+                      {scheduleUnreadCount} new
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setIsScheduleOpen(false); setExpandedReportId(null); }}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50">
+              {scheduleNotifications.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <CalendarClock className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                  <p className="text-sm text-gray-400">No schedule reminders</p>
+                </div>
+              ) : (
+                scheduleNotifications.map((notification: any) => {
+                  const hasReport = notification.skippedReport && notification.skippedReport.length > 0;
+                  const isExpanded = expandedReportId === notification.id;
+                  return (
+                    <div key={notification.id}>
+                      <div
+                        className={`px-4 py-3 cursor-pointer transition-colors hover:bg-amber-50/50 ${
+                          notification.status === 'unread' ? 'bg-amber-50/30' : ''
+                        }`}
+                        onClick={async () => {
+                          if (hasReport) {
+                            setExpandedReportId(isExpanded ? null : notification.id);
+                          }
+                          if (notification.status === 'unread') {
+                            await tagScheduleAPI.markNotificationRead(notification.id);
+                            fetchScheduleNotifications();
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            notification.status === 'unread' ? 'bg-amber-500' : 'bg-transparent'
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${notification.status === 'unread' ? 'text-gray-900' : 'text-gray-500'}`}>
+                              {notification.tagName}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {notification.listingCount} listing{notification.listingCount !== 1 ? 's' : ''}
+                              {hasReport && (
+                                <span className="ml-1.5 text-amber-600 font-medium">
+                                  ({notification.skippedReport.length} issue{notification.skippedReport.length !== 1 ? 's' : ''})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                              {(() => {
+                                const date = new Date(notification.scheduledFor);
+                                const now = new Date();
+                                const diffMs = now.getTime() - date.getTime();
+                                const diffMins = Math.floor(diffMs / 60000);
+                                const diffHours = Math.floor(diffMs / 3600000);
+                                const diffDays = Math.floor(diffMs / 86400000);
+                                if (diffMins < 1) return 'Just now';
+                                if (diffMins < 60) return `${diffMins}m ago`;
+                                if (diffHours < 24) return `${diffHours}h ago`;
+                                if (diffDays < 7) return `${diffDays}d ago`;
+                                return date.toLocaleDateString();
+                              })()}
+                            </span>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await tagScheduleAPI.dismissNotification(notification.id);
+                                fetchScheduleNotifications();
+                              }}
+                              className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Expanded skipped report */}
+                      {isExpanded && hasReport && (
+                        <div className="px-4 pb-3 bg-gray-50/50">
+                          <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                            {notification.skippedReport.map((item: any, idx: number) => {
+                              const isError = item.reason?.startsWith('Error');
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex items-start gap-2 p-2 rounded-md text-xs ${
+                                    isError
+                                      ? 'bg-red-50 border border-red-200'
+                                      : 'bg-amber-50 border border-amber-200'
+                                  }`}
+                                >
+                                  {isError ? (
+                                    <XCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                                  ) : (
+                                    <Info className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                                  )}
+                                  <div>
+                                    <span className="font-medium text-gray-900">{item.name}</span>
+                                    {item.isOffboarded && (
+                                      <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-600">Offboarded</span>
+                                    )}
+                                    <p className="text-gray-500 mt-0.5">{item.reason}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
       </div>

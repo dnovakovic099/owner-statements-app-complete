@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI, tagScheduleAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
@@ -19,6 +19,7 @@ const EditStatementModal = lazy(() => import('./EditStatementModal'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
 const GroupsPage = lazy(() => import('./GroupsPage'));
 const WisePage = lazy(() => import('./WisePage'));
+const GenerationReportModal = lazy(() => import('./GenerationReportModal'));
 
 interface User {
   username: string;
@@ -74,6 +75,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [pendingRegenerateId, setPendingRegenerateId] = useState<number | null>(null);
+  const [generationReport, setGenerationReport] = useState<{
+    generated: number;
+    skipped: number;
+    errors: number;
+    skippedItems: Array<{ name: string; propertyId?: number; propertyName?: string; listingId?: number; type?: 'group' | 'listing'; reason: string; isOffboarded?: boolean; statementGenerated?: boolean }>;
+    tag?: string;
+  } | null>(null);
 
   // Notification states
   const [newListings, setNewListings] = useState<NewListing[]>([]);
@@ -220,6 +228,48 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     loadInitialData();
   }, []);
 
+  // Check for unread tag schedule notifications with skipped reports on login
+  useEffect(() => {
+    const checkScheduleReports = async () => {
+      try {
+        const response = await tagScheduleAPI.getNotifications('unread', 10);
+        const notifications = response.notifications || [];
+        // Find first notification with a skipped report that hasn't been shown
+        const shownReportIds = JSON.parse(localStorage.getItem('shownScheduleReportIds') || '[]');
+        const reportNotification = notifications.find(
+          (n: any) => n.skippedReport && n.skippedReport.length > 0 && !shownReportIds.includes(n.id)
+        );
+        if (reportNotification) {
+          // Build generation report from the notification's skippedReport
+          const skippedItems = (reportNotification.skippedReport || []).map((item: any) => ({
+            name: item.name || item.propertyName || 'Unknown',
+            listingId: item.listingId,
+            type: item.type as 'group' | 'listing' | undefined,
+            reason: item.reason,
+            isOffboarded: item.isOffboarded,
+            statementGenerated: item.statementGenerated,
+          }));
+          setGenerationReport({
+            generated: 0, // We don't have this from the notification
+            skipped: skippedItems.length,
+            errors: 0,
+            skippedItems,
+            tag: reportNotification.tagName,
+          });
+          // Mark as shown so it doesn't auto-popup again
+          const updatedShownIds = [...shownReportIds, reportNotification.id];
+          localStorage.setItem('shownScheduleReportIds', JSON.stringify(updatedShownIds));
+          // Mark notification as read
+          await tagScheduleAPI.markNotificationRead(reportNotification.id);
+        }
+      } catch (err) {
+        // Silent fail - scheduled report popup is non-critical
+        console.error('Failed to check schedule reports:', err);
+      }
+    };
+    checkScheduleReports();
+  }, []);
+
   useEffect(() => {
     // Reset to first page when filters change
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
@@ -348,6 +398,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
               updateToast(toastId, completionMessage, errors > 0 ? 'error' : 'success');
               await loadStatements();
+
+              // Build generation report for tag-based generation
+              if (isTagBased && jobStatus.result?.results) {
+                const skippedItems = (jobStatus.result.results.skipped || []).map((s: any) => ({
+                  name: s.propertyName,
+                  propertyId: s.propertyId,
+                  reason: s.reason || 'No activity in period',
+                }));
+                const errorItems = (jobStatus.result.results.errors || []).map((e: any) => ({
+                  name: e.propertyName,
+                  propertyId: e.propertyId,
+                  reason: `Error: ${e.error}`,
+                }));
+                const allSkippedItems = [...skippedItems, ...errorItems];
+                if (allSkippedItems.length > 0) {
+                  setGenerationReport({
+                    generated,
+                    skipped,
+                    errors,
+                    skippedItems: allSkippedItems,
+                    tag: data.tag,
+                  });
+                }
+              }
             } else if (jobStatus.status === 'failed') {
               clearInterval(pollInterval);
               updateToast(toastId, 'Bulk generation failed', 'error');
@@ -1663,6 +1737,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             }}
             statementId={editingStatementId}
             onStatementUpdated={loadStatements}
+          />
+        )}
+
+        {generationReport && (
+          <GenerationReportModal
+            isOpen={!!generationReport}
+            onClose={() => setGenerationReport(null)}
+            report={generationReport}
           />
         )}
       </Suspense>

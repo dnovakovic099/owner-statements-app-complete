@@ -354,6 +354,12 @@ class TagScheduleService {
             errorMessage += 'Individual generation failed. ';
         }
 
+        // Build skipped report from both group and individual results
+        const allSkippedDetails = [
+            ...(groupResults.skippedDetails || []),
+            ...(individualResults.skippedDetails || [])
+        ];
+
         // Always create notification (even with partial failures)
         let message = `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts auto-generated)`;
         if (hasErrors) {
@@ -361,6 +367,9 @@ class TagScheduleService {
         }
         if (groupResults.errors > 0 || individualResults.errors > 0) {
             message += ` [${groupResults.errors + individualResults.errors} generation errors]`;
+        }
+        if (allSkippedDetails.length > 0) {
+            message += ` [${allSkippedDetails.length} listing(s) had issues]`;
         }
 
         try {
@@ -370,7 +379,8 @@ class TagScheduleService {
                 message,
                 status: 'unread',
                 listingCount,
-                scheduledFor: now
+                scheduledFor: now,
+                skippedReport: allSkippedDetails.length > 0 ? allSkippedDetails : null
             });
 
             // Always update lastNotifiedAt to prevent infinite retries
@@ -401,7 +411,7 @@ class TagScheduleService {
      * Auto-generate draft statements for all groups with the given tag
      */
     async autoGenerateGroupStatements(tagName, schedule) {
-        const results = { generated: 0, skipped: 0, errors: 0, groups: [] };
+        const results = { generated: 0, skipped: 0, errors: 0, groups: [], skippedDetails: [] };
 
         try {
             const groupService = getListingGroupService();
@@ -425,10 +435,10 @@ class TagScheduleService {
                     // Get group details with member listings
                     const groupDetails = await groupService.getGroupById(group.id);
 
-                    // Filter out inactive/offboarded listings from group members
-                    const activeMembers = (groupDetails.members || []).filter(m => m.isActive);
-                    if (activeMembers.length === 0) {
-                        logger.info(`[TagScheduleService] Skipping group "${group.name}" - no active member listings`);
+                    // Include all members (active + offboarded) - offboarded properties should still get statements
+                    const allMembers = groupDetails.members || [];
+                    if (allMembers.length === 0) {
+                        logger.info(`[TagScheduleService] Skipping group "${group.name}" - no member listings`);
                         continue;
                     }
 
@@ -442,11 +452,11 @@ class TagScheduleService {
                     // Calculate date range based on tag and resolved calculation type
                     const dateRange = this.calculateDateRangeForTag(tagName, calculationType);
 
-                    // Generate combined draft statement for the group (active members only)
+                    // Generate combined draft statement for the group (all members including offboarded)
                     const statement = await StatementService.generateGroupStatement({
                         groupId: group.id,
                         groupName: group.name,
-                        listingIds: activeMembers.map(m => m.id),
+                        listingIds: allMembers.map(m => m.id),
                         startDate: dateRange.start,
                         endDate: dateRange.end,
                         calculationType
@@ -455,6 +465,11 @@ class TagScheduleService {
                     // Check if statement was skipped (duplicate)
                     if (statement?.skipped) {
                         results.skipped++;
+                        results.skippedDetails.push({
+                            name: group.name,
+                            type: 'group',
+                            reason: 'Duplicate - statement already exists'
+                        });
                         logger.info(`[TagScheduleService] Skipped group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }
@@ -470,6 +485,11 @@ class TagScheduleService {
                 } catch (groupError) {
                     logger.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
                     results.errors++;
+                    results.skippedDetails.push({
+                        name: group.name,
+                        type: 'group',
+                        reason: `Error: ${groupError.message}`
+                    });
                 }
 
                 // Throttle between groups to avoid Hostify API rate limits
@@ -492,10 +512,10 @@ class TagScheduleService {
      * so they aren't silently skipped by both the group and individual generation paths.
      */
     async autoGenerateIndividualStatements(tagName, schedule) {
-        const results = { generated: 0, skipped: 0, errors: 0, listings: [] };
+        const results = { generated: 0, skipped: 0, errors: 0, listings: [], skippedDetails: [] };
 
         try {
-            // Get all active listings with this tag (including grouped ones)
+            // Get all listings with this tag (active + offboarded) - offboarded properties should still get statements
             // We'll filter out listings whose groups already handle this tag
             const pattern = this.buildTagMatchPattern(tagName);
             const upperTag = (tagName || '').toUpperCase();
@@ -505,7 +525,6 @@ class TagScheduleService {
                 // Use pattern matching
                 listings = await Listing.findAll({
                     where: {
-                        isActive: true,
                         tags: { [Op.iLike]: pattern }
                     }
                 });
@@ -523,7 +542,6 @@ class TagScheduleService {
                 // Exact match for other tags
                 listings = await Listing.findAll({
                     where: {
-                        isActive: true,
                         tags: {
                             [Op.or]: [
                                 { [Op.iLike]: tagName },
@@ -590,11 +608,32 @@ class TagScheduleService {
                     // Check if statement was skipped (duplicate)
                     if (statement?.skipped) {
                         results.skipped++;
+                        results.skippedDetails.push({
+                            name: listing.displayName || listing.name,
+                            listingId: listing.id,
+                            type: 'listing',
+                            reason: 'Duplicate - statement already exists',
+                            isOffboarded: !listing.isActive
+                        });
                         logger.info(`[TagScheduleService] Skipped listing "${listing.displayName || listing.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }
 
-                    results.generated++;
+                    // Check if statement has zero revenue (no checkouts/reservations)
+                    if (statement && statement.totalRevenue === 0 && statement.totalExpenses === 0) {
+                        results.generated++;
+                        results.skippedDetails.push({
+                            name: listing.displayName || listing.name,
+                            listingId: listing.id,
+                            type: 'listing',
+                            reason: 'No revenue and no expenses in period',
+                            isOffboarded: !listing.isActive,
+                            statementGenerated: true
+                        });
+                    } else {
+                        results.generated++;
+                    }
+
                     results.listings.push({
                         listingId: listing.id,
                         listingName: listing.displayName || listing.name,
@@ -605,6 +644,13 @@ class TagScheduleService {
                 } catch (listingError) {
                     logger.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
                     results.errors++;
+                    results.skippedDetails.push({
+                        name: listing.displayName || listing.name,
+                        listingId: listing.id,
+                        type: 'listing',
+                        reason: `Error: ${listingError.message}`,
+                        isOffboarded: !listing.isActive
+                    });
                 }
 
                 // Throttle between listings to avoid Hostify API rate limits
@@ -733,6 +779,7 @@ class TagScheduleService {
 
     /**
      * Get all listings with a specific tag (case-insensitive, pattern matching)
+     * Includes offboarded/inactive listings since they should still get statements
      */
     async getListingsWithTag(tagName) {
         const pattern = this.buildTagMatchPattern(tagName);
@@ -743,7 +790,6 @@ class TagScheduleService {
             // Use pattern matching
             listings = await Listing.findAll({
                 where: {
-                    isActive: true,
                     tags: { [Op.iLike]: pattern }
                 }
             });
@@ -761,7 +807,6 @@ class TagScheduleService {
             // Exact match for other tags
             listings = await Listing.findAll({
                 where: {
-                    isActive: true,
                     tags: {
                         [Op.or]: [
                             { [Op.iLike]: tagName },

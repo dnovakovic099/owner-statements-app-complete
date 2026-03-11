@@ -219,7 +219,7 @@ export const statementsAPI = {
     await api.delete(`/statements/${id}`);
   },
 
-  getJobStatus: async (jobId: string): Promise<{ status: string; progress?: { current: number; total: number }; result?: { summary: { generated: number; skipped: number; errors: number } } }> => {
+  getJobStatus: async (jobId: string): Promise<{ status: string; progress?: { current: number; total: number }; result?: { summary: { generated: number; skipped: number; errors: number }; results?: { skipped?: Array<{ propertyId: number; propertyName: string; reason: string }>; errors?: Array<{ propertyId: number; propertyName: string; error: string }> } } }> => {
     const response = await api.get(`/statements/jobs/${jobId}`);
     return response.data;
   },
@@ -899,6 +899,15 @@ export interface PeriodConfig {
   templateId?: number | null;
 }
 
+export interface SkippedReportItem {
+  name: string;
+  listingId?: number;
+  type?: 'group' | 'listing';
+  reason: string;
+  isOffboarded?: boolean;
+  statementGenerated?: boolean;
+}
+
 export interface TagNotification {
   id: number;
   tagName: string;
@@ -910,6 +919,7 @@ export interface TagNotification {
   readAt?: string;
   actionedAt?: string;
   createdAt: string;
+  skippedReport?: SkippedReportItem[] | null;
 }
 
 export const tagScheduleAPI = {

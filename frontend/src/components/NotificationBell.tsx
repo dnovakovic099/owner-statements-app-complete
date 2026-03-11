@@ -2,6 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Clock, X, ChevronRight } from 'lucide-react';
 import { tagScheduleAPI } from '../services/api';
 
+interface SkippedReportItem {
+  name: string;
+  listingId?: number;
+  type?: string;
+  reason: string;
+  isOffboarded?: boolean;
+  statementGenerated?: boolean;
+}
+
 interface TagNotification {
   id: number;
   tagName: string;
@@ -10,10 +19,11 @@ interface TagNotification {
   listingCount: number;
   scheduledFor: string;
   createdAt: string;
+  skippedReport?: SkippedReportItem[] | null;
 }
 
 interface NotificationBellProps {
-  onNotificationClick: (tagName: string, notificationId: number) => void;
+  onNotificationClick: (tagName: string, notificationId: number, skippedReport?: SkippedReportItem[] | null) => void;
   refreshInterval?: number;
 }
 
@@ -73,7 +83,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const handleNotificationClick = async (notification: TagNotification) => {
     await markAsActioned(notification.id);
-    onNotificationClick(notification.tagName, notification.id);
+    onNotificationClick(notification.tagName, notification.id, notification.skippedReport);
     setIsOpen(false);
   };
 
@@ -146,6 +156,11 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {notification.listingCount} listing{notification.listingCount !== 1 ? 's' : ''} ready
+                        {notification.skippedReport && notification.skippedReport.length > 0 && (
+                          <span className="ml-1.5 text-amber-600 font-medium">
+                            ({notification.skippedReport.length} issue{notification.skippedReport.length !== 1 ? 's' : ''})
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         {formatTime(notification.scheduledFor)}

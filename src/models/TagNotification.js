@@ -53,6 +53,20 @@ const TagNotification = sequelize.define('TagNotification', {
         allowNull: true,
         field: 'actioned_at',
         comment: 'When the user took action (clicked through to send emails)'
+    },
+    skippedReport: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'skipped_report',
+        comment: 'JSON report of listings that were skipped during generation with reasons',
+        get() {
+            const raw = this.getDataValue('skippedReport');
+            if (!raw) return null;
+            try { return JSON.parse(raw); } catch { return null; }
+        },
+        set(value) {
+            this.setDataValue('skippedReport', value ? JSON.stringify(value) : null);
+        }
     }
 }, {
     tableName: 'tag_notifications',
