@@ -278,13 +278,9 @@ class ListingService {
                     const groupMap = new Map(groups.map(g => [g.id, g.toJSON()]));
 
                     // Attach group data to each listing
+                    // Note: toJSON() already decrypts wiseRecipientId via the model getter
                     return listings.map(l => {
                         const listingJson = l.toJSON();
-                        try {
-                            listingJson.wiseRecipientId = decryptOptional(listingJson.wiseRecipientId);
-                        } catch (e) {
-                            listingJson.wiseRecipientId = null;
-                        }
                         if (listingJson.groupId && groupMap.has(listingJson.groupId)) {
                             const group = groupMap.get(listingJson.groupId);
                             listingJson.group = {
@@ -300,14 +296,9 @@ class ListingService {
                 }
             }
 
+            // Note: toJSON() already decrypts wiseRecipientId via the model getter
             return listings.map(l => {
-                const json = { ...l.toJSON(), group: null };
-                try {
-                    json.wiseRecipientId = decryptOptional(json.wiseRecipientId);
-                } catch (e) {
-                    json.wiseRecipientId = null;
-                }
-                return json;
+                return { ...l.toJSON(), group: null };
             });
         } catch (error) {
             logger.error('Error fetching listings', { error: error.message });

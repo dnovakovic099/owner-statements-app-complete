@@ -197,7 +197,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Bottom Actions Bar */}
       <div className="px-2 py-2 border-t border-gray-100 flex-shrink-0 relative" ref={notificationRef}>
         <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between'}`}>
-          <div className="flex items-center gap-1">
+          <div className={`flex items-center gap-1 ${collapsed ? 'flex-col' : ''}`}>
             {/* New Listings Notifications Button */}
             <button
               onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
