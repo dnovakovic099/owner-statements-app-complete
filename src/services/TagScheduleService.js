@@ -354,14 +354,18 @@ class TagScheduleService {
             errorMessage += 'Individual generation failed. ';
         }
 
-        // Build skipped report from both group and individual results
+        // Build skipped report — only real issues, not routine duplicates
         const allSkippedDetails = [
             ...(groupResults.skippedDetails || []),
             ...(individualResults.skippedDetails || [])
         ];
+        const totalDuplicates = (groupResults.duplicates || 0) + (individualResults.duplicates || 0);
 
         // Always create notification (even with partial failures)
         let message = `Reminder: It's time to send emails for "${schedule.tagName}" (${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts auto-generated)`;
+        if (totalDuplicates > 0) {
+            message += ` [${totalDuplicates} already had statements]`;
+        }
         if (hasErrors) {
             message += ` [Warnings: ${errorMessage.trim()}]`;
         }
@@ -411,7 +415,7 @@ class TagScheduleService {
      * Auto-generate draft statements for all groups with the given tag
      */
     async autoGenerateGroupStatements(tagName, schedule) {
-        const results = { generated: 0, skipped: 0, errors: 0, groups: [], skippedDetails: [] };
+        const results = { generated: 0, skipped: 0, errors: 0, duplicates: 0, groups: [], skippedDetails: [] };
 
         try {
             const groupService = getListingGroupService();
@@ -462,14 +466,10 @@ class TagScheduleService {
                         calculationType
                     });
 
-                    // Check if statement was skipped (duplicate)
+                    // Check if statement was skipped (duplicate) — expected, not an issue
                     if (statement?.skipped) {
                         results.skipped++;
-                        results.skippedDetails.push({
-                            name: group.name,
-                            type: 'group',
-                            reason: 'Duplicate - statement already exists'
-                        });
+                        results.duplicates++;
                         logger.info(`[TagScheduleService] Skipped group "${group.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }
@@ -512,7 +512,7 @@ class TagScheduleService {
      * so they aren't silently skipped by both the group and individual generation paths.
      */
     async autoGenerateIndividualStatements(tagName, schedule) {
-        const results = { generated: 0, skipped: 0, errors: 0, listings: [], skippedDetails: [] };
+        const results = { generated: 0, skipped: 0, errors: 0, duplicates: 0, listings: [], skippedDetails: [] };
 
         try {
             // Get all listings with this tag (active + offboarded) - offboarded properties should still get statements
@@ -605,16 +605,10 @@ class TagScheduleService {
                         calculationType
                     });
 
-                    // Check if statement was skipped (duplicate)
+                    // Check if statement was skipped (duplicate) — expected, not an issue
                     if (statement?.skipped) {
                         results.skipped++;
-                        results.skippedDetails.push({
-                            name: listing.displayName || listing.name,
-                            listingId: listing.id,
-                            type: 'listing',
-                            reason: 'Duplicate - statement already exists',
-                            isOffboarded: !listing.isActive
-                        });
+                        results.duplicates++;
                         logger.info(`[TagScheduleService] Skipped listing "${listing.displayName || listing.name}" - statement already exists (ID: ${statement.existingId})`);
                         continue;
                     }

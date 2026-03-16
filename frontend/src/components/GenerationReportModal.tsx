@@ -41,9 +41,11 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
 }) => {
   if (!report) return null;
 
-  const hasIssues = report.skippedItems.length > 0;
-  const errorItems = report.skippedItems.filter(item => item.reason.startsWith('Error'));
-  const skippedItems = report.skippedItems.filter(item => !item.reason.startsWith('Error'));
+  const duplicateItems = report.skippedItems.filter(item => item.reason === 'Duplicate - statement already exists');
+  const realIssues = report.skippedItems.filter(item => item.reason !== 'Duplicate - statement already exists');
+  const errorItems = realIssues.filter(item => item.reason.startsWith('Error'));
+  const skippedItems = realIssues.filter(item => !item.reason.startsWith('Error'));
+  const hasIssues = realIssues.length > 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -68,10 +70,16 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
                 <span><strong>{report.generated}</strong> generated</span>
               </div>
             )}
-            {report.skipped > 0 && (
+            {duplicateItems.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Info className="h-4 w-4 text-gray-400" />
+                <span><strong>{duplicateItems.length}</strong> already existed</span>
+              </div>
+            )}
+            {realIssues.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <Info className="h-4 w-4 text-amber-500" />
-                <span><strong>{report.skipped}</strong> skipped/issues</span>
+                <span><strong>{realIssues.length}</strong> issue{realIssues.length !== 1 ? 's' : ''}</span>
               </div>
             )}
             {report.errors > 0 && (
@@ -82,11 +90,19 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
             )}
           </div>
 
+          {/* Duplicate summary (collapsed) */}
+          {duplicateItems.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm text-muted-foreground">
+              <CheckCircle2 className="h-4 w-4 text-gray-400 shrink-0" />
+              <span><strong>{duplicateItems.length}</strong> listing{duplicateItems.length !== 1 ? 's' : ''} already had statements for this period (skipped)</span>
+            </div>
+          )}
+
           {/* Skipped/Error items list */}
           {hasIssues && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                The following listings in this tag did not get a statement or had issues:
+                The following listings had issues:
               </p>
               <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-1">
                   {skippedItems.map((item, idx) => (

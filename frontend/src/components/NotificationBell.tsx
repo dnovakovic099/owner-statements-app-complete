@@ -156,11 +156,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {notification.listingCount} listing{notification.listingCount !== 1 ? 's' : ''} ready
-                        {notification.skippedReport && notification.skippedReport.length > 0 && (
-                          <span className="ml-1.5 text-amber-600 font-medium">
-                            ({notification.skippedReport.length} issue{notification.skippedReport.length !== 1 ? 's' : ''})
-                          </span>
-                        )}
+                        {notification.skippedReport && (() => {
+                          const realIssues = notification.skippedReport.filter(i => i.reason !== 'Duplicate - statement already exists');
+                          return realIssues.length > 0 ? (
+                            <span className="ml-1.5 text-amber-600 font-medium">
+                              ({realIssues.length} issue{realIssues.length !== 1 ? 's' : ''})
+                            </span>
+                          ) : null;
+                        })()}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         {formatTime(notification.scheduledFor)}
