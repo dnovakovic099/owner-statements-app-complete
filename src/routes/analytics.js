@@ -27,8 +27,29 @@ const setCacheHeaders = (maxAge = 300) => (req, res, next) => {
  */
 function parseDate(dateStr) {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
+    // Validate YYYY-MM-DD format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+    const date = new Date(dateStr + 'T00:00:00');
     return isNaN(date.getTime()) ? null : date;
+}
+
+function validateDateRange(req, res) {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+        res.status(400).json({ error: 'Missing required parameters', message: 'startDate and endDate are required' });
+        return null;
+    }
+    const start = parseDate(startDate);
+    const end = parseDate(endDate);
+    if (!start || !end) {
+        res.status(400).json({ error: 'Invalid date format', message: 'Dates must be in YYYY-MM-DD format' });
+        return null;
+    }
+    if (start > end) {
+        res.status(400).json({ error: 'Invalid date range', message: 'startDate must be before or equal to endDate' });
+        return null;
+    }
+    return { start, end, startDate, endDate };
 }
 
 /**
@@ -773,24 +794,9 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
  */
 router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
-
-        if (!startDate || !endDate) {
-            return res.status(400).json({
-                error: 'Missing required parameters',
-                message: 'startDate and endDate are required'
-            });
-        }
-
-        const start = parseDate(startDate);
-        const end = parseDate(endDate);
-
-        if (!start || !end) {
-            return res.status(400).json({
-                error: 'Invalid date format',
-                message: 'Dates must be in YYYY-MM-DD format'
-            });
-        }
+        const dates = validateDateRange(req, res);
+        if (!dates) return;
+        const { start, end, startDate, endDate } = dates;
 
         // Fetch all statements in date range (resortFee is inside reservations JSON)
         const statements = await Statement.findAll({
@@ -804,6 +810,7 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
         });
 
         // Aggregate resortFee per property from reservations JSON
+        // Deduplicate by hostifyId and filter by checkout date within report period
         const propertyMap = new Map();
 
         for (const stmt of statements) {
@@ -826,12 +833,31 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
                         ownerName: stmt.ownerName || null,
                         totalDamageCoverage: 0,
                         reservationCount: 0,
+                        _seenIds: new Set(),
                     });
                 }
                 const entry = propertyMap.get(propId);
+
+                // Deduplicate by hostifyId
+                const resId = reservation.hostifyId || reservation.id;
+                if (resId && entry._seenIds.has(resId)) continue;
+
+                // Filter by checkout date within report period
+                const resCheckout = reservation.checkOutDate || reservation.checkOut || reservation.checkout;
+                if (resCheckout) {
+                    const coStr = String(resCheckout).slice(0, 10);
+                    if (coStr >= '2000' && (coStr < startDate || coStr > endDate)) continue;
+                }
+
+                if (resId) entry._seenIds.add(resId);
                 entry.totalDamageCoverage += resortFee;
                 entry.reservationCount += 1;
             }
+        }
+
+        // Remove internal tracking sets
+        for (const entry of propertyMap.values()) {
+            delete entry._seenIds;
         }
 
         let results = Array.from(propertyMap.values());
@@ -881,24 +907,10 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
  */
 router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
     try {
-        const { startDate, endDate, ownerId, propertyId, groupId, tag, includeZero } = req.query;
-
-        if (!startDate || !endDate) {
-            return res.status(400).json({
-                error: 'Missing required parameters',
-                message: 'startDate and endDate are required'
-            });
-        }
-
-        const start = parseDate(startDate);
-        const end = parseDate(endDate);
-
-        if (!start || !end) {
-            return res.status(400).json({
-                error: 'Invalid date format',
-                message: 'Dates must be in YYYY-MM-DD format'
-            });
-        }
+        const dates = validateDateRange(req, res);
+        if (!dates) return;
+        const { start, end, startDate, endDate } = dates;
+        const { ownerId, propertyId, groupId, tag, includeZero } = req.query;
 
         // Build where clause with optional filters
         const whereClause = {

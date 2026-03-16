@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 class HostawayService {
     constructor() {
@@ -22,9 +23,7 @@ class HostawayService {
                 scope: 'general'
             });
 
-            console.log('Getting Hostaway access token...');
-            console.log(`Account ID: ${this.accountId}`);
-            console.log(`API Key: ${this.apiKey ? this.apiKey.substring(0, 20) + '...' : 'Not set'}`);
+            logger.info('Getting Hostaway access token...');
 
             const response = await axios.post(
                 `${this.baseURL}/accessTokens`,
@@ -37,10 +36,10 @@ class HostawayService {
             this.authToken = response.data.access_token;
             this.tokenExpires = Date.now() + (response.data.expires_in * 1000) - 300000; // 5 min buffer
 
-            console.log('Hostaway access token obtained successfully');
+            logger.info('Hostaway access token obtained successfully');
             return this.authToken;
         } catch (error) {
-            console.error('Hostaway auth error:', error.response?.data || error.message);
+            logger.error('Hostaway auth error:', error.response?.data || error.message);
             throw new Error('Failed to authenticate with Hostaway');
         }
     }
@@ -53,16 +52,10 @@ class HostawayService {
         try {
             const token = await this.getAuthToken();
             
-            console.log(`Making Hostaway API request to: ${this.baseURL}${endpoint}`);
-            console.log(`Using access token: ${token ? token.substring(0, 20) + '...' : 'Not set'}`);
-            
             const headers = {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             };
-            
-            console.log('Request headers:', headers);
-            console.log('Request params:', params);
             
             const response = await axios.get(`${this.baseURL}${endpoint}`, {
                 headers,
@@ -72,10 +65,10 @@ class HostawayService {
             
             return response.data;
         } catch (error) {
-            console.error(`Hostaway API request failed: ${endpoint}`, error.message);
+            logger.error(`Hostaway API request failed: ${endpoint}`, error.message);
             if (error.response) {
-                console.error('Response status:', error.response.status);
-                console.error('Response data:', error.response.data);
+                logger.error('Response status:', error.response.status);
+                logger.error('Response data:', error.response.data);
                 
                 if (error.response.status === 401) {
                     // Token might be expired, clear it
@@ -102,14 +95,14 @@ class HostawayService {
         // Add property filter if specified
         if (propertyId) {
             params.listingId = propertyId;
-            console.log(`Property filter enabled for listingId: ${propertyId}`);
+            logger.info(`Property filter enabled for listingId: ${propertyId}`);
         }
 
         return await this.makeRequest('/reservations', params);
     }
 
     async getAllReservations(startDate, endDate, propertyId = null) {
-        console.log(`Fetching reservations for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
+        logger.info(`Fetching reservations for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
 
         let allReservations = [];
         let offset = 0;
@@ -118,13 +111,13 @@ class HostawayService {
         let page = 1;
 
         while (hasMore) {
-            console.log(`Fetching reservations page ${page} (offset: ${offset})`);
+            logger.info(`Fetching reservations page ${page} (offset: ${offset})`);
             
             const response = await this.getReservations(startDate, endDate, limit, offset, propertyId);
             
             if (response.result && response.result.length > 0) {
                 allReservations = allReservations.concat(response.result);
-                console.log(`Page ${page}: Got ${response.result.length} reservations (total so far: ${allReservations.length})`);
+                logger.info(`Page ${page}: Got ${response.result.length} reservations (total so far: ${allReservations.length})`);
                 
                 // Check if there are more results
                 hasMore = response.result.length === limit;
@@ -133,7 +126,7 @@ class HostawayService {
                 
                 // Safety check to prevent infinite loops - much lower for property-specific calls
                 if (page > 10) { // Max 1000 reservations per property
-                    console.log('Reached maximum reservation pages for safety');
+                    logger.info('Reached maximum reservation pages for safety');
                     break;
                 }
             } else {
@@ -141,7 +134,7 @@ class HostawayService {
             }
         }
 
-        console.log(`Total reservations fetched: ${allReservations.length}`);
+        logger.info(`Total reservations fetched: ${allReservations.length}`);
         
         // Transform all reservations to our format (without detailed finance data for now)
         const transformedReservations = allReservations.map(reservation => this.transformReservation(reservation));
@@ -151,7 +144,7 @@ class HostawayService {
 
     // Get reservations with detailed financial data for statement generation
     async getAllReservationsWithFinanceData(startDate, endDate, propertyId = null) {
-        console.log(`Fetching reservations with detailed finance data for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
+        logger.info(`Fetching reservations with detailed finance data for period: ${startDate} to ${endDate}${propertyId ? ` for property ${propertyId}` : ''}`);
         
         // Get raw reservation data from Hostaway API (before transformation)
         let allReservations = [];
@@ -161,13 +154,13 @@ class HostawayService {
         let page = 1;
 
         while (hasMore && page <= 10) {
-            console.log(`Fetching reservations page ${page} (offset: ${offset})`);
+            logger.info(`Fetching reservations page ${page} (offset: ${offset})`);
             
             const response = await this.getReservations(startDate, endDate, limit, offset, propertyId);
             
             if (response && response.result && response.result.length > 0) {
                 allReservations = allReservations.concat(response.result);
-                console.log(`Page ${page}: Got ${response.result.length} reservations (total so far: ${allReservations.length})`);
+                logger.info(`Page ${page}: Got ${response.result.length} reservations (total so far: ${allReservations.length})`);
                 
                 if (response.result.length < limit) {
                     hasMore = false;
@@ -180,15 +173,15 @@ class HostawayService {
             }
         }
 
-        console.log(`Total raw reservations fetched: ${allReservations.length}`);
+        logger.info(`Total raw reservations fetched: ${allReservations.length}`);
         
         if (allReservations.length === 0) {
-            console.log('No reservations found to enrich');
+            logger.info('No reservations found to enrich');
             return { result: [] };
         }
         
         // Now enrich each reservation with detailed financial data
-        console.log(`Enriching ${allReservations.length} reservations with detailed financial data...`);
+        logger.info(`Enriching ${allReservations.length} reservations with detailed financial data...`);
         const enrichedReservations = [];
         
         for (const rawReservation of allReservations) {
@@ -204,14 +197,14 @@ class HostawayService {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
             } catch (error) {
-                console.error(`Error enriching reservation ${rawReservation.id}:`, error);
+                logger.error(`Error enriching reservation ${rawReservation.id}:`, error);
                 // Fall back to basic transformation
                 const basicReservation = this.transformReservation(rawReservation);
                 enrichedReservations.push(basicReservation);
             }
         }
         
-        console.log(`Successfully enriched ${enrichedReservations.length} reservations`);
+        logger.info(`Successfully enriched ${enrichedReservations.length} reservations`);
         return { result: enrichedReservations };
     }
 
@@ -224,7 +217,7 @@ class HostawayService {
         const startDateStr = startDate.toISOString().split('T')[0];
         const endDateStr = endDate.toISOString().split('T')[0];
 
-        console.log(`Fetching reservations for week: ${startDateStr} to ${endDateStr}`);
+        logger.info(`Fetching reservations for week: ${startDateStr} to ${endDateStr}`);
 
         let allReservations = [];
         let offset = 0;
@@ -245,7 +238,7 @@ class HostawayService {
             }
         }
 
-        console.log(`Found ${allReservations.length} reservations for the week`);
+        logger.info(`Found ${allReservations.length} reservations for the week`);
         return allReservations;
     }
 
@@ -254,7 +247,7 @@ class HostawayService {
     }
 
     async getAllProperties() {
-        console.log(`Fetching ALL properties/listings with pagination...`);
+        logger.info(`Fetching ALL properties/listings with pagination...`);
 
         let allProperties = [];
         let offset = 0;
@@ -263,13 +256,13 @@ class HostawayService {
         let page = 1;
 
         while (hasMore) {
-            console.log(`Fetching properties page ${page} (offset: ${offset})`);
+            logger.info(`Fetching properties page ${page} (offset: ${offset})`);
             
             const response = await this.makeRequest('/listings', { limit, offset });
             
             if (response.result && response.result.length > 0) {
                 allProperties = allProperties.concat(response.result);
-                console.log(`Page ${page}: Got ${response.result.length} properties (total so far: ${allProperties.length})`);
+                logger.info(`Page ${page}: Got ${response.result.length} properties (total so far: ${allProperties.length})`);
                 
                 // Check if there are more results
                 hasMore = response.result.length === limit;
@@ -278,7 +271,7 @@ class HostawayService {
                 
                 // Safety check to prevent infinite loops
                 if (page > 50) { // Max 5000 properties
-                    console.log('Reached maximum property pages for safety');
+                    logger.info('Reached maximum property pages for safety');
                     break;
                 }
             } else {
@@ -286,7 +279,7 @@ class HostawayService {
             }
         }
 
-        console.log(`Total properties fetched: ${allProperties.length}`);
+        logger.info(`Total properties fetched: ${allProperties.length}`);
         return { result: allProperties };
     }
 
@@ -297,26 +290,26 @@ class HostawayService {
     // Get financial standard fields for a specific reservation
     async getReservationFinanceFields(reservationId) {
         try {
-            console.log(`Fetching finance fields for reservation ${reservationId}`);
+            logger.info(`Fetching finance fields for reservation ${reservationId}`);
             
             const response = await this.makeRequest(`/financeStandardField/reservation/${reservationId}`);
 
             if (response && response.result) {
-                console.log(`Got finance fields for reservation ${reservationId}`);
+                logger.info(`Got finance fields for reservation ${reservationId}`);
                 return response.result;
             }
 
-            console.log(`No finance fields found for reservation ${reservationId}`);
+            logger.info(`No finance fields found for reservation ${reservationId}`);
             return null;
         } catch (error) {
-            console.error(`Error fetching finance fields for reservation ${reservationId}:`, error.response?.data || error.message);
+            logger.error(`Error fetching finance fields for reservation ${reservationId}:`, error.response?.data || error.message);
             return null;
         }
     }
 
     // Transform Hostaway reservation data to our format
     transformReservation(hostawayReservation, financeFields = null) {
-        // console.log(`DEBUG: Transforming reservation - ID: ${hostawayReservation.id}, Status: ${hostawayReservation.status}, ListingMapId: ${hostawayReservation.listingMapId}`);
+        // logger.info(`DEBUG: Transforming reservation - ID: ${hostawayReservation.id}, Status: ${hostawayReservation.status}, ListingMapId: ${hostawayReservation.listingMapId}`);
         
         const baseReservation = {
             hostawayId: hostawayReservation.id ? hostawayReservation.id.toString() : 'undefined',
@@ -409,11 +402,11 @@ class HostawayService {
         
         // Log any unmapped statuses to catch unexpected ones
         if (!statusMap[hostawayStatus]) {
-            console.log(`WARNING: Unknown Hostaway status '${hostawayStatus}' - mapping to 'unknown'`);
+            logger.info(`WARNING: Unknown Hostaway status '${hostawayStatus}' - mapping to 'unknown'`);
             return 'unknown'; // Don't default to 'confirmed' anymore
         }
         
-        // console.log(`DEBUG: Mapping Hostaway status '${hostawayStatus}' to '${statusMap[hostawayStatus]}'`);
+        // logger.info(`DEBUG: Mapping Hostaway status '${hostawayStatus}' to '${statusMap[hostawayStatus]}'`);
         return statusMap[hostawayStatus];
     }
 
@@ -427,12 +420,12 @@ class HostawayService {
      */
     async getOverlappingReservations(listingIds, fromDate, toDate) {
         try {
-            console.log(`Fetching overlapping reservations for listings: ${listingIds.join(',')}, dates: ${fromDate} to ${toDate}`);
+            logger.info(`Fetching overlapping reservations for listings: ${listingIds.join(',')}, dates: ${fromDate} to ${toDate}`);
             
             const allReservations = new Map(); // Use Map to deduplicate by reservation ID
             
             // 1. Get reservations that arrive during the period
-            console.log('Fetching arrivals during period...');
+            logger.info('Fetching arrivals during period...');
             const arrivals = await this.getConsolidatedFinanceReport({
                 listingMapIds: listingIds,
                 fromDate,
@@ -442,7 +435,7 @@ class HostawayService {
             arrivals.forEach(res => allReservations.set(res.id, res));
             
             // 2. Get reservations that depart during the period
-            console.log('Fetching departures during period...');
+            logger.info('Fetching departures during period...');
             const departures = await this.getConsolidatedFinanceReport({
                 listingMapIds: listingIds,
                 fromDate,
@@ -457,7 +450,7 @@ class HostawayService {
             lookbackDate.setDate(lookbackDate.getDate() - 365);
             const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
             
-            console.log(`Fetching long stays (arrivals from ${lookbackDateStr} to ${toDate})...`);
+            logger.info(`Fetching long stays (arrivals from ${lookbackDateStr} to ${toDate})...`);
             const longStays = await this.getConsolidatedFinanceReport({
                 listingMapIds: listingIds,
                 fromDate: lookbackDateStr,
@@ -479,12 +472,12 @@ class HostawayService {
             });
             
             const uniqueReservations = Array.from(allReservations.values());
-            console.log(`Found ${uniqueReservations.length} unique overlapping reservations`);
+            logger.info(`Found ${uniqueReservations.length} unique overlapping reservations`);
             
             return uniqueReservations;
             
         } catch (error) {
-            console.error('Error fetching overlapping reservations:', error);
+            logger.error('Error fetching overlapping reservations:', error);
             throw error;
         }
     }
@@ -500,7 +493,7 @@ class HostawayService {
                 format = 'json'
             } = params;
 
-            console.log(`Fetching consolidated finance report for listings: ${listingMapIds.join(', ')}, dates: ${fromDate} to ${toDate}`);
+            logger.info(`Fetching consolidated finance report for listings: ${listingMapIds.join(', ')}, dates: ${fromDate} to ${toDate}`);
 
             const requestBody = {
                 listingMapIds,
@@ -527,14 +520,14 @@ class HostawayService {
             );
 
             if (response.data && response.data.result) {
-                console.log(`Got ${response.data.result.rows.length} reservations from consolidated finance report`);
+                logger.info(`Got ${response.data.result.rows.length} reservations from consolidated finance report`);
                 return this.transformConsolidatedFinanceData(response.data.result);
             }
 
-            console.log('No data returned from consolidated finance report');
+            logger.info('No data returned from consolidated finance report');
             return [];
         } catch (error) {
-            console.error('Consolidated finance report error:', error.response?.data || error.message);
+            logger.error('Consolidated finance report error:', error.response?.data || error.message);
             throw new Error('Failed to fetch consolidated finance report');
         }
     }
@@ -548,7 +541,7 @@ class HostawayService {
             columnMap[col.name] = index;
         });
 
-        // console.log('DEBUG: Available columns:', Object.keys(columnMap));
+        // logger.info('DEBUG: Available columns:', Object.keys(columnMap));
 
         return rows.map(row => {
             // Extract basic reservation info

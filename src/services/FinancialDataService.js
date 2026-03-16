@@ -508,10 +508,10 @@ class FinancialDataService {
                 WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL '${olderThanDays} days'
             `);
 
-            console.log(`Cleaned up ${metadata.rowCount} expired cache entries`);
+            logger.info(`Cleaned up ${metadata.rowCount} expired cache entries`);
             return metadata.rowCount;
         } catch (error) {
-            console.error('Error cleaning up expired cache:', error);
+            logger.error('Error cleaning up expired cache:', error);
             throw error;
         }
     }
@@ -564,7 +564,7 @@ class FinancialDataService {
                 avgDailyRate: parseFloat(result.avg_daily_rate) || null
             };
         } catch (error) {
-            console.error('Error getting aggregated financial summary:', error);
+            logger.error('Error getting aggregated financial summary:', error);
             throw error;
         }
     }
@@ -607,7 +607,7 @@ class FinancialDataService {
             await this.sequelize.authenticate();
             return true;
         } catch (error) {
-            console.error('Database connection check failed:', error);
+            logger.error('Database connection check failed:', error);
             return false;
         }
     }
