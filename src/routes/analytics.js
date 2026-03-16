@@ -938,6 +938,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     ownerPayout: 0,
                     reservationCount: 0,
                     statementCount: 0,
+                    _seenReservationIds: new Set(),
                 });
             }
             const entry = propertyMap.get(propId);
@@ -958,14 +959,23 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 entry.platformFees += parseFloat(r.platformFees || r.hostServiceFee || 0);
                 entry.taxes += parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
                 entry.grossPayout += parseFloat(r.clientPayout || r.hostPayoutAmount || 0);
-                entry.reservationCount += 1;
+
+                // Deduplicate reservation count by hostifyId to avoid counting
+                // the same reservation across multiple overlapping statements
+                const resId = r.hostifyId || r.id;
+                if (resId && !entry._seenReservationIds.has(resId)) {
+                    entry._seenReservationIds.add(resId);
+                    entry.reservationCount += 1;
+                } else if (!resId) {
+                    entry.reservationCount += 1;
+                }
             }
         }
 
         let results = Array.from(propertyMap.values());
 
-        // Round all numeric values
-        results = results.map(p => ({
+        // Round all numeric values and remove internal tracking set
+        results = results.map(({ _seenReservationIds, ...p }) => ({
             ...p,
             baseRate: Math.round(p.baseRate * 100) / 100,
             guestFees: Math.round(p.guestFees * 100) / 100,
