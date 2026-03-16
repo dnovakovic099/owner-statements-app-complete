@@ -843,10 +843,16 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
                 if (resId && entry._seenIds.has(resId)) continue;
 
                 // Filter by checkout date within report period
-                const resCheckout = reservation.checkOutDate || reservation.checkOut || reservation.checkout;
+                const resCheckout = reservation.checkOutDate || reservation.checkOut || reservation.checkout || reservation.departureDate;
                 if (resCheckout) {
-                    const coStr = String(resCheckout).slice(0, 10);
-                    if (coStr >= '2000' && (coStr < startDate || coStr > endDate)) continue;
+                    const coDate = new Date(resCheckout);
+                    if (!isNaN(coDate.getTime())) {
+                        const y = coDate.getFullYear();
+                        const m = String(coDate.getMonth() + 1).padStart(2, '0');
+                        const d = String(coDate.getDate()).padStart(2, '0');
+                        const coStr = `${y}-${m}-${d}`;
+                        if (coStr < startDate || coStr > endDate) continue;
+                    }
                 }
 
                 if (resId) entry._seenIds.add(resId);
@@ -999,12 +1005,18 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 }
 
                 // Filter: only include reservations whose checkout falls within the report period
-                // Use date-only comparison (YYYY-MM-DD) to avoid timezone issues
-                const resCheckout = r.checkOutDate || r.checkOut || r.checkout;
+                const resCheckout = r.checkOutDate || r.checkOut || r.checkout || r.departureDate;
                 if (resCheckout) {
-                    const coStr = String(resCheckout).slice(0, 10); // "YYYY-MM-DD"
-                    if (coStr >= '2000' && (coStr < startDate || coStr > endDate)) {
-                        continue;
+                    const coDate = new Date(resCheckout);
+                    if (!isNaN(coDate.getTime())) {
+                        // Normalize to YYYY-MM-DD string for comparison
+                        const y = coDate.getFullYear();
+                        const m = String(coDate.getMonth() + 1).padStart(2, '0');
+                        const d = String(coDate.getDate()).padStart(2, '0');
+                        const coStr = `${y}-${m}-${d}`;
+                        if (coStr < startDate || coStr > endDate) {
+                            continue;
+                        }
                     }
                 }
 
