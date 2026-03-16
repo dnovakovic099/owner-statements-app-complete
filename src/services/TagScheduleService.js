@@ -996,7 +996,7 @@ class TagScheduleService {
         const where = status ? { status } : {};
         return TagNotification.findAll({
             where,
-            order: [['createdAt', 'DESC']],
+            order: [['created_at', 'DESC']],
             limit
         });
     }

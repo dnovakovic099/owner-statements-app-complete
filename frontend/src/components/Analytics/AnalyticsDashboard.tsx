@@ -8,6 +8,7 @@ import {
   FileText,
   Calendar,
   ChevronDown,
+  ChevronUp,
   BarChart3,
   PieChart,
   Building2,
@@ -17,7 +18,12 @@ import {
   Users,
   Download,
   FileSpreadsheet,
-  Printer
+  Printer,
+  Search,
+  Eye,
+  EyeOff,
+  Settings2,
+  ArrowUpDown
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import jsPDF from 'jspdf';
@@ -262,11 +268,84 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
+  // Property Financial Report state
+  type FinancialSortKey = keyof PropertyFinancialItem;
+  const [pfSortKey, setPfSortKey] = useState<FinancialSortKey>('revenue');
+  const [pfSortDir, setPfSortDir] = useState<'asc' | 'desc'>('desc');
+  const [pfFilter, setPfFilter] = useState('');
+  const [pfShowColumnMenu, setPfShowColumnMenu] = useState(false);
+  const [pfIncludeZero, setPfIncludeZero] = useState(false);
+  const [pfActivePreset, setPfActivePreset] = useState('all');
+  const pfColumnMenuRef = useRef<HTMLDivElement>(null);
+
+  const allPfColumns = [
+    { key: 'name' as const, label: 'Property', align: 'left' as const, color: '' },
+    { key: 'ownerName' as const, label: 'Owner', align: 'left' as const, color: '' },
+    { key: 'reservationCount' as const, label: 'Reservations', align: 'right' as const, color: '' },
+    { key: 'baseRate' as const, label: 'Base Rate', align: 'right' as const, color: '' },
+    { key: 'guestFees' as const, label: 'Guest Fees', align: 'right' as const, color: '' },
+    { key: 'platformFees' as const, label: 'Platform Fees', align: 'right' as const, color: '' },
+    { key: 'taxes' as const, label: 'Taxes', align: 'right' as const, color: '' },
+    { key: 'grossPayout' as const, label: 'Gross Payout', align: 'right' as const, color: '' },
+    { key: 'revenue' as const, label: 'Revenue', align: 'right' as const, color: 'text-gray-900 font-semibold' },
+    { key: 'pmFeePercentage' as const, label: 'PM %', align: 'right' as const, color: 'text-emerald-600' },
+    { key: 'pmCommission' as const, label: 'PM Commission', align: 'right' as const, color: 'text-emerald-700 font-medium' },
+    { key: 'expenses' as const, label: 'Expenses', align: 'right' as const, color: 'text-red-600' },
+    { key: 'ownerPayout' as const, label: 'Owner Payout', align: 'right' as const, color: 'text-blue-700 font-medium' },
+  ];
+
+  // Report presets — quick column configurations for common reports
+  const pfPresets: Record<string, { label: string; icon: React.ReactNode; cols: string[]; sort: FinancialSortKey; desc: string }> = {
+    all: {
+      label: 'All Financials',
+      icon: <BarChart3 className="w-3.5 h-3.5" />,
+      cols: allPfColumns.map(c => c.key),
+      sort: 'revenue',
+      desc: 'Complete financial breakdown for all properties',
+    },
+    pmCommission: {
+      label: 'PM Commission',
+      icon: <Percent className="w-3.5 h-3.5" />,
+      cols: ['name', 'ownerName', 'reservationCount', 'revenue', 'pmFeePercentage', 'pmCommission'],
+      sort: 'pmCommission',
+      desc: 'Property management commission earned per listing',
+    },
+    ownerPayouts: {
+      label: 'Owner Payouts',
+      icon: <CreditCard className="w-3.5 h-3.5" />,
+      cols: ['name', 'ownerName', 'revenue', 'pmCommission', 'expenses', 'ownerPayout'],
+      sort: 'ownerPayout',
+      desc: 'Net payouts to property owners',
+    },
+    revenue: {
+      label: 'Revenue Breakdown',
+      icon: <DollarSign className="w-3.5 h-3.5" />,
+      cols: ['name', 'ownerName', 'reservationCount', 'baseRate', 'guestFees', 'platformFees', 'taxes', 'grossPayout'],
+      sort: 'grossPayout',
+      desc: 'Detailed revenue components per property',
+    },
+  };
+
+  const [pfVisibleCols, setPfVisibleCols] = useState<Set<string>>(
+    new Set(allPfColumns.map(c => c.key))
+  );
+
   // Close export menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
         setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Close column menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (pfColumnMenuRef.current && !pfColumnMenuRef.current.contains(event.target as Node)) {
+        setPfShowColumnMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -699,6 +778,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const { data: propertyFinancialsData, loading: propertyFinancialsLoading } = usePropertyFinancials({
     startDate: dateRange.start,
     endDate: dateRange.end,
+    ownerId: selectedOwnerId,
+    groupId: selectedGroupId,
+    includeZero: pfIncludeZero,
   });
 
   const { data: damageCoverageData, loading: damageCoverageLoading } = useDamageCoverage({
@@ -721,6 +803,75 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     propertyId: selectedPropertyId,
     groupId: selectedGroupId,
   });
+
+  // Property financials: sorted, filtered data
+  const pfSortedData = useMemo(() => {
+    if (!propertyFinancialsData) return [];
+    let filtered = propertyFinancialsData;
+    if (pfFilter.trim()) {
+      const q = pfFilter.toLowerCase();
+      filtered = filtered.filter((p: PropertyFinancialItem) =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.ownerName || '').toLowerCase().includes(q)
+      );
+    }
+    const sorted = [...filtered].sort((a: PropertyFinancialItem, b: PropertyFinancialItem) => {
+      const aVal = a[pfSortKey] ?? '';
+      const bVal = b[pfSortKey] ?? '';
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return pfSortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      const aNum = Number(aVal) || 0;
+      const bNum = Number(bVal) || 0;
+      return pfSortDir === 'asc' ? aNum - bNum : bNum - aNum;
+    });
+    return sorted;
+  }, [propertyFinancialsData, pfSortKey, pfSortDir, pfFilter]);
+
+  const handlePfSort = (key: FinancialSortKey) => {
+    if (pfSortKey === key) {
+      setPfSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPfSortKey(key);
+      setPfSortDir('desc');
+    }
+  };
+
+  const applyPfPreset = (presetKey: string) => {
+    const preset = pfPresets[presetKey];
+    if (!preset) return;
+    setPfActivePreset(presetKey);
+    setPfVisibleCols(new Set(preset.cols));
+    setPfSortKey(preset.sort);
+    setPfSortDir('desc');
+  };
+
+  const togglePfColumn = (key: string) => {
+    setPfActivePreset('custom');
+    setPfVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        if (next.size > 1) next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const visiblePfColumns = allPfColumns.filter(c => pfVisibleCols.has(c.key));
+
+  // Cell rendering helpers
+  const getPfCellDisplay = (col: typeof allPfColumns[0], val: any): React.ReactNode => {
+    if (col.key === 'name' || col.key === 'ownerName') return (val as string) || '-';
+    if (col.key === 'reservationCount') return val as number;
+    if (col.key === 'pmFeePercentage') return val != null ? `${Number(val).toFixed(0)}%` : '-';
+    return formatFullCurrency(val as number);
+  };
+
+  const getPfCellColor = (col: typeof allPfColumns[0]): string => {
+    return col.color || 'text-gray-600';
+  };
 
   // Format currency
   const formatCurrency = (amount: number | null | undefined) => {
@@ -1753,100 +1904,292 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           )}
         </div>
 
-        {/* Property Financial Breakdown */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Property Financial Breakdown</h3>
-              {propertyFinancialsData && propertyFinancialsData.length > 0 && (
-                <span className="text-xs text-gray-400">({propertyFinancialsData.length} properties)</span>
+        {/* Property Financial Report */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mt-6 overflow-hidden">
+          {/* Header */}
+          <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4.5 h-4.5 text-blue-600" />
+                  <h3 className="text-sm font-semibold text-gray-900">Property Financial Report</h3>
+                  {pfSortedData.length > 0 && (
+                    <span className="text-[11px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">
+                      {pfSortedData.length}{pfFilter ? ` / ${propertyFinancialsData?.length || 0}` : ''} properties
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {pfPresets[pfActivePreset]?.desc || 'Customized column view'}
+                </p>
+              </div>
+              {/* CSV Export */}
+              {pfSortedData.length > 0 && (
+                <button
+                  onClick={() => {
+                    const headers = visiblePfColumns.map(c => c.label);
+                    const csvRows = [headers.join(',')];
+                    pfSortedData.forEach((p: PropertyFinancialItem) => {
+                      const row = visiblePfColumns.map(c => {
+                        const val = p[c.key as keyof PropertyFinancialItem];
+                        if (c.key === 'name' || c.key === 'ownerName') return `"${((val as string) || '').replace(/"/g, '""')}"`;
+                        if (c.key === 'reservationCount') return val;
+                        if (c.key === 'pmFeePercentage') return val != null ? `${Number(val).toFixed(1)}%` : '';
+                        return typeof val === 'number' ? val.toFixed(2) : (val || '');
+                      });
+                      csvRows.push(row.join(','));
+                    });
+                    // Add totals row
+                    const totals = visiblePfColumns.map(c => {
+                      if (c.key === 'name') return '"Total"';
+                      if (c.key === 'ownerName' || c.key === 'pmFeePercentage') return '';
+                      const sum = pfSortedData.reduce((s: number, p: PropertyFinancialItem) => s + (Number(p[c.key as keyof PropertyFinancialItem]) || 0), 0);
+                      if (c.key === 'reservationCount') return sum;
+                      return sum.toFixed(2);
+                    });
+                    csvRows.push(totals.join(','));
+                    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const presetLabel = pfPresets[pfActivePreset]?.label || 'custom';
+                    a.download = `${presetLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange.start}-to-${dateRange.end}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export CSV
+                </button>
               )}
             </div>
-            {propertyFinancialsData && propertyFinancialsData.length > 0 && (
+          </div>
+
+          {/* Report Preset Tabs */}
+          <div className="px-5 py-2.5 bg-gray-50/70 border-b border-gray-100 flex items-center gap-1.5 overflow-x-auto">
+            {Object.entries(pfPresets).map(([key, preset]) => (
               <button
-                onClick={() => {
-                  const csvRows = ['Property,Owner,Base Rate,Guest Fees,Platform Fees,Revenue,PM Commission,Taxes,Gross Payout,Expenses,Owner Payout,Reservations'];
-                  propertyFinancialsData.forEach((p: PropertyFinancialItem) => {
-                    const name = (p.name || '').replace(/,/g, ' ');
-                    const owner = (p.ownerName || '').replace(/,/g, ' ');
-                    csvRows.push(`${name},${owner},${p.baseRate.toFixed(2)},${p.guestFees.toFixed(2)},${p.platformFees.toFixed(2)},${p.revenue.toFixed(2)},${p.pmCommission.toFixed(2)},${p.taxes.toFixed(2)},${p.grossPayout.toFixed(2)},${p.expenses.toFixed(2)},${p.ownerPayout.toFixed(2)},${p.reservationCount}`);
-                  });
-                  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `property-financials-${dateRange.start}-to-${dateRange.end}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                key={key}
+                onClick={() => applyPfPreset(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-all ${
+                  pfActivePreset === key
+                    ? 'bg-white text-blue-700 shadow-sm border border-blue-200 ring-1 ring-blue-100'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-white/70'
+                }`}
               >
-                <Download className="w-3 h-3" />
-                CSV
+                {preset.icon}
+                {preset.label}
               </button>
+            ))}
+            {pfActivePreset === 'custom' && (
+              <span className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded-lg border border-purple-200">
+                <Settings2 className="w-3 h-3" />
+                Custom
+              </span>
             )}
           </div>
-          {propertyFinancialsLoading ? (
-            <div className="h-48 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+
+          {/* Toolbar */}
+          <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+            {/* Search */}
+            <div className="relative flex-shrink-0">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search property or owner..."
+                value={pfFilter}
+                onChange={(e) => setPfFilter(e.target.value)}
+                className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 bg-white"
+              />
+              {pfFilter && (
+                <button
+                  onClick={() => setPfFilter('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <span className="text-xs font-bold">&times;</span>
+                </button>
+              )}
             </div>
-          ) : propertyFinancialsData && propertyFinancialsData.length > 0 ? (
+
+            <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
+
+            {/* Include $0 toggle */}
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none flex-shrink-0">
+              <input
+                type="checkbox"
+                checked={pfIncludeZero}
+                onChange={(e) => setPfIncludeZero(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+              />
+              Include $0 listings
+            </label>
+
+            <div className="flex-1" />
+
+            {/* Column visibility */}
+            <div className="relative flex-shrink-0" ref={pfColumnMenuRef}>
+              <button
+                onClick={() => setPfShowColumnMenu(!pfShowColumnMenu)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors border ${
+                  pfShowColumnMenu
+                    ? 'bg-gray-100 text-gray-900 border-gray-300'
+                    : 'text-gray-600 hover:bg-gray-50 border-gray-200'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Columns ({visiblePfColumns.length}/{allPfColumns.length})
+              </button>
+              {pfShowColumnMenu && (
+                <div className="absolute right-0 z-50 mt-1.5 w-52 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5">
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                    Toggle Columns
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {allPfColumns.map(col => (
+                      <label
+                        key={col.key}
+                        className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pfVisibleCols.has(col.key)}
+                          onChange={() => togglePfColumn(col.key)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                        />
+                        <span className={pfVisibleCols.has(col.key) ? 'text-gray-900' : 'text-gray-400'}>{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-100 mt-1 pt-1 px-3 py-1">
+                    <button
+                      onClick={() => { setPfVisibleCols(new Set(allPfColumns.map(c => c.key))); setPfActivePreset('all'); }}
+                      className="text-[11px] text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      Show all columns
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Table */}
+          {propertyFinancialsLoading ? (
+            <div className="h-56 flex flex-col items-center justify-center gap-2">
+              <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
+              <span className="text-xs text-gray-400">Loading report...</span>
+            </div>
+          ) : pfSortedData.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50">Property</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Base Rate</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Guest Fees</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Platform Fees</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">PM Commission</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Taxes</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Gross Payout</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Expenses</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Owner Payout</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Res.</th>
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {visiblePfColumns.map(col => {
+                      const isSticky = col.key === 'name';
+                      const isSorted = pfSortKey === col.key;
+                      return (
+                        <th
+                          key={col.key}
+                          onClick={() => handlePfSort(col.key as FinancialSortKey)}
+                          className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
+                            col.align === 'right' ? 'text-right' : 'text-left'
+                          } ${isSticky ? 'sticky left-0 bg-gray-50 z-10' : ''} ${
+                            isSorted ? 'text-blue-700 bg-blue-50/50' : 'hover:text-gray-700 hover:bg-gray-100/50'
+                          }`}
+                          style={{ fontSize: '10px' }}
+                        >
+                          <span className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
+                            {col.label}
+                            {isSorted ? (
+                              pfSortDir === 'asc'
+                                ? <ChevronUp className="w-3 h-3 text-blue-600" />
+                                : <ChevronDown className="w-3 h-3 text-blue-600" />
+                            ) : (
+                              <ArrowUpDown className="w-2.5 h-2.5 opacity-0 group-hover:opacity-30" />
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {propertyFinancialsData.map((p: PropertyFinancialItem) => (
-                    <tr key={p.propertyId} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium text-gray-900 max-w-[200px] truncate sticky left-0 bg-white">{p.name}</td>
-                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.baseRate)}</td>
-                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.guestFees)}</td>
-                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.platformFees)}</td>
-                      <td className="px-3 py-2 text-gray-900 font-medium text-right tabular-nums">{formatFullCurrency(p.revenue)}</td>
-                      <td className="px-3 py-2 text-green-700 font-medium text-right tabular-nums">{formatFullCurrency(p.pmCommission)}</td>
-                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.taxes)}</td>
-                      <td className="px-3 py-2 text-gray-700 text-right tabular-nums">{formatFullCurrency(p.grossPayout)}</td>
-                      <td className="px-3 py-2 text-red-600 text-right tabular-nums">{formatFullCurrency(p.expenses)}</td>
-                      <td className="px-3 py-2 text-blue-700 font-medium text-right tabular-nums">{formatFullCurrency(p.ownerPayout)}</td>
-                      <td className="px-3 py-2 text-gray-500 text-right tabular-nums">{p.reservationCount}</td>
+                <tbody>
+                  {pfSortedData.map((p: PropertyFinancialItem, idx: number) => (
+                    <tr
+                      key={p.propertyId}
+                      className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
+                        idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                      }`}
+                    >
+                      {visiblePfColumns.map(col => {
+                        const isSticky = col.key === 'name';
+                        const val = p[col.key as keyof PropertyFinancialItem];
+                        const cellColor = col.key === 'name' ? 'text-gray-900 font-medium' : getPfCellColor(col);
+                        const display = getPfCellDisplay(col, val);
+
+                        return (
+                          <td
+                            key={col.key}
+                            className={`px-4 py-2 ${cellColor} ${col.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${
+                              isSticky ? 'sticky left-0 max-w-[220px] truncate z-[5]' : ''
+                            } ${isSticky ? (idx % 2 === 0 ? 'bg-white' : 'bg-[#fafafb]') : ''}`}
+                          >
+                            {display}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr className="font-semibold">
-                    <td className="px-3 py-2 text-gray-900 sticky left-0 bg-gray-50">Total</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.baseRate, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.guestFees, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.platformFees, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.revenue, 0))}</td>
-                    <td className="px-3 py-2 text-green-700 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.pmCommission, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.taxes, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.grossPayout, 0))}</td>
-                    <td className="px-3 py-2 text-red-600 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.expenses, 0))}</td>
-                    <td className="px-3 py-2 text-blue-700 text-right tabular-nums">{formatFullCurrency(propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.ownerPayout, 0))}</td>
-                    <td className="px-3 py-2 text-gray-900 text-right tabular-nums">{propertyFinancialsData.reduce((s: number, p: PropertyFinancialItem) => s + p.reservationCount, 0)}</td>
+                <tfoot>
+                  <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
+                    {visiblePfColumns.map(col => {
+                      if (col.key === 'name') {
+                        return (
+                          <td key={col.key} className="px-4 py-2.5 text-gray-900 sticky left-0 bg-gray-100 z-[5]">
+                            Total ({pfSortedData.length})
+                          </td>
+                        );
+                      }
+                      if (col.key === 'ownerName' || col.key === 'pmFeePercentage') {
+                        return <td key={col.key} className="px-4 py-2.5 bg-gray-100"></td>;
+                      }
+                      const sum = pfSortedData.reduce((s: number, p: PropertyFinancialItem) => s + (Number(p[col.key as keyof PropertyFinancialItem]) || 0), 0);
+                      const footerColor = col.color?.includes('emerald') ? 'text-emerald-700'
+                        : col.color?.includes('red') ? 'text-red-600'
+                        : col.color?.includes('blue') ? 'text-blue-700'
+                        : 'text-gray-900';
+                      return (
+                        <td key={col.key} className={`px-4 py-2.5 ${footerColor} text-right tabular-nums`}>
+                          {col.key === 'reservationCount' ? sum : formatFullCurrency(sum)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 </tfoot>
               </table>
             </div>
+          ) : propertyFinancialsData && propertyFinancialsData.length > 0 && pfFilter ? (
+            <div className="h-40 flex flex-col items-center justify-center text-gray-400">
+              <Search className="w-6 h-6 mb-2 text-gray-300" />
+              <span className="text-sm font-medium text-gray-500">No properties match "{pfFilter}"</span>
+              <button onClick={() => setPfFilter('')} className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium">
+                Clear filter
+              </button>
+            </div>
           ) : (
             <div className="h-48 flex flex-col items-center justify-center text-gray-400">
-              <FileText className="w-8 h-8 mb-2" />
-              <span className="text-sm">No financial data for selected period</span>
+              <FileSpreadsheet className="w-8 h-8 mb-2 text-gray-300" />
+              <span className="text-sm font-medium text-gray-500">No financial data for selected period</span>
+              {!pfIncludeZero && (
+                <button
+                  onClick={() => setPfIncludeZero(true)}
+                  className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Include listings with $0 activity
+                </button>
+              )}
             </div>
           )}
         </div>

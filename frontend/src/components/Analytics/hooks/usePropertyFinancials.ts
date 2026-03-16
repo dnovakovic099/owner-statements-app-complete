@@ -3,6 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 interface PropertyFinancialsParams {
   startDate: string;
   endDate: string;
+  ownerId?: string;
+  propertyId?: string;
+  groupId?: string;
+  tag?: string;
+  includeZero?: boolean;
 }
 
 export interface PropertyFinancialItem {
@@ -45,6 +50,11 @@ export const usePropertyFinancials = (params: PropertyFinancialsParams) => {
         startDate: params.startDate,
         endDate: params.endDate,
       });
+      if (params.ownerId) queryParams.set('ownerId', params.ownerId);
+      if (params.propertyId) queryParams.set('propertyId', params.propertyId);
+      if (params.groupId) queryParams.set('groupId', params.groupId);
+      if (params.tag) queryParams.set('tag', params.tag);
+      if (params.includeZero) queryParams.set('includeZero', 'true');
 
       const baseUrl = getBaseUrl();
       const response = await fetch(
@@ -72,7 +82,7 @@ export const usePropertyFinancials = (params: PropertyFinancialsParams) => {
     } finally {
       setLoading(false);
     }
-  }, [params.startDate, params.endDate]);
+  }, [params.startDate, params.endDate, params.ownerId, params.propertyId, params.groupId, params.tag, params.includeZero]);
 
   useEffect(() => {
     fetchData();
