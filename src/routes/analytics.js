@@ -1040,6 +1040,55 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             };
         });
 
+        // When includeZero is true, also include listings that have NO statements at all
+        if (includeZero === 'true') {
+            try {
+                const listingWhere = { isActive: true };
+                if (ownerId && ownerId !== 'default') {
+                    // Filter by owner — match listings whose ownerEmail/ownerGreeting relates to the owner
+                    // Since listings don't have ownerId directly, we skip this filter for zero-statement listings
+                }
+                if (groupId) {
+                    listingWhere.groupId = groupId;
+                }
+
+                const allListings = await Listing.findAll({
+                    attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage', 'tags'],
+                    where: listingWhere,
+                    raw: true
+                });
+
+                const existingIds = new Set(results.map(r => String(r.propertyId)));
+                for (const listing of allListings) {
+                    if (existingIds.has(String(listing.id))) continue;
+                    // Apply tag filter if specified
+                    if (tag) {
+                        const listingTags = listing.tags || '';
+                        if (!listingTags.toLowerCase().includes(tag.toLowerCase())) continue;
+                    }
+                    results.push({
+                        propertyId: listing.id,
+                        name: listing.displayName || listing.nickname || listing.name,
+                        ownerName: null,
+                        pmFeePercentage: listing.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
+                        baseRate: 0,
+                        guestFees: 0,
+                        platformFees: 0,
+                        revenue: 0,
+                        pmCommission: 0,
+                        taxes: 0,
+                        grossPayout: 0,
+                        expenses: 0,
+                        ownerPayout: 0,
+                        reservationCount: 0,
+                        statementCount: 0,
+                    });
+                }
+            } catch (e) {
+                logger.warn('Could not fetch zero-statement listings', { error: e.message });
+            }
+        }
+
         // Sort by revenue descending
         results.sort((a, b) => b.revenue - a.revenue);
 

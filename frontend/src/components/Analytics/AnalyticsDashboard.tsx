@@ -271,17 +271,26 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const [dcFilter, setDcFilter] = useState('');
   const [dcSortKey, setDcSortKey] = useState('totalDamageCoverage');
   const [dcSortDir, setDcSortDir] = useState<'asc' | 'desc'>('desc');
+  const [dcShowColumnMenu, setDcShowColumnMenu] = useState(false);
+  const [dcVisibleCols, setDcVisibleCols] = useState<Set<string>>(new Set(['name', 'ownerName', 'reservationCount', 'totalDamageCoverage']));
+  const dcColumnMenuRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
-  // Property Financial Report state
+  // Property Financial Report state — restore from localStorage
   type FinancialSortKey = keyof PropertyFinancialItem;
-  const [pfSortKey, setPfSortKey] = useState<FinancialSortKey>('revenue');
-  const [pfSortDir, setPfSortDir] = useState<'asc' | 'desc'>('desc');
+  const pfSavedPrefs = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('pf-report-prefs');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  }, []);
+  const [pfSortKey, setPfSortKey] = useState<FinancialSortKey>(pfSavedPrefs?.sortKey || 'revenue');
+  const [pfSortDir, setPfSortDir] = useState<'asc' | 'desc'>(pfSavedPrefs?.sortDir || 'desc');
   const [pfFilter, setPfFilter] = useState('');
   const [pfShowColumnMenu, setPfShowColumnMenu] = useState(false);
-  const [pfIncludeZero, setPfIncludeZero] = useState(false);
-  const [pfActivePreset, setPfActivePreset] = useState('all');
+  const [pfIncludeZero, setPfIncludeZero] = useState(pfSavedPrefs?.includeZero || false);
+  const [pfActivePreset, setPfActivePreset] = useState(pfSavedPrefs?.preset || 'all');
   const pfColumnMenuRef = useRef<HTMLDivElement>(null);
 
   const allPfColumns = [
@@ -333,8 +342,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   };
 
   const [pfVisibleCols, setPfVisibleCols] = useState<Set<string>>(
-    new Set(allPfColumns.map(c => c.key))
+    new Set(pfSavedPrefs?.visibleCols || allPfColumns.map(c => c.key))
   );
+
+  // Persist report preferences to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('pf-report-prefs', JSON.stringify({
+        sortKey: pfSortKey,
+        sortDir: pfSortDir,
+        preset: pfActivePreset,
+        includeZero: pfIncludeZero,
+        visibleCols: Array.from(pfVisibleCols),
+      }));
+    } catch {}
+  }, [pfSortKey, pfSortDir, pfActivePreset, pfIncludeZero, pfVisibleCols]);
 
   // Close export menu when clicking outside
   useEffect(() => {
@@ -347,11 +369,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Close column menu when clicking outside
+  // Close column menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (pfColumnMenuRef.current && !pfColumnMenuRef.current.contains(event.target as Node)) {
         setPfShowColumnMenu(false);
+      }
+      if (dcColumnMenuRef.current && !dcColumnMenuRef.current.contains(event.target as Node)) {
+        setDcShowColumnMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -2414,6 +2439,41 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     </button>
                   )}
                 </div>
+                <div className="flex-1" />
+                <div className="relative flex-shrink-0" ref={dcColumnMenuRef}>
+                  <button
+                    onClick={() => setDcShowColumnMenu(!dcShowColumnMenu)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors border ${
+                      dcShowColumnMenu ? 'bg-gray-100 text-gray-900 border-gray-300' : 'text-gray-600 hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Columns
+                  </button>
+                  {dcShowColumnMenu && (
+                    <div className="absolute right-0 z-50 mt-1.5 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5">
+                      <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Toggle Columns</div>
+                      {dcColumns.map(col => (
+                        <label key={col.key} className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={dcVisibleCols.has(col.key)}
+                            onChange={() => {
+                              setDcVisibleCols(prev => {
+                                const next = new Set(prev);
+                                if (next.has(col.key)) { if (next.size > 1) next.delete(col.key); }
+                                else { next.add(col.key); }
+                                return next;
+                              });
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                          />
+                          <span className={dcVisibleCols.has(col.key) ? 'text-gray-900' : 'text-gray-400'}>{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {damageCoverageLoading ? (
@@ -2426,7 +2486,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   <table className="min-w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
-                        {dcColumns.map(col => {
+                        {dcColumns.filter(c => dcVisibleCols.has(c.key)).map(col => {
                           const isSorted = dcSortKey === col.key;
                           return (
                             <th
@@ -2453,18 +2513,30 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     <tbody>
                       {dcFilteredData.map((p: DamageCoverageItem, idx: number) => (
                         <tr key={p.propertyId} className={`border-b border-gray-100 hover:bg-amber-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          <td className="px-4 py-2 font-medium text-gray-900 max-w-[250px] truncate">{p.name}</td>
-                          <td className="px-4 py-2 text-gray-600 max-w-[180px] truncate">{p.ownerName || '-'}</td>
-                          <td className="px-4 py-2 text-gray-700 text-right tabular-nums">{p.reservationCount}</td>
-                          <td className="px-4 py-2 font-medium text-amber-700 text-right tabular-nums">{formatFullCurrency(p.totalDamageCoverage)}</td>
+                          {dcColumns.filter(c => dcVisibleCols.has(c.key)).map(col => {
+                            const val = p[col.key as keyof DamageCoverageItem];
+                            let cellClass = 'px-4 py-2';
+                            if (col.key === 'name') cellClass += ' font-medium text-gray-900 max-w-[250px] truncate';
+                            else if (col.key === 'ownerName') cellClass += ' text-gray-600 max-w-[180px] truncate';
+                            else if (col.key === 'reservationCount') cellClass += ' text-gray-700 text-right tabular-nums';
+                            else if (col.key === 'totalDamageCoverage') cellClass += ' font-medium text-amber-700 text-right tabular-nums';
+                            const display = col.key === 'totalDamageCoverage' ? formatFullCurrency(val as number)
+                              : col.key === 'ownerName' ? ((val as string) || '-')
+                              : val;
+                            return <td key={col.key} className={cellClass}>{display}</td>;
+                          })}
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
-                        <td className="px-4 py-2.5 text-gray-900" colSpan={2}>Total ({dcFilteredData.length})</td>
-                        <td className="px-4 py-2.5 text-gray-900 text-right tabular-nums">{dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}</td>
-                        <td className="px-4 py-2.5 text-amber-700 text-right tabular-nums">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</td>
+                        {dcColumns.filter(c => dcVisibleCols.has(c.key)).map((col, i) => {
+                          if (col.key === 'name') return <td key={col.key} className="px-4 py-2.5 text-gray-900">Total ({dcFilteredData.length})</td>;
+                          if (col.key === 'ownerName') return <td key={col.key} className="px-4 py-2.5"></td>;
+                          if (col.key === 'reservationCount') return <td key={col.key} className="px-4 py-2.5 text-gray-900 text-right tabular-nums">{dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}</td>;
+                          if (col.key === 'totalDamageCoverage') return <td key={col.key} className="px-4 py-2.5 text-amber-700 text-right tabular-nums">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</td>;
+                          return <td key={col.key} className="px-4 py-2.5"></td>;
+                        })}
                       </tr>
                     </tfoot>
                   </table>
