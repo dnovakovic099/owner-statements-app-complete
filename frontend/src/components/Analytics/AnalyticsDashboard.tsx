@@ -21,7 +21,6 @@ import {
   Printer,
   Search,
   Eye,
-  EyeOff,
   Settings2,
   ArrowUpDown
 } from 'lucide-react';
