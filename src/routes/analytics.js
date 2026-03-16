@@ -985,6 +985,17 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 if (resId && entry._seenReservationIds.has(resId)) {
                     continue;
                 }
+
+                // Filter: only include reservations whose checkout falls within the report period
+                // Use date-only comparison (YYYY-MM-DD) to avoid timezone issues
+                const resCheckout = r.checkOutDate || r.checkOut || r.checkout;
+                if (resCheckout) {
+                    const coStr = String(resCheckout).slice(0, 10); // "YYYY-MM-DD"
+                    if (coStr >= '2000' && (coStr < startDate || coStr > endDate)) {
+                        continue;
+                    }
+                }
+
                 if (resId) {
                     entry._seenReservationIds.add(resId);
                 }
