@@ -8,7 +8,6 @@ import {
   DialogFooter,
 } from './ui/dialog';
 import { Button } from './ui/button';
-import { ScrollArea } from './ui/scroll-area';
 
 export interface SkippedItem {
   name: string;
@@ -48,7 +47,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {hasIssues ? (
@@ -60,7 +59,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
           {/* Summary */}
           <div className="flex gap-4 text-sm flex-wrap">
             {report.generated > 0 && (
@@ -89,8 +88,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
               <p className="text-sm text-muted-foreground">
                 The following listings in this tag did not get a statement or had issues:
               </p>
-              <ScrollArea className="max-h-[300px]">
-                <div className="space-y-2">
+              <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-1">
                   {skippedItems.map((item, idx) => (
                     <div key={`skip-${idx}`} className="flex items-start gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm">
                       <Info className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
@@ -115,8 +113,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
                       </div>
                     </div>
                   ))}
-                </div>
-              </ScrollArea>
+              </div>
             </div>
           )}
 
