@@ -264,7 +264,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | undefined>(undefined);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | undefined>(undefined);
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(undefined);
+  const [selectedTag, setSelectedTag] = useState<string | undefined>(undefined);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // Damage Coverage table state
+  const [dcFilter, setDcFilter] = useState('');
+  const [dcSortKey, setDcSortKey] = useState('totalDamageCoverage');
+  const [dcSortDir, setDcSortDir] = useState<'asc' | 'desc'>('desc');
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -780,6 +786,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     endDate: dateRange.end,
     ownerId: selectedOwnerId,
     groupId: selectedGroupId,
+    tag: selectedTag,
     includeZero: pfIncludeZero,
   });
 
@@ -1532,6 +1539,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               options={filtersData?.groups || []}
               value={selectedGroupId}
               onChange={setSelectedGroupId}
+            />
+            <FilterDropdown
+              label="Tags"
+              options={(filtersData?.tags || []).map((t: string) => ({ id: t, name: t }))}
+              value={selectedTag}
+              onChange={setSelectedTag}
             />
           </div>
           <div className="flex-1 min-w-0" />
@@ -2293,97 +2306,184 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>}
 
         {/* Guest Paid Damage Coverage Report */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Guest Paid Damage Coverage</h3>
-              {damageCoverageData && damageCoverageData.length > 0 && (
-                <span className="text-xs text-gray-400">({damageCoverageData.length} properties)</span>
+        {(() => {
+          // Inline state-like behavior via useMemo for damage coverage sorting/filtering
+          const dcFilteredData = (() => {
+            if (!damageCoverageData) return [];
+            let filtered = damageCoverageData;
+            if (dcFilter.trim()) {
+              const q = dcFilter.toLowerCase();
+              filtered = filtered.filter((p: DamageCoverageItem) =>
+                (p.name || '').toLowerCase().includes(q) ||
+                (p.ownerName || '').toLowerCase().includes(q)
+              );
+            }
+            return [...filtered].sort((a: DamageCoverageItem, b: DamageCoverageItem) => {
+              const aVal = a[dcSortKey as keyof DamageCoverageItem] ?? '';
+              const bVal = b[dcSortKey as keyof DamageCoverageItem] ?? '';
+              if (typeof aVal === 'string' && typeof bVal === 'string') {
+                return dcSortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+              }
+              const aNum = Number(aVal) || 0;
+              const bNum = Number(bVal) || 0;
+              return dcSortDir === 'asc' ? aNum - bNum : bNum - aNum;
+            });
+          })();
+
+          const handleDcSort = (key: string) => {
+            if (dcSortKey === key) {
+              setDcSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+            } else {
+              setDcSortKey(key);
+              setDcSortDir('desc');
+            }
+          };
+
+          const dcColumns = [
+            { key: 'name', label: 'Property', align: 'left' as const },
+            { key: 'ownerName', label: 'Owner', align: 'left' as const },
+            { key: 'reservationCount', label: 'Reservations', align: 'right' as const },
+            { key: 'totalDamageCoverage', label: 'Damage Coverage', align: 'right' as const },
+          ];
+
+          return (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm mt-6 overflow-hidden">
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
+                      <h3 className="text-sm font-semibold text-gray-900">Guest Paid Damage Coverage</h3>
+                      {dcFilteredData.length > 0 && (
+                        <span className="text-[11px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-medium">
+                          {dcFilteredData.length} properties
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Damage coverage fees collected from guests per property</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {dcFilteredData.length > 0 && (
+                      <span className="text-xs text-gray-500">
+                        Total: <span className="font-semibold text-amber-700">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</span>
+                      </span>
+                    )}
+                    {dcFilteredData.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const csvRows = ['Property,Owner,Reservations,Damage Coverage'];
+                          dcFilteredData.forEach((p: DamageCoverageItem) => {
+                            const name = (p.name || '').replace(/,/g, ' ');
+                            const owner = (p.ownerName || '').replace(/,/g, ' ');
+                            csvRows.push(`${name},${owner},${p.reservationCount},${p.totalDamageCoverage.toFixed(2)}`);
+                          });
+                          // Totals row
+                          csvRows.push(`"Total",,${dcFilteredData.reduce((s: number, p: DamageCoverageItem) => s + p.reservationCount, 0)},${dcFilteredData.reduce((s: number, p: DamageCoverageItem) => s + p.totalDamageCoverage, 0).toFixed(2)}`);
+                          const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `damage-coverage-${dateRange.start}-to-${dateRange.end}.csv`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Export CSV
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Toolbar */}
+              <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-3">
+                <div className="relative flex-shrink-0">
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search property or owner..."
+                    value={dcFilter}
+                    onChange={(e) => setDcFilter(e.target.value)}
+                    className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 bg-white"
+                  />
+                  {dcFilter && (
+                    <button onClick={() => setDcFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <span className="text-xs font-bold">&times;</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {damageCoverageLoading ? (
+                <div className="h-48 flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />
+                  <span className="text-xs text-gray-400">Loading report...</span>
+                </div>
+              ) : dcFilteredData.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {dcColumns.map(col => {
+                          const isSorted = dcSortKey === col.key;
+                          return (
+                            <th
+                              key={col.key}
+                              onClick={() => handleDcSort(col.key)}
+                              className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
+                                col.align === 'right' ? 'text-right' : 'text-left'
+                              } ${isSorted ? 'text-amber-700 bg-amber-50/50' : 'hover:text-gray-700 hover:bg-gray-100/50'}`}
+                              style={{ fontSize: '10px' }}
+                            >
+                              <span className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
+                                {col.label}
+                                {isSorted ? (
+                                  dcSortDir === 'asc' ? <ChevronUp className="w-3 h-3 text-amber-600" /> : <ChevronDown className="w-3 h-3 text-amber-600" />
+                                ) : (
+                                  <ArrowUpDown className="w-2.5 h-2.5 opacity-0" />
+                                )}
+                              </span>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dcFilteredData.map((p: DamageCoverageItem, idx: number) => (
+                        <tr key={p.propertyId} className={`border-b border-gray-100 hover:bg-amber-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          <td className="px-4 py-2 font-medium text-gray-900 max-w-[250px] truncate">{p.name}</td>
+                          <td className="px-4 py-2 text-gray-600 max-w-[180px] truncate">{p.ownerName || '-'}</td>
+                          <td className="px-4 py-2 text-gray-700 text-right tabular-nums">{p.reservationCount}</td>
+                          <td className="px-4 py-2 font-medium text-amber-700 text-right tabular-nums">{formatFullCurrency(p.totalDamageCoverage)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
+                        <td className="px-4 py-2.5 text-gray-900" colSpan={2}>Total ({dcFilteredData.length})</td>
+                        <td className="px-4 py-2.5 text-gray-900 text-right tabular-nums">{dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}</td>
+                        <td className="px-4 py-2.5 text-amber-700 text-right tabular-nums">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : damageCoverageData && damageCoverageData.length > 0 && dcFilter ? (
+                <div className="h-32 flex flex-col items-center justify-center text-gray-400">
+                  <Search className="w-6 h-6 mb-2 text-gray-300" />
+                  <span className="text-sm font-medium text-gray-500">No properties match "{dcFilter}"</span>
+                  <button onClick={() => setDcFilter('')} className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium">Clear filter</button>
+                </div>
+              ) : (
+                <div className="h-48 flex flex-col items-center justify-center text-gray-400">
+                  <AlertTriangle className="w-8 h-8 mb-2 text-gray-300" />
+                  <span className="text-sm font-medium text-gray-500">No damage coverage data for selected period</span>
+                </div>
               )}
             </div>
-            {damageCoverageData && damageCoverageData.length > 0 && (
-              <div className="flex items-center gap-3 text-xs">
-                <span className="text-gray-500">
-                  Total: <span className="font-semibold text-gray-900">{formatFullCurrency(damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</span>
-                </span>
-                <button
-                  onClick={() => {
-                    const csvRows = ['Property,Owner,Reservations,Damage Coverage'];
-                    damageCoverageData.forEach((p: DamageCoverageItem) => {
-                      const name = (p.name || '').replace(/,/g, ' ');
-                      const owner = (p.ownerName || '').replace(/,/g, ' ');
-                      csvRows.push(`${name},${owner},${p.reservationCount},${p.totalDamageCoverage.toFixed(2)}`);
-                    });
-                    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `damage-coverage-report-${dateRange.start}-to-${dateRange.end}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                >
-                  <Download className="w-3 h-3" />
-                  CSV
-                </button>
-              </div>
-            )}
-          </div>
-          {damageCoverageLoading ? (
-            <div className="h-48 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
-            </div>
-          ) : damageCoverageData && damageCoverageData.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Reservations</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Damage Coverage</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {damageCoverageData.map((p: DamageCoverageItem) => (
-                    <tr key={p.propertyId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm font-medium text-gray-900 max-w-[250px] truncate">
-                        {p.name}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-600 max-w-[180px] truncate">
-                        {p.ownerName || '—'}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
-                        {p.reservationCount}
-                      </td>
-                      <td className="px-4 py-2 text-sm font-medium text-amber-700 text-right tabular-nums">
-                        {formatFullCurrency(p.totalDamageCoverage)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr>
-                    <td className="px-4 py-2 text-sm font-semibold text-gray-900" colSpan={2}>Total</td>
-                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
-                      {damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}
-                    </td>
-                    <td className="px-4 py-2 text-sm font-semibold text-amber-700 text-right tabular-nums">
-                      {formatFullCurrency(damageCoverageData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
-              <AlertTriangle className="w-8 h-8 mb-2" />
-              <span className="text-sm">No damage coverage data for selected period</span>
-            </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* Owner Breakdown Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
