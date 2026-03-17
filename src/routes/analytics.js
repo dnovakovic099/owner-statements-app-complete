@@ -918,76 +918,78 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const { start, end, startDate, endDate } = dates;
         const { ownerId, propertyId, groupId, tag, includeZero } = req.query;
 
-        // Build where clause with optional filters
-        const whereClause = {
-            weekStartDate: { [Op.lte]: end },
-            weekEndDate: { [Op.gte]: start },
-            propertyId: { [Op.ne]: null },
-        };
+        // Optional filter values used in both raw SQL (step 1) and Sequelize (step 3)
 
-        // By default exclude zero-activity statements unless includeZero=true
+        // Fetch statements — two-step to avoid ORM column-naming issues with raw:true.
+        // Step 1: lightweight query for IDs + date ranges to determine which statements
+        //         to include (date-range dedup: newest wide statement beats older narrow ones).
+        let metaRows;
+        try {
+            metaRows = await sequelize.query(
+                `SELECT id, property_id AS "propertyId",
+                        week_start_date::text AS "weekStartDate",
+                        week_end_date::text   AS "weekEndDate"
+                 FROM statements
+                 WHERE week_start_date <= :end
+                   AND week_end_date   >= :start
+                   AND property_id IS NOT NULL
+                 ORDER BY id DESC`,
+                { replacements: { start: startDate, end: endDate }, type: sequelize.QueryTypes.SELECT }
+            );
+        } catch (queryErr) {
+            logger.error('property-financials meta query failed', { error: queryErr.message, stack: queryErr.stack });
+            throw queryErr;
+        }
+
+        // Step 2: For each property, keep only non-overlapping statements (newest ID wins).
+        const statementsByProperty = new Map();
+        for (const row of metaRows) {
+            const propId = row.propertyId;
+            if (!statementsByProperty.has(propId)) statementsByProperty.set(propId, []);
+            statementsByProperty.get(propId).push(row);
+        }
+
+        const selectedIds = [];
+        for (const [, propRows] of statementsByProperty) {
+            // propRows already sorted by id DESC (newest first)
+            const coveredIntervals = [];
+            for (const row of propRows) {
+                const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
+                const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
+                if (s && e) {
+                    const alreadyCovered = coveredIntervals.some(([a, b]) => a <= s && b >= e);
+                    if (alreadyCovered) continue;
+                    coveredIntervals.push([s, e]);
+                }
+                selectedIds.push(row.id);
+            }
+        }
+
+        if (selectedIds.length === 0) {
+            return res.json([]);
+        }
+
+        // Step 3: Fetch full data only for the selected statement IDs, applying optional filters
+        const step3Where = { id: { [Op.in]: selectedIds } };
         if (includeZero !== 'true') {
-            whereClause[Op.or] = [
+            step3Where[Op.or] = [
                 { totalRevenue: { [Op.ne]: 0 } },
                 { ownerPayout: { [Op.ne]: 0 } }
             ];
         }
+        if (ownerId && ownerId !== 'default') step3Where.ownerId = ownerId;
+        if (propertyId) step3Where.propertyId = propertyId;
+        if (groupId) step3Where.groupId = groupId;
+        if (tag) step3Where.groupTags = { [Op.like]: `%${tag}%` };
 
-        // Optional filters
-        if (ownerId && ownerId !== 'default') {
-            whereClause.ownerId = ownerId;
-        }
-        if (propertyId) {
-            whereClause.propertyId = propertyId;
-        }
-        if (groupId) {
-            whereClause.groupId = groupId;
-        }
-        if (tag) {
-            whereClause.groupTags = { [Op.like]: `%${tag}%` };
-        }
-
-        // Fetch statements with reservations in date range
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
-                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout',
-                         'weekStartDate', 'weekEndDate'],
-            where: whereClause,
-            order: [['created_at', 'DESC']], // newest first for date-range dedup
+                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout'],
+            where: step3Where,
             raw: true
         });
 
-        // Group statements by property, then apply date-range deduplication:
-        // If multiple statements exist for the same property and their periods overlap
-        // (e.g. a Jan stmt + Feb stmt + a combined Jan-Feb stmt), keep only the newest
-        // statement(s) that together cover the period without double-counting.
-        // A statement is skipped if its [weekStartDate, weekEndDate] is fully contained
-        // within an already-selected statement's period.
-        const statementsByProperty = new Map();
-        for (const stmt of statements) {
-            const propId = stmt.propertyId;
-            if (!statementsByProperty.has(propId)) statementsByProperty.set(propId, []);
-            statementsByProperty.get(propId).push(stmt);
-        }
-
-        // For each property select non-overlapping statements (newest wins)
-        const selectedStatements = [];
-        for (const [, propStmts] of statementsByProperty) {
-            const coveredIntervals = []; // list of [start, end] strings already included
-            for (const stmt of propStmts) { // already sorted newest-first
-                // raw:true may return snake_case column names — handle both
-                const rawStart = stmt.weekStartDate || stmt.week_start_date;
-                const rawEnd   = stmt.weekEndDate   || stmt.week_end_date;
-                const s = rawStart ? String(rawStart).slice(0, 10) : null;
-                const e = rawEnd   ? String(rawEnd).slice(0, 10)   : null;
-                if (s && e) {
-                    const alreadyCovered = coveredIntervals.some(([a, b]) => a <= s && b >= e);
-                    if (alreadyCovered) continue; // skip — a newer wider statement already covers this
-                    coveredIntervals.push([s, e]);
-                }
-                selectedStatements.push(stmt);
-            }
-        }
+        const selectedStatements = statements;
 
         // Aggregate per property from the deduplicated statement set.
         // Revenue is computed from reservation-level fields (baseRate + guestFees + platformFees)
