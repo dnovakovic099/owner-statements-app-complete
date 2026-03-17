@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getBaseUrl } from './utils';
 
 interface OwnerBreakdownParams {
   startDate: string;
@@ -19,10 +20,6 @@ interface UseOwnerBreakdownReturn {
   error: string | null;
   refetch: () => void;
 }
-
-const getBaseUrl = (): string => {
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-};
 
 export const useOwnerBreakdown = (
   params: OwnerBreakdownParams

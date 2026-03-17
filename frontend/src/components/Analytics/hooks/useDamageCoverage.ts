@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getBaseUrl } from './utils';
 
 interface DamageCoverageParams {
   startDate: string;
@@ -12,10 +13,6 @@ export interface DamageCoverageItem {
   totalDamageCoverage: number;
   reservationCount: number;
 }
-
-const getBaseUrl = (): string => {
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-};
 
 export const useDamageCoverage = (params: DamageCoverageParams) => {
   const [data, setData] = useState<DamageCoverageItem[] | null>(null);

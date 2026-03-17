@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getBaseUrl } from './utils';
 
 interface RecentStatementsParams {
   startDate?: string;
@@ -25,10 +26,6 @@ interface UseRecentStatementsReturn {
   error: string | null;
   refetch: () => void;
 }
-
-const getBaseUrl = (): string => {
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-};
 
 export const useRecentStatements = (
   params?: RecentStatementsParams

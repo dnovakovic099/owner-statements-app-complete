@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getBaseUrl } from './utils';
 
 interface PropertyFinancialsParams {
   startDate: string;
@@ -27,10 +28,6 @@ export interface PropertyFinancialItem {
   reservationCount: number;
   statementCount: number;
 }
-
-const getBaseUrl = (): string => {
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-};
 
 export const usePropertyFinancials = (params: PropertyFinancialsParams) => {
   const [data, setData] = useState<PropertyFinancialItem[] | null>(null);

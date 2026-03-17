@@ -60,6 +60,7 @@ router.get('/', asyncHandler(async (req, res) => {
         });
     } catch (err) {
         // If Hostify check fails, fall back to no offboarded flag
+        logger.warn('Failed to check offboarded status from Hostify, defaulting all to active', { context: 'Listings', error: err?.message });
         listings.forEach(l => { l.isOffboarded = false; });
     }
 

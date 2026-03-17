@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const DatabaseService = require('./DatabaseService');
+const logger = require('../utils/logger');
 
 class FileDataService {
     constructor() {
@@ -37,7 +38,7 @@ class FileDataService {
             await fs.mkdir(this.dataDir, { recursive: true });
             await fs.mkdir(this.statementsDir, { recursive: true });
         } catch (error) {
-            // Ignore directory creation errors
+            logger.debug('Directory already exists or creation failed (non-critical)', { context: 'FileDataService', error: error.message });
         }
     }
 
@@ -539,7 +540,7 @@ class FileDataService {
                     const expenseUploadService = require('./ExpenseUploadService');
                     duplicateWarnings = expenseUploadService.detectDuplicates(secureStayExpenses, uploadedExpenses);
                 } catch (error) {
-                    // Ignore duplicate detection errors
+                    logger.warn('Duplicate expense detection failed (non-critical)', { context: 'FileDataService', error: error.message });
                 }
             }
 
@@ -652,7 +653,7 @@ class FileDataService {
                 allExpenses.push(...secureStayExpenses);
             }
         } catch (error) {
-            // SecureStay API failed, continue with other sources
+            logger.warn('SecureStay API failed, continuing with other expense sources', { context: 'FileDataService', error: error.message });
         }
         
         // 2. Get uploaded expenses
@@ -698,7 +699,7 @@ class FileDataService {
             allExpenses.push(...uploadedExpenses);
 
         } catch (error) {
-            // Uploaded expenses failed, continue
+            logger.warn('Uploaded expenses fetch failed, continuing', { context: 'FileDataService', error: error.message });
         }
         
         // 3. Detect duplicates between SecureStay and uploaded expenses

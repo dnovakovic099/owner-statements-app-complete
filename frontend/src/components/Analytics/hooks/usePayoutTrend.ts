@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getBaseUrl } from './utils';
 
 interface PayoutTrendParams {
   startDate: string;
@@ -18,10 +19,6 @@ interface UsePayoutTrendReturn {
   error: string | null;
   refetch: () => void;
 }
-
-const getBaseUrl = (): string => {
-  return process.env.NODE_ENV === 'development' ? 'http://localhost:3003' : '';
-};
 
 export const usePayoutTrend = (
   params: PayoutTrendParams

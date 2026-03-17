@@ -151,7 +151,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
   const fetchQuickBooksWidgets = useCallback(async () => {
     if (!dateRange.startDate || !dateRange.endDate) return;
 
-    console.log('[FinancialDashboard] Fetching payment status with global date filter:', dateRange);
     setQbWidgetsLoading(true);
 
     const authHeader = {
@@ -168,14 +167,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         setPaymentStatusData(paymentStatus.data);
       }
     } catch (error) {
-      console.error('[FinancialDashboard] Failed to fetch payment status:', error);
     } finally {
       setQbWidgetsLoading(false);
     }
   }, [dateRange]);
 
   const fetchFinancialData = useCallback(async () => {
-    console.log('[FinancialDashboard] Fetching financial data for date range:', dateRange);
     setLoading(true);
     setQbConnectionError(null); // Reset error state
 
@@ -199,8 +196,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         // Fetch month-over-month comparison for summary badges
         financialsAPI.getComparison(dateRange.startDate, dateRange.endDate, undefined, undefined, 'mom').catch(extractError),
       ]);
-      console.log('[FinancialDashboard] Essential API calls completed');
-      console.log('[FinancialDashboard] homeCategoryResponseData:', JSON.stringify(homeCategoryResponseData, null, 2));
 
       // Only show QB error banner if summary data actually failed (no data returned)
       if (summaryData?.success === false &&
@@ -242,7 +237,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const netIncome = (s.totalIncome || 0) - (s.totalExpenses || 0);
         const profitMargin = s.totalIncome > 0 ? (netIncome / s.totalIncome) * 100 : 0;
 
-        console.log('[FinancialDashboard] Summary API response:', s);
         setSummary({
           totalIncome: s.totalIncome || 0,
           totalExpenses: s.totalExpenses || 0,
@@ -333,8 +327,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
 
       if (homeCategoryResponseData.success && homeCategoryResponseData.data?.categories) {
         // Map to home categories format
-        console.log('[FinancialDashboard] Home category API response:', homeCategoryResponseData.data.categories);
-
         const categoryMap: Record<string, HomeCategoryData> = {
           pm: { income: 0, expenses: 0, net: 0, propertyCount: 0 },
           arbitrage: { income: 0, expenses: 0, net: 0, propertyCount: 0 },
@@ -359,10 +351,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
             mappedKey = 'shared';
           }
 
-          console.log(`[FinancialDashboard] Mapping category "${c.category}" (key="${key}") -> "${mappedKey}", income=${c.income}, properties=${c.propertyCount}`);
-
           if (!mappedKey) {
-            console.log(`[FinancialDashboard] Skipping unknown category: ${c.category}`);
             return;
           }
 
@@ -390,9 +379,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           }
         });
 
-        console.log('[FinancialDashboard] Final categoryMap:', categoryMap);
-        console.log('[FinancialDashboard] All properties data:', allPropertiesData);
-
         setHomeCategories(categoryMap as {
           pm: HomeCategoryData;
           arbitrage: HomeCategoryData;
@@ -403,7 +389,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         // Sort properties by income and set top 5
         const sortedProperties = allPropertiesData.sort((a, b) => b.income - a.income).slice(0, 5);
         setTopProperties(sortedProperties);
-        console.log('[FinancialDashboard] Top 5 properties:', sortedProperties);
 
         // Extract ROI data (using profit margin as proxy)
         const pmData = categoryMap.pm;
@@ -420,7 +405,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const avgMargin = totalIncome > 0 ? (totalNet / totalIncome) * 100 : 0;
 
         setRoiData({
-          average: { value: avgMargin, change: 0 }, // TODO: calculate change from comparison
+          average: { value: avgMargin, change: marginChange },
           pm: { value: pmMargin, change: 0 },
           arbitrage: { value: arbMargin, change: 0 },
           owned: { value: ownedMargin, change: 0 },
@@ -521,7 +506,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
           }
         });
 
-        console.log('[FinancialDashboard] Transformed By Home Type data:', byHomeTypeTransformed);
         setByHomeTypeData(byHomeTypeTransformed);
       }
 
@@ -571,7 +555,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
     }
 
     setTabLoading(tab);
-    console.log(`[FinancialDashboard] Lazy loading data for tab: ${tab}`);
 
     try {
       if (tab === 'by-property') {
@@ -579,8 +562,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         const propertyData = await financialsAPI.getByProperty(6);
 
         if (propertyData?.success && propertyData.data?.properties) {
-          console.log('[FinancialDashboard] Property data received:', propertyData.data.properties.length, 'properties');
-
           const transformedProperties = propertyData.data.properties.map((prop: any) => {
             let homeCategory: 'PM' | 'Arbitrage' | 'Owned' = 'PM';
             if (prop.homeCategory) {
@@ -798,10 +779,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onBack }) => {
         };
       });
       setTransactions(mappedTransactions);
-      console.log(`[FinancialDashboard] Using ${mappedTransactions.length} stored transactions for ${category.name}`);
     } else {
       setTransactions([]);
-      console.log(`[FinancialDashboard] No stored transactions for ${category.name}`);
     }
 
     setTransactionsLoading(false);

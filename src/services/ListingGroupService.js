@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 /**
  * Service for managing Listing Groups
@@ -58,7 +59,7 @@ class ListingGroupService {
 
             return groupsWithCounts;
         } catch (error) {
-            console.error('[ListingGroupService] Error getting all groups:', error);
+            logger.error('[ListingGroupService] Error getting all groups:', error);
             throw error;
         }
     }
@@ -90,7 +91,7 @@ class ListingGroupService {
                 memberCount: members.length
             };
         } catch (error) {
-            console.error(`[ListingGroupService] Error getting group ${id}:`, error);
+            logger.error(`[ListingGroupService] Error getting group ${id}:`, error);
             throw error;
         }
     }
@@ -132,7 +133,7 @@ class ListingGroupService {
                 calculationType: calculationType || 'checkout'
             });
 
-            console.log(`[ListingGroupService] Created group: ${group.name} (ID: ${group.id})`);
+            logger.info(`[ListingGroupService] Created group: ${group.name} (ID: ${group.id})`);
 
             // Assign listings to the group if provided
             if (listingIds && listingIds.length > 0) {
@@ -142,7 +143,7 @@ class ListingGroupService {
             // Return the group with members
             return await this.getGroupById(group.id);
         } catch (error) {
-            console.error('[ListingGroupService] Error creating group:', error);
+            logger.error('[ListingGroupService] Error creating group:', error);
             throw error;
         }
     }
@@ -211,13 +212,13 @@ class ListingGroupService {
 
             if (Object.keys(updateData).length > 0) {
                 await group.update(updateData);
-                console.log(`[ListingGroupService] Updated group ${id}:`, updateData);
+                logger.info(`[ListingGroupService] Updated group ${id}:`, updateData);
             }
 
             // Return the updated group with members
             return await this.getGroupById(id);
         } catch (error) {
-            console.error(`[ListingGroupService] Error updating group ${id}:`, error);
+            logger.error(`[ListingGroupService] Error updating group ${id}:`, error);
             throw error;
         }
     }
@@ -251,7 +252,7 @@ class ListingGroupService {
             // Delete the group
             await group.destroy();
 
-            console.log(`[ListingGroupService] Deleted group "${groupName}" (ID: ${id}), ungrouped ${affectedCount} listings`);
+            logger.info(`[ListingGroupService] Deleted group "${groupName}" (ID: ${id}), ungrouped ${affectedCount} listings`);
 
             return {
                 success: true,
@@ -259,7 +260,7 @@ class ListingGroupService {
                 ungroupedListings: affectedCount
             };
         } catch (error) {
-            console.error(`[ListingGroupService] Error deleting group ${id}:`, error);
+            logger.error(`[ListingGroupService] Error deleting group ${id}:`, error);
             throw error;
         }
     }
@@ -325,7 +326,7 @@ class ListingGroupService {
                 });
             }
 
-            console.log(`[ListingGroupService] Added ${results.added.length} listings to group "${group.name}" (${results.movedFrom.length} moved from other groups)`);
+            logger.info(`[ListingGroupService] Added ${results.added.length} listings to group "${group.name}" (${results.movedFrom.length} moved from other groups)`);
 
             return {
                 success: true,
@@ -334,7 +335,7 @@ class ListingGroupService {
                 ...results
             };
         } catch (error) {
-            console.error(`[ListingGroupService] Error adding listings to group ${groupId}:`, error);
+            logger.error(`[ListingGroupService] Error adding listings to group ${groupId}:`, error);
             throw error;
         }
     }
@@ -368,7 +369,7 @@ class ListingGroupService {
             // Remove from group
             await listing.update({ groupId: null });
 
-            console.log(`[ListingGroupService] Removed listing ${listingId} from group "${previousGroup?.name || previousGroupId}"`);
+            logger.info(`[ListingGroupService] Removed listing ${listingId} from group "${previousGroup?.name || previousGroupId}"`);
 
             return {
                 success: true,
@@ -378,7 +379,7 @@ class ListingGroupService {
                 previousGroupName: previousGroup ? previousGroup.name : null
             };
         } catch (error) {
-            console.error(`[ListingGroupService] Error removing listing ${listingId} from group:`, error);
+            logger.error(`[ListingGroupService] Error removing listing ${listingId} from group:`, error);
             throw error;
         }
     }
@@ -397,7 +398,7 @@ class ListingGroupService {
 
             return listings.map(l => l.toJSON());
         } catch (error) {
-            console.error(`[ListingGroupService] Error getting listings for group ${groupId}:`, error);
+            logger.error(`[ListingGroupService] Error getting listings for group ${groupId}:`, error);
             throw error;
         }
     }
@@ -409,17 +410,17 @@ class ListingGroupService {
      */
     async getGroupsByTag(tag) {
         try {
-            console.log(`[ListingGroupService] getGroupsByTag() called with tag: "${tag}"`);
+            logger.debug(`[ListingGroupService] getGroupsByTag() called with tag: "${tag}"`);
             const groups = await this.getAllGroups();
-            console.log(`[ListingGroupService] Total groups in database: ${groups.length}`);
+            logger.debug(`[ListingGroupService] Total groups in database: ${groups.length}`);
 
             if (!tag) {
-                console.log(`[ListingGroupService] No tag filter, returning all groups`);
+                logger.debug(`[ListingGroupService] No tag filter, returning all groups`);
                 return groups;
             }
 
             const tagUpper = tag.toUpperCase().trim();
-            console.log(`[ListingGroupService] Filtering for tag: "${tagUpper}"`);
+            logger.debug(`[ListingGroupService] Filtering for tag: "${tagUpper}"`);
 
             // Pattern matching for WEEKLY, BI-WEEKLY, MONTHLY tags
             const matchedGroups = groups.filter(group => {
@@ -455,14 +456,14 @@ class ListingGroupService {
                     matchReason = isMatch ? 'exact match' : 'no exact match';
                 }
 
-                console.log(`[ListingGroupService] Group "${group.name}" (ID: ${group.id}) - tags: [${groupTags.join(', ')}] - ${isMatch ? 'MATCH' : 'NO MATCH'} (${matchReason})`);
+                logger.debug(`[ListingGroupService] Group "${group.name}" (ID: ${group.id}) - tags: [${groupTags.join(', ')}] - ${isMatch ? 'MATCH' : 'NO MATCH'} (${matchReason})`);
                 return isMatch;
             });
 
-            console.log(`[ListingGroupService] Found ${matchedGroups.length} groups matching tag "${tag}": [${matchedGroups.map(g => g.name).join(', ')}]`);
+            logger.debug(`[ListingGroupService] Found ${matchedGroups.length} groups matching tag "${tag}": [${matchedGroups.map(g => g.name).join(', ')}]`);
             return matchedGroups;
         } catch (error) {
-            console.error(`[ListingGroupService] Error getting groups by tag "${tag}":`, error);
+            logger.error(`[ListingGroupService] Error getting groups by tag "${tag}":`, error);
             throw error;
         }
     }
