@@ -2131,7 +2131,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                           onClick={() => handlePfSort(col.key as FinancialSortKey)}
                           className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
                             col.align === 'right' ? 'text-right' : 'text-left'
-                          } ${isSticky ? 'sticky left-0 bg-gray-50 z-10' : ''} ${
+                          } ${isSticky ? 'sticky left-0 bg-gray-50 z-10' : 'bg-gray-50'} ${
                             isSorted ? 'text-blue-700 bg-blue-50/50' : 'hover:text-gray-700 hover:bg-gray-100/50'
                           }`}
                           style={{ fontSize: '10px' }}

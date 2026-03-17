@@ -1020,11 +1020,14 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             const entry = propertyMap.get(propId);
             entry.statementCount += 1;
 
-            // Expenses are statement-level — safe to add directly since we've already
-            // deduped overlapping statements above
-            entry.expenses += parseFloat(stmt.totalExpenses) || 0;
+            // Use statement-level totals directly — these match exactly what the statement shows.
+            // Revenue/pmCommission/ownerPayout are already correct in the stored statement.
+            entry.revenue      += parseFloat(stmt.totalRevenue)   || 0;
+            entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
+            entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
+            entry.ownerPayout  += parseFloat(stmt.ownerPayout)     || 0;
 
-            // Extract reservations — use stored (prorated) fields, dedup by hostifyId
+            // Extract reservations only for breakdown columns (baseRate, guestFees, platformFees, taxes)
             const reservations = typeof stmt.reservations === 'string'
                 ? JSON.parse(stmt.reservations)
                 : (stmt.reservations || []);
@@ -1034,18 +1037,11 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 if (resId && entry._seenReservationIds.has(resId)) continue;
                 if (resId) entry._seenReservationIds.add(resId);
 
-                const resBaseRate  = parseFloat(r.baseRate || r.accommodationTotal || 0);
-                const resGuestFees = parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
-                const resPlatform  = parseFloat(r.platformFees || r.hostServiceFee || 0);
-                const resTaxes     = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
-
                 entry.reservationCount += 1;
-                entry.baseRate    += resBaseRate;
-                entry.guestFees   += resGuestFees;
-                entry.platformFees += resPlatform;
-                entry.taxes       += resTaxes;
-                // Revenue = baseRate + guestFees + platformFees (platformFees is already negative)
-                entry.revenue += resBaseRate + resGuestFees + resPlatform;
+                entry.baseRate    += parseFloat(r.baseRate || r.accommodationTotal || 0);
+                entry.guestFees   += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
+                entry.platformFees += parseFloat(r.platformFees || r.hostServiceFee || 0);
+                entry.taxes       += parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
             }
         }
 
@@ -1067,25 +1063,24 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
 
         let results = Array.from(propertyMap.values());
 
-        // Compute pmCommission and ownerPayout from aggregated revenue
         results = results.map(({ _seenReservationIds, ...p }) => {
             const listing = listingMap.get(parseInt(p.propertyId));
-            const pmFeeRate = listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) / 100 : 0;
-            const pmCommission = p.revenue * pmFeeRate;
-            const ownerPayout = p.revenue - pmCommission - p.expenses;
+            const pmFeePercentage = listing?.pmFeePercentage != null
+                ? parseFloat(listing.pmFeePercentage)
+                : (p.revenue > 0 && p.pmCommission > 0 ? Math.round((p.pmCommission / p.revenue) * 1000) / 10 : null);
 
             return {
                 ...p,
                 name: listing?.displayName || listing?.nickname || listing?.name || p.name,
-                pmFeePercentage: listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
-                revenue: Math.round(p.revenue * 100) / 100,
-                pmCommission: Math.round(pmCommission * 100) / 100,
-                ownerPayout: Math.round(ownerPayout * 100) / 100,
-                baseRate: Math.round(p.baseRate * 100) / 100,
-                guestFees: Math.round(p.guestFees * 100) / 100,
+                pmFeePercentage,
+                revenue:      Math.round(p.revenue      * 100) / 100,
+                pmCommission: Math.round(p.pmCommission * 100) / 100,
+                ownerPayout:  Math.round(p.ownerPayout  * 100) / 100,
+                baseRate:     Math.round(p.baseRate     * 100) / 100,
+                guestFees:    Math.round(p.guestFees    * 100) / 100,
                 platformFees: Math.round(p.platformFees * 100) / 100,
-                taxes: Math.round(p.taxes * 100) / 100,
-                expenses: Math.round(p.expenses * 100) / 100,
+                taxes:        Math.round(p.taxes        * 100) / 100,
+                expenses:     Math.round(p.expenses     * 100) / 100,
             };
         });
 
