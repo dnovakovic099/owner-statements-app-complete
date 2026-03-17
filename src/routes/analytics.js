@@ -953,7 +953,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout',
                          'weekStartDate', 'weekEndDate', 'createdAt'],
             where: whereClause,
-            order: [['createdAt', 'DESC']], // newest first for date-range dedup
+            order: [['created_at', 'DESC']], // newest first for date-range dedup
             raw: true
         });
 
@@ -975,8 +975,11 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         for (const [, propStmts] of statementsByProperty) {
             const coveredIntervals = []; // list of [start, end] strings already included
             for (const stmt of propStmts) { // already sorted newest-first
-                const s = stmt.weekStartDate ? String(stmt.weekStartDate).slice(0, 10) : null;
-                const e = stmt.weekEndDate   ? String(stmt.weekEndDate).slice(0, 10)   : null;
+                // raw:true may return snake_case column names — handle both
+                const rawStart = stmt.weekStartDate || stmt.week_start_date;
+                const rawEnd   = stmt.weekEndDate   || stmt.week_end_date;
+                const s = rawStart ? String(rawStart).slice(0, 10) : null;
+                const e = rawEnd   ? String(rawEnd).slice(0, 10)   : null;
                 if (s && e) {
                     const alreadyCovered = coveredIntervals.some(([a, b]) => a <= s && b >= e);
                     if (alreadyCovered) continue; // skip — a newer wider statement already covers this
