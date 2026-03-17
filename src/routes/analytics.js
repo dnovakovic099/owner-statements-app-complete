@@ -951,7 +951,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout',
-                         'weekStartDate', 'weekEndDate', 'createdAt'],
+                         'weekStartDate', 'weekEndDate'],
             where: whereClause,
             order: [['created_at', 'DESC']], // newest first for date-range dedup
             raw: true
