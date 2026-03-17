@@ -951,16 +951,48 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout',
-                         'techFees', 'insuranceFees'],
+                         'weekStartDate', 'weekEndDate', 'createdAt'],
             where: whereClause,
+            order: [['createdAt', 'DESC']], // newest first for date-range dedup
             raw: true
         });
 
-        // Aggregate per property — use statement-level financial totals directly
-        // to avoid recalculation errors (e.g. wrong prorated amounts for calendar-based statements)
+        // Group statements by property, then apply date-range deduplication:
+        // If multiple statements exist for the same property and their periods overlap
+        // (e.g. a Jan stmt + Feb stmt + a combined Jan-Feb stmt), keep only the newest
+        // statement(s) that together cover the period without double-counting.
+        // A statement is skipped if its [weekStartDate, weekEndDate] is fully contained
+        // within an already-selected statement's period.
+        const statementsByProperty = new Map();
+        for (const stmt of statements) {
+            const propId = stmt.propertyId;
+            if (!statementsByProperty.has(propId)) statementsByProperty.set(propId, []);
+            statementsByProperty.get(propId).push(stmt);
+        }
+
+        // For each property select non-overlapping statements (newest wins)
+        const selectedStatements = [];
+        for (const [, propStmts] of statementsByProperty) {
+            const coveredIntervals = []; // list of [start, end] strings already included
+            for (const stmt of propStmts) { // already sorted newest-first
+                const s = stmt.weekStartDate ? String(stmt.weekStartDate).slice(0, 10) : null;
+                const e = stmt.weekEndDate   ? String(stmt.weekEndDate).slice(0, 10)   : null;
+                if (s && e) {
+                    const alreadyCovered = coveredIntervals.some(([a, b]) => a <= s && b >= e);
+                    if (alreadyCovered) continue; // skip — a newer wider statement already covers this
+                    coveredIntervals.push([s, e]);
+                }
+                selectedStatements.push(stmt);
+            }
+        }
+
+        // Aggregate per property from the deduplicated statement set.
+        // Revenue is computed from reservation-level fields (baseRate + guestFees + platformFees)
+        // which the statement service already stores as prorated amounts for calendar-based stmts.
+        // Reservations are further deduplicated by hostifyId to handle edge cases.
         const propertyMap = new Map();
 
-        for (const stmt of statements) {
+        for (const stmt of selectedStatements) {
             const propId = stmt.propertyId;
             if (!propertyMap.has(propId)) {
                 propertyMap.set(propId, {
@@ -978,48 +1010,37 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     reservationCount: 0,
                     statementCount: 0,
                     _seenReservationIds: new Set(),
-                    _seenStatementIds: new Set(),
                 });
             }
             const entry = propertyMap.get(propId);
             entry.statementCount += 1;
 
-            // Use statement-level financial totals directly (already correctly calculated,
-            // including prorated calendar-based revenue) — deduplicate by statement ID
-            const stmtId = stmt.id;
-            if (stmtId && !entry._seenStatementIds.has(stmtId)) {
-                entry._seenStatementIds.add(stmtId);
-                entry.revenue += parseFloat(stmt.totalRevenue) || 0;
-                entry.pmCommission += parseFloat(stmt.pmCommission) || 0;
-                entry.expenses += parseFloat(stmt.totalExpenses) || 0;
-                entry.ownerPayout += parseFloat(stmt.ownerPayout) || 0;
-            } else {
-                // Duplicate statement — skip financial totals entirely
-                continue;
-            }
+            // Expenses are statement-level — safe to add directly since we've already
+            // deduped overlapping statements above
+            entry.expenses += parseFloat(stmt.totalExpenses) || 0;
 
-            // Extract reservations for per-reservation breakdown columns and count.
-            // Deduplicate by hostifyId to avoid double-counting across overlapping statements.
-            // No checkout date filter here — we trust what the statement already included.
+            // Extract reservations — use stored (prorated) fields, dedup by hostifyId
             const reservations = typeof stmt.reservations === 'string'
                 ? JSON.parse(stmt.reservations)
                 : (stmt.reservations || []);
 
             for (const r of reservations) {
                 const resId = r.hostifyId || r.id;
-                if (resId && entry._seenReservationIds.has(resId)) {
-                    continue;
-                }
+                if (resId && entry._seenReservationIds.has(resId)) continue;
+                if (resId) entry._seenReservationIds.add(resId);
 
-                if (resId) {
-                    entry._seenReservationIds.add(resId);
-                }
+                const resBaseRate  = parseFloat(r.baseRate || r.accommodationTotal || 0);
+                const resGuestFees = parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
+                const resPlatform  = parseFloat(r.platformFees || r.hostServiceFee || 0);
+                const resTaxes     = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
 
                 entry.reservationCount += 1;
-                entry.baseRate += parseFloat(r.baseRate || r.accommodationTotal || 0);
-                entry.guestFees += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
-                entry.platformFees += parseFloat(r.platformFees || r.hostServiceFee || 0);
-                entry.taxes += parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
+                entry.baseRate    += resBaseRate;
+                entry.guestFees   += resGuestFees;
+                entry.platformFees += resPlatform;
+                entry.taxes       += resTaxes;
+                // Revenue = baseRate + guestFees + platformFees (platformFees is already negative)
+                entry.revenue += resBaseRate + resGuestFees + resPlatform;
             }
         }
 
@@ -1041,18 +1062,20 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
 
         let results = Array.from(propertyMap.values());
 
-        // Financial totals are already summed directly from statement-level fields.
-        // Just clean up internal sets, resolve listing display name/pmFeePercentage, and round.
-        results = results.map(({ _seenReservationIds, _seenStatementIds, ...p }) => {
+        // Compute pmCommission and ownerPayout from aggregated revenue
+        results = results.map(({ _seenReservationIds, ...p }) => {
             const listing = listingMap.get(parseInt(p.propertyId));
+            const pmFeeRate = listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) / 100 : 0;
+            const pmCommission = p.revenue * pmFeeRate;
+            const ownerPayout = p.revenue - pmCommission - p.expenses;
 
             return {
                 ...p,
                 name: listing?.displayName || listing?.nickname || listing?.name || p.name,
                 pmFeePercentage: listing?.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
                 revenue: Math.round(p.revenue * 100) / 100,
-                pmCommission: Math.round(p.pmCommission * 100) / 100,
-                ownerPayout: Math.round(p.ownerPayout * 100) / 100,
+                pmCommission: Math.round(pmCommission * 100) / 100,
+                ownerPayout: Math.round(ownerPayout * 100) / 100,
                 baseRate: Math.round(p.baseRate * 100) / 100,
                 guestFees: Math.round(p.guestFees * 100) / 100,
                 platformFees: Math.round(p.platformFees * 100) / 100,
