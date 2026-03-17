@@ -157,8 +157,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
                 [fn('COUNT', col('id')), 'statementCount']
             ],
             where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
                     { ownerPayout: { [Op.ne]: 0 } }
@@ -170,8 +170,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
         // Get additional metrics separately
         const negativePayoutResult = await Statement.count({
             where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 ownerPayout: { [Op.lt]: 0 }
             }
         });
@@ -180,8 +180,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
             distinct: true,
             col: 'property_id',
             where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
                     { ownerPayout: { [Op.ne]: 0 } }
@@ -211,8 +211,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
         const statementsWithReservations = await Statement.findAll({
             attributes: ['reservations'],
             where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
                     { ownerPayout: { [Op.ne]: 0 } }
@@ -271,8 +271,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
                         [fn('COUNT', col('id')), 'statementCount']
                     ],
                     where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
+                        weekStartDate: { [Op.gte]: compStart },
+                        weekEndDate: { [Op.lte]: compEnd },
                         [Op.or]: [
                             { totalRevenue: { [Op.ne]: 0 } },
                             { ownerPayout: { [Op.ne]: 0 } }
@@ -283,8 +283,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
 
                 const prevNegativePayoutResult = await Statement.count({
                     where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
+                        weekStartDate: { [Op.gte]: compStart },
+                        weekEndDate: { [Op.lte]: compEnd },
                         ownerPayout: { [Op.lt]: 0 }
                     }
                 });
@@ -293,8 +293,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
                     distinct: true,
                     col: 'property_id',
                     where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
+                        weekStartDate: { [Op.gte]: compStart },
+                        weekEndDate: { [Op.lte]: compEnd },
                         [Op.or]: [
                             { totalRevenue: { [Op.ne]: 0 } },
                             { ownerPayout: { [Op.ne]: 0 } }
@@ -324,8 +324,8 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
                 const prevStatementsWithReservations = await Statement.findAll({
                     attributes: ['reservations'],
                     where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
+                        weekStartDate: { [Op.gte]: compStart },
+                        weekEndDate: { [Op.lte]: compEnd },
                         [Op.or]: [
                             { totalRevenue: { [Op.ne]: 0 } },
                             { ownerPayout: { [Op.ne]: 0 } }
@@ -440,9 +440,9 @@ router.get('/revenue-trend', setCacheHeaders(300), async (req, res) => {
                 [fn('SUM', col('owner_payout')), 'payout']
             ],
             where: {
-                // Overlap condition
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                // Within condition: statement period must fall within selected range
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -519,9 +519,9 @@ router.get('/payout-trend', setCacheHeaders(300), async (req, res) => {
                 [fn('SUM', col('owner_payout')), 'payout']
             ],
             where: {
-                // Overlap condition: statement period overlaps with selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                // Within condition: statement period must fall within selected range
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 // Exclude $0 activity statements (where both totalRevenue = 0 AND ownerPayout = 0)
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -591,9 +591,9 @@ router.get('/expense-breakdown', setCacheHeaders(300), async (req, res) => {
         const statements = await Statement.findAll({
             attributes: ['items'],
             where: {
-                // Overlap condition
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                // Within condition: statement period must fall within selected range
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -700,9 +700,9 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
                 [fn('SUM', col('pm_commission')), 'pmFee']
             ],
             where: {
-                // Overlap condition
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                // Within condition: statement period must fall within selected range
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 propertyId: { [Op.ne]: null },
                 // Exclude $0 activity statements
                 [Op.or]: [
@@ -802,8 +802,8 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations'],
             where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 propertyId: { [Op.ne]: null },
             },
             raw: true
@@ -930,8 +930,8 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                         week_start_date::text AS "weekStartDate",
                         week_end_date::text   AS "weekEndDate"
                  FROM statements
-                 WHERE week_start_date <= :end
-                   AND week_end_date   >= :start
+                 WHERE week_start_date >= :start
+                   AND week_end_date   <= :end
                    AND property_id IS NOT NULL
                  ORDER BY id DESC`,
                 { replacements: { start: startDate, end: endDate }, type: sequelize.QueryTypes.SELECT }
@@ -1195,9 +1195,9 @@ router.get('/owner-breakdown', setCacheHeaders(300), async (req, res) => {
                 [fn('COUNT', col('id')), 'statementCount']
             ],
             where: {
-                // Overlap condition
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                // Within condition: statement period must fall within selected range
+                weekStartDate: { [Op.gte]: start },
+                weekEndDate: { [Op.lte]: end },
                 ownerName: { [Op.ne]: null },
                 // Exclude $0 activity statements
                 [Op.or]: [
@@ -1267,9 +1267,8 @@ router.get('/statement-status', setCacheHeaders(300), async (req, res) => {
 
         // Build where clause with optional filters
         const whereClause = {
-            // Overlap condition
-            weekStartDate: { [Op.lte]: end },
-            weekEndDate: { [Op.gte]: start },
+            weekStartDate: { [Op.gte]: start },
+            weekEndDate: { [Op.lte]: end },
             // Exclude $0 activity statements
             [Op.or]: [
                 { totalRevenue: { [Op.ne]: 0 } },
@@ -1352,8 +1351,8 @@ router.get('/recent-statements', async (req, res) => {
             const start = parseDate(startDate);
             const end = parseDate(endDate);
             if (start && end) {
-                whereClause.weekStartDate = { [Op.lte]: end };
-                whereClause.weekEndDate = { [Op.gte]: start };
+                whereClause.weekStartDate = { [Op.gte]: start };
+                whereClause.weekEndDate = { [Op.lte]: end };
             }
         }
 
@@ -1511,10 +1510,10 @@ router.get('/export', async (req, res) => {
             });
         }
 
-        // Base where clause for all queries (overlap condition, exclude $0 activity)
+        // Base where clause for all queries (within range, exclude $0 activity)
         const baseWhere = {
-            weekStartDate: { [Op.lte]: end },
-            weekEndDate: { [Op.gte]: start },
+            weekStartDate: { [Op.gte]: start },
+            weekEndDate: { [Op.lte]: end },
             [Op.or]: [
                 { totalRevenue: { [Op.ne]: 0 } },
                 { ownerPayout: { [Op.ne]: 0 } }
