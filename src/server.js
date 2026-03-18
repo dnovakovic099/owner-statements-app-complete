@@ -572,7 +572,7 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
 
         const { Listing } = require('./models');
         const ListingGroup = require('./models/ListingGroup');
-        const WiseService = require('./services/WiseService');
+        const IncreaseService = require('./services/IncreaseService');
 
         // Find entity by token
         let entity = await Listing.findOne({ where: { payoutInviteToken: token } });
@@ -586,21 +586,20 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
             return res.status(404).json({ error: 'Invalid or expired link' });
         }
 
-        if (!WiseService.isConfigured()) {
+        if (!IncreaseService.isConfigured()) {
             return res.status(500).json({ error: 'Payment system not configured' });
         }
 
-        // Create Wise recipient (address required by Wise API)
-        const recipient = await WiseService.createRecipient({
+        // Create Increase external account
+        const recipient = await IncreaseService.createRecipient({
             name,
             email,
             routingNumber,
             accountNumber,
             accountType: accountType || 'CHECKING',
-            address: { street, city, state, zip, country: 'US' },
         });
 
-        logger.info('Wise recipient created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
+        logger.info('Increase external account created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
 
         // Save recipient ID + bank details (model setters handle encryption automatically)
         await entity.update({
@@ -649,8 +648,8 @@ app.get('/pay/:token', async (req, res) => {
         // Try to get Wise bank details
         let bankDetailsHtml = '';
         try {
-            const WiseService = require('./services/WiseService');
-            const bankDetails = await WiseService.getAccountBankDetails();
+            const IncreaseService = require('./services/IncreaseService');
+            const bankDetails = await IncreaseService.getAccountBankDetails();
             if (bankDetails && bankDetails.length > 0) {
                 const bd = bankDetails[0];
                 bankDetailsHtml = `
@@ -668,13 +667,13 @@ app.get('/pay/:token', async (req, res) => {
             }
         } catch (e) {
             // Use env fallback
-            if (process.env.WISE_BANK_ROUTING && process.env.WISE_BANK_ACCOUNT) {
+            if (process.env.INCREASE_BANK_ROUTING && process.env.INCREASE_BANK_ACCOUNT) {
                 bankDetailsHtml = `
                     <div class="bank-details">
                         <h3>Wire Transfer Details</h3>
-                        <div class="detail-row"><span class="label">Bank</span><span class="value">${process.env.WISE_BANK_NAME || 'Community Federal Savings Bank'}</span></div>
-                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${process.env.WISE_BANK_ROUTING}</span></div>
-                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${process.env.WISE_BANK_ACCOUNT}</span></div>
+                        <div class="detail-row"><span class="label">Bank</span><span class="value">${process.env.INCREASE_BANK_NAME || 'Increase'}</span></div>
+                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${process.env.INCREASE_BANK_ROUTING}</span></div>
+                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${process.env.INCREASE_BANK_ACCOUNT}</span></div>
                         <div class="reference">
                             <strong>Important:</strong> Include <code>Statement #${statement.id} - ${ownerName}</code> as the payment reference/memo.
                         </div>
@@ -871,7 +870,7 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
     </div>
     <div class="details" style="border-bottom:none;padding-bottom:0">
       <div class="section-title">Payment Method</div>
-      <div class="detail-row"><span class="label">Method</span><span class="value">Wise (ACH Transfer)</span></div>
+      <div class="detail-row"><span class="label">Method</span><span class="value">Increase (ACH Transfer)</span></div>
       <div class="detail-row"><span class="label">Transfer ID</span><span class="value">${transferId}</span></div>
       <div class="detail-row"><span class="label">Transfer fee</span><span class="value">$${fmt(wiseFee)}</span></div>
       <div class="detail-row"><span class="label">Total debited</span><span class="value">$${fmt(totalAmount)}</span></div>
