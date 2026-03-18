@@ -983,7 +983,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         if (tag) step3Where.groupTags = { [Op.like]: `%${tag}%` };
 
         const statements = await Statement.findAll({
-            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
+            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations', 'expenses',
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments',
                          'pmPercentage', 'weekEndDate', 'isCohostOnAirbnb',
                          'waiveCommission', 'waiveCommissionUntil',
@@ -1029,7 +1029,18 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             entry.revenue      += parseFloat(stmt.totalRevenue)   || 0;
             entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
             entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
-            entry.adjustments  += parseFloat(stmt.adjustments)     || 0;
+            // adjustments is hardcoded 0 in StatementService; derive totalUpsells from raw expenses
+            const rawExpenses = typeof stmt.expenses === 'string'
+                ? JSON.parse(stmt.expenses)
+                : (Array.isArray(stmt.expenses) ? stmt.expenses : []);
+            const stmtUpsells = rawExpenses.reduce((sum, exp) => {
+                const amount = parseFloat(exp.amount) || 0;
+                const type = (exp.type || '').toLowerCase();
+                const category = (exp.category || '').toLowerCase();
+                const isUpsell = amount > 0 || type === 'upsell' || category === 'upsell';
+                return isUpsell ? sum + amount : sum;
+            }, 0);
+            entry.adjustments  += stmtUpsells;
 
             // Replicate the exact PDF formula for grossPayout per reservation
             // so the analytics total matches the statement exactly.
