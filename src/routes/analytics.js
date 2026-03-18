@@ -984,7 +984,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
 
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
-                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout'],
+                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments'],
             where: step3Where,
             raw: true
         });
@@ -1011,6 +1011,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     pmCommission: 0,
                     taxes: 0,
                     expenses: 0,
+                    adjustments: 0,
                     ownerPayout: 0,
                     reservationCount: 0,
                     statementCount: 0,
@@ -1025,6 +1026,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             entry.revenue      += parseFloat(stmt.totalRevenue)   || 0;
             entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
             entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
+            entry.adjustments  += parseFloat(stmt.adjustments)     || 0;
             entry.ownerPayout  += parseFloat(stmt.ownerPayout)     || 0;
 
             // Extract reservations only for breakdown columns (baseRate, guestFees, platformFees, taxes)
@@ -1069,12 +1071,17 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 ? parseFloat(listing.pmFeePercentage)
                 : (p.revenue > 0 && p.pmCommission > 0 ? Math.round((p.pmCommission / p.revenue) * 1000) / 10 : null);
 
+            // grossPayout = ownerPayout + expenses - adjustments (reverses statement formula)
+            // This matches the GROSS PAYOUT shown on the statement PDF
+            const grossPayout = p.ownerPayout + p.expenses - p.adjustments;
+
             return {
                 ...p,
                 name: listing?.displayName || listing?.nickname || listing?.name || p.name,
                 pmFeePercentage,
                 revenue:      Math.round(p.revenue      * 100) / 100,
                 pmCommission: Math.round(p.pmCommission * 100) / 100,
+                grossPayout:  Math.round(grossPayout    * 100) / 100,
                 ownerPayout:  Math.round(p.ownerPayout  * 100) / 100,
                 baseRate:     Math.round(p.baseRate     * 100) / 100,
                 guestFees:    Math.round(p.guestFees    * 100) / 100,
