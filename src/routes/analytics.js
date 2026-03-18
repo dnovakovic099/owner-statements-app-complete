@@ -1159,7 +1159,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 name: listing?.displayName || listing?.nickname || listing?.name || p.name,
                 pmFeePercentage,
                 revenue:      Math.round(p.revenue      * 100) / 100,
-                pmCommission: Math.round(-p.pmCommission * 100) / 100, // negative to match statement (deduction from owner)
+                pmCommission: Math.round(p.pmCommission * 100) / 100,
                 grossPayout:  Math.round(grossPayout    * 100) / 100,
                 ownerPayout:  Math.round(ownerPayout    * 100) / 100,
                 baseRate:     Math.round(p.baseRate     * 100) / 100,
