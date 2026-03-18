@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI, tagScheduleAPI } from '../services/api';
 import { Owner, Property, Statement } from '../types';
@@ -57,8 +58,27 @@ interface NewListing {
   createdAt: string;
 }
 
+type Page = 'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics';
+
+const PAGE_TO_PATH: Record<Page, string> = {
+  dashboard: '/',
+  listings: '/listings',
+  groups: '/groups',
+  analytics: '/analytics',
+  email: '/email',
+  settings: '/settings',
+  wise: '/wise',
+  financials: '/financials',
+};
+
+const PATH_TO_PAGE: Record<string, Page> = Object.fromEntries(
+  Object.entries(PAGE_TO_PATH).map(([k, v]) => [v, k as Page])
+);
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { showToast, updateToast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [owners, setOwners] = useState<Owner[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [listings, setListings] = useState<ListingName[]>([]);
@@ -70,7 +90,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [uploadModalType, setUploadModalType] = useState<'expenses' | 'reservations'>('expenses');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStatementId, setEditingStatementId] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics'>('dashboard');
+  const [currentPage, setCurrentPageState] = useState<Page>(() =>
+    PATH_TO_PAGE[location.pathname] || 'dashboard'
+  );
+
+  // Sync page state when browser back/forward is used
+  useEffect(() => {
+    const page = PATH_TO_PAGE[location.pathname] || 'dashboard';
+    setCurrentPageState(page);
+  }, [location.pathname]);
+
+  // Navigate to URL and update state
+  const setCurrentPage = (page: Page) => {
+    setCurrentPageState(page);
+    navigate(PAGE_TO_PATH[page]);
+  };
   const [selectedListingId, setSelectedListingId] = useState<number | null>(null);
   const [regeneratingStatementId, setRegeneratingStatementId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
