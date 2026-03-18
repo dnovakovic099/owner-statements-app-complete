@@ -183,8 +183,8 @@ const WisePage: React.FC = () => {
       setGroups(groupsRes.groups || []);
       setAllListings(listingsRes.listings || []);
     } catch (err) {
-      console.error('Failed to fetch wise connections data:', err);
-      showToast('Failed to load Wise connections', 'error');
+      console.error('Failed to fetch payout connections data:', err);
+      showToast('Failed to load payout connections', 'error');
     } finally {
       setLoading(false);
     }
@@ -210,11 +210,11 @@ const WisePage: React.FC = () => {
       } else {
         await listingsAPI.updateListingConfig(row.id, { wiseRecipientId: newId });
       }
-      showToast(newId ? 'Wise Recipient ID saved' : 'Wise Recipient ID removed', 'success');
+      showToast(newId ? 'Increase Account ID saved' : 'Increase Account ID removed', 'success');
       await fetchData();
     } catch (err) {
-      console.error('Failed to save Wise Recipient ID:', err);
-      showToast('Failed to save Wise Recipient ID', 'error');
+      console.error('Failed to save Increase Account ID:', err);
+      showToast('Failed to save Increase Account ID', 'error');
     }
     setEditingRowKey(null);
   };
@@ -306,7 +306,7 @@ const WisePage: React.FC = () => {
         })
       );
 
-      const csvRows = [['client name', 'listings', 'email', 'wise recipient id', 'invite link'].join(',')];
+      const csvRows = [['client name', 'listings', 'email', 'increase account id', 'invite link'].join(',')];
       clients.forEach((client, i) => {
         const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
         csvRows.push([
@@ -322,7 +322,7 @@ const WisePage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'wise-invite-links.csv';
+      a.download = 'increase-invite-links.csv';
       a.click();
       URL.revokeObjectURL(url);
 
@@ -584,7 +584,7 @@ const WisePage: React.FC = () => {
                     startEditing(row.original);
                   }}
                   className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                  title="Edit Wise Recipient ID"
+                  title="Edit Increase Account ID"
                 >
                   <Pencil className="w-3 h-3" />
                 </button>
@@ -608,7 +608,7 @@ const WisePage: React.FC = () => {
                     startEditing(row.original);
                   }}
                   className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                  title="Manually enter Wise Recipient ID"
+                  title="Manually enter Increase External Account ID"
                 >
                   <Pencil className="w-3 h-3" />
                 </button>
@@ -661,7 +661,7 @@ const WisePage: React.FC = () => {
                   handleRefreshStatus(row.original);
                 }}
                 className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                title="Refresh status from Wise"
+                title="Refresh status from Increase"
               >
                 <RefreshCw className="w-3 h-3" />
               </button>
@@ -705,7 +705,7 @@ const WisePage: React.FC = () => {
     type: 'Type',
     ownerEmail: 'Owner Email',
     schedule: 'Schedule',
-    wiseRecipient: 'Wise Recipient',
+    wiseRecipient: 'Increase Account',
     wiseStatus: 'Status',
     listingCount: 'Listings',
   };
@@ -749,7 +749,7 @@ const WisePage: React.FC = () => {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-purple-600" />
-              Wise Connections
+              Payout Accounts (Increase)
             </h2>
             <p className="text-sm text-gray-500 mt-0.5">
               {rows.length} total connection{rows.length !== 1 ? 's' : ''}
@@ -897,7 +897,7 @@ const WisePage: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No connections found</h3>
               <p className="text-gray-500 text-sm mb-6 max-w-sm">
-                Create groups or add listings to see their Wise connection status here.
+                Create groups or add listings to see their Increase connection status here.
               </p>
             </div>
           </div>
@@ -1160,7 +1160,7 @@ const WisePage: React.FC = () => {
           ) : (
             <div className="space-y-4 pt-2">
               <div className="text-sm text-gray-500">
-                Generate a secure link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to connect their bank account for Wise payouts.
+                Generate a secure link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to connect their bank account for Increase ACH payouts.
               </div>
 
               {inviteTarget?.ownerEmail && (

@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const ListingService = require('../services/ListingService');
-const WiseService = require('../services/WiseService');
+const IncreaseService = require('../services/IncreaseService');
 const { Listing } = require('../models');
 const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption');
 
@@ -11,11 +11,11 @@ const ListingGroup = require('../models/ListingGroup');
 const { Statement } = require('../models');
 
 /**
- * Resolve the Wise recipient ID for a statement.
+ * Resolve the Increase external account ID for a statement.
  * Priority: group recipient > individual listing recipient
  */
 async function resolveWiseRecipientId(statement) {
-    // Check group-level Wise recipient first
+    // Check group-level recipient first
     if (statement.groupId) {
         try {
             const group = await ListingGroup.findByPk(statement.groupId);
@@ -23,7 +23,7 @@ async function resolveWiseRecipientId(statement) {
                 return { wiseRecipientId: group.wiseRecipientId, source: 'group' };
             }
         } catch (e) {
-            logger.warn('Failed to check group Wise recipient', { groupId: statement.groupId, error: e.message });
+            logger.warn('Failed to check group Increase recipient', { groupId: statement.groupId, error: e.message });
         }
     }
 
@@ -38,11 +38,11 @@ async function resolveWiseRecipientId(statement) {
         return { wiseRecipientId: null, source: null, error: 'Listing not found' };
     }
 
-    // Model getter auto-decrypts wiseRecipientId
+    // Model getter auto-decrypts wiseRecipientId (stores Increase external_account_id)
     const recipientId = listing.wiseRecipientId;
 
     if (!recipientId) {
-        return { wiseRecipientId: null, source: null, error: 'No Wise recipient configured for this listing' };
+        return { wiseRecipientId: null, source: null, error: 'No Increase external account configured for this listing' };
     }
 
     return { wiseRecipientId: recipientId, source: 'listing' };
@@ -51,7 +51,8 @@ async function resolveWiseRecipientId(statement) {
 // ─── GET /config ─────────────────────────────────────────────
 router.get('/config', async (req, res) => {
     res.json({
-        wiseConfigured: WiseService.isConfigured(),
+        wiseConfigured: IncreaseService.isConfigured(),
+        increaseConfigured: IncreaseService.isConfigured(),
     });
 });
 
@@ -103,11 +104,11 @@ router.post('/refresh-status', async (req, res) => {
             return res.status(400).json({ error: 'wiseRecipientId is required' });
         }
 
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
 
-        const recipient = await WiseService.getRecipient(wiseRecipientId);
+        const recipient = await IncreaseService.getRecipient(wiseRecipientId);
         const isActive = recipient.active !== false;
         const newStatus = isActive ? 'verified' : 'requires_action';
 
@@ -237,9 +238,9 @@ router.get('/statements/:id/receipt', async (req, res) => {
 
     <div class="section">
       <div class="section-title">Transfer Details</div>
-      <div class="row"><span class="label">Method</span><span class="value">Wise (ACH)</span></div>
+      <div class="row"><span class="label">Method</span><span class="value">Increase (ACH)</span></div>
       <div class="row"><span class="label">Transfer ID</span><span class="value" style="font-family:monospace;font-size:12px">${transferId}</span></div>
-      <div class="row"><span class="label">Wise Fee</span><span class="value">$${wiseFee.toFixed(2)}</span></div>
+      <div class="row"><span class="label">Fee</span><span class="value">$${wiseFee.toFixed(2)}</span></div>
       <div class="row"><span class="label">Date Sent</span><span class="value">${paidAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} ${paidAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span></div>
     </div>
 
@@ -307,75 +308,43 @@ router.post('/statements/:id/transfer', async (req, res) => {
             return res.status(400).json({ error: 'Statement already paid' });
         }
 
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
 
         // Resolve recipient
         const { wiseRecipientId, error: resolveError } = await resolveWiseRecipientId(statement);
         if (!wiseRecipientId) {
-            return res.status(400).json({ error: resolveError || 'No Wise recipient found' });
+            return res.status(400).json({ error: resolveError || 'No Increase external account found' });
         }
 
         // Mark as pending
         await statement.update({ payoutStatus: 'pending', payoutError: null });
 
-        // Check balance and auto-top-up if needed
+        // Check balance
         let balance;
         try {
-            balance = await WiseService.getBalance();
+            balance = await IncreaseService.getBalance();
         } catch (e) {
-            logger.warn('Failed to check Wise balance', { error: e.message });
+            logger.warn('Failed to check Increase balance', { error: e.message });
             balance = null;
         }
 
         if (balance !== null && balance < payoutAmount) {
-            // Insufficient balance — auto top-up
-            const shortfall = payoutAmount - balance;
-            const topupAmount = Math.ceil(shortfall * 1.05 * 100) / 100; // 5% buffer
-
-            try {
-                const topup = await WiseService.topUpBalance(topupAmount);
-                logger.info('Auto top-up completed for single payout', {
-                    statementId, topupAmount, balance, needed: payoutAmount,
-                    transferId: topup.transfer.id, fundingMethod: topup.fundingMethod,
-                    estimatedArrival: topup.estimatedArrival,
-                });
-
-                // If funded via debit card (instant), wait briefly then continue with payout
-                if (topup.fundingMethod === 'DEBIT' || topup.estimatedArrival === 'instant') {
-                    logger.info('Instant top-up detected, proceeding with payout immediately');
-                    // Balance should be available instantly, fall through to payout below
-                } else {
-                    // Non-instant top-up — queue for later processing
-                    await statement.update({ payoutStatus: 'queued', payoutError: null });
-                    return res.json({
-                        success: true,
-                        queued: true,
-                        message: `Insufficient balance ($${balance.toFixed(2)}). Top-up of $${topupAmount.toFixed(2)} initiated via ${topup.fundingMethod}. Payout will process automatically when funds arrive.`,
-                        topupAmount,
-                        topupTransferId: topup.transfer.id,
-                        estimatedArrival: topup.estimatedArrival,
-                        fundingMethod: topup.fundingMethod,
-                    });
-                }
-            } catch (topupErr) {
-                logger.error('Auto top-up failed', { error: topupErr.message, statementId });
-                await statement.update({ payoutStatus: 'failed', payoutError: `Insufficient balance and top-up failed: ${topupErr.message}` });
-                return res.status(400).json({
-                    error: `Insufficient Wise balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)}). Auto top-up failed: ${topupErr.message}`,
-                    balance,
-                    needed: payoutAmount,
-                });
-            }
+            await statement.update({ payoutStatus: 'failed', payoutError: `Insufficient balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)})` });
+            return res.status(400).json({
+                error: `Insufficient Increase balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)}). Please fund your Increase account.`,
+                balance,
+                needed: payoutAmount,
+            });
         }
 
         // Execute payout
         const ownerName = statement.ownerName || 'Owner';
         const reference = `Payout - ${ownerName} - Stmt #${statementId}`;
 
-        const { transfer, wiseFee } = await WiseService.sendPayout({
-            recipientId: parseInt(wiseRecipientId),
+        const { transfer, wiseFee } = await IncreaseService.sendPayout({
+            recipientId: wiseRecipientId,
             amount: payoutAmount,
             reference,
             statementId,
@@ -392,12 +361,12 @@ router.post('/statements/:id/transfer', async (req, res) => {
             payoutError: null,
         });
 
-        logger.info('Wise payout completed', { statementId, transferId: transfer.id, amount: payoutAmount, wiseFee });
+        logger.info('Increase payout completed', { statementId, transferId: transfer.id, amount: payoutAmount });
 
         res.json({
             success: true,
             queued: false,
-            message: 'Payout sent via Wise',
+            message: 'Payout sent via Increase ACH',
             transferId: String(transfer.id),
             ownerPayout: payoutAmount,
             wiseFee,
@@ -411,7 +380,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
             if (statement && statement.payoutStatus === 'pending') {
                 await statement.update({
                     payoutStatus: 'failed',
-                    payoutError: error.response?.data?.message || error.message || 'Wise transfer failed',
+                    payoutError: error.response?.data?.detail || error.response?.data?.title || error.message || 'Increase transfer failed',
                 });
             }
         } catch (e) { /* ignore */ }
@@ -461,12 +430,12 @@ router.post('/statements/:id/collect', async (req, res) => {
             recipientEmail = listing?.ownerEmail || null;
         }
 
-        // Get Wise bank details for the payment page
+        // Get Increase bank details for the payment page
         let bankDetails = null;
         try {
-            bankDetails = await WiseService.getAccountBankDetails();
+            bankDetails = await IncreaseService.getAccountBankDetails();
         } catch (e) {
-            logger.warn('Could not fetch Wise bank details', { error: e.message });
+            logger.warn('Could not fetch Increase bank details', { error: e.message });
         }
 
         // Send invoice email with payment link and Wise bank details
@@ -530,13 +499,13 @@ router.post('/statements/:id/collect', async (req, res) => {
 });
 
 // ─── GET /bank-details ──────────────────────────────────────
-// Get Wise bank details for receiving payments
+// Get Increase bank details for receiving payments
 router.get('/bank-details', async (req, res) => {
     try {
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
-        const details = await WiseService.getAccountBankDetails();
+        const details = await IncreaseService.getAccountBankDetails();
         res.json({ success: true, bankDetails: details });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'bankDetails' });
@@ -548,15 +517,15 @@ router.get('/bank-details', async (req, res) => {
 // Check for inbound payments (for reconciliation)
 router.get('/inbound-transactions', async (req, res) => {
     try {
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
 
         const days = parseInt(req.query.days) || 30;
         const end = new Date();
         const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
-        const statementData = await WiseService.getBalanceStatement(start, end);
+        const statementData = await IncreaseService.getBalanceStatement(start, end);
 
         // Filter for inbound (CREDIT) transactions
         const inbound = (statementData.transactions || []).filter(t => t.type === 'CREDIT');
@@ -581,8 +550,8 @@ router.post('/fund-and-queue', async (req, res) => {
             return res.status(400).json({ error: 'statementIds array is required' });
         }
 
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
 
         const statements = await Statement.findAll({
@@ -628,58 +597,18 @@ router.post('/fund-and-queue', async (req, res) => {
         const totalAmount = valid.reduce((sum, v) => sum + parseFloat(v.statement.ownerPayout), 0);
         let balance;
         try {
-            balance = await WiseService.getBalance();
+            balance = await IncreaseService.getBalance();
         } catch (e) {
-            logger.warn('Failed to check Wise balance', { error: e.message });
+            logger.warn('Failed to check Increase balance', { error: e.message });
             balance = null;
         }
 
         if (balance !== null && balance < totalAmount) {
-            // Insufficient balance — auto top-up
-            const shortfall = totalAmount - balance;
-            const topupAmount = Math.ceil(shortfall * 1.05 * 100) / 100; // 5% buffer
-
-            try {
-                const topup = await WiseService.topUpBalance(topupAmount);
-
-                logger.info('Fund & Queue: top-up completed', {
-                    topupAmount, balance, totalAmount,
-                    topupTransferId: topup.transfer.id,
-                    fundingMethod: topup.fundingMethod,
-                    estimatedArrival: topup.estimatedArrival,
-                });
-
-                // If instant (debit card), fall through to process immediately
-                if (topup.fundingMethod === 'DEBIT' || topup.estimatedArrival === 'instant') {
-                    logger.info('Instant top-up detected, processing all payouts immediately');
-                    // Fall through to the immediate processing block below
-                } else {
-                    // Non-instant — queue for later
-                    for (const { statement } of valid) {
-                        await statement.update({ payoutStatus: 'queued', payoutError: null });
-                    }
-
-                    return res.json({
-                        success: true,
-                        mode: 'queued',
-                        topupTransferId: topup.transfer.id,
-                        topupAmount,
-                        estimatedArrival: topup.estimatedArrival,
-                        fundingMethod: topup.fundingMethod,
-                        queuedCount: valid.length,
-                        totalPayout: totalAmount,
-                        skipped,
-                        message: `Insufficient balance ($${balance.toFixed(2)}). Top-up of $${topupAmount.toFixed(2)} initiated via ${topup.fundingMethod}. ${valid.length} payouts will process automatically when funds arrive.`,
-                    });
-                }
-            } catch (topupErr) {
-                logger.error('Fund & Queue: top-up failed', { error: topupErr.message });
-                return res.status(400).json({
-                    error: `Insufficient Wise balance ($${balance.toFixed(2)}, need $${totalAmount.toFixed(2)}). Auto top-up failed: ${topupErr.message}`,
-                    balance,
-                    needed: totalAmount,
-                });
-            }
+            return res.status(400).json({
+                error: `Insufficient Increase balance ($${balance.toFixed(2)}, need $${totalAmount.toFixed(2)}). Please fund your Increase account.`,
+                balance,
+                needed: totalAmount,
+            });
         }
 
         // Sufficient balance — process all transfers
@@ -699,13 +628,13 @@ router.post('/fund-and-queue', async (req, res) => {
                 }
 
                 const batchPayouts = valid.map(({ statement, wiseRecipientId }) => ({
-                    recipientId: parseInt(wiseRecipientId),
+                    recipientId: wiseRecipientId,
                     amount: parseFloat(statement.ownerPayout),
                     reference: `Payout - ${statement.ownerName} - Stmt #${statement.id}`,
                     statementId: statement.id,
                 }));
 
-                const { transfers } = await WiseService.sendBatchPayouts(batchPayouts);
+                const { transfers } = await IncreaseService.sendBatchPayouts(batchPayouts);
 
                 // Update each statement with its transfer result
                 for (const t of transfers) {
@@ -736,8 +665,8 @@ router.post('/fund-and-queue', async (req, res) => {
                         const amount = parseFloat(statement.ownerPayout);
                         const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                        const { transfer, wiseFee } = await WiseService.sendPayout({
-                            recipientId: parseInt(wiseRecipientId),
+                        const { transfer, wiseFee } = await IncreaseService.sendPayout({
+                            recipientId: wiseRecipientId,
                             amount,
                             reference,
                             statementId: statement.id,
@@ -770,8 +699,8 @@ router.post('/fund-and-queue', async (req, res) => {
                     const amount = parseFloat(statement.ownerPayout);
                     const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                    const { transfer, wiseFee } = await WiseService.sendPayout({
-                        recipientId: parseInt(wiseRecipientId),
+                    const { transfer, wiseFee } = await IncreaseService.sendPayout({
+                        recipientId: wiseRecipientId,
                         amount,
                         reference,
                         statementId: statement.id,
@@ -828,10 +757,10 @@ router.post('/process-queued', async (req, res) => {
 // ─── GET /balance ──────────────────────────────────────────
 router.get('/balance', async (req, res) => {
     try {
-        if (!WiseService.isConfigured()) {
-            return res.status(500).json({ error: 'Wise is not configured' });
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
         }
-        const balance = await WiseService.getBalance();
+        const balance = await IncreaseService.getBalance();
         const { Op } = require('sequelize');
         const queuedCount = await Statement.count({ where: { payoutStatus: 'queued' } });
         const queuedTotal = queuedCount > 0
@@ -856,9 +785,9 @@ router.get('/balance', async (req, res) => {
  * Checks balance, and if sufficient, processes all queued statements.
  */
 async function processQueuedPayouts() {
-    if (!WiseService.isConfigured()) {
-        logger.warn('Wise not configured, cannot process queued payouts');
-        return { success: false, error: 'Wise not configured' };
+    if (!IncreaseService.isConfigured()) {
+        logger.warn('Increase not configured, cannot process queued payouts');
+        return { success: false, error: 'Increase not configured' };
     }
 
     const { Op } = require('sequelize');
@@ -873,10 +802,10 @@ async function processQueuedPayouts() {
     }
 
     const totalNeeded = queued.reduce((sum, s) => sum + parseFloat(s.ownerPayout), 0);
-    const balance = await WiseService.getBalance();
+    const balance = await IncreaseService.getBalance();
 
     if (balance < totalNeeded) {
-        logger.warn('Insufficient balance for queued payouts', { balance, totalNeeded, queuedCount: queued.length });
+        logger.warn('Insufficient Increase balance for queued payouts', { balance, totalNeeded, queuedCount: queued.length });
         return { success: false, error: 'Insufficient balance', balance, totalNeeded };
     }
 
@@ -897,7 +826,7 @@ async function processQueuedPayouts() {
 
             const { wiseRecipientId } = await resolveWiseRecipientId(statement);
             if (!wiseRecipientId) {
-                await statement.update({ payoutStatus: 'failed', payoutError: 'No Wise recipient found' });
+                await statement.update({ payoutStatus: 'failed', payoutError: 'No Increase external account found' });
                 failed++;
                 continue;
             }
@@ -905,8 +834,8 @@ async function processQueuedPayouts() {
             await statement.update({ payoutStatus: 'pending', payoutError: null });
 
             const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
-            const { transfer, wiseFee } = await WiseService.sendPayout({
-                recipientId: parseInt(wiseRecipientId),
+            const { transfer, wiseFee } = await IncreaseService.sendPayout({
+                recipientId: wiseRecipientId,
                 amount: payoutAmount,
                 reference,
                 statementId: statement.id,
