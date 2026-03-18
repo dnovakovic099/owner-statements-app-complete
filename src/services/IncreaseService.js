@@ -126,7 +126,7 @@ class IncreaseService {
             external_account_id: externalAccountId,
             amount: amountCents,
             statement_descriptor: descriptor,
-            standard_entry_class_code: 'PPD',
+            standard_entry_class_code: 'prearranged_payments_and_deposit',
             company_entry_description: 'PAYOUT',
         });
         return res.data;
