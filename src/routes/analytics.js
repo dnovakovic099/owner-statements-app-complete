@@ -952,17 +952,50 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const selectedIds = [];
         for (const [, propRows] of statementsByProperty) {
             // propRows already sorted by id DESC (newest first)
-            const coveredIntervals = [];
+
+            // Prefer: if any single statement covers the ENTIRE query range, use the
+            // newest such statement and skip everything else for this property.
+            // This prevents double-counting when, e.g., a Jan 1-Feb 28 combined statement
+            // coexists with a newer Feb 1-28 statement — without this check both would be
+            // included and February revenue would be summed twice.
+            const fullCover = propRows.find(row => {
+                const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
+                const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
+                return s && e && s <= startDate && e >= endDate;
+            });
+            if (fullCover) {
+                selectedIds.push(fullCover.id);
+                continue;
+            }
+
+            // Fallback: build a non-overlapping set from sub-period statements.
+            // Clip each statement's range to the query window so that statements which
+            // merely "poke into" the range from outside (e.g. a weekly Jan 27–Feb 2
+            // when the query is Feb 1–28) are correctly seen as already covered.
+            // When a wider interval subsumes a narrower one, remove the narrower one.
+            const propSelected = []; // { id, effS?, effE? }
             for (const row of propRows) {
                 const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
                 const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
                 if (s && e) {
-                    const alreadyCovered = coveredIntervals.some(([a, b]) => a <= s && b >= e);
-                    if (alreadyCovered) continue;
-                    coveredIntervals.push([s, e]);
+                    const effS = s < startDate ? startDate : s;
+                    const effE = e > endDate   ? endDate   : e;
+                    if (effS <= effE) {
+                        const alreadyCovered = propSelected.some(p => p.effS !== undefined && p.effS <= effS && p.effE >= effE);
+                        if (alreadyCovered) continue;
+                        // Remove any previously selected entries whose range is fully contained by this wider one
+                        for (let i = propSelected.length - 1; i >= 0; i--) {
+                            if (propSelected[i].effS !== undefined && effS <= propSelected[i].effS && effE >= propSelected[i].effE) {
+                                propSelected.splice(i, 1);
+                            }
+                        }
+                        propSelected.push({ id: row.id, effS, effE });
+                        continue;
+                    }
                 }
-                selectedIds.push(row.id);
+                propSelected.push({ id: row.id });
             }
+            selectedIds.push(...propSelected.map(p => p.id));
         }
 
         if (selectedIds.length === 0) {
@@ -1126,7 +1159,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 name: listing?.displayName || listing?.nickname || listing?.name || p.name,
                 pmFeePercentage,
                 revenue:      Math.round(p.revenue      * 100) / 100,
-                pmCommission: Math.round(p.pmCommission * 100) / 100,
+                pmCommission: Math.round(-p.pmCommission * 100) / 100, // negative to match statement (deduction from owner)
                 grossPayout:  Math.round(grossPayout    * 100) / 100,
                 ownerPayout:  Math.round(ownerPayout    * 100) / 100,
                 baseRate:     Math.round(p.baseRate     * 100) / 100,

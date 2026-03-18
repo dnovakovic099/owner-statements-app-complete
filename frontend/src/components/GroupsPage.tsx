@@ -302,7 +302,7 @@ const GroupsPage: React.FC = () => {
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Wise Recipient
+          Increase Account
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
@@ -324,7 +324,7 @@ const GroupsPage: React.FC = () => {
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Wise Status
+          Increase Status
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
@@ -413,8 +413,8 @@ const GroupsPage: React.FC = () => {
     name: 'Group Name',
     tags: 'Schedule',
     calculationType: 'Calc Type',
-    wiseRecipient: 'Wise Recipient',
-    wiseStatus: 'Wise Status',
+    wiseRecipient: 'Increase Account',
+    wiseStatus: 'Increase Status',
     listingCount: 'Listings',
   };
 
@@ -536,7 +536,7 @@ const GroupsPage: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No groups yet</h3>
               <p className="text-gray-500 text-sm mb-6 max-w-sm">
-                Groups let you combine multiple listings into a single statement with shared schedule tags and Wise recipients.
+                Groups let you combine multiple listings into a single statement with shared schedule tags and Increase accounts.
               </p>
               <Button
                 onClick={() => {

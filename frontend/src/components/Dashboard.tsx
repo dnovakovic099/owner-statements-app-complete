@@ -751,11 +751,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         if (listingId) {
           const listing = listings.find(l => l.id === listingId);
           if (!listing?.wiseRecipientId) {
-            showToast('No Wise recipient connected for this listing. Set up payout in Wise page.', 'error');
+            showToast('No Increase account connected for this listing. Set up payout in Payout Accounts page.', 'error');
             return;
           }
           if (listing.wiseStatus === 'requires_action' || listing.wiseStatus === 'pending') {
-            showToast('Wise recipient is not yet verified. The owner needs to complete payout setup.', 'error');
+            showToast('Increase account is not yet verified. The owner needs to complete payout setup.', 'error');
             return;
           }
         }
@@ -765,11 +765,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         if (payoutAmount > 0) {
           setConfirmDialog({
             isOpen: true,
-            title: 'Pay Owner via Wise',
+            title: 'Pay Owner via Increase',
             message: `Transfer $${payoutAmount.toFixed(2)} to ${statement.ownerName || 'owner'}?`,
             type: 'info',
             onConfirm: async () => {
-              const toastId = showToast('Processing Wise transfer...', 'loading');
+              const toastId = showToast('Processing Increase transfer...', 'loading');
               try {
                 const response = await payoutsAPI.transferToOwner(id);
                 if (response.success) {
@@ -780,7 +780,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
                   }
                   await loadStatements();
-                  loadInitialData(); // Refresh listings (Wise status may have changed)
+                  loadInitialData(); // Refresh listings (Increase status may have changed)
                 } else {
                   updateToast(toastId, response.error || 'Transfer failed', 'error');
                 }
@@ -1157,7 +1157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } else if (action === 'pay-owner') {
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
-      // Filter for valid payouts (must have positive payout, not already paid, and have Wise recipient)
+      // Filter for valid payouts (must have positive payout, not already paid, and have Increase account)
       const validPayouts = selectedStatements.filter(s => {
         if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid') return false;
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
@@ -1181,7 +1181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           isOpen: true,
           title: 'No Statements to Pay',
           message: skippedCount > 0
-            ? `None of the selected statements can be paid. They may have $0 payout, are already paid, or have no Wise recipient connected.`
+            ? `None of the selected statements can be paid. They may have $0 payout, are already paid, or have no Increase account connected.`
             : 'No statements selected.',
           type: 'info',
           onConfirm: () => { },
@@ -1194,9 +1194,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
       const totalAmount = validPayouts.reduce((sum, s) => sum + s.ownerPayout, 0);
 
-      const message = `Are you sure you want to pay ${validPayouts.length} owners via Wise?\n\n` +
+      const message = `Are you sure you want to pay ${validPayouts.length} owners via Increase?\n\n` +
         `Total Payout: $${totalAmount.toFixed(2)}\n\n` +
-        (skippedCount > 0 ? `(${skippedCount} skipped` + (noWiseCount > 0 ? `, ${noWiseCount} without Wise` : '') + ` - $0, already paid, or no Wise)` : '');
+        (skippedCount > 0 ? `(${skippedCount} skipped` + (noWiseCount > 0 ? `, ${noWiseCount} without Increase` : '') + ` - $0, already paid, or no Increase account)` : '');
 
       setConfirmDialog({
         isOpen: true,

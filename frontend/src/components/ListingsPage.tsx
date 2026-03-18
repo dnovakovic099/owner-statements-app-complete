@@ -1194,7 +1194,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         ))}
                         {(listing as any).wiseRecipientId && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            Wise: {(listing as any).wiseRecipientId.length > 10
+                            Increase: {(listing as any).wiseRecipientId.length > 10
                               ? `...${(listing as any).wiseRecipientId.slice(-6)}`
                               : (listing as any).wiseRecipientId}
                           </span>
@@ -1265,7 +1265,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             ))}
                             {(listing as any).wiseRecipientId && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Wise: ...{(listing as any).wiseRecipientId.slice(-6)}
+                                Increase: ...{(listing as any).wiseRecipientId.slice(-6)}
                               </span>
                             )}
                           </div>
@@ -1635,15 +1635,15 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-900">Payout Info</p>
-                            <p className="text-xs text-slate-600">Wise recipient ID and payout tracking status.</p>
+                            <p className="text-xs text-slate-600">Increase external account ID and payout tracking status.</p>
                           </div>
                         </div>
 
 
-                        {/* Wise Recipient ID Input */}
+                        {/* Increase External Account ID Input */}
                         <div className="flex flex-col gap-2">
                           <label className="text-sm font-medium text-slate-700">
-                            Wise Recipient ID
+                            Increase External Account ID
                           </label>
                           <input
                             type="text"
@@ -1655,7 +1655,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 setSaving(true);
                                 await listingsAPI.updateListingConfig(selectedListingId, { wiseRecipientId });
                                 setListings(prev => prev.map(l => l.id === selectedListingId ? { ...l, wiseRecipientId } as any : l));
-                                showToast('Wise recipient ID stored', 'success');
+                                showToast('Increase account ID stored', 'success');
                               } catch (error) {
                                 console.error('Auto-save failed:', error);
                               } finally {

@@ -554,7 +554,7 @@ const WisePage: React.FC = () => {
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
         >
-          Wise Recipient
+          Increase Account
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),

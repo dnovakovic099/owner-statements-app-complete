@@ -268,13 +268,13 @@ const GroupModal: React.FC<GroupModalProps> = ({
               </div>
             </div>
 
-            {/* Wise Recipient ID */}
+            {/* Increase External Account ID */}
             <div>
               <Label htmlFor="wiseRecipientId" className="text-sm font-medium text-gray-700">
-                Wise Recipient ID
+                Increase External Account ID
               </Label>
               <p className="text-xs text-gray-500 mb-2">
-                Wise recipient for this group's owner. Overrides individual listing recipients.
+                Increase account for this group's owner. Overrides individual listing accounts.
               </p>
               <Input
                 id="wiseRecipientId"

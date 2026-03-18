@@ -102,6 +102,9 @@ class StatementCalculationService {
      * Check if expense is LL Cover related
      */
     isLlCoverExpense(exp) {
+        // Check the explicit llCover flag first
+        if (exp.llCover === 1 || exp.llCover === true) return true;
+
         const description = (exp.description || '').toLowerCase();
         const vendor = (exp.vendor || '').toLowerCase();
         const category = (exp.category || '').toLowerCase();

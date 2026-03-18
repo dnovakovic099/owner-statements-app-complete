@@ -303,7 +303,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     { key: 'grossPayout' as const, label: 'Gross Payout', align: 'right' as const, color: '' },
     { key: 'revenue' as const, label: 'Revenue', align: 'right' as const, color: 'text-gray-900 font-semibold' },
     { key: 'pmFeePercentage' as const, label: 'PM %', align: 'right' as const, color: 'text-emerald-600' },
-    { key: 'pmCommission' as const, label: 'PM Commission', align: 'right' as const, color: 'text-emerald-700 font-medium' },
+    { key: 'pmCommission' as const, label: 'PM Commission', align: 'right' as const, color: 'text-emerald-600' },
     { key: 'expenses' as const, label: 'Expenses', align: 'right' as const, color: 'text-red-600' },
     { key: 'ownerPayout' as const, label: 'Owner Payout', align: 'right' as const, color: 'text-blue-700 font-medium' },
   ];

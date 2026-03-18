@@ -666,12 +666,12 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
-                      !hasWiseRecipient ? 'No Wise recipient connected' :
-                        isRestricted ? 'Wise recipient not yet verified' :
+                      !hasWiseRecipient ? 'No Increase account connected' :
+                        isRestricted ? 'Increase account not yet verified' :
                           statement.status !== 'final' ? 'Statement must be finalized first' :
                             statement.ownerPayout === 0 ? 'No payout amount' :
                               statement.ownerPayout < 0 ? `Collect $${Math.abs(statement.ownerPayout).toFixed(2)} from Owner` :
-                                'Pay Owner via Wise'
+                                'Pay Owner via Increase'
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
