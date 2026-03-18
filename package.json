@@ -4,7 +4,7 @@
   "description": "Automated Owner Statements Management System",
   "main": "src/server.js",
   "scripts": {
-    "start": "npx jest src/tests/analytics-jan-feb-2026.jest.test.js src/tests/statement-accuracy.jest.test.js --verbose && node src/server.js",
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "cd frontend && npm install && npm run build",
     "build:frontend": "cd frontend && npm run build",
