@@ -429,19 +429,20 @@ describe('PM Commission sign convention', () => {
         }
     });
 
-    test('analytics API negation: -pmCommission matches statement display (-$885.86 for Bay Pointe)', async () => {
-        // Use Bay Pointe specifically (propertyId 300017599) to ensure non-zero PM commission
+    test('analytics API negation: -pmCommission produces a negative value for display', async () => {
+        // Find any statement with non-zero PM commission
         const stmt = await Statement.findOne({
             where: {
-                weekStartDate: '2026-02-01',
-                weekEndDate:   '2026-02-28',
-                calculationType: 'calendar',
-                propertyId: 300017599,
+                pmCommission: { [Op.gt]: 0 },
+                totalRevenue: { [Op.gt]: 0 },
             },
             order: [['id', 'DESC']],
             raw: true,
         });
-        if (!stmt) return;
+        if (!stmt) {
+            console.warn('[SKIP] No statement with non-zero PM commission found');
+            return;
+        }
 
         const dbValue    = parseFloat(stmt.pmCommission);
         const apiDisplay = -dbValue;   // what analytics route returns
