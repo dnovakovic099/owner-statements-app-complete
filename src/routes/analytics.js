@@ -984,7 +984,10 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
 
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations',
-                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments'],
+                         'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments',
+                         'pmPercentage', 'weekEndDate', 'isCohostOnAirbnb',
+                         'waiveCommission', 'waiveCommissionUntil',
+                         'disregardTax', 'airbnbPassThroughTax'],
             where: step3Where,
             raw: true
         });
@@ -1012,7 +1015,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     taxes: 0,
                     expenses: 0,
                     adjustments: 0,
-                    ownerPayout: 0,
+                    grossPayoutSum: 0,
                     reservationCount: 0,
                     statementCount: 0,
                     _seenReservationIds: new Set(),
@@ -1027,9 +1030,22 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
             entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
             entry.adjustments  += parseFloat(stmt.adjustments)     || 0;
-            entry.ownerPayout  += parseFloat(stmt.ownerPayout)     || 0;
 
-            // Extract reservations only for breakdown columns (baseRate, guestFees, platformFees, taxes)
+            // Replicate the exact PDF formula for grossPayout per reservation
+            // so the analytics total matches the statement exactly.
+            const stmtPmPct    = parseFloat(stmt.pmPercentage) || 0;
+            const stmtWaive    = !!stmt.waiveCommission;
+            const stmtWaiveEnd = stmt.waiveCommissionUntil || null;
+            const stmtEndDate  = stmt.weekEndDate || '';
+            const stmtDisregardTax      = !!stmt.disregardTax;
+            const stmtAirbnbPassThrough = !!stmt.airbnbPassThroughTax;
+            const stmtCohost   = !!stmt.isCohostOnAirbnb;
+
+            const isWaiverActive = stmtWaive && (
+                !stmtWaiveEnd ||
+                new Date(stmtEndDate + 'T00:00:00') <= new Date(stmtWaiveEnd + 'T23:59:59')
+            );
+
             const reservations = typeof stmt.reservations === 'string'
                 ? JSON.parse(stmt.reservations)
                 : (stmt.reservations || []);
@@ -1039,11 +1055,28 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 if (resId && entry._seenReservationIds.has(resId)) continue;
                 if (resId) entry._seenReservationIds.add(resId);
 
+                const isAirbnb = r.source && r.source.toLowerCase().includes('airbnb');
+                const isCohostAirbnb = isAirbnb && stmtCohost;
+
+                const rawClientRevenue = r.hasDetailedFinance ? (parseFloat(r.clientRevenue) || 0) : (parseFloat(r.grossAmount) || 0);
+                const clientRevenue    = isCohostAirbnb ? 0 : rawClientRevenue;
+                const luxuryFee        = r.isCustom && r.luxuryLodgingFee !== undefined
+                    ? parseFloat(r.luxuryLodgingFee)
+                    : rawClientRevenue * (stmtPmPct / 100);
+                const pmFeeToDeduct    = isWaiverActive ? 0 : luxuryFee;
+                const taxResponsibility = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
+                const shouldAddTax     = !stmtDisregardTax && (!isAirbnb || stmtAirbnbPassThrough);
+                const taxToAdd         = shouldAddTax ? taxResponsibility : 0;
+
+                const resGrossPayout = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeToDeduct);
+                const resClientPayout = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (resGrossPayout + taxToAdd);
+
                 entry.reservationCount += 1;
-                entry.baseRate    += parseFloat(r.baseRate || r.accommodationTotal || 0);
-                entry.guestFees   += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
-                entry.platformFees += parseFloat(r.platformFees || r.hostServiceFee || 0);
-                entry.taxes       += parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
+                entry.grossPayoutSum   += resClientPayout;   // matches statement PDF GROSS PAYOUT column
+                entry.baseRate         += parseFloat(r.baseRate || r.accommodationTotal || 0);
+                entry.guestFees        += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
+                entry.platformFees     += parseFloat(r.platformFees || r.hostServiceFee || 0);
+                entry.taxes            += taxResponsibility;
             }
         }
 
@@ -1071,9 +1104,11 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 ? parseFloat(listing.pmFeePercentage)
                 : (p.revenue > 0 && p.pmCommission > 0 ? Math.round((p.pmCommission / p.revenue) * 1000) / 10 : null);
 
-            // grossPayout = ownerPayout + expenses - adjustments (reverses statement formula)
-            // This matches the GROSS PAYOUT shown on the statement PDF
-            const grossPayout = p.ownerPayout + p.expenses - p.adjustments;
+            // grossPayout and ownerPayout computed using exact PDF formula
+            // grossPayoutSum = sum of per-reservation clientPayout (PDF GROSS PAYOUT column)
+            // ownerPayout = grossPayoutSum + adjustments - expenses  (PDF NET PAYOUT)
+            const grossPayout = p.grossPayoutSum;
+            const ownerPayout = p.grossPayoutSum + p.adjustments - p.expenses;
 
             return {
                 ...p,
@@ -1082,7 +1117,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 revenue:      Math.round(p.revenue      * 100) / 100,
                 pmCommission: Math.round(p.pmCommission * 100) / 100,
                 grossPayout:  Math.round(grossPayout    * 100) / 100,
-                ownerPayout:  Math.round(p.ownerPayout  * 100) / 100,
+                ownerPayout:  Math.round(ownerPayout    * 100) / 100,
                 baseRate:     Math.round(p.baseRate     * 100) / 100,
                 guestFees:    Math.round(p.guestFees    * 100) / 100,
                 platformFees: Math.round(p.platformFees * 100) / 100,
