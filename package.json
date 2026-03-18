@@ -4,9 +4,9 @@
   "description": "Automated Owner Statements Management System",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "npx jest src/tests/ --verbose && node src/server.js",
     "dev": "nodemon src/server.js",
-    "build": "cd frontend && npm install && npm run build && cd .. && npx jest src/tests/ --verbose",
+    "build": "cd frontend && npm install && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "dev:frontend": "cd frontend && npm start",
     "install:frontend": "cd frontend && npm install",
