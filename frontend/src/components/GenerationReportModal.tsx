@@ -49,7 +49,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {hasIssues ? (
@@ -61,7 +61,7 @@ const GenerationReportModal: React.FC<GenerationReportModalProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
+        <div className="space-y-4">
           {/* Summary */}
           <div className="flex gap-4 text-sm flex-wrap">
             {report.generated > 0 && (
