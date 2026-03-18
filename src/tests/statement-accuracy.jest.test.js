@@ -38,7 +38,19 @@ function selectNonOverlapping(statementRows, queryStart, queryEnd) {
     }
     const selectedIds = [];
     for (const [, propRows] of byProp) {
-        const covered = [];
+        // If one statement covers the entire query range, use it alone
+        const fullCover = propRows.find(row => {
+            const s = row.weekStartDate ? String(row.weekStartDate).slice(0, 10) : null;
+            const e = row.weekEndDate   ? String(row.weekEndDate).slice(0, 10)   : null;
+            return s && e && s <= queryStart && e >= queryEnd;
+        });
+        if (fullCover) {
+            selectedIds.push(fullCover.id);
+            continue;
+        }
+
+        // Build a non-overlapping set, removing subsumed narrower intervals
+        const propSelected = [];
         for (const row of propRows) {
             const s = row.weekStartDate ? String(row.weekStartDate).slice(0, 10) : null;
             const e = row.weekEndDate   ? String(row.weekEndDate).slice(0, 10)   : null;
@@ -46,12 +58,19 @@ function selectNonOverlapping(statementRows, queryStart, queryEnd) {
                 const effS = s < queryStart ? queryStart : s;
                 const effE = e > queryEnd   ? queryEnd   : e;
                 if (effS <= effE) {
-                    if (covered.some(([a, b]) => a <= effS && b >= effE)) continue;
-                    covered.push([effS, effE]);
+                    if (propSelected.some(p => p.effS !== undefined && p.effS <= effS && p.effE >= effE)) continue;
+                    for (let i = propSelected.length - 1; i >= 0; i--) {
+                        if (propSelected[i].effS !== undefined && effS <= propSelected[i].effS && effE >= propSelected[i].effE) {
+                            propSelected.splice(i, 1);
+                        }
+                    }
+                    propSelected.push({ id: row.id, effS, effE });
+                    continue;
                 }
             }
-            selectedIds.push(row.id);
+            propSelected.push({ id: row.id });
         }
+        selectedIds.push(...propSelected.map(p => p.id));
     }
     return selectedIds;
 }
