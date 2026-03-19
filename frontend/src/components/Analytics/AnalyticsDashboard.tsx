@@ -260,10 +260,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const { showToast } = useToast();
   const { isDark } = useTheme();
 
-  // Chart theme colors
-  const chartColors = isDark
+  // Chart theme colors — memoized so chart useMemo deps are stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const chartColors = useMemo(() => isDark
     ? { bg: 'transparent', text: '#d1d5db', subText: '#9ca3af', border: '#374151', splitLine: '#374151', tooltipBg: '#1f2937', tooltipBorder: '#374151', tooltipText: '#f3f4f6' }
-    : { bg: 'transparent', text: '#374151', subText: '#6b7280', border: '#e5e7eb', splitLine: '#f3f4f6', tooltipBg: '#ffffff', tooltipBorder: '#e5e7eb', tooltipText: '#374151' };
+    : { bg: 'transparent', text: '#374151', subText: '#6b7280', border: '#e5e7eb', splitLine: '#f3f4f6', tooltipBg: '#ffffff', tooltipBorder: '#e5e7eb', tooltipText: '#374151' },
+  [isDark]);
 
   // State
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');

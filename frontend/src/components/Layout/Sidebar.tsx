@@ -94,7 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNotificationClick,
   readListingIds,
 }) => {
-  const { theme, setTheme, isDark } = useTheme();
+  const { setTheme, isDark } = useTheme();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -200,8 +200,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom Actions Bar */}
       <div className="px-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 relative" ref={notificationRef}>
-        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'gap-1'}`}>
-          {/* New Listings Notifications Button */}
+        {/* Row 1: Bell icons + dark mode */}
+        <div className={`flex items-center ${collapsed ? 'justify-center gap-0.5' : 'gap-1'} mb-1`}>
           <button
             onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
             className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 ${
@@ -219,7 +219,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
-          {/* Schedule Reminders Button */}
           <div ref={scheduleRef} className="relative">
             <button
               onClick={() => { setIsScheduleOpen(!isScheduleOpen); setIsNotificationOpen(false); }}
@@ -239,10 +238,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
-          {/* Dark Mode Toggle */}
           <button
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className="relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
+            className="flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
             title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -250,20 +248,30 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {!collapsed && <div className="flex-1" />}
 
-          {/* Collapse Toggle */}
-          <button
-            onClick={onToggleCollapse}
-            className="relative z-10 flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 transition-all flex-shrink-0 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 active:bg-gray-300 dark:active:bg-gray-600 cursor-pointer shadow-sm dark:shadow-gray-950/50"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={{ touchAction: 'manipulation' }}
-          >
-            {collapsed ? (
-              <ChevronRight className="w-5 h-5" />
-            ) : (
-              <ChevronLeft className="w-5 h-5" />
-            )}
-          </button>
+          {!collapsed && (
+            <button
+              onClick={onToggleCollapse}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all flex-shrink-0 border border-gray-200 dark:border-gray-700 cursor-pointer"
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
         </div>
+
+        {/* Collapse toggle for collapsed sidebar */}
+        {collapsed && (
+          <div className="flex justify-center mt-1">
+            <button
+              onClick={onToggleCollapse}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all border border-gray-200 dark:border-gray-700 cursor-pointer"
+              title="Expand sidebar"
+              style={{ touchAction: 'manipulation' }}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Notification Dropdown */}
         {isNotificationOpen && (
