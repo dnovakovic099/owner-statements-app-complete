@@ -25,7 +25,7 @@ interface AnalyticsEvent {
 const FLUSH_INTERVAL_MS = 30_000;
 const API_BASE_URL =
   process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3003/api';
-const ENDPOINT = `${API_BASE_URL}/analytics/events`;
+const ENDPOINT = `${API_BASE_URL}/analytics-events`;
 
 function generateSessionId(): string {
   // crypto.randomUUID is available in all modern browsers; fall back to a
