@@ -133,9 +133,20 @@ app.use('/api/payouts/fund-and-queue', payoutLimiter);
 app.use('/api/payouts/statements/:id/pay', payoutLimiter);
 
 // Static files - serve React build and public files
+// Hashed assets (JS/CSS) get long cache; index.html always fresh so deploys take effect immediately
 const reactBuildPath = path.join(__dirname, '../frontend/build');
 if (fs.existsSync(reactBuildPath)) {
-    app.use(express.static(reactBuildPath));
+    app.use(express.static(reactBuildPath, {
+        maxAge: '1y',
+        setHeaders: (res, filePath) => {
+            // Never cache index.html — ensures users get latest deploy
+            if (filePath.endsWith('index.html')) {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            }
+        },
+    }));
 }
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
@@ -1159,6 +1170,7 @@ app.delete('/api/logs', authenticate, authorize('admin', 'system'), async (req, 
 
 // Accept invite page (public)
 app.get('/accept-invite', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     const indexPath = path.join(__dirname, '../frontend/build/index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
@@ -1178,6 +1190,7 @@ app.use((req, res, next) => {
         return res.status(404).json({ error: 'Route not found' });
     }
 
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     const indexPath = path.join(__dirname, '../frontend/build/index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
