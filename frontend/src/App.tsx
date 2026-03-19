@@ -87,12 +87,23 @@ function AppRoutes() {
 }
 
 function App() {
-  useVersionCheck();
+  const { updateAvailable, refresh } = useVersionCheck();
 
   return (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+          {updateAvailable && (
+            <div className="fixed top-0 left-0 right-0 z-[9999] bg-blue-600 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-3 shadow-lg">
+              <span>A new version is available.</span>
+              <button
+                onClick={refresh}
+                className="bg-white text-blue-600 font-semibold px-3 py-0.5 rounded hover:bg-blue-50 transition-colors"
+              >
+                Refresh now
+              </button>
+            </div>
+          )}
           <AppRoutes />
         </ToastProvider>
       </AuthProvider>
