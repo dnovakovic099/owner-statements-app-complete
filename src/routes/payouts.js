@@ -725,6 +725,25 @@ router.get('/balance', async (req, res) => {
     }
 });
 
+// ─── GET /reconcile ──────────────────────────────────────────
+// Check Increase transfer statuses and update statements accordingly (admin-only)
+router.get('/reconcile', async (req, res) => {
+    try {
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
+        }
+
+        const reconciliationService = require('../services/ReconciliationService');
+        const result = await reconciliationService.reconcileTransfers();
+
+        logger.info('Reconciliation completed', result);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'reconcile' });
+        res.status(500).json({ error: 'Reconciliation failed' });
+    }
+});
+
 /**
  * Process all queued payout transfers.
  * Checks balance, and if sufficient, processes all queued statements.

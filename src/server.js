@@ -1098,6 +1098,27 @@ app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
 // Activity Logs - Admin only
 app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));
 
+// Search - Any authenticated user
+app.use('/api/search', authenticate, require('./routes/search'));
+
+// Reports - Admin only
+app.use('/api/reports', authenticate, require('./routes/reports'));
+
+// SSE - Real-time updates
+const sseManager = require('./utils/sseManager');
+const jwt = require('jsonwebtoken');
+app.get('/api/events', (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.status(401).json({ error: 'Token required' });
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const clientId = `${decoded.username || decoded.id}_${Date.now()}`;
+        sseManager.addClient(clientId, res);
+    } catch {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
 // Analytics - Any authenticated user can view
 app.use('/api/analytics', authenticate, require('./routes/analytics'));
 
