@@ -1670,15 +1670,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
               <span className="ml-3 text-sm text-gray-500">{appLogsTotal} entries (3-day retention)</span>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={appLogsLevel}
-                onChange={(e) => { setAppLogsLevel(e.target.value); loadAppLogs(0, e.target.value); }}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
-              >
-                <option value="">All Levels</option>
-                <option value="error">Error</option>
-                <option value="warn">Warning</option>
-              </select>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                {[
+                  { value: '', label: 'All Levels' },
+                  { value: 'error', label: 'Error' },
+                  { value: 'warn', label: 'Warning' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setAppLogsLevel(opt.value); loadAppLogs(0, opt.value); }}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                      appLogsLevel === opt.value
+                        ? 'bg-white text-gray-900 shadow-sm font-medium'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => loadAppLogs(0, appLogsLevel)}
                 className="flex items-center px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
