@@ -724,13 +724,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Listings</h1>
-            <p className="text-gray-500 text-xs sm:text-sm mt-0.5">Configure listing names and co-host settings</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Listings</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5">Configure listing names and co-host settings</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -755,11 +755,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col overflow-hidden">
         {/* Error Display */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3 flex items-start flex-shrink-0">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-3 flex items-start flex-shrink-0">
             <AlertCircle className="w-5 h-5 text-red-600 mr-3 mt-0.5" />
             <div>
-              <h3 className="text-red-800 font-semibold">Error Loading Listings</h3>
-              <p className="text-red-600 text-sm mt-1">{error}</p>
+              <h3 className="text-red-800 dark:text-red-300 font-semibold">Error Loading Listings</h3>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-1">{error}</p>
             </div>
           </div>
         )}
@@ -783,20 +783,20 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
         <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden">
           {/* Listings List - Responsive sidebar */}
-          <div className={`${selectedListingId ? 'hidden lg:flex' : 'flex'} w-full lg:w-[380px] flex-shrink-0 bg-white rounded-lg shadow-md p-4 flex-col overflow-hidden`}>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">
+          <div className={`${selectedListingId ? 'hidden lg:flex' : 'flex'} w-full lg:w-[380px] flex-shrink-0 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-gray-950/50 p-4 flex-col overflow-hidden`}>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
               Listings ({filteredListings.length})
             </h2>
 
             {/* Search */}
             <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
               <input
                 type="text"
                 placeholder="Search listings..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
               />
             </div>
 
@@ -804,7 +804,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
             <div className="mb-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center justify-between w-full text-sm text-gray-600 hover:text-gray-900 py-1.5 px-2 rounded-md hover:bg-gray-100"
+                className="flex items-center justify-between w-full text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white py-1.5 px-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <span className="font-medium flex items-center">
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -828,16 +828,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
               </button>
 
               {showFilters && (
-                <div className="mt-2 p-3 border border-gray-200 rounded-md bg-gray-50 space-y-3 max-h-80 overflow-y-auto">
+                <div className="mt-2 p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800 space-y-3 max-h-80 overflow-y-auto">
                   {/* Tag Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Tag</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Tag</label>
                     <input
                       type="text"
                       placeholder="Search tags..."
                       value={tagSearchTerm}
                       onChange={(e) => setTagSearchTerm(e.target.value)}
-                      className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
                     />
                     <div className="flex flex-wrap gap-1.5">
                       {availableFrequencyTags
@@ -848,7 +848,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => toggleFrequencyTag(tag)}
                             className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFrequencyTags.includes(tag)
                                 ? 'bg-blue-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {tag}
@@ -859,7 +859,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onClick={() => toggleFrequencyTag('NO TAG')}
                           className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFrequencyTags.includes('NO TAG')
                               ? 'bg-blue-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                         >
                           NO TAG
@@ -871,13 +871,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   {/* City Filter */}
                   {availableCities.length > 0 && (
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">City</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">City</label>
                       <input
                         type="text"
                         placeholder="Search cities..."
                         value={citySearchTerm}
                         onChange={(e) => setCitySearchTerm(e.target.value)}
-                        className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full mb-1.5 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
                       />
                       <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                         {availableCities
@@ -888,7 +888,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               onClick={() => toggleCity(city)}
                               className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedCities.includes(city)
                                   ? 'bg-green-600 text-white'
-                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                  : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                                 }`}
                             >
                               {city}
@@ -901,7 +901,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   {/* Custom Tags */}
                   {availableTags.length > 0 && (
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Tags</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
                       <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                         {availableTags.map(tag => (
                           <button
@@ -909,7 +909,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => toggleFilterTag(tag)}
                             className={`px-2 py-1 text-xs rounded-md transition-colors ${selectedFilterTags.includes(tag)
                                 ? 'bg-purple-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {tag}
@@ -921,7 +921,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                   {/* Co-host Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Co-host Status</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Co-host Status</label>
                     <div className="flex gap-1.5">
                       {[
                         { value: 'all', label: 'All' },
@@ -933,7 +933,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onClick={() => setCohostFilter(opt.value as typeof cohostFilter)}
                           className={`px-2 py-1 text-xs rounded-md transition-colors ${cohostFilter === opt.value
                               ? 'bg-indigo-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                         >
                           {opt.label}
@@ -944,7 +944,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                   {/* Owner Email Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Owner Email</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Owner Email</label>
                     <div className="flex gap-1.5">
                       {[
                         { value: 'all', label: 'All' },
@@ -956,7 +956,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onClick={() => setOwnerEmailFilter(opt.value as typeof ownerEmailFilter)}
                           className={`px-2 py-1 text-xs rounded-md transition-colors ${ownerEmailFilter === opt.value
                               ? 'bg-orange-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                         >
                           {opt.label}
@@ -967,7 +967,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                   {/* Payout Info Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Payout Info</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Payout Info</label>
                     <div className="flex gap-1.5 flex-wrap">
                       {[
                         { value: 'all', label: 'All' },
@@ -980,7 +980,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onClick={() => setPayoutFilter(opt.value as typeof payoutFilter)}
                           className={`px-2 py-1 text-xs rounded-md transition-colors ${payoutFilter === opt.value
                               ? 'bg-emerald-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                         >
                           {opt.label}
@@ -991,7 +991,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                   {/* Auto-send Filter */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Auto-send Statements</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Auto-send Statements</label>
                     <div className="flex gap-1.5">
                       {[
                         { value: 'all', label: 'All' },
@@ -1003,7 +1003,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onClick={() => setAutoSendFilter(opt.value as typeof autoSendFilter)}
                           className={`px-2 py-1 text-xs rounded-md transition-colors ${autoSendFilter === opt.value
                               ? 'bg-teal-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                              : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                         >
                           {opt.label}
@@ -1016,7 +1016,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     {/* Pass-Through Tax Filter */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Pass-Through Tax</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Pass-Through Tax</label>
                       <div className="flex gap-1">
                         {[
                           { value: 'all', label: 'All' },
@@ -1028,7 +1028,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => setPassThroughTaxFilter(opt.value as typeof passThroughTaxFilter)}
                             className={`px-1.5 py-0.5 text-xs rounded transition-colors ${passThroughTaxFilter === opt.value
                                 ? 'bg-amber-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {opt.label}
@@ -1039,7 +1039,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* Disregard Tax Filter */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Disregard Tax</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Disregard Tax</label>
                       <div className="flex gap-1">
                         {[
                           { value: 'all', label: 'All' },
@@ -1051,7 +1051,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => setDisregardTaxFilter(opt.value as typeof disregardTaxFilter)}
                             className={`px-1.5 py-0.5 text-xs rounded transition-colors ${disregardTaxFilter === opt.value
                                 ? 'bg-red-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {opt.label}
@@ -1062,7 +1062,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* Cleaning Fee Filter */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Cleaning Pass-Thru</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Cleaning Pass-Thru</label>
                       <div className="flex gap-1">
                         {[
                           { value: 'all', label: 'All' },
@@ -1074,7 +1074,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => setCleaningFeeFilter(opt.value as typeof cleaningFeeFilter)}
                             className={`px-1.5 py-0.5 text-xs rounded transition-colors ${cleaningFeeFilter === opt.value
                                 ? 'bg-green-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {opt.label}
@@ -1085,7 +1085,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* Guest Paid Damage Filter */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Guest Damage</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Guest Damage</label>
                       <div className="flex gap-1">
                         {[
                           { value: 'all', label: 'All' },
@@ -1097,7 +1097,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => setGuestPaidDamageFilter(opt.value as typeof guestPaidDamageFilter)}
                             className={`px-1.5 py-0.5 text-xs rounded transition-colors ${guestPaidDamageFilter === opt.value
                                 ? 'bg-blue-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {opt.label}
@@ -1108,7 +1108,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* Waive Commission Filter */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Waive Commission</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Waive Commission</label>
                       <div className="flex gap-1">
                         {[
                           { value: 'all', label: 'All' },
@@ -1120,7 +1120,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onClick={() => setWaiveCommissionFilter(opt.value as typeof waiveCommissionFilter)}
                             className={`px-1.5 py-0.5 text-xs rounded transition-colors ${waiveCommissionFilter === opt.value
                                 ? 'bg-indigo-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                               }`}
                           >
                             {opt.label}
@@ -1134,7 +1134,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   {activeFilterCount > 0 && (
                     <button
                       onClick={clearAllFilters}
-                      className="w-full mt-2 py-1.5 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                      className="w-full mt-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
                     >
                       Clear all filters
                     </button>
@@ -1146,12 +1146,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
             {/* Listings List - Scrollable */}
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
               {loading && initialLoadDone ? (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
                   <RefreshCw className="w-5 h-5 animate-spin mb-2" />
                   <p className="text-sm">Loading listings...</p>
                 </div>
               ) : filteredListings.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-4">
+                <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">
                   {(searchTerm || activeFilterCount > 0) ? 'No listings match your search' : 'No listings found'}
                 </p>
               ) : (
@@ -1162,12 +1162,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       key={listing.id}
                       onClick={() => setSelectedListingId(listing.id)}
                       className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
-                          ? 'bg-blue-100 border-2 border-blue-500'
-                          : 'bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          ? 'bg-blue-100 dark:bg-blue-900/30 border-2 border-blue-500'
+                          : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-medium text-gray-900 truncate text-sm">
+                        <div className="font-medium text-gray-900 dark:text-white truncate text-sm">
                           {getListingDisplayName(listing)}
                         </div>
                         <span
@@ -1181,11 +1181,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         ID: {listing.id}
                         {listing.city && ` • ${listing.city}`}
                         {listing.isCohostOnAirbnb && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
                             Co-host
                           </span>
                         )}
@@ -1194,13 +1194,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         {listing.tags && listing.tags.map((tag, idx) => (
                           <span
                             key={idx}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
                           >
                             {tag}
                           </span>
                         ))}
                         {(listing as any).wiseRecipientId && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                             Increase: {(listing as any).wiseRecipientId.length > 10
                               ? `...${(listing as any).wiseRecipientId.slice(-6)}`
                               : (listing as any).wiseRecipientId}
@@ -1216,7 +1216,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowOffboardedListings(!showOffboardedListings)}
-                        className="w-full flex items-center justify-between px-3 py-2 mt-2 text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition-colors"
+                        className="w-full flex items-center justify-between px-3 py-2 mt-2 text-sm font-semibold text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
                       >
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4" />
@@ -1233,12 +1233,12 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           key={listing.id}
                           onClick={() => setSelectedListingId(listing.id)}
                           className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${selectedListingId === listing.id
-                              ? 'bg-orange-100 border-2 border-orange-400'
-                              : 'bg-orange-50/50 border border-orange-200 hover:bg-orange-50 hover:border-orange-300'
+                              ? 'bg-orange-100 dark:bg-orange-900/30 border-2 border-orange-400'
+                              : 'bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-300 dark:hover:border-orange-700'
                             }`}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="font-medium text-gray-700 truncate text-sm">
+                            <div className="font-medium text-gray-700 dark:text-gray-300 truncate text-sm">
                               {getListingDisplayName(listing)}
                             </div>
                             <span
@@ -1252,11 +1252,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
                             </span>
                           </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             ID: {listing.id}
                             {listing.city && ` • ${listing.city}`}
                             {listing.isCohostOnAirbnb && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
                                 Co-host
                               </span>
                             )}
@@ -1265,13 +1265,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             {listing.tags && listing.tags.map((tag, idx) => (
                               <span
                                 key={idx}
-                                className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
                               >
                                 {tag}
                               </span>
                             ))}
                             {(listing as any).wiseRecipientId && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                                 Increase: ...{(listing as any).wiseRecipientId.slice(-6)}
                               </span>
                             )}
@@ -1286,33 +1286,33 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
 
           {/* Listing Details/Edit Form - Fills remaining space */}
-          <div className={`${selectedListingId ? 'flex' : 'hidden lg:flex'} flex-1 bg-white rounded-lg shadow-md ${selectedListing ? 'flex-col overflow-hidden' : 'overflow-hidden'}`}>
+          <div className={`${selectedListingId ? 'flex' : 'hidden lg:flex'} flex-1 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-gray-950/50 ${selectedListing ? 'flex-col overflow-hidden' : 'overflow-hidden'}`}>
             {!selectedListing ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
-                <Search className="w-16 h-16 mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Select a listing to edit</p>
-                <p className="text-sm mt-2">Choose a listing from the list on the left</p>
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400 p-6">
+                <Search className="w-16 h-16 mb-4 text-gray-300 dark:text-gray-600" />
+                <p className="text-lg font-medium dark:text-gray-300">Select a listing to edit</p>
+                <p className="text-sm mt-2 dark:text-gray-500">Choose a listing from the list on the left</p>
               </div>
             ) : (
               <>
                 {/* Fixed Header */}
-                <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-gray-200 flex-shrink-0">
+                <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                   <div className="flex items-center gap-3">
                     {/* Back button for mobile */}
                     <button
                       onClick={() => setSelectedListingId(null)}
-                      className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                      className="lg:hidden p-2 -ml-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
                     <div>
-                      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Edit Listing</h2>
-                      <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[250px] sm:max-w-none">
+                      <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Edit Listing</h2>
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[250px] sm:max-w-none">
                         {selectedListing.name}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">ID: {selectedListing.id}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">ID: {selectedListing.id}</p>
                     </div>
                   </div>
                 </div>
@@ -1322,7 +1322,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                   <div className="space-y-4 sm:space-y-6">
                     {/* Display Name */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Display Name
                       </label>
                       <input
@@ -1330,16 +1330,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         placeholder="Enter custom display name (optional)"
-                        className="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
                       />
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                         This name will be used in dropdowns and the UI. The original name "{selectedListing.name}"
                         will be preserved for mapping purposes.
                       </p>
                     </div>
 
                     {/* Co-host on Airbnb */}
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1364,7 +1364,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Airbnb Pass-Through Tax */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1389,7 +1389,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Disregard Tax (Company Remits) */}
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1414,7 +1414,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Cleaning Fee Pass-Through */}
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1439,7 +1439,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Guest Paid Damage Coverage */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1464,7 +1464,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Waive PM Commission */}
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4">
                       <div className="flex items-start">
                         <input
                           type="checkbox"
@@ -1509,7 +1509,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* PM Fee Percentage */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Property Management Fee (%)
                       </label>
                       <div className="flex items-center space-x-3">
@@ -1520,17 +1520,17 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           min="0"
                           max="100"
                           step="0.01"
-                          className="w-32 border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-32 border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
                         />
-                        <span className="text-gray-600">%</span>
+                        <span className="text-gray-600 dark:text-gray-400">%</span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                         The percentage charged for property management services (e.g., 15% = 15.00)
                       </p>
                     </div>
 
                     {/* New PM Fee % Transition */}
-                    <div className={`border rounded-lg p-4 ${newPmFeeEnabled ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className={`border rounded-lg p-4 ${newPmFeeEnabled ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
                       <div className="flex items-center space-x-3">
                         <input
                           type="checkbox"
@@ -1539,11 +1539,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           onChange={(e) => setNewPmFeeEnabled(e.target.checked)}
                           className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                         />
-                        <label htmlFor="newPmFeeEnabled" className="text-sm font-medium text-gray-900">
+                        <label htmlFor="newPmFeeEnabled" className="text-sm font-medium text-gray-900 dark:text-white">
                           New PM Fee % (Transition)
                         </label>
                       </div>
-                      <p className="text-xs text-gray-600 mt-1 ml-7">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-7">
                         Enable to set a new PM fee percentage. Reservations created on or after the start date will use the new rate.
                       </p>
                       {newPmFeeEnabled && (
@@ -1560,7 +1560,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 step="0.01"
                                 className="w-24 border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                               />
-                              <span className="text-sm text-gray-600">%</span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
                             </div>
                           </div>
                           <div>
@@ -1577,7 +1577,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Owner Email */}
-                    <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
                       <div className="flex gap-4 items-end">
                         <div className="flex-1">
                           <label className="block text-sm font-medium text-teal-900 mb-2">
@@ -1610,14 +1610,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           <button
                             type="button"
                             onClick={() => setAutoSendStatements(!autoSendStatements)}
-                            className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${autoSendStatements ? 'bg-teal-600' : 'bg-gray-300'
+                            className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${autoSendStatements ? 'bg-teal-600' : 'bg-gray-300 dark:bg-gray-600'
                               }`}
                           >
                             <span
                               className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-md transition-transform ${autoSendStatements ? 'translate-x-11' : 'translate-x-1'
                                 }`}
                             />
-                            <span className={`absolute text-xs font-medium ${autoSendStatements ? 'left-2 text-white' : 'right-2 text-gray-600'}`}>
+                            <span className={`absolute text-xs font-medium ${autoSendStatements ? 'left-2 text-white' : 'right-2 text-gray-600 dark:text-gray-300'}`}>
                               {autoSendStatements ? 'ON' : 'OFF'}
                             </span>
                           </button>
@@ -1637,19 +1637,19 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Payout Info */}
-                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <div className="bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl p-5 shadow-sm dark:shadow-gray-950/50">
                       <div className="flex flex-col gap-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">Payout Info</p>
-                            <p className="text-xs text-slate-600">Increase external account ID and payout tracking status.</p>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">Payout Info</p>
+                            <p className="text-xs text-slate-600 dark:text-gray-400">Increase external account ID and payout tracking status.</p>
                           </div>
                         </div>
 
 
                         {/* Increase External Account ID Input */}
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium text-slate-700">
+                          <label className="text-sm font-medium text-slate-700 dark:text-gray-300">
                             Increase External Account ID
                           </label>
                           <input
@@ -1670,16 +1670,16 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               }
                             }}
                             placeholder="Recipient ID"
-                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            className="w-full border border-slate-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
                           />
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-slate-500 dark:text-gray-400">
                             Generated automatically when owner completes payout setup via invite link.
                           </p>
                         </div>
 
                         {/* Internal Payout Status */}
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium text-slate-700">
+                          <label className="text-sm font-medium text-slate-700 dark:text-gray-300">
                             Internal Payout Status
                           </label>
                           <div className="flex flex-wrap gap-2">
@@ -1694,7 +1694,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 onClick={() => setPayoutStatus(opt.value as typeof payoutStatus)}
                                 className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${payoutStatus === opt.value
                                     ? 'bg-emerald-600 text-white border-emerald-700'
-                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                                    : 'bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-300 border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-700'
                                   }`}
                               >
                                 {opt.label}
@@ -1704,10 +1704,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium text-slate-700">
+                          <label className="text-sm font-medium text-slate-700 dark:text-gray-300">
                             Payout Notes
                           </label>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-slate-500 dark:text-gray-400">
                             Internal notes about payout setup for this owner.
                           </p>
                           <textarea
@@ -1715,14 +1715,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             onChange={(e) => setPayoutNotes(e.target.value)}
                             rows={3}
                             placeholder="Add context, e.g. 'Waiting for bank form from owner'"
-                            className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            className="w-full border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
                           />
                         </div>
                       </div>
                     </div>
 
                     {/* Tags */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-blue-900">
                           Tags
@@ -1738,7 +1738,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           {tags.map((tag, idx) => (
                             <span
                               key={idx}
-                              className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                              className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
                             >
                               {tag}
                               <button
@@ -1789,11 +1789,11 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               }
                             }}
                             placeholder="Add a tag..."
-                            className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-blue-300 dark:border-blue-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
                           />
                           {/* Tag Suggestions Dropdown */}
                           {showTagSuggestions && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg dark:shadow-gray-950/50 max-h-48 overflow-y-auto">
                               {/* Combine base tags + all tags from listings (dynamic) */}
                               {Array.from(new Set([...BASE_TAGS, ...availableTags]))
                                 .filter(tag =>
@@ -1812,7 +1812,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                         setShowTagSuggestions(false);
                                       }
                                     }}
-                                    className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center justify-between"
+                                    className="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm flex items-center justify-between dark:text-gray-300"
                                   >
                                     <span>{tag}</span>
                                     {availableFrequencyTags.includes(tag) && (
@@ -1825,7 +1825,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                   !tags.includes(tag) &&
                                   tag.toLowerCase().includes(newTag.toLowerCase())
                                 ).length === 0 && newTag.trim() && (
-                                  <div className="px-3 py-2 text-sm text-gray-500">
+                                  <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
                                     Press Enter to add "{newTag.trim().toUpperCase()}"
                                   </div>
                                 )}
@@ -1850,8 +1850,8 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Internal Notes */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                      <h3 className="text-sm font-medium text-amber-800 mb-1">Internal Notes</h3>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                      <h3 className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">Internal Notes</h3>
                       <p className="text-xs text-amber-600 mb-3">
                         Private notes about this listing. Visible in the app only, NOT included on PDF statements.
                       </p>
@@ -1865,7 +1865,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     </div>
 
                     {/* Group Management */}
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <FolderOpen className="w-4 h-4 text-purple-700" />
@@ -1879,7 +1879,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       {selectedListing.group ? (
                         <div className="space-y-3">
                           {/* Current Group Info */}
-                          <div className="bg-white rounded-md p-3 border border-purple-200">
+                          <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-purple-200 dark:border-purple-800">
                             <div className="flex items-start justify-between mb-2">
                               <div>
                                 <div className="font-medium text-purple-900">{selectedListing.group.name}</div>
@@ -1887,7 +1887,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                   {selectedListing.group.tags?.map((tag, idx) => (
                                     <span
                                       key={idx}
-                                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"
+                                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
                                     >
                                       {tag}
                                     </span>
@@ -1934,7 +1934,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <div className="text-sm text-purple-700 bg-white rounded-md p-3 border border-purple-200">
+                          <div className="text-sm text-purple-700 dark:text-purple-400 bg-white dark:bg-gray-800 rounded-md p-3 border border-purple-200 dark:border-purple-800">
                             No group assigned
                           </div>
                           <div className="flex gap-2">
@@ -1951,10 +1951,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
-                                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-purple-300 rounded-md bg-white hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
+                                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-purple-300 dark:border-purple-700 rounded-md bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors"
                                 >
-                                  <span className="text-gray-700">Add to Existing Group</span>
-                                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
+                                  <span className="text-gray-700 dark:text-gray-300">Add to Existing Group</span>
+                                  <ChevronDown className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
                                 </button>
                                 {isGroupDropdownOpen && (
                                   <>
@@ -1962,7 +1962,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                       className="fixed inset-0 z-10"
                                       onClick={() => setIsGroupDropdownOpen(false)}
                                     />
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg dark:shadow-gray-950/50 z-20 max-h-48 overflow-y-auto">
                                       {groups.map(group => (
                                         <button
                                           key={group.id}
@@ -1971,9 +1971,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                             handleAddToExistingGroup(group.id, selectedListing.id);
                                             setIsGroupDropdownOpen(false);
                                           }}
-                                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between"
+                                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors flex items-center justify-between"
                                         >
-                                          <span className="font-medium text-gray-900">{group.name}</span>
+                                          <span className="font-medium text-gray-900 dark:text-white">{group.name}</span>
                                           <span className="text-xs text-purple-600">{group.tags?.join(', ')}</span>
                                         </button>
                                       ))}
@@ -1989,9 +1989,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
                     {/* Location Info */}
                     {(selectedListing.street || selectedListing.city || selectedListing.state) && (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <h3 className="text-sm font-medium text-gray-700 mb-2">Location</h3>
-                        <p className="text-sm text-gray-600">
+                      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Location</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
                           {[selectedListing.street, selectedListing.city, selectedListing.state, selectedListing.country]
                             .filter(Boolean)
                             .join(', ')}
@@ -2000,7 +2000,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                     )}
 
                     {/* Save Button */}
-                    <div className="flex justify-end pt-4 border-t border-gray-200">
+                    <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
                       <button
                         onClick={handleSave}
                         disabled={saving}

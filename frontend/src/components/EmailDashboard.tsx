@@ -842,13 +842,13 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-800 overflow-hidden">
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Email</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Manage email automation and templates</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Email</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Manage email automation and templates</p>
           </div>
         </div>
       </div>
@@ -883,11 +883,11 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
         )}
 
         {/* Tag Selection */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Select Tags</h2>
-              <p className="text-sm text-gray-500">Choose which property groups to include</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Select Tags</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Choose which property groups to include</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -896,10 +896,10 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
               >
                 Select All
               </button>
-              <span className="text-gray-300">|</span>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
               <button
                 onClick={clearAllTags}
-                className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 font-medium"
               >
                 Clear
               </button>
@@ -911,7 +911,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
               <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : availableTags.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               No tags found. Add tags to your listings first.
             </div>
           ) : (
@@ -927,22 +927,22 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                     onClick={() => toggleTag(tag)}
                     className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
                   >
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                       isSelected
                         ? 'border-blue-500 bg-blue-500'
-                        : 'border-gray-300 bg-white'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
                     }`}>
                       {isSelected && <Check className="w-3 h-3 text-white" />}
                     </div>
                     <span className="font-medium">{tag}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
                       isSelected
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'bg-gray-100 text-gray-500'
+                        ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
                     }`}>
                       {listingsWithTag}
                     </span>
@@ -953,11 +953,11 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
           )}
 
           {selectedTags.size > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-              <p className="text-sm text-gray-600">
-                <span className="font-medium text-gray-900">{selectedTags.size}</span> tag{selectedTags.size !== 1 ? 's' : ''} selected
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                <span className="font-medium text-gray-900 dark:text-white">{selectedTags.size}</span> tag{selectedTags.size !== 1 ? 's' : ''} selected
                 {' · '}
-                <span className="font-medium text-gray-900">{selectedListings.length}</span> properties
+                <span className="font-medium text-gray-900 dark:text-white">{selectedListings.length}</span> properties
               </p>
               <div className="flex flex-wrap gap-4 text-sm">
                 <span className="text-green-600">
@@ -975,14 +975,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
 
         {/* Schedule Section - Only show when tags are selected */}
         {selectedTags.size > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-purple-600" />
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Schedule Emails</h2>
-                <p className="text-sm text-gray-500">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Schedule Emails</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {listingsWithoutStatements.length > 0
                     ? `Will generate ${listingsWithoutStatements.length} statements and queue ${selectedListings.length} emails`
                     : `Add ${selectedListings.length} email${selectedListings.length !== 1 ? 's' : ''} to pending queue`
@@ -1002,15 +1002,15 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
 
             {/* Test Email Field */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Test Email <span className="text-gray-400 font-normal">(optional - leave empty to send to actual owners)</span>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Test Email <span className="text-gray-400 dark:text-gray-500 font-normal">(optional - leave empty to send to actual owners)</span>
               </label>
               <input
                 type="email"
                 value={testEmail}
                 onChange={(e) => setTestEmail(e.target.value)}
                 placeholder="Enter test email to receive emails instead of owners"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {testEmail && (
                 <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -1088,22 +1088,22 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Send Date</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Send Date</label>
                 <input
                   type="date"
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Send Time</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Send Time</label>
                 <input
                   type="time"
                   value={scheduledTime}
                   onChange={(e) => setScheduledTime(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
@@ -1120,15 +1120,15 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
         )}
 
         {/* Announcement Section */}
-        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg shadow-sm border border-purple-200 p-6 mb-6">
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg shadow-sm border border-purple-200 dark:border-purple-800 p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Megaphone className="w-6 h-6 text-purple-600" />
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Megaphone className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Send Announcement</h2>
-                <p className="text-sm text-gray-500">Send a custom email to all property owners</p>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Send Announcement</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Send a custom email to all property owners</p>
               </div>
             </div>
             <button
@@ -1142,14 +1142,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
         </div>
 
         {/* Email History Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <History className="w-5 h-5 text-gray-500" />
-              <span className="font-medium text-gray-700">Email History</span>
+              <History className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <span className="font-medium text-gray-700 dark:text-gray-300">Email History</span>
               {emailStats && (
                 <div className="flex items-center gap-2 ml-2">
                   <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
@@ -1169,14 +1169,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
               )}
             </div>
             {showHistory ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
+              <ChevronUp className="w-5 h-5 text-gray-400 dark:text-gray-500" />
             ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
+              <ChevronDown className="w-5 h-5 text-gray-400 dark:text-gray-500" />
             )}
           </button>
 
           {showHistory && (
-            <div className="px-4 pb-4 border-t border-gray-100">
+            <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800">
               {/* Stats Cards */}
               {emailStats && (
                 <div className="grid grid-cols-4 gap-4 mt-4 mb-4">
@@ -1202,15 +1202,15 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
               {/* Filters Row - Full Width */}
               <div className="flex items-center gap-3 mb-4">
                 {/* Status Filter */}
-                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                   {(['all', 'sent', 'failed', 'pending'] as const).map(status => (
                     <button
                       key={status}
                       onClick={() => setHistoryFilter(status)}
                       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
                         historyFilter === status
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                       }`}
                     >
                       {status}
@@ -1224,7 +1224,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                   placeholder="Search..."
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="flex-1 h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="flex-1 h-9 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
 
                 {/* Date Range */}
@@ -1232,14 +1232,14 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                   type="date"
                   value={historyDateStart}
                   onChange={(e) => setHistoryDateStart(e.target.value)}
-                  className="h-9 px-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="h-9 px-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                <span className="text-gray-400">–</span>
+                <span className="text-gray-400 dark:text-gray-500">--</span>
                 <input
                   type="date"
                   value={historyDateEnd}
                   onChange={(e) => setHistoryDateEnd(e.target.value)}
-                  className="h-9 px-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="h-9 px-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
 
                 {/* Clear */}
@@ -1260,7 +1260,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                 <button
                   onClick={fetchEmailHistory}
                   disabled={historyLoading}
-                  className="h-9 flex items-center gap-2 px-3 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="h-9 flex items-center gap-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
                   <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
                   Refresh
@@ -1273,7 +1273,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                   <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : filteredEmailLogs.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   {emailLogs.length === 0 ? 'No email logs found' : 'No results match your search'}
                 </div>
               ) : (
@@ -1282,10 +1282,10 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                     <div
                       key={log.id}
                       className={`p-3 rounded-lg border ${
-                        log.status === 'sent' ? 'bg-green-50 border-green-200' :
-                        log.status === 'failed' ? 'bg-red-50 border-red-200' :
-                        log.status === 'pending' ? 'bg-yellow-50 border-yellow-200' :
-                        'bg-gray-50 border-gray-200'
+                        log.status === 'sent' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' :
+                        log.status === 'failed' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+                        log.status === 'pending' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' :
+                        'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
                       }`}
                     >
                       <div className="flex items-start justify-between">

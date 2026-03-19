@@ -51,26 +51,26 @@ const ToastItem: React.FC<{ toast: Toast; onClose: () => void }> = ({ toast, onC
   const getBgColor = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-green-50 border-green-200';
+        return 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800';
       case 'error':
-        return 'bg-red-50 border-red-200';
+        return 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800';
       case 'loading':
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800';
       default:
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800';
     }
   };
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg ${getBgColor()} animate-slide-in`}
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg dark:shadow-gray-950/50 ${getBgColor()} animate-slide-in`}
     >
       {getIcon()}
-      <span className="text-gray-800 text-sm font-medium">{toast.message}</span>
+      <span className="text-gray-800 dark:text-gray-200 text-sm font-medium">{toast.message}</span>
       {toast.type !== 'loading' && (
         <button
           onClick={onClose}
-          className="ml-2 text-gray-400 hover:text-gray-600"
+          className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
         >
           <X className="w-4 h-4" />
         </button>

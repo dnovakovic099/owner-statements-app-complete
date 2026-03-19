@@ -101,7 +101,7 @@ const InlineRecipientEditor: React.FC<{
       </button>
       <button
         onClick={onCancel}
-        className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+        className="p-1 text-gray-400 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
         title="Cancel"
       >
         <X className="w-3.5 h-3.5" />
@@ -436,7 +436,7 @@ const PayoutAccountsPage: React.FC = () => {
         return (
           <button
             onClick={() => toggleExpand(row.original)}
-            className={`p-1 rounded transition-colors ${isExpanded ? 'text-purple-600 bg-purple-50' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`p-1 rounded transition-colors ${isExpanded ? 'text-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
           >
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
@@ -449,16 +449,16 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
         >
           Name
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
-            row.original.type === 'group' ? 'bg-purple-100' : 'bg-blue-100'
+            row.original.type === 'group' ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-blue-100 dark:bg-blue-900/30'
           }`}>
             {row.original.type === 'group' ? (
               <FolderOpen className="w-3.5 h-3.5 text-purple-600" />
@@ -466,7 +466,7 @@ const PayoutAccountsPage: React.FC = () => {
               <Home className="w-3.5 h-3.5 text-blue-600" />
             )}
           </div>
-          <span className="font-semibold text-gray-900 truncate">{row.getValue('name')}</span>
+          <span className="font-semibold text-gray-900 dark:text-white truncate">{row.getValue('name')}</span>
         </div>
       ),
     },
@@ -477,7 +477,7 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Type
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -503,7 +503,7 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
         >
           Owner Email
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -512,9 +512,9 @@ const PayoutAccountsPage: React.FC = () => {
       cell: ({ row }) => {
         const email = row.original.ownerEmail;
         return email ? (
-          <span className="text-sm text-gray-700 truncate block">{email}</span>
+          <span className="text-sm text-gray-700 dark:text-gray-300 truncate block">{email}</span>
         ) : (
-          <span className="text-xs text-gray-300">--</span>
+          <span className="text-xs text-gray-300 dark:text-gray-600">--</span>
         );
       },
     },
@@ -525,7 +525,7 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Schedule
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -534,7 +534,7 @@ const PayoutAccountsPage: React.FC = () => {
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1.5 justify-center">
           {(row.original.schedule || []).map((tag) => {
-            const colors = tagColors[tag] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
+            const colors = tagColors[tag] || { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300', border: 'border-gray-200 dark:border-gray-700' };
             return (
               <span key={tag} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
@@ -553,13 +553,13 @@ const PayoutAccountsPage: React.FC = () => {
         <div className="flex items-center gap-1 mx-auto">
           <button
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-            className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+            className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >
             Increase Account
             <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
           </button>
           <span title="External account ID from Increase for ACH payouts">
-            <Info className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+            <Info className="h-3.5 w-3.5 text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
           </span>
         </div>
       ),
@@ -582,13 +582,13 @@ const PayoutAccountsPage: React.FC = () => {
           <div className="flex items-center gap-1.5 justify-center">
             {recipientId ? (
               <>
-                <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskRecipientId(recipientId)}</code>
+                <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-700 dark:text-gray-300">{maskRecipientId(recipientId)}</code>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     startEditing(row.original);
                   }}
-                  className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  className="p-1 text-gray-300 dark:text-gray-600 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
                   title="Edit Increase Account ID"
                 >
                   <Pencil className="w-3 h-3" />
@@ -612,7 +612,7 @@ const PayoutAccountsPage: React.FC = () => {
                     e.stopPropagation();
                     startEditing(row.original);
                   }}
-                  className="p-1 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  className="p-1 text-gray-300 dark:text-gray-600 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
                   title="Manually enter Increase External Account ID"
                 >
                   <Pencil className="w-3 h-3" />
@@ -630,7 +630,7 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Status
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -651,7 +651,7 @@ const PayoutAccountsPage: React.FC = () => {
           ? { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Action Needed' }
           : hasRecipient
           ? { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', dot: 'bg-blue-500', label: 'Connected' }
-          : { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', dot: 'bg-gray-400', label: 'Not Connected' };
+          : { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-500 dark:text-gray-400', border: 'border-gray-200 dark:border-gray-700', dot: 'bg-gray-400', label: 'Not Connected' };
 
         return (
           <div className="flex items-center gap-1.5 justify-center">
@@ -665,7 +665,7 @@ const PayoutAccountsPage: React.FC = () => {
                   e.stopPropagation();
                   handleRefreshStatus(row.original);
                 }}
-                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                className="p-1 text-gray-400 dark:text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors"
                 title="Refresh status from Increase"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -682,7 +682,7 @@ const PayoutAccountsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Listings
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -741,29 +741,29 @@ const PayoutAccountsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-3 py-3 flex-shrink-0">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-3 py-3 flex-shrink-0">
           <div className="flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Payout Accounts (Increase)</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Payout Accounts (Increase)</h2>
           </div>
-          <p className="text-sm text-gray-400 mt-0.5">Loading payout connections...</p>
+          <p className="text-sm text-gray-400 dark:text-gray-400 mt-0.5">Loading payout connections...</p>
         </div>
         <div className="flex-1 overflow-auto px-3 py-2">
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b">
+                <tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                   {['Name', 'Type', 'Owner Email', 'Schedule', 'Increase Account', 'Status', 'Listings'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {[...Array(6)].map((_, i) => (
-                  <tr key={i} className="border-b last:border-b-0">
+                  <tr key={i} className="border-b dark:border-gray-700 last:border-b-0">
                     {[...Array(7)].map((_, j) => (
                       <td key={j} className="px-3 py-3">
-                        <div className={`h-4 bg-gray-200 rounded animate-pulse ${j === 0 ? 'w-36' : j === 4 ? 'w-28' : 'w-20'}`} />
+                        <div className={`h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ${j === 0 ? 'w-36' : j === 4 ? 'w-28' : 'w-20'}`} />
                       </td>
                     ))}
                   </tr>
@@ -779,14 +779,14 @@ const PayoutAccountsPage: React.FC = () => {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-3 py-3 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-3 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-purple-600" />
               Payout Accounts (Increase)
             </h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {rows.length} total connection{rows.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -806,13 +806,13 @@ const PayoutAccountsPage: React.FC = () => {
             {/* Status Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                   Status
                   <ChevronDown className="ml-1 h-3.5 w-3.5 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Status</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs text-gray-500 dark:text-gray-400">Filter by Status</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem checked={statusFilter === 'all'} onCheckedChange={() => setStatusFilter('all')}>
                   All
@@ -829,13 +829,13 @@ const PayoutAccountsPage: React.FC = () => {
             {/* Type Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                   Type
                   <ChevronDown className="ml-1 h-3.5 w-3.5 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel className="text-xs text-gray-500">Filter by Type</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs text-gray-500 dark:text-gray-400">Filter by Type</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem checked={typeFilter === 'all'} onCheckedChange={() => setTypeFilter('all')}>
                   All
@@ -852,13 +852,13 @@ const PayoutAccountsPage: React.FC = () => {
             {/* Column Visibility */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                   <SlidersHorizontal className="mr-2 h-4 w-4 text-gray-400" />
                   Columns
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel className="text-xs text-gray-500">Toggle Columns</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs text-gray-500 dark:text-gray-400">Toggle Columns</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {table
                   .getAllColumns()
@@ -875,13 +875,13 @@ const PayoutAccountsPage: React.FC = () => {
                 <DropdownMenuSeparator />
                 <button
                   onClick={() => setColumnOrder(defaultColumnOrder)}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column order
                 </button>
                 <button
                   onClick={() => setColumnSizing({})}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column widths
                 </button>
@@ -905,19 +905,19 @@ const PayoutAccountsPage: React.FC = () => {
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="bg-white border-b border-gray-200 px-3 py-3 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-3 py-3 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total</div>
-            <div className="text-2xl font-bold text-gray-900 mt-0.5">{stats.total}</div>
+          <div className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white mt-0.5">{stats.total}</div>
           </div>
-          <div className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+          <div className="flex-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20 px-4 py-3">
             <div className="text-xs font-medium text-emerald-600 uppercase tracking-wide">Connected</div>
             <div className="text-2xl font-bold text-emerald-700 mt-0.5">{stats.connected}</div>
           </div>
-          <div className="flex-1 rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
-            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Not Connected</div>
-            <div className="text-2xl font-bold text-gray-700 mt-0.5">{stats.notConnected}</div>
+          <div className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 px-4 py-3">
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Not Connected</div>
+            <div className="text-2xl font-bold text-gray-700 dark:text-gray-300 mt-0.5">{stats.notConnected}</div>
           </div>
         </div>
       </div>
@@ -927,7 +927,7 @@ const PayoutAccountsPage: React.FC = () => {
         {rows.length === 0 && !globalFilter ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center py-12">
-              <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center mx-auto mb-4">
                 <CreditCard className="w-8 h-8 text-purple-400" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No connections found</h3>

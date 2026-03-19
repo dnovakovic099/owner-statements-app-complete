@@ -150,9 +150,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       }`}
     >
       {/* Logo Section */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700">
         {!collapsed && (
-          <span className="text-lg font-semibold text-gray-900 truncate">
+          <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">
             Luxury Lodging
           </span>
         )}
@@ -174,12 +174,12 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onPageChange(item.id)}
               className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors group relative ${
                 isActive
-                  ? 'bg-blue-50 text-blue-600 border-l-3 border-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 border-l-3 border-blue-600'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
               title={collapsed ? item.label : undefined}
             >
-              <span className={`${isActive ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700'}`}>
+              <span className={`${isActive ? 'text-blue-600' : 'text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300'}`}>
                 {item.icon}
               </span>
               {!collapsed && (
@@ -199,7 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Bottom Actions Bar */}
-      <div className="px-2 py-2 border-t border-gray-100 flex-shrink-0 relative" ref={notificationRef}>
+      <div className="px-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 relative" ref={notificationRef}>
         <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between'}`}>
           <div className={`flex items-center gap-1 ${collapsed ? 'flex-col' : ''}`}>
             {/* New Listings Notifications Button */}
@@ -207,8 +207,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
               className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
                 isNotificationOpen
-                  ? 'bg-blue-100 text-blue-600'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
               title="New Listings"
             >
@@ -226,8 +226,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => { setIsScheduleOpen(!isScheduleOpen); setIsNotificationOpen(false); }}
                 className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
                   isScheduleOpen
-                    ? 'bg-amber-100 text-amber-600'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
                 title="Schedule Reminders"
               >
@@ -242,7 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Dark Mode Toggle */}
               <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
                 title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
               >
                 {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -253,7 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Collapse Toggle */}
           <button
             onClick={onToggleCollapse}
-            className="relative z-10 flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg text-gray-500 bg-gray-50 hover:bg-gray-200 hover:text-gray-700 transition-all flex-shrink-0 border border-gray-200 hover:border-gray-300 active:bg-gray-300 cursor-pointer shadow-sm"
+            className="relative z-10 flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300 transition-all flex-shrink-0 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 active:bg-gray-300 dark:active:bg-gray-600 cursor-pointer shadow-sm dark:shadow-gray-950/50"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             style={{ touchAction: 'manipulation' }}
           >
@@ -267,11 +267,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Notification Dropdown */}
         {isNotificationOpen && (
-          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden`}>
-            <div className="px-4 py-3 border-b border-gray-100 bg-white">
+          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white dark:bg-gray-900 rounded-xl shadow-2xl dark:shadow-gray-950/50 border border-gray-200 dark:border-gray-700 z-50 overflow-hidden`}>
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-900 text-sm">New Listings</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">New Listings</h3>
                   {unreadCount > 0 && (
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[11px] font-semibold rounded-full">
                       {unreadCount} new
@@ -283,16 +283,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                     setIsNotificationOpen(false);
                     setShowAllNotifications(false);
                   }}
-                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50">
+            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800">
               {newListings.length === 0 ? (
                 <div className="px-4 py-8 text-center">
-                  <Bell className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                  <Bell className="w-8 h-8 mx-auto mb-2 text-gray-200 dark:text-gray-600" />
                   <p className="text-sm text-gray-400">No new listings</p>
                 </div>
               ) : (
@@ -301,8 +301,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <div
                       key={listing.id}
-                      className={`px-4 py-3 cursor-pointer transition-colors hover:bg-blue-50/50 ${
-                        isRead ? '' : 'bg-blue-50/30'
+                      className={`px-4 py-3 cursor-pointer transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-900/20 ${
+                        isRead ? '' : 'bg-blue-50/30 dark:bg-blue-900/10'
                       }`}
                       onClick={() => {
                         onNotificationClick(listing);
@@ -314,7 +314,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <div className="flex items-center gap-3">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isRead ? 'bg-transparent' : 'bg-blue-500'}`} />
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${isRead ? 'text-gray-500' : 'text-gray-900'}`}>
+                          <p className={`text-sm font-medium truncate ${isRead ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
                             {listing.displayName}
                           </p>
                           <p className={`text-xs truncate mt-0.5 ${isRead ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -331,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
             {newListings.length > 0 && (
-              <div className="px-4 py-2.5 bg-gray-50/80 border-t border-gray-100 flex justify-between items-center">
+              <div className="px-4 py-2.5 bg-gray-50/80 dark:bg-gray-800/80 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
                 {unreadCount > 0 ? (
                   <button
                     onClick={() => {
@@ -361,11 +361,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Schedule Reminders Dropdown */}
         {isScheduleOpen && (
-          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden`}>
-            <div className="px-4 py-3 border-b border-gray-100 bg-white">
+          <div className={`absolute ${collapsed ? 'left-16' : 'left-60'} bottom-0 w-96 bg-white dark:bg-gray-900 rounded-xl shadow-2xl dark:shadow-gray-950/50 border border-gray-200 dark:border-gray-700 z-50 overflow-hidden`}>
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-900 text-sm">Schedule Reminders</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Schedule Reminders</h3>
                   {scheduleUnreadCount > 0 && (
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[11px] font-semibold rounded-full">
                       {scheduleUnreadCount} new
@@ -374,16 +374,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <button
                   onClick={() => { setIsScheduleOpen(false); setExpandedReportId(null); }}
-                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50">
+            <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800">
               {scheduleNotifications.length === 0 ? (
                 <div className="px-4 py-8 text-center">
-                  <CalendarClock className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                  <CalendarClock className="w-8 h-8 mx-auto mb-2 text-gray-200 dark:text-gray-600" />
                   <p className="text-sm text-gray-400">No schedule reminders</p>
                 </div>
               ) : (
@@ -393,8 +393,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <div key={notification.id}>
                       <div
-                        className={`px-4 py-3 cursor-pointer transition-colors hover:bg-amber-50/50 ${
-                          notification.status === 'unread' ? 'bg-amber-50/30' : ''
+                        className={`px-4 py-3 cursor-pointer transition-colors hover:bg-amber-50/50 dark:hover:bg-amber-900/20 ${
+                          notification.status === 'unread' ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''
                         }`}
                         onClick={async () => {
                           if (hasReport) {
@@ -411,7 +411,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             notification.status === 'unread' ? 'bg-amber-500' : 'bg-transparent'
                           }`} />
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium ${notification.status === 'unread' ? 'text-gray-900' : 'text-gray-500'}`}>
+                            <p className={`text-sm font-medium ${notification.status === 'unread' ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
                               {notification.tagName}
                             </p>
                             <p className="text-xs text-gray-500 mt-0.5">
@@ -454,7 +454,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                       {/* Expanded skipped report */}
                       {isExpanded && hasReport && (
-                        <div className="px-4 pb-3 bg-gray-50/50">
+                        <div className="px-4 pb-3 bg-gray-50/50 dark:bg-gray-800/50">
                           <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
                             {notification.skippedReport.map((item: any, idx: number) => {
                               const isError = item.reason?.startsWith('Error');
@@ -495,7 +495,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* User Profile Section */}
-      <div className={`px-2 py-2 border-t border-gray-100 flex-shrink-0 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
+      <div className={`px-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
         {/* Profile Row */}
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2.5 px-1'}`}>
           {/* Avatar */}
@@ -505,12 +505,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {user?.username?.slice(0, 2).toUpperCase() || 'U'}
               </span>
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
           </div>
 
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                 {user?.username || 'User'}
               </p>
               {user?.role && (

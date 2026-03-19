@@ -106,7 +106,7 @@ const getStatusBadge = (status: string) => {
     invoice_sent: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
   };
 
-  const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', dot: 'bg-gray-500' };
+  const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300', border: 'border-gray-200 dark:border-gray-700', dot: 'bg-gray-500' };
 
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${config.bg} ${config.text} ${config.border}`}>
@@ -127,7 +127,7 @@ interface ActionButtonProps {
 }
 
 const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, icon, color, disabled }) => {
-  const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 hover:bg-gray-100 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
+  const buttonClass = `inline-flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 hover:bg-gray-100 dark:hover:bg-gray-700 ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110'}`;
 
   if (href) {
     return (
@@ -329,7 +329,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         <div className="flex justify-center">
           <button
             onClick={() => table.toggleAllPageRowsSelected(!table.getIsAllPageRowsSelected())}
-            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             {table.getIsAllPageRowsSelected() ? (
               <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -345,7 +345,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         <div className="flex justify-center">
           <button
             onClick={() => row.toggleSelected(!row.getIsSelected())}
-            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-center w-5 h-5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             {row.getIsSelected() ? (
               <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -364,14 +364,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Owner
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
-        <span className="font-medium text-gray-900 truncate block text-center">{row.getValue('ownerName')}</span>
+        <span className="font-medium text-gray-900 dark:text-white truncate block text-center">{row.getValue('ownerName')}</span>
       ),
     },
     {
@@ -380,7 +380,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Property
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -398,13 +398,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const priorDuplicateCount = row.original.priorStatementDuplicateCount || 0;
         return (
           <span className="cursor-default inline-flex items-center justify-center gap-1.5 group/cell relative w-full">
-            <span className="text-gray-700 truncate">
+            <span className="text-gray-700 dark:text-gray-300 truncate">
               {displayName}
             </span>
             {hasPriorDuplicates && (
               <span className="relative group/dup flex-shrink-0">
                 <Copy className="h-4 w-4 text-orange-500" />
-                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/dup:inline-flex items-center bg-orange-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/dup:inline-flex items-center bg-orange-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
                   {priorDuplicateCount} duplicate{priorDuplicateCount > 1 ? 's' : ''} from prior statement{priorDuplicateCount > 1 ? 's' : ''}
                 </span>
               </span>
@@ -412,7 +412,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {shouldConvertToCalendar && (
               <span className="relative group/calendar flex-shrink-0">
                 <Calendar className="h-4 w-4 text-blue-500" />
-                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/calendar:inline-flex items-center bg-blue-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/calendar:inline-flex items-center bg-blue-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
                   Long stay - consider prorating to calendar
                 </span>
               </span>
@@ -420,7 +420,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {cleaningWarning && (
               <span className="relative group/warn flex-shrink-0">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/warn:inline-flex items-center bg-amber-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/warn:inline-flex items-center bg-amber-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
                   {cleaningWarning.message}
                 </span>
               </span>
@@ -428,7 +428,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {needsReview && (
               <span className="relative group/review flex-shrink-0">
                 <ClipboardList className="h-4 w-4 text-purple-500" />
-                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/review:inline-flex items-center bg-purple-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/review:inline-flex items-center bg-purple-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
                   {reviewDetails?.expenseCount ? `${reviewDetails.expenseCount} expense${reviewDetails.expenseCount > 1 ? 's' : ''}` : ''}
                   {reviewDetails?.expenseCount && reviewDetails?.additionalPayoutCount ? ', ' : ''}
                   {reviewDetails?.additionalPayoutCount ? `${reviewDetails.additionalPayoutCount} additional payout${reviewDetails.additionalPayoutCount > 1 ? 's' : ''}` : ''}
@@ -439,7 +439,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {cancelledCount > 0 && (
               <span className="relative group/cancelled flex-shrink-0">
                 <Info className="h-4 w-4 text-sky-500" />
-                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/cancelled:inline-flex items-center bg-sky-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg">
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/cancelled:inline-flex items-center bg-sky-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
                   {cancelledCount} cancelled reservation{cancelledCount > 1 ? 's' : ''} in period
                 </span>
               </span>
@@ -459,14 +459,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Period
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
-        <span className="text-gray-700 whitespace-nowrap">
+        <span className="text-gray-700 dark:text-gray-300 whitespace-nowrap">
           {formatDateRange(row.original.weekStartDate, row.original.weekEndDate)}
         </span>
       ),
@@ -475,7 +475,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     {
       accessorKey: 'calculationType',
       size: 100,
-      header: () => <span className="font-semibold text-gray-600">Type</span>,
+      header: () => <span className="font-semibold text-gray-600 dark:text-gray-400">Type</span>,
       cell: ({ row }) => {
         const type = row.getValue('calculationType') as string;
         return (
@@ -497,14 +497,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Revenue
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
-        <span className="font-semibold text-gray-900 tabular-nums">
+        <span className="font-semibold text-gray-900 dark:text-white tabular-nums">
           {formatCurrency(row.getValue('totalRevenue'))}
         </span>
       ),
@@ -515,7 +515,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Payout
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
@@ -533,7 +533,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     {
       accessorKey: 'status',
       size: 100,
-      header: () => <span className="font-semibold text-gray-600">Status</span>,
+      header: () => <span className="font-semibold text-gray-600 dark:text-gray-400">Status</span>,
       cell: ({ row }) => {
         const status = row.getValue('status') as string;
         return (
@@ -549,11 +549,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     {
       accessorKey: 'payoutStatus',
       size: 120,
-      header: () => <span className="font-semibold text-gray-600">Payout</span>,
+      header: () => <span className="font-semibold text-gray-600 dark:text-gray-400">Payout</span>,
       cell: ({ row }) => {
         const payoutStatus = row.original.payoutStatus;
         if (!payoutStatus) {
-          return <span className="text-xs text-gray-300">--</span>;
+          return <span className="text-xs text-gray-300 dark:text-gray-600">--</span>;
         }
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
           paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Paid' },
@@ -564,7 +564,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           topup_failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Top-up Failed' },
           invoice_sent: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Invoice Sent' },
         };
-        const c = config[payoutStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400', label: payoutStatus };
+        const c = config[payoutStatus] || { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', border: 'border-gray-200 dark:border-gray-700', dot: 'bg-gray-400', label: payoutStatus };
         return (
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${c.bg} ${c.text} ${c.border}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
@@ -583,14 +583,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Created
           <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       ),
       cell: ({ row }) => (
-        <span className="text-sm text-gray-500 whitespace-nowrap">
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {row.getValue('createdAt') ? formatDateTime(row.getValue('createdAt')) : '-'}
         </span>
       ),
@@ -600,7 +600,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       id: 'actions',
       size: 250,
       enableResizing: false,
-      header: () => <span className="font-semibold text-gray-600">Actions</span>,
+      header: () => <span className="font-semibold text-gray-600 dark:text-gray-400">Actions</span>,
       cell: ({ row }) => {
         const statement = row.original;
         const isRegenerating = regeneratingId === statement.id;
@@ -773,20 +773,20 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
   if (statements.length === 0 && pagination.total === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm dark:shadow-gray-950/50 border border-gray-200 dark:border-gray-700 p-12">
         <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <Search className="w-8 h-8 text-gray-400" />
+          <div className="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+            <Search className="w-8 h-8 text-gray-400 dark:text-gray-400" />
           </div>
           {hasActiveFilters ? (
             <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements match your filters</h2>
-              <p className="text-gray-500">Try adjusting or clearing your filters to see results.</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No statements match your filters</h2>
+              <p className="text-gray-500 dark:text-gray-400">Try adjusting or clearing your filters to see results.</p>
             </>
           ) : (
             <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements found</h2>
-              <p className="text-gray-500">Generate your first statement using the button above.</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No statements found</h2>
+              <p className="text-gray-500 dark:text-gray-400">Generate your first statement using the button above.</p>
             </>
           )}
         </div>
@@ -807,13 +807,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full flex-1 flex flex-col min-h-0">
+    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm dark:shadow-gray-950/50 border border-gray-200 dark:border-gray-700 w-full flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+      <div className="px-3 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex-shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Statements</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Statements</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {markerFilter.length > 0
                 ? `${filteredStatements.length} of ${pagination.total} statements (filtered)`
                 : `${pagination.total} total statements`}
@@ -822,17 +822,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
 
           {/* Bulk Actions - shown when items are selected */}
           {selectedIds.length > 0 && onBulkAction && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-              <span className="text-sm font-medium text-blue-700">
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                 {selectedIds.length} selected
               </span>
-              <div className="h-4 w-px bg-blue-300" />
+              <div className="h-4 w-px bg-blue-300 dark:bg-blue-700" />
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'download')}
                 disabled={bulkProcessing}
-                className="h-8 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                className="h-8 border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
               >
                 <Download className="w-4 h-4 mr-1.5" />
                 Download
@@ -842,7 +842,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'regenerate')}
                 disabled={bulkProcessing}
-                className="h-8 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                className="h-8 border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
               >
                 {bulkProcessing ? (
                   <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
@@ -856,7 +856,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'finalize')}
                 disabled={bulkProcessing}
-                className="h-8 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                className="h-8 border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/50"
               >
                 <CheckCircle className="w-4 h-4 mr-1.5" />
                 Finalize
@@ -866,7 +866,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'revert-to-draft')}
                 disabled={bulkProcessing}
-                className="h-8 border-orange-300 bg-white text-orange-600 hover:bg-orange-50"
+                className="h-8 border-orange-300 dark:border-orange-700 bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/50"
               >
                 <RotateCcw className="w-4 h-4 mr-1.5" />
                 Draft
@@ -876,7 +876,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'delete')}
                 disabled={bulkProcessing}
-                className="h-8 border-red-300 bg-white text-red-600 hover:bg-red-50"
+                className="h-8 border-red-300 dark:border-red-700 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/50"
               >
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 Delete
@@ -886,7 +886,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'export-csv')}
                 disabled={bulkProcessing}
-                className="h-8 border-teal-300 bg-white text-teal-700 hover:bg-teal-50"
+                className="h-8 border-teal-300 dark:border-teal-700 bg-white dark:bg-gray-800 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/50"
               >
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export CSV
@@ -896,7 +896,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'send-email')}
                 disabled={bulkProcessing || statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final')}
-                className="h-8 border-purple-300 bg-white text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 border-purple-300 dark:border-purple-700 bg-white dark:bg-gray-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final') ? "Only final statements can be emailed" : "Send Email"}
               >
                 <Mail className="w-4 h-4 mr-1.5" />
@@ -907,7 +907,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'pay-owner')}
                 disabled={bulkProcessing || statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final')}
-                className="h-8 border-green-300 bg-white text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final') ? "Only final statements can be paid" : "Pay Owners"}
               >
                 <DollarSign className="w-4 h-4 mr-1.5" />
@@ -915,7 +915,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               </Button>
               <button
                 onClick={() => setRowSelection({})}
-                className="ml-1 text-blue-600 hover:text-blue-800 text-sm"
+                className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-sm"
               >
                 Clear
               </button>
@@ -930,14 +930,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 placeholder="Search..."
                 value={globalFilter ?? ''}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9 w-full sm:w-56 h-9 bg-white border-gray-200 focus:border-blue-300 focus:ring-blue-200"
+                className="pl-9 w-full sm:w-56 h-9 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 dark:text-white focus:border-blue-300 focus:ring-blue-200"
               />
             </div>
 
             {/* Type Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-300">
                   Type
                   <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
                 </Button>
@@ -969,7 +969,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Status Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-300">
                   Status
                   <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
                 </Button>
@@ -1001,7 +1001,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Payout Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-300">
                   Payout
                   <ChevronDown className="ml-2 h-4 w-4 text-gray-400" />
                 </Button>
@@ -1042,7 +1042,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Markers Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-300">
                   Markers
                   {markerFilter.length > 0 && (
                     <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">
@@ -1100,7 +1100,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                     <DropdownMenuSeparator />
                     <button
                       onClick={() => setMarkerFilter([])}
-                      className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                      className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                     >
                       Clear filters
                     </button>
@@ -1112,7 +1112,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {/* Column Visibility */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-300">
                   <SlidersHorizontal className="mr-2 h-4 w-4 text-gray-400" />
                   Columns
                 </Button>
@@ -1135,13 +1135,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <DropdownMenuSeparator />
                 <button
                   onClick={() => setColumnOrder(defaultColumnOrder)}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column order
                 </button>
                 <button
                   onClick={() => setColumnSizing({})}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column widths
                 </button>
@@ -1153,30 +1153,30 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         {/* Active Filters Display */}
         {(globalFilter || columnFilters.length > 0 || markerFilter.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <span className="text-xs font-medium text-gray-500">Filters:</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Filters:</span>
             {globalFilter && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md border border-blue-100">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-md border border-blue-100 dark:border-blue-800">
                 Search: "{globalFilter}"
-                <button onClick={() => handleSearchChange('')} className="hover:text-blue-900 ml-0.5">×</button>
+                <button onClick={() => handleSearchChange('')} className="hover:text-blue-900 dark:hover:text-blue-100 ml-0.5">×</button>
               </span>
             )}
             {columnFilters.map((filter) => (
-              <span key={filter.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
+              <span key={filter.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-700">
                 {columnLabels[filter.id] || filter.id}: {Array.isArray(filter.value) ? (filter.value as string[]).join(', ') : String(filter.value)}
                 <button
                   onClick={() => table.getColumn(filter.id)?.setFilterValue(undefined)}
-                  className="hover:text-gray-900 ml-0.5"
+                  className="hover:text-gray-900 dark:hover:text-white ml-0.5"
                 >
                   ×
                 </button>
               </span>
             ))}
             {markerFilter.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-md border border-purple-100">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 text-xs font-medium rounded-md border border-purple-100 dark:border-purple-800">
                 Markers: {markerFilter.map(m =>
                   m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : m === 'duplicates' ? 'Duplicates' : 'Calendar'
                 ).join(', ')}
-                <button onClick={() => setMarkerFilter([])} className="hover:text-purple-900 ml-0.5">×</button>
+                <button onClick={() => setMarkerFilter([])} className="hover:text-purple-900 dark:hover:text-purple-100 ml-0.5">×</button>
               </span>
             )}
             <button
@@ -1185,7 +1185,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 setColumnFilters([]);
                 setMarkerFilter([]);
               }}
-              className="text-xs font-medium text-red-600 hover:text-red-800"
+              className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
             >
               Clear all
             </button>
@@ -1196,9 +1196,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       {/* Table */}
       <div className="w-full overflow-x-auto overflow-y-auto flex-1 min-h-0">
         <Table className="w-full min-w-[900px]" style={{ tableLayout: 'fixed' }}>
-          <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
+          <TableHeader className="sticky top-0 z-10 bg-white dark:bg-gray-900 shadow-sm dark:shadow-gray-950/50">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="bg-white border-b-2 border-gray-300">
+              <TableRow key={headerGroup.id} className="bg-white dark:bg-gray-900 border-b-2 border-gray-300 dark:border-gray-600">
                 {headerGroup.headers.map((header) => {
                   const columnId = header.column.id;
                   const isDraggable = columnId !== 'select' && columnId !== 'actions';
@@ -1232,7 +1232,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                         }
                         setDraggedColumn(null);
                       }}
-                      className={`text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 last:border-r-0 ${isDragging ? 'opacity-50 bg-blue-100' : ''
+                      className={`text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 dark:border-gray-700 last:border-r-0 ${isDragging ? 'opacity-50 bg-blue-100' : ''
                         } ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
                     >
                       <div className="flex items-center gap-1 justify-center">
@@ -1290,7 +1290,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                  className={`border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50/50 dark:hover:bg-gray-800 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/50'}`}
                 >
                   {row.getVisibleCells().map((cell) => {
                     return (
@@ -1308,7 +1308,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="text-gray-500">No results found.</div>
+                  <div className="text-gray-500 dark:text-gray-400">No results found.</div>
                 </TableCell>
               </TableRow>
             )}
@@ -1317,43 +1317,43 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white flex-shrink-0">
+      <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           {/* Results info and page size */}
           <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6">
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               {markerFilter.length > 0 ? (
                 <>
-                  <span className="font-medium text-gray-700">{filteredStatements.length}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{filteredStatements.length}</span>
                   {' '}of{' '}
-                  <span className="font-medium text-gray-700">{pagination.total}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{pagination.total}</span>
                   {' '}(filtered)
                 </>
               ) : (
                 <>
-                  <span className="font-medium text-gray-700">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{pagination.total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}</span>
                   {' '}-{' '}
-                  <span className="font-medium text-gray-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.total)}</span>
                   {' '}of{' '}
-                  <span className="font-medium text-gray-700">{pagination.total}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{pagination.total}</span>
                 </>
               )}
             </span>
 
             {/* Page size selector */}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Rows:</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Rows:</span>
               <div className="relative">
                 <button
                   onClick={() => setIsRowsDropdownOpen(!isRowsDropdownOpen)}
                   onBlur={() => setTimeout(() => setIsRowsDropdownOpen(false), 150)}
-                  className="h-8 px-3 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer flex items-center gap-2"
+                  className="h-8 px-3 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer flex items-center gap-2"
                 >
                   {pagination.pageSize}
                   <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isRowsDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isRowsDropdownOpen && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
+                  <div className="absolute bottom-full mb-1 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[70px] z-50">
                     {[pagination.pageSize, 15, 25, 50, 100].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((size) => (
                       <button
                         key={size}
@@ -1361,7 +1361,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                           onPaginationChange(0, size);
                           setIsRowsDropdownOpen(false);
                         }}
-                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'
+                        className={`w-full px-3 py-1.5 text-sm text-left hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors ${pagination.pageSize === size ? 'text-blue-600 font-medium bg-blue-50 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
                           }`}
                       >
                         {size}
@@ -1378,7 +1378,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             <button
               onClick={() => onPaginationChange(pagination.pageIndex - 1, pagination.pageSize)}
               disabled={!canPreviousPage}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               <ChevronLeft className="h-4 w-4" />
               <span className="hidden sm:inline">Prev</span>
@@ -1400,14 +1400,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                       onClick={() => onPaginationChange(page, pagination.pageSize)}
                       className={`w-8 h-8 text-sm font-medium rounded-md transition-colors ${page === currentPage
                         ? 'bg-blue-600 text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }`}
                     >
                       {page + 1}
                     </button>
                   );
                 } else if (page === currentPage - 2 || page === currentPage + 2) {
-                  return <span key={page} className="w-8 text-center text-gray-400">...</span>;
+                  return <span key={page} className="w-8 text-center text-gray-400 dark:text-gray-500">...</span>;
                 }
                 return null;
               })}
@@ -1416,7 +1416,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             <button
               onClick={() => onPaginationChange(pagination.pageIndex + 1, pagination.pageSize)}
               disabled={!canNextPage}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               <span className="hidden sm:inline">Next</span>
               <ChevronRight className="h-4 w-4" />

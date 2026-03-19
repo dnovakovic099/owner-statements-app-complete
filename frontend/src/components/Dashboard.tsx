@@ -1366,13 +1366,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-900 p-8 rounded-lg shadow-md dark:shadow-gray-950/50 max-w-md w-full">
           <div className="flex items-center text-red-600 mb-4">
             <AlertCircle className="w-6 h-6 mr-2" />
             <h2 className="text-lg font-semibold">Error Loading Dashboard</h2>
           </div>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
           <button
             onClick={loadInitialData}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
@@ -1477,11 +1477,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         {/* Page Header */}
-        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 pt-2 pb-0 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-500 text-sm mt-0.5">Manage owner statements and view activity</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Manage owner statements and view activity</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1489,7 +1489,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   setUploadModalType('expenses');
                   setIsUploadModalOpen(true);
                 }}
-                className="flex items-center px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm whitespace-nowrap"
+                className="flex items-center px-3 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors font-medium text-sm whitespace-nowrap"
               >
                 <Upload className="w-4 h-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">Upload Expenses</span>
@@ -1519,35 +1519,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <div className="flex-1 flex flex-col overflow-hidden p-4 sm:p-4">
 
           {/* Filters */}
-          <div className="bg-white rounded-lg shadow-md px-3 py-2 mb-4 relative z-20 flex-shrink-0">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-gray-950/50 px-3 py-2 mb-4 relative z-20 flex-shrink-0">
             <div className="flex flex-wrap items-end gap-3">
               {/* Owner */}
               <div className="min-w-[150px] flex-1">
-                <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Owner</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">Owner</label>
                 <div className="relative" ref={ownerDropdownRef}>
                   <button
                     type="button"
                     aria-label="Filter by owner"
                     onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
-                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isOwnerDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
+                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white dark:bg-gray-800 flex items-center justify-between transition-all duration-150 ${isOwnerDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 dark:ring-blue-900 shadow-sm dark:shadow-gray-950/50' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                   >
-                    <span className={`truncate ${filters.ownerId ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                    <span className={`truncate ${filters.ownerId ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                       {filters.ownerId ? owners.find(o => o.id.toString() === filters.ownerId)?.name || 'All Owners' : 'All Owners'}
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2 transition-transform duration-200 ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isOwnerDropdownOpen && (
-                    <div className="absolute z-50 mt-1.5 w-full bg-white border border-gray-200 rounded-xl shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-gray-200/50 dark:shadow-gray-950/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
                       <div className="max-h-[480px] overflow-y-auto py-1">
                         <div
                           onClick={() => {
                             setFilters({ ...filters, ownerId: '' });
                             setIsOwnerDropdownOpen(false);
                           }}
-                          className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === '' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                          className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === '' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}
                         >
-                          <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === '' ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                          <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === '' ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'}`}>
                             {filters.ownerId === '' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                           </div>
                           <span className="text-sm font-medium">All Owners</span>
@@ -1559,9 +1559,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               setFilters({ ...filters, ownerId: owner.id.toString() });
                               setIsOwnerDropdownOpen(false);
                             }}
-                            className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === owner.id.toString() ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                            className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${filters.ownerId === owner.id.toString() ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}
                           >
-                            <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === owner.id.toString() ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                            <div className={`w-4 h-4 border-2 rounded-full mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${filters.ownerId === owner.id.toString() ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'}`}>
                               {filters.ownerId === owner.id.toString() && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                             </div>
                             <span className="text-sm">{owner.name}</span>
@@ -1575,42 +1575,42 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
               {/* Property */}
               <div className="min-w-[150px] flex-1">
-                <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Property</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">Property</label>
                 <div className="relative" ref={propertyDropdownRef}>
                   <button
                     type="button"
                     aria-label="Filter by property"
                     onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
-                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isPropertyDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
+                    className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white dark:bg-gray-800 flex items-center justify-between transition-all duration-150 ${isPropertyDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 dark:ring-blue-900 shadow-sm dark:shadow-gray-950/50' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                   >
-                    <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mr-2" />
-                    <span className={`truncate flex-1 ${filters.propertyIds.length > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                    <Search className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0 mr-2" />
+                    <span className={`truncate flex-1 ${filters.propertyIds.length > 0 ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                       {filters.propertyIds.length > 0
                         ? `${filters.propertyIds.length} properties selected`
                         : `All Properties (${filteredProperties.length})`}
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2 transition-transform duration-200 ${isPropertyDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {/* Combined Search + Dropdown Popup */}
                   {isPropertyDropdownOpen && (
-                    <div className="absolute z-50 mt-1.5 w-full bg-white border border-gray-200 rounded-xl shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-gray-200/50 dark:shadow-gray-950/50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
                       {/* Search input inside dropdown */}
                       <div className="px-3 pt-3 pb-2 flex-shrink-0">
                         <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
                           <input
                             type="text"
                             placeholder="Search properties..."
                             value={propertySearch}
                             onChange={(e) => setPropertySearch(e.target.value)}
-                            className="w-full border border-gray-200 bg-gray-50 rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 focus:bg-white transition-colors"
+                            className="w-full border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 rounded-lg pl-9 pr-8 py-2 text-sm dark:text-gray-200 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 focus:border-blue-400 focus:bg-white dark:focus:bg-gray-700 transition-colors"
                             autoFocus
                           />
                           {propertySearch && (
                             <button
                               onClick={() => setPropertySearch('')}
-                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 w-4 h-4 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors"
+                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 w-4 h-4 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                             >
                               <span className="text-xs leading-none">&times;</span>
                             </button>
@@ -1618,8 +1618,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         </div>
                       </div>
                       {/* Action buttons */}
-                      <div className="px-3 py-1.5 flex justify-between items-center flex-shrink-0 border-b border-gray-100">
-                        <span className="text-xs text-gray-500">
+                      <div className="px-3 py-1.5 flex justify-between items-center flex-shrink-0 border-b border-gray-100 dark:border-gray-700">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           {filters.propertyIds.length > 0 ? (
                             <span className="inline-flex items-center gap-1.5">
                               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">{filters.propertyIds.length}</span>
@@ -1638,7 +1638,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           <button
                             type="button"
                             onClick={() => setFilters({ ...filters, propertyIds: [], propertyId: '' })}
-                            className="text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded-md transition-colors"
+                            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded-md transition-colors"
                           >
                             Clear
                           </button>
@@ -1658,15 +1658,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   : [...filters.propertyIds, property.id.toString()];
                                 setFilters({ ...filters, propertyIds: newIds, propertyId: newIds.length === 1 ? newIds[0] : '' });
                               }}
-                              className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                              className={`mx-1 px-3 py-2 cursor-pointer rounded-lg flex items-center transition-colors duration-100 ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                             >
-                              <div className={`w-4 h-4 border-2 rounded flex items-center justify-center flex-shrink-0 transition-all duration-150 ${isSelected ? 'bg-blue-500 border-blue-500 shadow-sm' : 'border-gray-300'}`}>
+                              <div className={`w-4 h-4 border-2 rounded flex items-center justify-center flex-shrink-0 transition-all duration-150 ${isSelected ? 'bg-blue-500 border-blue-500 shadow-sm' : 'border-gray-300 dark:border-gray-600'}`}>
                                 {isSelected && <Check className="w-3 h-3 text-white" />}
                               </div>
-                              <span className={`text-sm truncate flex-1 ml-3 ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                              <span className={`text-sm truncate flex-1 ml-3 ${isSelected ? 'text-blue-700 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
                                 {property.nickname || property.displayName || property.name}
                               </span>
-                              <span className="text-[11px] text-gray-400 ml-2 flex-shrink-0 tabular-nums">
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500 ml-2 flex-shrink-0 tabular-nums">
                                 {property.id}
                               </span>
                             </div>
@@ -1675,11 +1675,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </div>
 
                       {/* Done button */}
-                      <div className="px-3 py-2.5 border-t border-gray-100 bg-gray-50/80 flex-shrink-0">
+                      <div className="px-3 py-2.5 border-t border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 flex-shrink-0">
                         <button
                           type="button"
                           onClick={() => { setIsPropertyDropdownOpen(false); setPropertySearch(''); }}
-                          className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm"
+                          className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm dark:shadow-gray-950/50"
                         >
                           Done
                         </button>
@@ -1691,23 +1691,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
               {/* Start Date */}
               <div className="flex-shrink-0">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start Date</label>
                 <input
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* End Date */}
               <div className="flex-shrink-0">
-                <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End Date</label>
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1718,9 +1718,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     type="checkbox"
                     checked={filters.hideZeroActivity}
                     onChange={(e) => setFilters({ ...filters, hideZeroActivity: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
                   />
-                  <span className="ml-1.5 text-xs text-gray-600">Hide $0</span>
+                  <span className="ml-1.5 text-xs text-gray-600 dark:text-gray-400">Hide $0</span>
                 </label>
               </div>
             </div>

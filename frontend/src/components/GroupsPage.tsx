@@ -43,9 +43,9 @@ const COLUMN_VISIBILITY_KEY = 'groups_column_visibility';
 const defaultColumnOrder = ['expand', 'name', 'tags', 'calculationType', 'wiseRecipient', 'wiseStatus', 'listingCount', 'actions'];
 
 const tagColors: Record<string, { bg: string; text: string; border: string }> = {
-  WEEKLY: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'BI-WEEKLY': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-  MONTHLY: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  WEEKLY: { bg: 'bg-blue-50 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-700' },
+  'BI-WEEKLY': { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-700' },
+  MONTHLY: { bg: 'bg-green-50 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-300', border: 'border-green-200 dark:border-green-700' },
 };
 
 const GroupsPage: React.FC = () => {
@@ -213,7 +213,7 @@ const GroupsPage: React.FC = () => {
           <button
             onClick={() => toggleExpand(row.original.id)}
             aria-expanded={isExpanded}
-            className={`p-1 rounded transition-colors ${isExpanded ? 'text-purple-600 bg-purple-50' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`p-1 rounded transition-colors ${isExpanded ? 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-900/30' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
           >
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
@@ -226,18 +226,18 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
         >
           Group Name
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <FolderOpen className="w-3.5 h-3.5 text-purple-600" />
+          <div className="w-7 h-7 rounded-md bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center flex-shrink-0">
+            <FolderOpen className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
           </div>
-          <span className="font-semibold text-gray-900 truncate">{row.getValue('name')}</span>
+          <span className="font-semibold text-gray-900 dark:text-white truncate">{row.getValue('name')}</span>
         </div>
       ),
     },
@@ -248,16 +248,16 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Schedule
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1.5 justify-center">
           {(row.original.tags || []).map((tag) => {
-            const colors = tagColors[tag] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
+            const colors = tagColors[tag] || { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300', border: 'border-gray-200 dark:border-gray-700' };
             return (
               <span key={tag} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
@@ -274,10 +274,10 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Calc Type
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => {
@@ -286,8 +286,8 @@ const GroupsPage: React.FC = () => {
         return (
           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
             isCalendar
-              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-              : 'bg-slate-50 text-slate-700 border-slate-200'
+              ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700'
+              : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
           }`}>
             {type === 'checkout' ? 'Check-out' : 'Calendar'}
           </span>
@@ -301,18 +301,18 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Increase Account
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => {
         const recipientId = row.original.wiseRecipientId;
         return recipientId ? (
-          <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">{maskRecipientId(recipientId)}</code>
+          <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-700 dark:text-gray-300">{maskRecipientId(recipientId)}</code>
         ) : (
-          <span className="text-xs text-gray-300">--</span>
+          <span className="text-xs text-gray-300 dark:text-gray-600">--</span>
         );
       },
     },
@@ -323,23 +323,23 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Increase Status
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => {
         const group = row.original;
         if (!group.wiseRecipientId) {
-          return <span className="text-xs text-gray-300">--</span>;
+          return <span className="text-xs text-gray-300 dark:text-gray-600">--</span>;
         }
         const status = group.wiseStatus || 'pending';
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
-          verified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Connected' },
-          pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Pending' },
-          requires_action: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Action Required' },
-          missing: { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', dot: 'bg-gray-400', label: 'Not Set' },
+          verified: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-700', dot: 'bg-emerald-500', label: 'Connected' },
+          pending: { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-700', dot: 'bg-amber-500', label: 'Pending' },
+          requires_action: { bg: 'bg-red-50 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-300', border: 'border-red-200 dark:border-red-700', dot: 'bg-red-500', label: 'Action Required' },
+          missing: { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-500 dark:text-gray-400', border: 'border-gray-200 dark:border-gray-700', dot: 'bg-gray-400', label: 'Not Set' },
         };
         const c = config[status] || config.pending;
         return (
@@ -357,10 +357,10 @@ const GroupsPage: React.FC = () => {
       header: ({ column }) => (
         <button
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
         >
           Listings
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
         </button>
       ),
       cell: ({ row }) => {
@@ -370,7 +370,7 @@ const GroupsPage: React.FC = () => {
             <button
               onClick={() => toggleExpand(row.original.id)}
               aria-expanded={expandedGroupId === row.original.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors border border-purple-200"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors border border-purple-200 dark:border-purple-700"
             >
               <Home className="w-3 h-3" />
               {count}
@@ -386,7 +386,7 @@ const GroupsPage: React.FC = () => {
       enableResizing: false,
       enableSorting: false,
       enableHiding: false,
-      header: () => <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>,
+      header: () => <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Actions</span>,
       cell: ({ row }) => (
         <div className="flex items-center justify-center gap-0.5">
           <button
@@ -394,14 +394,14 @@ const GroupsPage: React.FC = () => {
               setEditingGroup(row.original);
               setIsGroupModalOpen(true);
             }}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all hover:scale-110"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all hover:scale-110"
             title="Edit group"
           >
             <Pencil className="w-4 h-4" />
           </button>
           <button
             onClick={() => setDeleteConfirm({ isOpen: true, group: row.original })}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all hover:scale-110"
             title="Delete group"
           >
             <Trash2 className="w-4 h-4" />
@@ -454,18 +454,18 @@ const GroupsPage: React.FC = () => {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-3 py-3 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-3 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Groups</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Groups</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {groups.length} total group{groups.length !== 1 ? 's' : ''}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
               <Input
                 type="text"
                 placeholder="Search..."
@@ -478,13 +478,13 @@ const GroupsPage: React.FC = () => {
             {/* Column Visibility */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 border-gray-200 bg-white">
-                  <SlidersHorizontal className="mr-2 h-4 w-4 text-gray-400" />
+                <Button variant="outline" size="sm" className="h-9 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                  <SlidersHorizontal className="mr-2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                   Columns
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel className="text-xs text-gray-500">Toggle Columns</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs text-gray-500 dark:text-gray-400">Toggle Columns</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {table
                   .getAllColumns()
@@ -501,13 +501,13 @@ const GroupsPage: React.FC = () => {
                 <DropdownMenuSeparator />
                 <button
                   onClick={() => setColumnOrder(defaultColumnOrder)}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column order
                 </button>
                 <button
                   onClick={() => setColumnSizing({})}
-                  className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-left"
+                  className="w-full px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-left"
                 >
                   Reset column widths
                 </button>
@@ -533,11 +533,11 @@ const GroupsPage: React.FC = () => {
         {groups.length === 0 && !globalFilter ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center py-12">
-              <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center mx-auto mb-4">
                 <FolderOpen className="w-8 h-8 text-purple-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">No groups yet</h3>
-              <p className="text-gray-500 text-sm mb-6 max-w-sm">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No groups yet</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 max-w-sm">
                 Groups let you combine multiple listings into a single statement with shared schedule tags and Increase accounts.
               </p>
               <Button
@@ -555,9 +555,9 @@ const GroupsPage: React.FC = () => {
         ) : (
           <div className="w-full overflow-x-auto overflow-y-auto flex-1 min-h-0">
             <Table className="w-full min-w-[900px]" style={{ tableLayout: 'fixed' }}>
-              <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
+              <TableHeader className="sticky top-0 z-10 bg-white dark:bg-gray-900 shadow-sm">
                 {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id} className="bg-white border-b-2 border-gray-300">
+                  <TableRow key={headerGroup.id} className="bg-white dark:bg-gray-900 border-b-2 border-gray-300 dark:border-gray-600">
                     {headerGroup.headers.map((header) => {
                       const columnId = header.column.id;
                       const isDraggable = columnId !== 'expand' && columnId !== 'actions';
@@ -589,7 +589,7 @@ const GroupsPage: React.FC = () => {
                             }
                             setDraggedColumn(null);
                           }}
-                          className={`text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 last:border-r-0 ${isDragging ? 'opacity-50 bg-blue-100' : ''} ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50' : ''}`}
+                          className={`text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-2.5 px-2 whitespace-nowrap relative text-center align-middle group border-r border-gray-200 dark:border-gray-700 last:border-r-0 ${isDragging ? 'opacity-50 bg-blue-100 dark:bg-blue-900/30' : ''} ${draggedColumn && draggedColumn !== columnId ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20' : ''}`}
                         >
                           <div className="flex items-center gap-1 justify-center">
                             {isDraggable && (
@@ -603,7 +603,7 @@ const GroupsPage: React.FC = () => {
                                 onDragEnd={() => setDraggedColumn(null)}
                                 className="cursor-grab active:cursor-grabbing"
                               >
-                                <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 hover:text-gray-500" />
+                                <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0 hover:text-gray-500 dark:hover:text-gray-400" />
                               </span>
                             )}
                             {header.isPlaceholder
@@ -628,7 +628,7 @@ const GroupsPage: React.FC = () => {
                                 e.stopPropagation();
                               }}
                               draggable={false}
-                              className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group-hover:bg-gray-300 hover:!bg-blue-500 ${header.column.getIsResizing() ? 'bg-blue-500 w-1' : 'bg-gray-200'}`}
+                              className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group-hover:bg-gray-300 dark:group-hover:bg-gray-600 hover:!bg-blue-500 ${header.column.getIsResizing() ? 'bg-blue-500 w-1' : 'bg-gray-200 dark:bg-gray-700'}`}
                             />
                           )}
                         </TableHead>
@@ -648,7 +648,7 @@ const GroupsPage: React.FC = () => {
                     return (
                       <React.Fragment key={row.id}>
                         <TableRow
-                          className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'} ${isExpanded ? 'bg-purple-50/30' : ''}`}
+                          className={`border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/30 dark:bg-gray-800/30'} ${isExpanded ? 'bg-purple-50/30 dark:bg-purple-900/20' : ''}`}
                           onClick={() => toggleExpand(group.id)}
                         >
                           {row.getVisibleCells().map((cell) => (
@@ -668,16 +668,16 @@ const GroupsPage: React.FC = () => {
 
                         {/* Expanded listings */}
                         {isExpanded && (
-                          <TableRow className="bg-white">
+                          <TableRow className="bg-white dark:bg-gray-900">
                             <TableCell colSpan={columns.length} className="p-0">
-                              <div className="mx-4 my-3 rounded-lg border border-purple-100 bg-purple-50/30 overflow-hidden">
-                                <div className="px-4 py-2.5 bg-purple-50 border-b border-purple-100">
-                                  <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                              <div className="mx-4 my-3 rounded-lg border border-purple-100 dark:border-purple-800 bg-purple-50/30 dark:bg-purple-900/20 overflow-hidden">
+                                <div className="px-4 py-2.5 bg-purple-50 dark:bg-purple-900/30 border-b border-purple-100 dark:border-purple-800">
+                                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide">
                                     {listingCount} Listing{listingCount !== 1 ? 's' : ''} in this group
                                   </span>
                                 </div>
                                 {groupListings.length === 0 ? (
-                                  <div className="px-4 py-6 text-center text-sm text-gray-400">
+                                  <div className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                                     No listings in this group
                                   </div>
                                 ) : (

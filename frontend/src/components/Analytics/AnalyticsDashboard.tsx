@@ -57,7 +57,7 @@ const KPICard: React.FC<{
 }> = ({ title, value, change, previousValue, icon, loading }) => {
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 animate-pulse">
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 animate-pulse">
         <div className="flex items-center justify-between">
           <div className="h-4 w-20 bg-gray-200 rounded" />
           <div className="h-8 w-8 bg-gray-200 rounded" />
@@ -71,14 +71,14 @@ const KPICard: React.FC<{
   const isPositive = change !== undefined && change >= 0;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-sm transition-shadow">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</span>
-        <div className="p-1.5 bg-gray-50 rounded-md text-gray-400">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{title}</span>
+        <div className="p-1.5 bg-gray-50 dark:bg-gray-800 rounded-md text-gray-400 dark:text-gray-500">
           {icon}
         </div>
       </div>
-      <div className="mt-2 text-2xl font-semibold text-gray-900 tabular-nums">{value}</div>
+      <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white tabular-nums">{value}</div>
       <div className="mt-1 flex items-center gap-2">
         {change !== undefined && (
           <span className={`inline-flex items-center text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -87,7 +87,7 @@ const KPICard: React.FC<{
           </span>
         )}
         {previousValue && (
-          <span className="text-xs text-gray-400">vs {previousValue}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">vs {previousValue}</span>
         )}
       </div>
     </div>
@@ -129,7 +129,7 @@ const FilterDropdown: React.FC<{
         className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
           value
             ? 'bg-blue-50 text-blue-700 border border-blue-200'
-            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
         }`}
       >
         <span className="truncate max-w-[100px]">
@@ -139,14 +139,14 @@ const FilterDropdown: React.FC<{
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto">
+        <div className="absolute z-50 mt-1 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto">
           <div
             onClick={() => {
               onChange(undefined);
               setIsOpen(false);
             }}
-            className={`px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm ${
-              !value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+            className={`px-3 py-2 cursor-pointer hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 text-sm ${
+              !value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 dark:text-gray-300'
             }`}
           >
             All {label}
@@ -158,8 +158,8 @@ const FilterDropdown: React.FC<{
                 onChange(option.id.toString());
                 setIsOpen(false);
               }}
-              className={`px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm truncate ${
-                value === option.id.toString() ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              className={`px-3 py-2 cursor-pointer hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 text-sm truncate ${
+                value === option.id.toString() ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 dark:text-gray-300'
               }`}
             >
               {option.name}
@@ -308,7 +308,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     { key: 'platformFees' as const, label: 'Platform Fees', align: 'right' as const, color: '' },
     { key: 'taxes' as const, label: 'Taxes', align: 'right' as const, color: '' },
     { key: 'grossPayout' as const, label: 'Gross Payout', align: 'right' as const, color: '' },
-    { key: 'revenue' as const, label: 'Revenue', align: 'right' as const, color: 'text-gray-900 font-semibold' },
+    { key: 'revenue' as const, label: 'Revenue', align: 'right' as const, color: 'text-gray-900 dark:text-white font-semibold' },
     { key: 'pmFeePercentage' as const, label: 'PM %', align: 'right' as const, color: 'text-emerald-600' },
     { key: 'pmCommission' as const, label: 'PM Commission', align: 'right' as const, color: 'text-emerald-600' },
     { key: 'expenses' as const, label: 'Expenses', align: 'right' as const, color: 'text-red-600' },
@@ -910,7 +910,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   };
 
   const getPfCellColor = (col: typeof allPfColumns[0]): string => {
-    return col.color || 'text-gray-600';
+    return col.color || 'text-gray-600 dark:text-gray-400';
   };
 
   // Format currency
@@ -1029,7 +1029,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         formatter: (params: any) => {
           const data = params[0];
           return `<div class="font-medium">${data.name}</div>
-                  <div class="text-gray-500">Revenue: ${formatFullCurrency(data.value)}</div>`;
+                  <div class="text-gray-500 dark:text-gray-400">Revenue: ${formatFullCurrency(data.value)}</div>`;
         },
       },
       grid: { top: 20, right: 20, bottom: 30, left: 50 },
@@ -1086,7 +1086,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         formatter: (params: any) => {
           const data = params[0];
           return `<div class="font-medium">${data.name}</div>
-                  <div class="text-gray-500">Payout: ${formatFullCurrency(data.value)}</div>`;
+                  <div class="text-gray-500 dark:text-gray-400">Payout: ${formatFullCurrency(data.value)}</div>`;
         },
       },
       grid: { top: 20, right: 20, bottom: 30, left: 50 },
@@ -1146,7 +1146,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         textStyle: { color: '#374151', fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
-                  <div class="text-gray-500">${formatFullCurrency(params.value)} (${params.percent}%)</div>`;
+                  <div class="text-gray-500 dark:text-gray-400">${formatFullCurrency(params.value)} (${params.percent}%)</div>`;
         },
       },
       series: [{
@@ -1195,7 +1195,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         textStyle: { color: '#374151', fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
-                  <div class="text-gray-500">${params.value} statements (${params.percent}%)</div>`;
+                  <div class="text-gray-500 dark:text-gray-400">${params.value} statements (${params.percent}%)</div>`;
         },
       },
       graphic: {
@@ -1376,7 +1376,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         textStyle: { color: '#374151', fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
-                  <div class="text-gray-500">${formatFullCurrency(params.value)} (${params.percent.toFixed(1)}%)</div>`;
+                  <div class="text-gray-500 dark:text-gray-400">${formatFullCurrency(params.value)} (${params.percent.toFixed(1)}%)</div>`;
         },
       },
       series: [{
@@ -1548,12 +1548,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const isLoading = summaryLoading || trendLoading || expenseLoading || propertyLoading || ownerLoading;
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-800">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-shrink-0">
-            <h1 className="text-lg font-semibold text-gray-900 whitespace-nowrap">Analytics</h1>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white whitespace-nowrap">Analytics</h1>
             <div className="w-px h-6 bg-gray-200" />
             <FilterDropdown
               label="Owners"
@@ -1582,15 +1582,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
           <div className="flex-1 min-w-0" />
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="flex flex-wrap items-center bg-gray-100 rounded-lg p-1">
+            <div className="flex flex-wrap items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
               {periodOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handlePeriodChange(option.value)}
                   className={`px-2 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                     selectedPeriod === option.value
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:text-white dark:hover:text-white'
                   }`}
                 >
                   {option.label}
@@ -1598,19 +1598,19 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               ))}
             </div>
             {showCustomPicker && (
-              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1.5">
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-1.5">
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="text-gray-400 text-sm">to</span>
+                <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   onClick={handleCustomDateApply}
@@ -1624,32 +1624,32 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               disabled={isExporting}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 print:hidden"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 print:hidden"
             >
               <Download className={`w-4 h-4 ${isExporting ? 'animate-pulse' : ''}`} />
               <span>Export</span>
               <ChevronDown className="w-3 h-3" />
             </button>
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
                 <button
                   onClick={handleExportCSV}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-green-600" />
                   Export to CSV
                 </button>
                 <button
                   onClick={handleExportExcel}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-green-600" />
                   Export to Excel
                 </button>
-                <div className="border-t border-gray-100 my-1" />
+                <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                 <button
                   onClick={handleExportPDF}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
                 >
                   <Printer className="w-4 h-4 text-blue-600" />
                   Download PDF Report
@@ -1660,7 +1660,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <button
               onClick={() => refetchSummary()}
               disabled={isLoading}
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 print:hidden"
+              className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 print:hidden"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
@@ -1771,19 +1771,19 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             icon={<Home className="w-4 h-4" />}
             loading={summaryLoading}
           />
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Negative Payouts</span>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Negative Payouts</span>
               <div className="p-1.5 bg-red-50 rounded-md text-red-400">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <div className={`mt-2 text-2xl font-semibold tabular-nums ${kpiData.negativePayoutCount > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+            <div className={`mt-2 text-2xl font-semibold tabular-nums ${kpiData.negativePayoutCount > 0 ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
               {kpiData.negativePayoutCount}
             </div>
             <div className="mt-1 flex items-center gap-2">
               {kpiData.previousNegativePayoutCount > 0 && (
-                <span className="text-xs text-gray-400">vs {kpiData.previousNegativePayoutCount}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">vs {kpiData.previousNegativePayoutCount}</span>
               )}
             </div>
           </div>
@@ -1792,17 +1792,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* Revenue Trend - Takes 2 columns */}
-          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4" data-chart="revenue-trend">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4" data-chart="revenue-trend">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-medium text-gray-900">Revenue Trend</h3>
+                <BarChart3 className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">Revenue Trend</h3>
               </div>
-              <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+              <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
                 <button
                   onClick={() => setGranularity('day')}
                   className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    granularity === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                    granularity === 'day' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   Day
@@ -1810,7 +1810,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 <button
                   onClick={() => setGranularity('week')}
                   className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    granularity === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                    granularity === 'week' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   Week
@@ -1818,7 +1818,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 <button
                   onClick={() => setGranularity('month')}
                   className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                    granularity === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                    granularity === 'month' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   Month
@@ -1827,12 +1827,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             </div>
             {trendLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : ((() => { const r = trendData as any; return (Array.isArray(r) ? r : r?.trends || r?.data || []).length > 0; })()) ? (
               <ReactECharts option={trendChartOption} style={{ height: '256px' }} />
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <BarChart3 className="w-8 h-8 mb-2" />
                 <span className="text-sm">No data for selected period</span>
               </div>
@@ -1840,14 +1840,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Expense Breakdown */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="expense-breakdown">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4" data-chart="expense-breakdown">
             <div className="flex items-center gap-2 mb-4">
-              <PieChart className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Expense Breakdown</h3>
+              <PieChart className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Expense Breakdown</h3>
             </div>
             {expenseLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : ((() => { const r = expenseData as any; return (Array.isArray(r) ? r : r?.categories || r?.data || []).length > 0; })()) ? (
               <>
@@ -1860,9 +1860,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                           className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'][i] }}
                         />
-                        <span className="text-gray-600 truncate">{cat.category}</span>
+                        <span className="text-gray-600 dark:text-gray-400 truncate">{cat.category}</span>
                       </div>
-                      <span className="text-gray-900 font-medium tabular-nums">
+                      <span className="text-gray-900 dark:text-white font-medium tabular-nums">
                         {formatCurrency(cat.amount)}
                       </span>
                     </div>
@@ -1870,7 +1870,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </div>
               </>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <PieChart className="w-8 h-8 mb-2" />
                 <span className="text-sm">No expenses</span>
               </div>
@@ -1879,17 +1879,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Payout Trend Chart */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6" data-chart="payout-trend">
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-6" data-chart="payout-trend">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Payout Trend</h3>
+              <CreditCard className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Payout Trend</h3>
             </div>
-            <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
               <button
                 onClick={() => setPayoutGranularity('day')}
                 className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                  payoutGranularity === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  payoutGranularity === 'day' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                 }`}
               >
                 Day
@@ -1897,7 +1897,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               <button
                 onClick={() => setPayoutGranularity('week')}
                 className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                  payoutGranularity === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  payoutGranularity === 'week' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                 }`}
               >
                 Week
@@ -1905,7 +1905,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               <button
                 onClick={() => setPayoutGranularity('month')}
                 className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                  payoutGranularity === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  payoutGranularity === 'month' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                 }`}
               >
                 Month
@@ -1914,12 +1914,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
           {payoutTrendLoading ? (
             <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+              <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
             </div>
           ) : (payoutTrendData && payoutTrendData.length > 0) ? (
             <ReactECharts option={payoutTrendChartOption} style={{ height: '256px' }} />
           ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+            <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
               <CreditCard className="w-8 h-8 mb-2" />
               <span className="text-sm">No payout data for selected period</span>
             </div>
@@ -1927,14 +1927,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Property Performance */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="property-performance">
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4" data-chart="property-performance">
           <div className="flex items-center gap-2 mb-4">
-            <Building2 className="w-4 h-4 text-gray-400" />
-            <h3 className="text-sm font-medium text-gray-900">Top Properties by Revenue</h3>
+            <Building2 className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">Top Properties by Revenue</h3>
           </div>
           {propertyLoading ? (
             <div className="h-80 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+              <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
             </div>
           ) : propertyChartData.length > 0 ? (
             <ReactECharts
@@ -1943,7 +1943,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               opts={{ renderer: 'canvas' }}
             />
           ) : (
-            <div className="h-80 flex flex-col items-center justify-center text-gray-400">
+            <div className="h-80 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
               <Building2 className="w-8 h-8 mb-2" />
               <span className="text-sm">No property data</span>
             </div>
@@ -1951,21 +1951,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Property Financial Report */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mt-6 overflow-hidden">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mt-6 overflow-hidden">
           {/* Header */}
-          <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+          <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="w-4.5 h-4.5 text-blue-600" />
-                  <h3 className="text-sm font-semibold text-gray-900">Property Financial Report</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Property Financial Report</h3>
                   {pfSortedData.length > 0 && (
-                    <span className="text-[11px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">
+                    <span className="text-[11px] bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full font-medium">
                       {pfSortedData.length}{pfFilter ? ` / ${propertyFinancialsData?.length || 0}` : ''} properties
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
                   {pfPresets[pfActivePreset]?.desc || 'Customized column view'}
                 </p>
               </div>
@@ -2017,15 +2017,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Report Preset Tabs */}
-          <div className="px-5 py-2.5 bg-gray-50/70 border-b border-gray-100 flex items-center gap-1.5 overflow-x-auto">
+          <div className="px-5 py-2.5 bg-gray-50/70 dark:bg-gray-800/70 dark:bg-gray-800/70 border-b border-gray-100 dark:border-gray-800 flex items-center gap-1.5 overflow-x-auto">
             {Object.entries(pfPresets).map(([key, preset]) => (
               <button
                 key={key}
                 onClick={() => applyPfPreset(key)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-all ${
                   pfActivePreset === key
-                    ? 'bg-white text-blue-700 shadow-sm border border-blue-200 ring-1 ring-blue-100'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-white/70'
+                    ? 'bg-white dark:bg-gray-900 text-blue-700 shadow-sm border border-blue-200 ring-1 ring-blue-100 dark:ring-blue-900'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300 hover:bg-white/70 dark:hover:bg-gray-900/70'
                 }`}
               >
                 {preset.icon}
@@ -2041,21 +2041,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Toolbar */}
-          <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+          <div className="px-5 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap">
             {/* Search */}
             <div className="relative flex-shrink-0">
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search property or owner..."
                 value={pfFilter}
                 onChange={(e) => setPfFilter(e.target.value)}
-                className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 bg-white"
+                className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 dark:ring-blue-900 focus:border-blue-300 bg-white dark:bg-gray-900"
               />
               {pfFilter && (
                 <button
                   onClick={() => setPfFilter('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-400 dark:text-gray-500"
                 >
                   <span className="text-xs font-bold">&times;</span>
                 </button>
@@ -2065,15 +2065,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
 
             {/* Calculation type toggle */}
-            <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5 flex-shrink-0">
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5 flex-shrink-0">
               {([['', 'All'], ['checkout', 'Checkout'], ['calendar', 'Calendar']] as const).map(([val, label]) => (
                 <button
                   key={val}
                   onClick={() => setPfCalcType(val as '' | 'checkout' | 'calendar')}
                   className={`px-2 py-0.5 text-xs rounded transition-colors ${
                     pfCalcType === val
-                      ? 'bg-white text-gray-900 shadow-sm font-medium'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm font-medium'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300'
                   }`}
                 >
                   {label}
@@ -2084,12 +2084,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
             <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
 
             {/* Include $0 toggle */}
-            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none flex-shrink-0">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none flex-shrink-0">
               <input
                 type="checkbox"
                 checked={pfIncludeZero}
                 onChange={(e) => setPfIncludeZero(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
               />
               Include $0 listings
             </label>
@@ -2102,35 +2102,35 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 onClick={() => setPfShowColumnMenu(!pfShowColumnMenu)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors border ${
                   pfShowColumnMenu
-                    ? 'bg-gray-100 text-gray-900 border-gray-300'
-                    : 'text-gray-600 hover:bg-gray-50 border-gray-200'
+                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 border-gray-200 dark:border-gray-700'
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
                 Columns ({visiblePfColumns.length}/{allPfColumns.length})
               </button>
               {pfShowColumnMenu && (
-                <div className="absolute right-0 z-50 mt-1.5 w-52 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                <div className="absolute right-0 z-50 mt-1.5 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1.5">
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                     Toggle Columns
                   </div>
                   <div className="max-h-64 overflow-y-auto">
                     {allPfColumns.map(col => (
                       <label
                         key={col.key}
-                        className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
+                        className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                       >
                         <input
                           type="checkbox"
                           checked={pfVisibleCols.has(col.key)}
                           onChange={() => togglePfColumn(col.key)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                          className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
                         />
-                        <span className={pfVisibleCols.has(col.key) ? 'text-gray-900' : 'text-gray-400'}>{col.label}</span>
+                        <span className={pfVisibleCols.has(col.key) ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}>{col.label}</span>
                       </label>
                     ))}
                   </div>
-                  <div className="border-t border-gray-100 mt-1 pt-1 px-3 py-1">
+                  <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1 px-3 py-1">
                     <button
                       onClick={() => { setPfVisibleCols(new Set(allPfColumns.map(c => c.key))); setPfActivePreset('all'); }}
                       className="text-[11px] text-blue-600 hover:text-blue-700 font-medium"
@@ -2147,13 +2147,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           {propertyFinancialsLoading ? (
             <div className="h-56 flex flex-col items-center justify-center gap-2">
               <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
-              <span className="text-xs text-gray-400">Loading report...</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">Loading report...</span>
             </div>
           ) : pfSortedData.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     {visiblePfColumns.map(col => {
                       const isSticky = col.key === 'name';
                       const isSorted = pfSortKey === col.key;
@@ -2161,10 +2161,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                         <th
                           key={col.key}
                           onClick={() => handlePfSort(col.key as FinancialSortKey)}
-                          className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
+                          className={`px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
                             col.align === 'right' ? 'text-right' : 'text-left'
-                          } ${isSticky ? 'sticky left-0 bg-gray-50 z-10' : 'bg-gray-50'} ${
-                            isSorted ? 'text-blue-700 bg-blue-50/50' : 'hover:text-gray-700 hover:bg-gray-100/50'
+                          } ${isSticky ? 'sticky left-0 bg-gray-50 dark:bg-gray-800 z-10' : 'bg-gray-50 dark:bg-gray-800'} ${
+                            isSorted ? 'text-blue-700 bg-blue-50/50' : 'hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700/50'
                           }`}
                           style={{ fontSize: '10px' }}
                         >
@@ -2187,14 +2187,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   {pfSortedData.map((p: PropertyFinancialItem, idx: number) => (
                     <tr
                       key={p.propertyId}
-                      className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                      className={`border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50/30 transition-colors ${
+                        idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/30 dark:bg-gray-800/30 dark:bg-gray-800/30'
                       }`}
                     >
                       {visiblePfColumns.map(col => {
                         const isSticky = col.key === 'name';
                         const val = p[col.key as keyof PropertyFinancialItem];
-                        const cellColor = col.key === 'name' ? 'text-gray-900 font-medium' : getPfCellColor(col);
+                        const cellColor = col.key === 'name' ? 'text-gray-900 dark:text-white font-medium' : getPfCellColor(col);
                         const display = getPfCellDisplay(col, val);
 
                         return (
@@ -2202,7 +2202,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                             key={col.key}
                             className={`px-4 py-2 ${cellColor} ${col.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${
                               isSticky ? 'sticky left-0 max-w-[220px] truncate z-[5]' : ''
-                            } ${isSticky ? (idx % 2 === 0 ? 'bg-white' : 'bg-[#fafafb]') : ''}`}
+                            } ${isSticky ? (idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-[#fafafb] dark:bg-[#1f2937]') : ''}`}
                           >
                             {display}
                           </td>
@@ -2212,23 +2212,23 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
+                  <tr className="bg-gray-100 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600 font-semibold">
                     {visiblePfColumns.map(col => {
                       if (col.key === 'name') {
                         return (
-                          <td key={col.key} className="px-4 py-2.5 text-gray-900 sticky left-0 bg-gray-100 z-[5]">
+                          <td key={col.key} className="px-4 py-2.5 text-gray-900 dark:text-white sticky left-0 bg-gray-100 dark:bg-gray-800 z-[5]">
                             Total ({pfSortedData.length})
                           </td>
                         );
                       }
                       if (col.key === 'ownerName' || col.key === 'pmFeePercentage') {
-                        return <td key={col.key} className="px-4 py-2.5 bg-gray-100"></td>;
+                        return <td key={col.key} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-800"></td>;
                       }
                       const sum = pfSortedData.reduce((s: number, p: PropertyFinancialItem) => s + (Number(p[col.key as keyof PropertyFinancialItem]) || 0), 0);
                       const footerColor = col.color?.includes('emerald') ? 'text-emerald-700'
                         : col.color?.includes('red') ? 'text-red-600'
                         : col.color?.includes('blue') ? 'text-blue-700'
-                        : 'text-gray-900';
+                        : 'text-gray-900 dark:text-white';
                       return (
                         <td key={col.key} className={`px-4 py-2.5 ${footerColor} text-right tabular-nums`}>
                           {col.key === 'reservationCount' ? sum : formatFullCurrency(sum)}
@@ -2240,17 +2240,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               </table>
             </div>
           ) : propertyFinancialsData && propertyFinancialsData.length > 0 && pfFilter ? (
-            <div className="h-40 flex flex-col items-center justify-center text-gray-400">
-              <Search className="w-6 h-6 mb-2 text-gray-300" />
-              <span className="text-sm font-medium text-gray-500">No properties match "{pfFilter}"</span>
+            <div className="h-40 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+              <Search className="w-6 h-6 mb-2 text-gray-300 dark:text-gray-500" />
+              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">No properties match "{pfFilter}"</span>
               <button onClick={() => setPfFilter('')} className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium">
                 Clear filter
               </button>
             </div>
           ) : (
-            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
-              <FileSpreadsheet className="w-8 h-8 mb-2 text-gray-300" />
-              <span className="text-sm font-medium text-gray-500">No financial data for selected period</span>
+            <div className="h-48 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+              <FileSpreadsheet className="w-8 h-8 mb-2 text-gray-300 dark:text-gray-500" />
+              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">No financial data for selected period</span>
               {!pfIncludeZero && (
                 <button
                   onClick={() => setPfIncludeZero(true)}
@@ -2264,19 +2264,19 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* PM Commission Report - Hidden for now, verifying numbers */}
-        {false && <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6">
+        {false && <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mt-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Percent className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">PM Commission by Property</h3>
+              <Percent className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">PM Commission by Property</h3>
               {pmCommissionData.length > 0 && (
-                <span className="text-xs text-gray-400">({pmCommissionData.length} properties)</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">({pmCommissionData.length} properties)</span>
               )}
             </div>
             {pmCommissionData.length > 0 && (
               <div className="flex items-center gap-3 text-xs">
-                <span className="text-gray-500">
-                  Total: <span className="font-semibold text-gray-900">{formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.pmFee || 0), 0))}</span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  Total: <span className="font-semibold text-gray-900 dark:text-white">{formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.pmFee || 0), 0))}</span>
                 </span>
                 <button
                   onClick={() => {
@@ -2308,33 +2308,33 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
           {propertyLoading ? (
             <div className="h-48 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+              <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
             </div>
           ) : pmCommissionData.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">PM Fee %</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">PM Commission</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Property</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Owner</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">PM Fee %</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">PM Commission</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                   {pmCommissionData.map((p: any) => (
-                    <tr key={p.propertyId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm font-medium text-gray-900 max-w-[250px] truncate">
+                    <tr key={p.propertyId} className="hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-white max-w-[250px] truncate">
                         {p.propertyName || p.name || `Property ${p.propertyId}`}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-600 max-w-[180px] truncate">
+                      <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 max-w-[180px] truncate">
                         {p.ownerName || '—'}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
+                      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 text-right tabular-nums">
                         {formatFullCurrency(p.revenue || 0)}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 text-right tabular-nums">
+                      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 text-right tabular-nums">
                         {p.pmFeePercentage != null ? `${p.pmFeePercentage}%` : '—'}
                       </td>
                       <td className="px-4 py-2 text-sm font-medium text-green-700 text-right tabular-nums">
@@ -2343,10 +2343,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-50">
+                <tfoot className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <td className="px-4 py-2 text-sm font-semibold text-gray-900" colSpan={2}>Total</td>
-                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right tabular-nums">
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 dark:text-white" colSpan={2}>Total</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 dark:text-white text-right tabular-nums">
                       {formatFullCurrency(pmCommissionData.reduce((sum: number, p: any) => sum + (p.revenue || 0), 0))}
                     </td>
                     <td className="px-4 py-2"></td>
@@ -2358,7 +2358,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               </table>
             </div>
           ) : (
-            <div className="h-48 flex flex-col items-center justify-center text-gray-400">
+            <div className="h-48 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
               <Percent className="w-8 h-8 mb-2" />
               <span className="text-sm">No PM commission data for selected period</span>
             </div>
@@ -2407,24 +2407,24 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           ];
 
           return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm mt-6 overflow-hidden">
-              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mt-6 overflow-hidden">
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
-                      <h3 className="text-sm font-semibold text-gray-900">Guest Paid Damage Coverage</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Guest Paid Damage Coverage</h3>
                       {dcFilteredData.length > 0 && (
                         <span className="text-[11px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-medium">
                           {dcFilteredData.length} properties
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Damage coverage fees collected from guests per property</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Damage coverage fees collected from guests per property</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {dcFilteredData.length > 0 && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
                         Total: <span className="font-semibold text-amber-700">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</span>
                       </span>
                     )}
@@ -2462,18 +2462,18 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               </div>
 
               {/* Toolbar */}
-              <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-3">
+              <div className="px-5 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
                 <div className="relative flex-shrink-0">
-                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Search property or owner..."
                     value={dcFilter}
                     onChange={(e) => setDcFilter(e.target.value)}
-                    className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 bg-white"
+                    className="pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 dark:ring-blue-900 focus:border-blue-300 bg-white dark:bg-gray-900"
                   />
                   {dcFilter && (
-                    <button onClick={() => setDcFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <button onClick={() => setDcFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-400 dark:text-gray-500">
                       <span className="text-xs font-bold">&times;</span>
                     </button>
                   )}
@@ -2483,17 +2483,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   <button
                     onClick={() => setDcShowColumnMenu(!dcShowColumnMenu)}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors border ${
-                      dcShowColumnMenu ? 'bg-gray-100 text-gray-900 border-gray-300' : 'text-gray-600 hover:bg-gray-50 border-gray-200'
+                      dcShowColumnMenu ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 border-gray-200 dark:border-gray-700'
                     }`}
                   >
                     <Eye className="w-3.5 h-3.5" />
                     Columns
                   </button>
                   {dcShowColumnMenu && (
-                    <div className="absolute right-0 z-50 mt-1.5 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5">
-                      <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Toggle Columns</div>
+                    <div className="absolute right-0 z-50 mt-1.5 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1.5">
+                      <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Toggle Columns</div>
                       {dcColumns.map(col => (
-                        <label key={col.key} className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <label key={col.key} className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={dcVisibleCols.has(col.key)}
@@ -2505,9 +2505,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                                 return next;
                               });
                             }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                            className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
                           />
-                          <span className={dcVisibleCols.has(col.key) ? 'text-gray-900' : 'text-gray-400'}>{col.label}</span>
+                          <span className={dcVisibleCols.has(col.key) ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}>{col.label}</span>
                         </label>
                       ))}
                     </div>
@@ -2518,22 +2518,22 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               {damageCoverageLoading ? (
                 <div className="h-48 flex flex-col items-center justify-center gap-2">
                   <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />
-                  <span className="text-xs text-gray-400">Loading report...</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">Loading report...</span>
                 </div>
               ) : dcFilteredData.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
+                      <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                         {dcColumns.filter(c => dcVisibleCols.has(c.key)).map(col => {
                           const isSorted = dcSortKey === col.key;
                           return (
                             <th
                               key={col.key}
                               onClick={() => handleDcSort(col.key)}
-                              className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
+                              className={`px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors ${
                                 col.align === 'right' ? 'text-right' : 'text-left'
-                              } ${isSorted ? 'text-amber-700 bg-amber-50/50' : 'hover:text-gray-700 hover:bg-gray-100/50'}`}
+                              } ${isSorted ? 'text-amber-700 bg-amber-50/50' : 'hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700/50'}`}
                               style={{ fontSize: '10px' }}
                             >
                               <span className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
@@ -2551,13 +2551,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     </thead>
                     <tbody>
                       {dcFilteredData.map((p: DamageCoverageItem, idx: number) => (
-                        <tr key={p.propertyId} className={`border-b border-gray-100 hover:bg-amber-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                        <tr key={p.propertyId} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-amber-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/30 dark:bg-gray-800/30 dark:bg-gray-800/30'}`}>
                           {dcColumns.filter(c => dcVisibleCols.has(c.key)).map(col => {
                             const val = p[col.key as keyof DamageCoverageItem];
                             let cellClass = 'px-4 py-2';
-                            if (col.key === 'name') cellClass += ' font-medium text-gray-900 max-w-[250px] truncate';
-                            else if (col.key === 'ownerName') cellClass += ' text-gray-600 max-w-[180px] truncate';
-                            else if (col.key === 'reservationCount') cellClass += ' text-gray-700 text-right tabular-nums';
+                            if (col.key === 'name') cellClass += ' font-medium text-gray-900 dark:text-white max-w-[250px] truncate';
+                            else if (col.key === 'ownerName') cellClass += ' text-gray-600 dark:text-gray-400 max-w-[180px] truncate';
+                            else if (col.key === 'reservationCount') cellClass += ' text-gray-700 dark:text-gray-300 text-right tabular-nums';
                             else if (col.key === 'totalDamageCoverage') cellClass += ' font-medium text-amber-700 text-right tabular-nums';
                             const display = col.key === 'totalDamageCoverage' ? formatFullCurrency(val as number)
                               : col.key === 'ownerName' ? ((val as string) || '-')
@@ -2568,11 +2568,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
+                      <tr className="bg-gray-100 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600 font-semibold">
                         {dcColumns.filter(c => dcVisibleCols.has(c.key)).map((col, i) => {
-                          if (col.key === 'name') return <td key={col.key} className="px-4 py-2.5 text-gray-900">Total ({dcFilteredData.length})</td>;
+                          if (col.key === 'name') return <td key={col.key} className="px-4 py-2.5 text-gray-900 dark:text-white">Total ({dcFilteredData.length})</td>;
                           if (col.key === 'ownerName') return <td key={col.key} className="px-4 py-2.5"></td>;
-                          if (col.key === 'reservationCount') return <td key={col.key} className="px-4 py-2.5 text-gray-900 text-right tabular-nums">{dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}</td>;
+                          if (col.key === 'reservationCount') return <td key={col.key} className="px-4 py-2.5 text-gray-900 dark:text-white text-right tabular-nums">{dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.reservationCount, 0)}</td>;
                           if (col.key === 'totalDamageCoverage') return <td key={col.key} className="px-4 py-2.5 text-amber-700 text-right tabular-nums">{formatFullCurrency(dcFilteredData.reduce((sum: number, p: DamageCoverageItem) => sum + p.totalDamageCoverage, 0))}</td>;
                           return <td key={col.key} className="px-4 py-2.5"></td>;
                         })}
@@ -2581,15 +2581,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   </table>
                 </div>
               ) : damageCoverageData && damageCoverageData.length > 0 && dcFilter ? (
-                <div className="h-32 flex flex-col items-center justify-center text-gray-400">
-                  <Search className="w-6 h-6 mb-2 text-gray-300" />
-                  <span className="text-sm font-medium text-gray-500">No properties match "{dcFilter}"</span>
+                <div className="h-32 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+                  <Search className="w-6 h-6 mb-2 text-gray-300 dark:text-gray-500" />
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">No properties match "{dcFilter}"</span>
                   <button onClick={() => setDcFilter('')} className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium">Clear filter</button>
                 </div>
               ) : (
-                <div className="h-48 flex flex-col items-center justify-center text-gray-400">
-                  <AlertTriangle className="w-8 h-8 mb-2 text-gray-300" />
-                  <span className="text-sm font-medium text-gray-500">No damage coverage data for selected period</span>
+                <div className="h-48 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+                  <AlertTriangle className="w-8 h-8 mb-2 text-gray-300 dark:text-gray-500" />
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">No damage coverage data for selected period</span>
                 </div>
               )}
             </div>
@@ -2599,14 +2599,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Owner Breakdown Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
           {/* Owner Revenue Distribution Pie Chart */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="owner-breakdown">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4" data-chart="owner-breakdown">
             <div className="flex items-center gap-2 mb-4">
-              <Users className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Revenue by Owner</h3>
+              <Users className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Revenue by Owner</h3>
             </div>
             {ownerLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : ownerChartData.length > 0 ? (
               <>
@@ -2619,9 +2619,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                           className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i] }}
                         />
-                        <span className="text-gray-600 truncate max-w-[120px]">{owner.ownerName}</span>
+                        <span className="text-gray-600 dark:text-gray-400 truncate max-w-[120px]">{owner.ownerName}</span>
                       </div>
-                      <span className="text-gray-900 font-medium tabular-nums">
+                      <span className="text-gray-900 dark:text-white font-medium tabular-nums">
                         {formatCurrency(owner.totalRevenue)}
                       </span>
                     </div>
@@ -2629,7 +2629,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </div>
               </>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <Users className="w-8 h-8 mb-2" />
                 <span className="text-sm">No owner data</span>
               </div>
@@ -2637,47 +2637,47 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Top Owners by Payout Table */}
-          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Users className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Top Owners by Payout</h3>
+              <Users className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Top Owners by Payout</h3>
             </div>
             {ownerLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : ownerChartData.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Owner
                       </th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Revenue
                       </th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Payout
                       </th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         PM Fee
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                     {ownerChartData.slice(0, 10).map((owner: OwnerData) => (
-                      <tr key={owner.ownerName} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <tr key={owner.ownerName} className="hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800">
+                        <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                           {owner.ownerName}
                         </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 text-right tabular-nums">
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 text-right tabular-nums">
                           {formatFullCurrency(owner.totalRevenue)}
                         </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 text-right tabular-nums">
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 text-right tabular-nums">
                           {formatFullCurrency(owner.ownerPayout)}
                         </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 text-right tabular-nums">
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 text-right tabular-nums">
                           {formatFullCurrency(owner.pmCommission)}
                         </td>
                       </tr>
@@ -2686,7 +2686,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </table>
               </div>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <Users className="w-8 h-8 mb-2" />
                 <span className="text-sm">No owner data available</span>
               </div>
@@ -2695,14 +2695,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         </div>
 
         {/* Monthly Comparison Chart */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mt-6" data-chart="monthly-comparison">
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mt-6" data-chart="monthly-comparison">
           <div className="flex items-center gap-2 mb-4">
-            <Calendar className="w-4 h-4 text-gray-400" />
-            <h3 className="text-sm font-medium text-gray-900">Monthly Comparison (Last 6 Months)</h3>
+            <Calendar className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">Monthly Comparison (Last 6 Months)</h3>
           </div>
           {monthlyComparisonLoading ? (
             <div className="h-80 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+              <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
             </div>
           ) : monthlyComparisonData && monthlyComparisonData.length > 0 ? (
             <ReactECharts
@@ -2711,7 +2711,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               opts={{ renderer: 'canvas' }}
             />
           ) : (
-            <div className="h-80 flex flex-col items-center justify-center text-gray-400">
+            <div className="h-80 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
               <Calendar className="w-8 h-8 mb-2" />
               <span className="text-sm">No monthly data available</span>
             </div>
@@ -2721,14 +2721,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         {/* Statement Status and Recent Statements Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
           {/* Statement Status Donut Chart */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4" data-chart="statement-status">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4" data-chart="statement-status">
             <div className="flex items-center gap-2 mb-4">
-              <PieChart className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Statement Status</h3>
+              <PieChart className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Statement Status</h3>
             </div>
             {statementStatusLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : (statementStatusData && statementStatusData.length > 0) ? (
               <>
@@ -2752,16 +2752,16 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                             className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: statusColors[item.status] || '#6b7280' }}
                           />
-                          <span className="text-gray-600">{statusLabels[item.status] || item.status}</span>
+                          <span className="text-gray-600 dark:text-gray-400">{statusLabels[item.status] || item.status}</span>
                         </div>
-                        <span className="text-gray-900 font-medium tabular-nums">{item.count}</span>
+                        <span className="text-gray-900 dark:text-white font-medium tabular-nums">{item.count}</span>
                       </div>
                     );
                   })}
                 </div>
               </>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <PieChart className="w-8 h-8 mb-2" />
                 <span className="text-sm">No statement data</span>
               </div>
@@ -2769,28 +2769,28 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
 
           {/* Recent Statements Table */}
-          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <div className="flex items-center gap-2 mb-4">
-              <FileText className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-900">Recent Statements</h3>
+              <FileText className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Recent Statements</h3>
             </div>
             {recentStatementsLoading ? (
               <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500 animate-spin" />
               </div>
             ) : (recentStatementsData && recentStatementsData.length > 0) ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead>
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Payout</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Property</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Period</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Revenue</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Payout</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {recentStatementsData.map((statement: any) => {
                       const statusColors: { [key: string]: string } = {
                         draft: 'bg-yellow-100 text-yellow-800',
@@ -2807,21 +2807,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                       };
                       return (
-                        <tr key={statement.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-3 text-sm text-gray-900 truncate max-w-[200px]" title={statement.propertyName}>
+                        <tr key={statement.id} className="hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-800">
+                          <td className="px-3 py-3 text-sm text-gray-900 dark:text-white truncate max-w-[200px]" title={statement.propertyName}>
                             {statement.propertyName}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {formatDate(statement.weekStartDate)} - {formatDate(statement.weekEndDate)}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-900 text-right tabular-nums">
+                          <td className="px-3 py-3 text-sm text-gray-900 dark:text-white text-right tabular-nums">
                             {formatCurrency(statement.totalRevenue)}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-900 text-right tabular-nums">
+                          <td className="px-3 py-3 text-sm text-gray-900 dark:text-white text-right tabular-nums">
                             {formatCurrency(statement.ownerPayout)}
                           </td>
                           <td className="px-3 py-3 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColors[statement.status] || 'bg-gray-100 text-gray-800'}`}>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColors[statement.status] || 'bg-gray-100 dark:bg-gray-800 text-gray-800'}`}>
                               {statusLabels[statement.status] || statement.status}
                             </span>
                           </td>
@@ -2832,7 +2832,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </table>
               </div>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+              <div className="h-64 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                 <FileText className="w-8 h-8 mb-2" />
                 <span className="text-sm">No recent statements</span>
               </div>
