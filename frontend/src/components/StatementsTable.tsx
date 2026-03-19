@@ -693,7 +693,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   });
                   const data = await resp.json();
                   if (data.token) {
-                    window.open(`/api/payouts/statements/${statement.id}/receipt?token=${data.token}`, '_blank');
+                    // In dev, window.open needs the full backend URL (proxy only works for fetch)
+                    const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3003';
+                    window.open(`${baseUrl}/api/payouts/statements/${statement.id}/receipt?token=${data.token}`, '_blank');
                   }
                 } catch (e) { console.error('Failed to open receipt', e); }
               }}
