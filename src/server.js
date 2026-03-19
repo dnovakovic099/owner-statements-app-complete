@@ -11,7 +11,7 @@ const monitoring = require('./utils/monitoring');
 const logger = require('./utils/logger');
 
 // Database initialization
-const { syncDatabase } = require('./models');
+const { syncDatabase, sequelize, Statement, Listing, ListingGroup } = require('./models');
 const ListingService = require('./services/ListingService');
 const TagScheduleService = require('./services/TagScheduleService');
 
@@ -21,6 +21,10 @@ const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./
 // Security middleware
 const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter } = require('./middleware/rateLimiter');
 const sanitize = require('./middleware/sanitize');
+
+// Metrics
+const metricsMiddleware = require('./middleware/metricsMiddleware');
+const metrics = require('./utils/metrics');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -84,6 +88,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Input sanitization — trim strings and strip HTML tags from request bodies
 app.use(sanitize);
 
+// Application metrics — capture per-request timing (lightweight, <1ms overhead)
+app.use(metricsMiddleware);
+
 // Rate limiting configuration
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -139,6 +146,35 @@ if (monitoring.isConfigured()) app.use(monitoring.requestHandler());
 // ================================
 // PUBLIC ROUTES (No Authentication)
 // ================================
+
+// Health check - public, no auth required
+app.get('/api/health', async (req, res) => {
+    let dbStatus = 'disconnected';
+    try {
+        await Promise.race([
+            sequelize.authenticate(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        dbStatus = 'connected';
+    } catch (e) {
+        dbStatus = 'disconnected';
+    }
+
+    const mem = process.memoryUsage();
+    res.json({
+        status: 'ok',
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+        version: require('../package.json').version,
+        database: dbStatus,
+        memory: {
+            heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+            heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+            rss: Math.round(mem.rss / 1024 / 1024)
+        },
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
 
 // Auth routes - login, verify, invite acceptance
 app.use('/api/auth', require('./routes/auth'));
@@ -240,6 +276,60 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
 // ================================
 // PROTECTED ROUTES (Role-Based Access)
 // ================================
+
+// Detailed health check - Admin only
+app.get('/api/health/detailed', authenticate, requireAdmin, async (req, res) => {
+    let dbInfo = { status: 'disconnected', dialect: null, responseTimeMs: null };
+    try {
+        const dbStart = Date.now();
+        await Promise.race([
+            sequelize.authenticate(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        dbInfo = {
+            status: 'connected',
+            dialect: sequelize.getDialect(),
+            responseTimeMs: Date.now() - dbStart
+        };
+    } catch (e) {
+        dbInfo = { status: 'disconnected', dialect: null, responseTimeMs: null };
+    }
+
+    const services = {
+        increase: !!(process.env.INCREASE_API_KEY),
+        sendgrid: !!(process.env.SENDGRID_API_KEY),
+        hostify: !!(process.env.HOSTIFY_API_KEY)
+    };
+
+    let counts = { statements: 0, listings: 0, groups: 0 };
+    try {
+        const [stmtCount, listingCount, groupCount] = await Promise.all([
+            Statement.count(),
+            Listing.count(),
+            ListingGroup.count()
+        ]);
+        counts = { statements: stmtCount, listings: listingCount, groups: groupCount };
+    } catch (e) {
+        // counts stay at 0 if DB is unreachable
+    }
+
+    const mem = process.memoryUsage();
+    res.json({
+        status: 'ok',
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+        version: require('../package.json').version,
+        database: dbInfo,
+        memory: {
+            heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+            heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+            rss: Math.round(mem.rss / 1024 / 1024)
+        },
+        environment: process.env.NODE_ENV || 'development',
+        services,
+        counts
+    });
+});
 
 // User Management - Admin Only
 app.use('/api/users', authenticate, require('./routes/users'));
@@ -1000,6 +1090,69 @@ app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));
 // Analytics - Any authenticated user can view
 app.use('/api/analytics', authenticate, require('./routes/analytics'));
 
+// Analytics Events - Frontend usage tracking (POST: any user, GET /summary: admin-only via router)
+app.use('/api/analytics-events', authenticate, require('./routes/analytics-events'));
+
+// Application Metrics - Admin only
+app.get('/api/metrics', authenticate, requireAdmin, (req, res) => {
+    res.json(metrics.getSnapshot());
+});
+app.get('/api/metrics/summary', authenticate, requireAdmin, (req, res) => {
+    res.json(metrics.getSummary());
+});
+app.post('/api/metrics/reset', authenticate, requireAdmin, (req, res) => {
+    metrics.reset();
+    res.json({ success: true, message: 'Metrics reset' });
+});
+
+// Application Logs - Admin only (persistent logs from DB)
+app.get('/api/logs', authenticate, requireAdmin, async (req, res) => {
+    try {
+        const { Op } = require('sequelize');
+        const { AppLog } = require('./models');
+        const { level, context, limit = 100, offset = 0, since } = req.query;
+
+        const where = {};
+        if (level) where.level = level;
+        if (context) where.context = { [Op.like]: `%${context}%` };
+        if (since) where.timestamp = { [Op.gte]: new Date(since) };
+
+        const { count: total, rows: logs } = await AppLog.findAndCountAll({
+            where,
+            order: [['timestamp', 'DESC']],
+            limit: Math.min(parseInt(limit) || 100, 500),
+            offset: parseInt(offset) || 0
+        });
+
+        res.json({ logs, total });
+    } catch (error) {
+        logger.error('Failed to fetch logs', { context: 'LogsAPI', error: error.message });
+        res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+});
+
+app.delete('/api/logs', authenticate, requireAdmin, async (req, res) => {
+    try {
+        const { Op } = require('sequelize');
+        const { AppLog } = require('./models');
+        const { before } = req.query;
+
+        const where = {};
+        if (before) {
+            where.timestamp = { [Op.lt]: new Date(before) };
+        } else {
+            // Default: delete logs older than 7 days
+            where.timestamp = { [Op.lt]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+        }
+
+        const deleted = await AppLog.destroy({ where });
+        res.json({ success: true, deleted });
+    } catch (error) {
+        logger.error('Failed to delete logs', { context: 'LogsAPI', error: error.message });
+        res.status(500).json({ error: 'Failed to delete logs' });
+    }
+});
+
 // ================================
 // FRONTEND ROUTES
 // ================================
@@ -1066,6 +1219,9 @@ async function startServer() {
         logger.info('Initializing database...');
         await syncDatabase();
         logger.info('Database initialized successfully');
+
+        // Initialize database transport for persistent logging
+        await logger.initDbTransport();
 
         // Sync listings from Hostify on startup (runs in background)
         logger.info('Syncing listings from Hostify...');

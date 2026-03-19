@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'rea
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI, tagScheduleAPI } from '../services/api';
+import { analytics } from '../services/analytics';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
@@ -99,6 +100,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const page = PATH_TO_PAGE[location.pathname] || 'dashboard';
     setCurrentPageState(page);
   }, [location.pathname]);
+
+  // Track page views when the current page changes
+  useEffect(() => {
+    analytics.trackPageView(currentPage);
+  }, [currentPage]);
 
   // Navigate to URL and update state
   const setCurrentPage = (page: Page) => {
@@ -400,6 +406,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     generateCombined?: boolean;
   }) => {
     // No toast here - the modal has its own loading overlay
+    const isBulk = data.ownerId === 'all' || (data.tag && !data.propertyId && !data.generateCombined);
+    analytics.trackFeatureUsage('statement_generation', {
+      calculationType: data.calculationType,
+      isBulk,
+      tag: data.tag ?? null,
+    });
 
     try {
       const response = await statementsAPI.generateStatement(data);
@@ -576,6 +588,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           showToast(`Failed to open statement: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
         }
       } else if (action === 'download') {
+        analytics.trackFeatureUsage('pdf_download', { statementId: id });
         // Show loading toast
         const toastId = showToast('Preparing PDF download...', 'loading');
 
@@ -728,6 +741,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'pay-owner') {
+        analytics.trackFeatureUsage('payout_initiation', { statementId: id });
         // Find the statement to get its info
         const statement = statements.find(s => s.id === id);
         if (!statement) {
@@ -839,6 +853,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleBulkAction = async (ids: number[], action: 'download' | 'regenerate' | 'delete' | 'finalize' | 'revert-to-draft' | 'export-csv' | 'send-email' | 'pay-owner') => {
     if (ids.length === 0) return;
 
+    analytics.trackFeatureUsage(`bulk_${action}`, { count: ids.length });
     setBulkProcessing(true);
 
     if (action === 'download') {
