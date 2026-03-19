@@ -14,7 +14,9 @@ module.exports = {
     'cleaningFeePassThrough.integration.test.js',
     'combined-statement-fixes.test.js',
     // Old version replaced by calendarConversion.jest.test.js
-    'calendarConversion.test.js'
+    'calendarConversion.test.js',
+    // Increase payout tests require sandbox API keys
+    'increase-payout.jest.test.js'
   ],
   verbose: true
 };
