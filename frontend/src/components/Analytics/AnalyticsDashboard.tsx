@@ -1381,13 +1381,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     return {
       tooltip: {
         trigger: 'item',
-        backgroundColor: 'white',
-        borderColor: '#e5e7eb',
+        backgroundColor: cTooltipBg,
+        borderColor: cTooltipBorder,
         borderWidth: 1,
-        textStyle: { color: cText, fontSize: 12 },
+        textStyle: { color: cTooltipText, fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
-                  <div class="text-gray-500 dark:text-gray-400">${formatFullCurrency(params.value)} (${params.percent.toFixed(1)}%)</div>`;
+                  <div style="color:${cSubText}">${formatFullCurrency(params.value)} (${params.percent.toFixed(1)}%)</div>`;
         },
       },
       series: [{
@@ -1403,7 +1403,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         })),
       }],
     };
-  }, [ownerChartData]);
+  }, [ownerChartData, cSubText, cTooltipBg, cTooltipBorder, cTooltipText]);
 
   // Monthly comparison chart options
   const monthlyComparisonChartOption = useMemo(() => {
@@ -1521,7 +1521,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       ],
     };
-  }, [monthlyComparisonData]);
+  }, [monthlyComparisonData, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
 
   // Handle period change
   const handlePeriodChange = (preset: string) => {
