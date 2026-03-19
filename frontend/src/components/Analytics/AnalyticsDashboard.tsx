@@ -1080,7 +1080,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [trendData, chartColors]);
+  }, [trendData, isDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Payout trend chart options
   const payoutTrendChartOption = useMemo(() => {
@@ -1137,7 +1137,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [payoutTrendData, chartColors]);
+  }, [payoutTrendData, isDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Expense breakdown chart options
   const expenseChartOption = useMemo(() => {
@@ -1171,7 +1171,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         })),
       }],
     };
-  }, [expenseData, chartColors]);
+  }, [expenseData, isDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Statement status donut chart options
   const statementStatusChartOption = useMemo(() => {
@@ -1228,7 +1228,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         data: data,
       }],
     };
-  }, [statementStatusData, chartColors]);
+  }, [statementStatusData, isDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property performance data
   const allPropertyData = useMemo(() => {
@@ -1360,7 +1360,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       ],
     };
-  }, [propertyChartData, chartColors]);
+  }, [propertyChartData, isDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Owner breakdown chart data
   const ownerChartData = useMemo(() => {
