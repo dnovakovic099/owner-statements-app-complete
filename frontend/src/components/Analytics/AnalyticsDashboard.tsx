@@ -41,6 +41,7 @@ import { usePayoutTrend } from './hooks/usePayoutTrend';
 import { useDamageCoverage, DamageCoverageItem } from './hooks/useDamageCoverage';
 import { usePropertyFinancials, PropertyFinancialItem } from './hooks/usePropertyFinancials';
 import { useToast } from '../ui/toast';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AnalyticsDashboardProps {
   onBack?: () => void;
@@ -257,6 +258,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   };
 
   const { showToast } = useToast();
+  const { isDark } = useTheme();
+
+  // Chart theme colors
+  const chartColors = isDark
+    ? { bg: 'transparent', text: '#d1d5db', subText: '#9ca3af', border: '#374151', splitLine: '#374151', tooltipBg: '#1f2937', tooltipBorder: '#374151', tooltipText: '#f3f4f6' }
+    : { bg: 'transparent', text: '#374151', subText: '#6b7280', border: '#e5e7eb', splitLine: '#f3f4f6', tooltipBg: '#ffffff', tooltipBorder: '#e5e7eb', tooltipText: '#374151' };
 
   // State
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
@@ -1025,7 +1032,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         backgroundColor: 'white',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.text, fontSize: 12 },
         formatter: (params: any) => {
           const data = params[0];
           return `<div class="font-medium">${data.name}</div>
@@ -1036,17 +1043,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       xAxis: {
         type: 'category',
         data: trends.map((t: any) => t.period),
-        axisLine: { lineStyle: { color: '#e5e7eb' } },
-        axisLabel: { color: '#6b7280', fontSize: 11 },
+        axisLine: { lineStyle: { color: chartColors.border } },
+        axisLabel: { color: chartColors.subText, fontSize: 11 },
         axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: chartColors.splitLine, type: 'dashed' } },
         axisLabel: {
-          color: '#6b7280',
+          color: chartColors.subText,
           fontSize: 11,
           formatter: (value: number) => formatCurrency(value),
         },
@@ -1071,7 +1078,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [trendData]);
+  }, [trendData, chartColors]);
 
   // Payout trend chart options
   const payoutTrendChartOption = useMemo(() => {
@@ -1082,7 +1089,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         backgroundColor: 'white',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.text, fontSize: 12 },
         formatter: (params: any) => {
           const data = params[0];
           return `<div class="font-medium">${data.name}</div>
@@ -1093,17 +1100,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       xAxis: {
         type: 'category',
         data: trends.map((t: any) => t.period),
-        axisLine: { lineStyle: { color: '#e5e7eb' } },
-        axisLabel: { color: '#6b7280', fontSize: 11 },
+        axisLine: { lineStyle: { color: chartColors.border } },
+        axisLabel: { color: chartColors.subText, fontSize: 11 },
         axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: chartColors.splitLine, type: 'dashed' } },
         axisLabel: {
-          color: '#6b7280',
+          color: chartColors.subText,
           fontSize: 11,
           formatter: (value: number) => formatCurrency(value),
         },
@@ -1128,7 +1135,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [payoutTrendData]);
+  }, [payoutTrendData, chartColors]);
 
   // Expense breakdown chart options
   const expenseChartOption = useMemo(() => {
@@ -1143,7 +1150,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         backgroundColor: 'white',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.text, fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
                   <div class="text-gray-500 dark:text-gray-400">${formatFullCurrency(params.value)} (${params.percent}%)</div>`;
@@ -1162,7 +1169,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         })),
       }],
     };
-  }, [expenseData]);
+  }, [expenseData, chartColors]);
 
   // Statement status donut chart options
   const statementStatusChartOption = useMemo(() => {
@@ -1192,7 +1199,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         backgroundColor: 'white',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.text, fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
                   <div class="text-gray-500 dark:text-gray-400">${params.value} statements (${params.percent}%)</div>`;
@@ -1219,7 +1226,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         data: data,
       }],
     };
-  }, [statementStatusData]);
+  }, [statementStatusData, chartColors]);
 
   // Property performance data
   const allPropertyData = useMemo(() => {
@@ -1258,11 +1265,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        backgroundColor: '#ffffff',
-        borderColor: '#e5e7eb',
+        backgroundColor: chartColors.tooltipBg,
+        borderColor: chartColors.tooltipBorder,
         borderWidth: 1,
         padding: 12,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.tooltipText, fontSize: 12 },
         formatter: (params: any) => {
           if (!params || params.length === 0) return '';
           const index = params[0].dataIndex;
@@ -1296,7 +1303,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         left: 'center',
         itemWidth: 12,
         itemHeight: 12,
-        textStyle: { color: '#6b7280', fontSize: 11 },
+        textStyle: { color: chartColors.subText, fontSize: 11 },
       },
       grid: {
         left: '3%',
@@ -1309,9 +1316,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: chartColors.splitLine, type: 'dashed' } },
         axisLabel: {
-          color: '#6b7280',
+          color: chartColors.subText,
           fontSize: 11,
           formatter: (value: number) => formatCurrency(value),
         },
@@ -1322,7 +1329,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
-          color: '#374151',
+          color: chartColors.text,
           fontSize: 11,
           width: 140,
           overflow: 'truncate',
@@ -1351,7 +1358,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       ],
     };
-  }, [propertyChartData]);
+  }, [propertyChartData, chartColors]);
 
   // Owner breakdown chart data
   const ownerChartData = useMemo(() => {
@@ -1373,7 +1380,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         backgroundColor: 'white',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.text, fontSize: 12 },
         formatter: (params: any) => {
           return `<div class="font-medium">${params.name}</div>
                   <div class="text-gray-500 dark:text-gray-400">${formatFullCurrency(params.value)} (${params.percent.toFixed(1)}%)</div>`;
@@ -1410,11 +1417,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        backgroundColor: '#ffffff',
-        borderColor: '#e5e7eb',
+        backgroundColor: chartColors.tooltipBg,
+        borderColor: chartColors.tooltipBorder,
         borderWidth: 1,
         padding: 12,
-        textStyle: { color: '#374151', fontSize: 12 },
+        textStyle: { color: chartColors.tooltipText, fontSize: 12 },
         formatter: (params: any) => {
           if (!params || params.length === 0) return '';
           const monthLabel = params[0].name;
@@ -1450,7 +1457,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         left: 'center',
         itemWidth: 12,
         itemHeight: 12,
-        textStyle: { color: '#6b7280', fontSize: 11 },
+        textStyle: { color: chartColors.subText, fontSize: 11 },
       },
       grid: {
         left: '3%',
@@ -1462,17 +1469,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       xAxis: {
         type: 'category',
         data: months,
-        axisLine: { lineStyle: { color: '#e5e7eb' } },
-        axisLabel: { color: '#6b7280', fontSize: 11 },
+        axisLine: { lineStyle: { color: chartColors.border } },
+        axisLabel: { color: chartColors.subText, fontSize: 11 },
         axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: chartColors.splitLine, type: 'dashed' } },
         axisLabel: {
-          color: '#6b7280',
+          color: chartColors.subText,
           fontSize: 11,
           formatter: (value: number) => formatCurrency(value),
         },
