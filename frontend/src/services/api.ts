@@ -1332,4 +1332,16 @@ export const financialsAPI = {
   },
 };
 
+// Application Logs
+export const appLogsAPI = {
+  getLogs: async (params?: { level?: string; context?: string; limit?: number; offset?: number; since?: string }): Promise<{ logs: any[]; total: number }> => {
+    const response = await api.get('/logs', { params });
+    return response.data;
+  },
+  deleteLogs: async (before?: string): Promise<{ success: boolean; deleted: number }> => {
+    const response = await api.delete('/logs', { params: before ? { before } : {} });
+    return response.data;
+  },
+};
+
 export default api;

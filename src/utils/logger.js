@@ -166,19 +166,19 @@ class DatabaseTransport extends Transport {
 }
 
 // ============================================================
-// Auto-cleanup: delete logs older than 30 days
+// Auto-cleanup: delete logs older than 3 days
 // ============================================================
 async function cleanupOldLogs(AppLog) {
     try {
         const { Op } = require('sequelize');
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
         const deleted = await AppLog.destroy({
             where: {
-                timestamp: { [Op.lt]: thirtyDaysAgo }
+                timestamp: { [Op.lt]: threeDaysAgo }
             }
         });
         if (deleted > 0) {
-            console.log(`[Logger] Cleaned up ${deleted} log entries older than 30 days`);
+            console.log(`[Logger] Cleaned up ${deleted} log entries older than 3 days`);
         }
     } catch (err) {
         console.error('[Logger] Failed to cleanup old logs:', err.message);

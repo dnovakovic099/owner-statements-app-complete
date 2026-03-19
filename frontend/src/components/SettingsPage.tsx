@@ -26,7 +26,7 @@ import {
   Plus,
   ChevronDown
 } from 'lucide-react';
-import { usersAPI, activityLogAPI, User, ActivityLogEntry } from '../services/api';
+import { usersAPI, activityLogAPI, appLogsAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
 import ConfirmDialog from './ui/confirm-dialog';
 
@@ -81,7 +81,7 @@ interface TagSchedule {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, currentUserEmail, hideSidebar = false }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'schedules'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'schedules' | 'appLogs'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +125,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     return (stored as 'asc' | 'desc') || 'desc';
   });
 
+  // Application logs state
+  const [appLogs, setAppLogs] = useState<any[]>([]);
+  const [appLogsLoading, setAppLogsLoading] = useState(false);
+  const [appLogsTotal, setAppLogsTotal] = useState(0);
+  const [appLogsLevel, setAppLogsLevel] = useState('');
+  const [appLogsOffset, setAppLogsOffset] = useState(0);
+
   // Invite modal state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -152,13 +159,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     loadUsers();
   }, []);
 
-  // Load schedules when tab changes
+  // Load schedules / app logs when tab changes
   useEffect(() => {
     if (activeTab === 'schedules') {
       loadSchedules();
     }
+    if (activeTab === 'appLogs') {
+      loadAppLogs();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  const loadAppLogs = async (offset = 0, level = appLogsLevel) => {
+    setAppLogsLoading(true);
+    try {
+      const params: any = { limit: 50, offset };
+      if (level) params.level = level;
+      const data = await appLogsAPI.getLogs(params);
+      setAppLogs(data.logs || []);
+      setAppLogsTotal(data.total || 0);
+      setAppLogsOffset(offset);
+    } catch (err) {
+      showToast('Failed to load application logs', 'error');
+    }
+    setAppLogsLoading(false);
+  };
 
   // Schedule management functions
   const getAuthHeaders = (): Record<string, string> => {
@@ -647,6 +672,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             >
               <Calendar className="w-4 h-4 mr-2" />
               Schedules
+            </button>
+            <button
+              onClick={() => setActiveTab('appLogs')}
+              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'appLogs'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Application Logs
             </button>
           </div>
 
@@ -1621,6 +1657,107 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Application Logs Tab */}
+      {activeTab === 'appLogs' && (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center">
+              <AlertCircle className="w-5 h-5 text-gray-600 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">Application Logs</h2>
+              <span className="ml-3 text-sm text-gray-500">{appLogsTotal} entries (3-day retention)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={appLogsLevel}
+                onChange={(e) => { setAppLogsLevel(e.target.value); loadAppLogs(0, e.target.value); }}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+              >
+                <option value="">All Levels</option>
+                <option value="error">Error</option>
+                <option value="warn">Warning</option>
+              </select>
+              <button
+                onClick={() => loadAppLogs(0, appLogsLevel)}
+                className="flex items-center px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {appLogsLoading ? (
+            <div className="p-8 text-center text-gray-500">Loading logs...</div>
+          ) : appLogs.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>No application logs found</p>
+              <p className="text-xs mt-1">Error and warning logs appear here automatically</p>
+            </div>
+          ) : (
+            <>
+              <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+                {appLogs.map((log: any) => {
+                  const meta = typeof log.metadata === 'string' ? (() => { try { return JSON.parse(log.metadata); } catch { return null; } })() : log.metadata;
+                  const ts = new Date(log.timestamp);
+                  const timeStr = ts.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  return (
+                    <div key={log.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <span className={`flex-shrink-0 mt-0.5 px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                          log.level === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {log.level}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900 break-words">{log.message}</p>
+                          {log.context && (
+                            <span className="text-xs text-gray-400 mr-2">[{log.context}]</span>
+                          )}
+                          {meta && (
+                            <details className="mt-1">
+                              <summary className="text-xs text-blue-600 cursor-pointer hover:underline">Details</summary>
+                              <pre className="mt-1 text-xs bg-gray-50 p-2 rounded overflow-x-auto max-h-32 text-gray-600">
+                                {JSON.stringify(meta, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                        <span className="flex-shrink-0 text-xs text-gray-400 whitespace-nowrap">{timeStr}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Pagination */}
+              {appLogsTotal > 50 && (
+                <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between">
+                  <span className="text-sm text-gray-500">
+                    Showing {appLogsOffset + 1}–{Math.min(appLogsOffset + 50, appLogsTotal)} of {appLogsTotal}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={appLogsOffset === 0}
+                      onClick={() => loadAppLogs(Math.max(0, appLogsOffset - 50))}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-gray-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      disabled={appLogsOffset + 50 >= appLogsTotal}
+                      onClick={() => loadAppLogs(appLogsOffset + 50)}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-gray-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
