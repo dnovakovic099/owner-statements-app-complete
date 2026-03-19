@@ -200,55 +200,55 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom Actions Bar */}
       <div className="px-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 relative" ref={notificationRef}>
-        <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between'}`}>
-          <div className={`flex items-center gap-1 ${collapsed ? 'flex-col' : ''}`}>
-            {/* New Listings Notifications Button */}
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'gap-1'}`}>
+          {/* New Listings Notifications Button */}
+          <button
+            onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
+            className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 ${
+              isNotificationOpen
+                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+            title="New Listings"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Schedule Reminders Button */}
+          <div ref={scheduleRef} className="relative">
             <button
-              onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
-              className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
-                isNotificationOpen
-                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600'
+              onClick={() => { setIsScheduleOpen(!isScheduleOpen); setIsNotificationOpen(false); }}
+              className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 ${
+                isScheduleOpen
+                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
-              title="New Listings"
+              title="Schedule Reminders"
             >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
-                  {unreadCount > 99 ? '99+' : unreadCount}
+              <CalendarClock className="w-4 h-4" />
+              {scheduleUnreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
+                  {scheduleUnreadCount > 9 ? '9+' : scheduleUnreadCount}
                 </span>
               )}
             </button>
-
-            {/* Schedule Reminders Button */}
-            <div ref={scheduleRef} className="relative">
-              <button
-                onClick={() => { setIsScheduleOpen(!isScheduleOpen); setIsNotificationOpen(false); }}
-                className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 ${
-                  isScheduleOpen
-                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-                title="Schedule Reminders"
-              >
-                <CalendarClock className="w-5 h-5" />
-                {scheduleUnreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[9px] min-w-[14px] h-[14px] flex items-center justify-center rounded-full font-bold leading-none">
-                    {scheduleUnreadCount > 9 ? '9+' : scheduleUnreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            >
-              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
           </div>
+
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className="relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
+          {!collapsed && <div className="flex-1" />}
 
           {/* Collapse Toggle */}
           <button
