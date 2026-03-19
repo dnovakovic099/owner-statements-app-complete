@@ -15,7 +15,10 @@ import {
   CreditCard,
   Info,
   XCircle,
+  Sun,
+  Moon,
 } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
 import { tagScheduleAPI } from '../../services/api';
 
 type Page = 'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics';
@@ -91,6 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNotificationClick,
   readListingIds,
 }) => {
+  const { theme, setTheme, isDark } = useTheme();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -141,7 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-200 ease-in-out z-40 print:hidden ${
+      className={`fixed left-0 top-0 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-200 ease-in-out z-40 print:hidden ${
         collapsed ? 'w-16' : 'w-60'
       }`}
     >
@@ -508,6 +512,20 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </div>
+
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={() => setTheme(isDark ? 'light' : 'dark')}
+          className={`flex items-center ${
+            collapsed
+              ? 'justify-center w-9 h-9 mt-1'
+              : 'w-full px-3 py-2 mt-2'
+          } rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {!collapsed && <span className="ml-2 text-sm font-medium">{isDark ? 'Light Mode' : 'Dark Mode'}</span>}
+        </button>
 
         {/* Logout Button - Separate Row */}
         <button

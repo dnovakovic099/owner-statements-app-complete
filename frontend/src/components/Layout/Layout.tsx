@@ -105,7 +105,7 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   return (
-    <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
+    <div className="h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden flex flex-col">
       {/* Mobile Header Bar */}
       {isMobile && (
         <header className="fixed top-0 left-0 right-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 z-30 print:hidden">
