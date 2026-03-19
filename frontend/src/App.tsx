@@ -5,6 +5,7 @@ import { ToastProvider } from './components/ui/toast';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import AcceptInvite from './components/AcceptInvite';
+import { useVersionCheck } from './hooks/useVersionCheck';
 import './App.css';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -86,6 +87,8 @@ function AppRoutes() {
 }
 
 function App() {
+  useVersionCheck();
+
   return (
     <BrowserRouter>
       <AuthProvider>
