@@ -115,6 +115,10 @@ logger.logError = (error, context = {}) => {
         stack: error.stack,
         name: error.name,
     });
+
+    // Also send to Sentry if configured
+    const monitoring = require('./monitoring');
+    monitoring.captureException(error, context);
 };
 
 logger.logDuration = (operation, startTime, meta = {}) => {

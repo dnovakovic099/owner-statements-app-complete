@@ -7,6 +7,7 @@ const ListingService = require('../services/ListingService');
 const StatementCalculationService = require('../services/StatementCalculationService');
 const { ActivityLog } = require('../models');
 const { decryptOptional } = require('../utils/fieldEncryption');
+const pdfCache = require('../utils/pdfCache');
 
 const isLlCoverExpense = (expense) => Boolean(expense && expense.llCover && expense.llCover !== 0);
 const isHiddenItem = (item) => Boolean(item && item.hidden);
@@ -1948,6 +1949,9 @@ router.put('/:id/status', async (req, res) => {
         // Save updated statement
         await FileDataService.saveStatement(statement);
 
+        // Invalidate cached PDF since statement changed
+        pdfCache.invalidate(id);
+
         // Log activity with proper fallbacks
         const propertyName = statement.propertyName || statement.propertyNames || `Statement #${id}`;
         await ActivityLog.log(req, 'STATUS_UPDATE', 'statement', id, {
@@ -2522,6 +2526,10 @@ router.put('/:id/reconfigure', async (req, res) => {
         };
 
         await FileDataService.updateStatement(id, updatedStatement);
+
+        // Invalidate cached PDF since statement was reconfigured
+        pdfCache.invalidate(id);
+
         const refreshedStatement = await FileDataService.getStatementById(id);
 
         res.json({
@@ -2963,6 +2971,9 @@ router.put('/:id', async (req, res) => {
             // Save updated statement (Sequelize will automatically update the timestamp)
             const updatedStatement = await FileDataService.saveStatement(statement);
 
+            // Invalidate cached PDF since statement was edited
+            pdfCache.invalidate(id);
+
             // Use the updated statement data from database
             statement.updatedAt = updatedStatement.updatedAt || updatedStatement.updated_at;
 
@@ -3012,6 +3023,9 @@ router.delete('/:id', async (req, res) => {
 
         // Delete the statement
         await FileDataService.deleteStatement(id);
+
+        // Invalidate cached PDF for deleted statement
+        pdfCache.invalidate(id);
 
         // Log activity with proper fallbacks
         const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${id}`;
@@ -6324,10 +6338,16 @@ router.post('/bulk-download', async (req, res) => {
                     continue;
                 }
 
-                // Fetch HTML using improved helper with 127.0.0.1
-                const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
-                const file = { content: statementHTML };
-                const pdfBuffer = await htmlPdf.generatePdf(file, pdfOptions);
+                // Check PDF cache first
+                const bulkUpdatedAt = statement.updatedAt || statement.updated_at || '';
+                let pdfBuffer = pdfCache.get(id, bulkUpdatedAt);
+                if (!pdfBuffer) {
+                    // Fetch HTML using improved helper with 127.0.0.1
+                    const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
+                    const file = { content: statementHTML };
+                    pdfBuffer = await htmlPdf.generatePdf(file, pdfOptions);
+                    pdfCache.set(id, bulkUpdatedAt, pdfBuffer);
+                }
 
                 // Generate filename
                 let propertyNickname = 'Statement';
@@ -6382,42 +6402,57 @@ router.get('/:id/download', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
-        const htmlPdf = require('html-pdf-node');
+        // Check PDF cache first
+        const statementUpdatedAt = statement.updatedAt || statement.updated_at || '';
+        const cachedBuffer = pdfCache.get(id, statementUpdatedAt);
+        let pdfBuffer;
+        let cacheStatus;
 
-        // Use the improved HTTP helper with 127.0.0.1 instead of localhost
-        // This works more reliably in containerized environments like Railway
-        const authHeader = req.headers.authorization;
-        const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
+        if (cachedBuffer) {
+            pdfBuffer = cachedBuffer;
+            cacheStatus = 'HIT';
+        } else {
+            const htmlPdf = require('html-pdf-node');
 
-        const options = {
-            format: 'A4',
-            landscape: false, // Use portrait orientation
-            margin: {
-                top: '10mm',
-                right: '10mm',
-                bottom: '10mm',
-                left: '10mm'
-            },
-            printBackground: true, // Ensure backgrounds are printed
-            preferCSSPageSize: false,
-            displayHeaderFooter: false,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-extensions'
-            ],
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-        };
+            // Use the improved HTTP helper with 127.0.0.1 instead of localhost
+            // This works more reliably in containerized environments like Railway
+            const authHeader = req.headers.authorization;
+            const statementHTML = await fetchStatementHTMLViaHTTP(id, authHeader);
 
-        const file = { content: statementHTML };
+            const options = {
+                format: 'A4',
+                landscape: false, // Use portrait orientation
+                margin: {
+                    top: '10mm',
+                    right: '10mm',
+                    bottom: '10mm',
+                    left: '10mm'
+                },
+                printBackground: true, // Ensure backgrounds are printed
+                preferCSSPageSize: false,
+                displayHeaderFooter: false,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-extensions'
+                ],
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+            };
 
-        // Generate PDF
-        const pdfBuffer = await htmlPdf.generatePdf(file, options);
+            const file = { content: statementHTML };
+
+            // Generate PDF
+            pdfBuffer = await htmlPdf.generatePdf(file, options);
+
+            // Store in cache for subsequent requests
+            pdfCache.set(id, statementUpdatedAt, pdfBuffer);
+            cacheStatus = 'MISS';
+        }
 
         // Get property nickname for filename (nickname only, no ID)
         let propertyNickname = 'Statement';
@@ -6467,6 +6502,7 @@ router.get('/:id/download', async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdfBuffer.length);
+        res.setHeader('X-PDF-Cache', cacheStatus);
 
         // Send PDF buffer
         res.send(pdfBuffer);

@@ -8,6 +8,8 @@ module.exports = {
     '/frontend/',
     // Integration tests that require running server
     'api-integration.test.js',
+    'api-routes.jest.test.js',
+    'api-auth.jest.test.js',
     'calendarConversion.integration.test.js',
     'cleaningFeePassThrough.integration.test.js',
     'combined-statement-fixes.test.js',

@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+const monitoring = require('./utils/monitoring');
 const logger = require('./utils/logger');
 
 // Database initialization
@@ -16,6 +17,10 @@ const TagScheduleService = require('./services/TagScheduleService');
 
 // Authentication middleware
 const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
+
+// Security middleware
+const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter } = require('./middleware/rateLimiter');
+const sanitize = require('./middleware/sanitize');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -76,6 +81,9 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Input sanitization — trim strings and strip HTML tags from request bodies
+app.use(sanitize);
+
 // Rate limiting configuration
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -108,6 +116,15 @@ app.use('/api/auth/login', authLimiter);
 // Limit statement generation (expensive operation)
 app.use('/api/statements/generate', statementGenerationLimiter);
 
+// Additional hardened rate limiters (from middleware/rateLimiter module)
+// Strict auth limiter: 5 req / 15 min for all auth routes
+app.use('/api/auth', authRateLimiter);
+// General API limiter: 100 req / 15 min (layered on top of the broader generalLimiter)
+app.use('/api/', apiLimiter);
+// Payout operation limiter: 10 req / 15 min for financial payout endpoints
+app.use('/api/payouts/fund-and-queue', payoutLimiter);
+app.use('/api/payouts/statements/:id/pay', payoutLimiter);
+
 // Static files - serve React build and public files
 const reactBuildPath = path.join(__dirname, '../frontend/build');
 if (fs.existsSync(reactBuildPath)) {
@@ -115,6 +132,9 @@ if (fs.existsSync(reactBuildPath)) {
 }
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Sentry request handler (must be before routes)
+if (monitoring.isConfigured()) app.use(monitoring.requestHandler());
 
 // ================================
 // PUBLIC ROUTES (No Authentication)
@@ -966,7 +986,10 @@ const startQueuedPayoutChecker = () => {
     }, CHECK_INTERVAL);
     logger.info('Queued payout checker started - checking every 5 minutes');
 };
-startQueuedPayoutChecker();
+// Only start the background checker when running as main process (not during tests)
+if (require.main === module) {
+    startQueuedPayoutChecker();
+}
 
 // Tag Schedules - Editors/Admins
 app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
@@ -1010,8 +1033,12 @@ app.use((req, res, next) => {
     }
 });
 
+// Sentry error handler (must be after routes, before global error handler)
+if (monitoring.isConfigured()) app.use(monitoring.errorHandler());
+
 // Global error handler
 app.use((err, req, res, next) => {
+    monitoring.captureException(err);
     logger.error('Unhandled error', { error: err.message, stack: err.stack });
 
     // Don't leak error details in production
@@ -1125,6 +1152,9 @@ process.on('unhandledRejection', (reason) => {
     });
 });
 
-startServer();
+// Only start the server when this file is run directly (not when imported by tests)
+if (require.main === module) {
+    startServer();
+}
 
 module.exports = app;

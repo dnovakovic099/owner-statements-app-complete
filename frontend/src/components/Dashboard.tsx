@@ -5,14 +5,14 @@ import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI,
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
-import ListingsPage from './ListingsPage';
-import EmailDashboard from './EmailDashboard';
-import SettingsPage from './SettingsPage';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
 import { Layout } from './Layout';
 
-// Lazy load modals for better initial bundle size
+// Lazy load pages and modals for better initial bundle size
+const ListingsPage = lazy(() => import('./ListingsPage'));
+const EmailDashboard = lazy(() => import('./EmailDashboard'));
+const SettingsPage = lazy(() => import('./SettingsPage'));
 const GenerateModal = lazy(() => import('./GenerateModal'));
 const UploadModal = lazy(() => import('./UploadModal'));
 const EditStatementModal = lazy(() => import('./EditStatementModal'));
@@ -1380,19 +1380,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const renderContent = () => {
     if (currentPage === 'listings') {
       return (
-        <ListingsPage
-          onBack={() => {
-            setCurrentPage('dashboard');
-            setSelectedListingId(null);
-          }}
-          initialSelectedListingId={selectedListingId}
-          newListings={newListings}
-          readListingIds={readListingIds}
-          onMarkAsRead={markAsRead}
-          onMarkAllAsRead={markAllAsRead}
-          onOpenEmailDashboard={() => setCurrentPage('email')}
-          hideSidebar={true}
-        />
+        <Suspense fallback={<LoadingSpinner />}>
+          <ListingsPage
+            onBack={() => {
+              setCurrentPage('dashboard');
+              setSelectedListingId(null);
+            }}
+            initialSelectedListingId={selectedListingId}
+            newListings={newListings}
+            readListingIds={readListingIds}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
+            onOpenEmailDashboard={() => setCurrentPage('email')}
+            hideSidebar={true}
+          />
+        </Suspense>
       );
     }
 
@@ -1414,21 +1416,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     if (currentPage === 'email') {
       return (
-        <EmailDashboard
-          onBack={() => setCurrentPage('dashboard')}
-          hideSidebar={true}
-        />
+        <Suspense fallback={<LoadingSpinner />}>
+          <EmailDashboard
+            onBack={() => setCurrentPage('dashboard')}
+            hideSidebar={true}
+          />
+        </Suspense>
       );
     }
 
     if (currentPage === 'settings') {
       return (
-        <SettingsPage
-          onBack={() => setCurrentPage('dashboard')}
-          currentUserRole={user?.role || 'admin'}
-          currentUserEmail={user?.email || ''}
-          hideSidebar={true}
-        />
+        <Suspense fallback={<LoadingSpinner />}>
+          <SettingsPage
+            onBack={() => setCurrentPage('dashboard')}
+            currentUserRole={user?.role || 'admin'}
+            currentUserEmail={user?.email || ''}
+            hideSidebar={true}
+          />
+        </Suspense>
       );
     }
 
