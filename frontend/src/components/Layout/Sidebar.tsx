@@ -238,16 +238,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                 )}
               </button>
-
-              {/* Dark Mode Toggle */}
-              <button
-                onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
-                title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              >
-                {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
             </div>
+
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"
+              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
           </div>
 
           {/* Collapse Toggle */}
