@@ -41,6 +41,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 }) => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedListingId, setSelectedListingId] = useState<number | null>(initialSelectedListingId || null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -395,6 +396,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       setError(err instanceof Error ? err.message : 'Failed to load listings');
     } finally {
       setLoading(false);
+      setInitialLoadDone(true);
     }
   };
 
@@ -717,7 +719,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     return listing.displayName || listing.nickname || listing.name;
   };
 
-  if (loading) {
+  if (loading && !initialLoadDone) {
     return <LoadingSpinner />;
   }
 
@@ -1143,9 +1145,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
             {/* Listings List - Scrollable */}
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-              {filteredListings.length === 0 ? (
+              {loading && initialLoadDone ? (
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mb-2" />
+                  <p className="text-sm">Loading listings...</p>
+                </div>
+              ) : filteredListings.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-4">
-                  No listings found
+                  {(searchTerm || activeFilterCount > 0) ? 'No listings match your search' : 'No listings found'}
                 </p>
               ) : (
                 <>

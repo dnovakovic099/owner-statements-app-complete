@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Copy, Download, ExternalLink, RefreshCw } from 'lucide-react';
+import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Copy, Download, ExternalLink, RefreshCw, Info } from 'lucide-react';
 import { groupsAPI, listingsAPI, payoutsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types/index';
 import { Button } from './ui/button';
@@ -550,13 +550,18 @@ const PayoutAccountsPage: React.FC = () => {
       accessorFn: (row) => row.wiseRecipientId || '',
       size: 220,
       header: ({ column }) => (
-        <button
-          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 mx-auto"
-        >
-          Increase Account
-          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
-        </button>
+        <div className="flex items-center gap-1 mx-auto">
+          <button
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+          >
+            Increase Account
+            <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          </button>
+          <span title="External account ID from Increase for ACH payouts">
+            <Info className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+          </span>
+        </div>
       ),
       cell: ({ row }) => {
         const rowKey = getRowKey(row.original);
@@ -735,8 +740,38 @@ const PayoutAccountsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
+      <div className="h-full flex flex-col overflow-hidden">
+        <div className="bg-white border-b border-gray-200 px-3 py-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-purple-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Payout Accounts (Increase)</h2>
+          </div>
+          <p className="text-sm text-gray-400 mt-0.5">Loading payout connections...</p>
+        </div>
+        <div className="flex-1 overflow-auto px-3 py-2">
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  {['Name', 'Type', 'Owner Email', 'Schedule', 'Increase Account', 'Status', 'Listings'].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...Array(6)].map((_, i) => (
+                  <tr key={i} className="border-b last:border-b-0">
+                    {[...Array(7)].map((_, j) => (
+                      <td key={j} className="px-3 py-3">
+                        <div className={`h-4 bg-gray-200 rounded animate-pulse ${j === 0 ? 'w-36' : j === 4 ? 'w-28' : 'w-20'}`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }

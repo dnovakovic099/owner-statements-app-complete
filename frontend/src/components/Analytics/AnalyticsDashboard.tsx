@@ -218,9 +218,12 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         };
       }
       case 'alltime': {
-        // All time - go back 10 years to capture everything
+        // All time - go back 5 years from today
+        const fiveYearsAgo = new Date();
+        fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+        const allTimeStart = fiveYearsAgo.toISOString().split('T')[0];
         return {
-          start: '2020-01-01',
+          start: allTimeStart,
           end: today.toISOString().split('T')[0],
         };
       }
@@ -1576,7 +1579,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
           </div>
           <div className="flex-1 min-w-0" />
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <div className="flex flex-wrap items-center bg-gray-100 rounded-lg p-1">
               {periodOptions.map((option) => (
                 <button
                   key={option.value}

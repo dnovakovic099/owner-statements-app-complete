@@ -212,6 +212,7 @@ const GroupsPage: React.FC = () => {
         return (
           <button
             onClick={() => toggleExpand(row.original.id)}
+            aria-expanded={isExpanded}
             className={`p-1 rounded transition-colors ${isExpanded ? 'text-purple-600 bg-purple-50' : 'text-gray-400 hover:text-gray-600'}`}
           >
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -336,8 +337,8 @@ const GroupsPage: React.FC = () => {
         const status = group.wiseStatus || 'pending';
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
           verified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Connected' },
-          pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
-          requires_action: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-500', label: 'Action Required' },
+          pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Pending' },
+          requires_action: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Action Required' },
           missing: { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', dot: 'bg-gray-400', label: 'Not Set' },
         };
         const c = config[status] || config.pending;
@@ -368,6 +369,7 @@ const GroupsPage: React.FC = () => {
           <div className="flex justify-center">
             <button
               onClick={() => toggleExpand(row.original.id)}
+              aria-expanded={expandedGroupId === row.original.id}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors border border-purple-200"
             >
               <Home className="w-3 h-3" />

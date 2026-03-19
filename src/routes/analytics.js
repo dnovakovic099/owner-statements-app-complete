@@ -973,7 +973,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             // merely "poke into" the range from outside (e.g. a weekly Jan 27–Feb 2
             // when the query is Feb 1–28) are correctly seen as already covered.
             // When a wider interval subsumes a narrower one, remove the narrower one.
-            const propSelected = []; // { id, effS?, effE? }
+            let propSelected = []; // { id, effS?, effE? }
             for (const row of propRows) {
                 const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
                 const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
@@ -984,11 +984,10 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                         const alreadyCovered = propSelected.some(p => p.effS !== undefined && p.effS <= effS && p.effE >= effE);
                         if (alreadyCovered) continue;
                         // Remove any previously selected entries whose range is fully contained by this wider one
-                        for (let i = propSelected.length - 1; i >= 0; i--) {
-                            if (propSelected[i].effS !== undefined && effS <= propSelected[i].effS && effE >= propSelected[i].effE) {
-                                propSelected.splice(i, 1);
-                            }
-                        }
+                        // (filter instead of splice to avoid O(n²) array shifting)
+                        propSelected = propSelected.filter(p =>
+                            !(p.effS !== undefined && effS <= p.effS && effE >= p.effE)
+                        );
                         propSelected.push({ id: row.id, effS, effE });
                         continue;
                     }
@@ -1124,20 +1123,36 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             }
         }
 
-        // Fetch listing metadata (display name, PM fee percentage) for result enrichment
+        // Fetch listing metadata (display name, PM fee percentage) for result enrichment.
+        // When includeZero is true, fetch ALL active listings in a single query (also used
+        // below to add zero-statement listings), avoiding a second Listing.findAll.
         const allPropertyIds = Array.from(propertyMap.keys()).map(id => parseInt(id)).filter(id => id && !isNaN(id));
         const listingMap = new Map();
-        if (allPropertyIds.length > 0) {
-            try {
+        let allListings = [];
+        try {
+            if (includeZero === 'true') {
+                // Single query: all active listings (superset of allPropertyIds)
+                const listingWhere = { isActive: true };
+                if (groupId) {
+                    listingWhere.groupId = groupId;
+                }
+                allListings = await Listing.findAll({
+                    attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage', 'tags'],
+                    where: listingWhere,
+                    raw: true
+                });
+                allListings.forEach(l => listingMap.set(parseInt(l.id), l));
+            } else if (allPropertyIds.length > 0) {
+                // Only fetch listings that have statements
                 const listings = await Listing.findAll({
                     attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage'],
                     where: { id: { [Op.in]: allPropertyIds } },
                     raw: true
                 });
                 listings.forEach(l => listingMap.set(parseInt(l.id), l));
-            } catch (e) {
-                logger.warn('Could not fetch listing PM fees', { error: e.message });
             }
+        } catch (e) {
+            logger.warn('Could not fetch listing metadata', { error: e.message });
         }
 
         let results = Array.from(propertyMap.values());
@@ -1171,51 +1186,33 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         });
 
         // When includeZero is true, also include listings that have NO statements at all
+        // (uses allListings already fetched above — no additional DB query needed)
         if (includeZero === 'true') {
-            try {
-                const listingWhere = { isActive: true };
-                if (ownerId && ownerId !== 'default') {
-                    // Filter by owner — match listings whose ownerEmail/ownerGreeting relates to the owner
-                    // Since listings don't have ownerId directly, we skip this filter for zero-statement listings
+            const existingIds = new Set(results.map(r => String(r.propertyId)));
+            for (const listing of allListings) {
+                if (existingIds.has(String(listing.id))) continue;
+                // Apply tag filter if specified
+                if (tag) {
+                    const listingTags = listing.tags || '';
+                    if (!listingTags.toLowerCase().includes(tag.toLowerCase())) continue;
                 }
-                if (groupId) {
-                    listingWhere.groupId = groupId;
-                }
-
-                const allListings = await Listing.findAll({
-                    attributes: ['id', 'name', 'displayName', 'nickname', 'pmFeePercentage', 'tags'],
-                    where: listingWhere,
-                    raw: true
+                results.push({
+                    propertyId: listing.id,
+                    name: listing.displayName || listing.nickname || listing.name,
+                    ownerName: null,
+                    pmFeePercentage: listing.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
+                    baseRate: 0,
+                    guestFees: 0,
+                    platformFees: 0,
+                    revenue: 0,
+                    pmCommission: 0,
+                    taxes: 0,
+                    grossPayout: 0,
+                    expenses: 0,
+                    ownerPayout: 0,
+                    reservationCount: 0,
+                    statementCount: 0,
                 });
-
-                const existingIds = new Set(results.map(r => String(r.propertyId)));
-                for (const listing of allListings) {
-                    if (existingIds.has(String(listing.id))) continue;
-                    // Apply tag filter if specified
-                    if (tag) {
-                        const listingTags = listing.tags || '';
-                        if (!listingTags.toLowerCase().includes(tag.toLowerCase())) continue;
-                    }
-                    results.push({
-                        propertyId: listing.id,
-                        name: listing.displayName || listing.nickname || listing.name,
-                        ownerName: null,
-                        pmFeePercentage: listing.pmFeePercentage != null ? parseFloat(listing.pmFeePercentage) : null,
-                        baseRate: 0,
-                        guestFees: 0,
-                        platformFees: 0,
-                        revenue: 0,
-                        pmCommission: 0,
-                        taxes: 0,
-                        grossPayout: 0,
-                        expenses: 0,
-                        ownerPayout: 0,
-                        reservationCount: 0,
-                        statementCount: 0,
-                    });
-                }
-            } catch (e) {
-                logger.warn('Could not fetch zero-statement listings', { error: e.message });
             }
         }
 

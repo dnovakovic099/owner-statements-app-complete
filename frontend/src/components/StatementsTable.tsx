@@ -137,6 +137,7 @@ const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, ic
           target="_blank"
           rel="noopener noreferrer"
           className={buttonClass}
+          aria-label={tooltip}
         >
           {icon}
         </a>
@@ -151,6 +152,7 @@ const ActionButton = React.memo<ActionButtonProps>(({ onClick, href, tooltip, ic
         onClick={onClick}
         disabled={disabled}
         className={buttonClass}
+        aria-label={tooltip}
       >
         {icon}
       </button>
@@ -767,6 +769,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     },
   });
 
+  const hasActiveFilters = !!(globalFilter || markerFilter.length > 0);
+
   if (statements.length === 0 && pagination.total === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
@@ -774,8 +778,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <Search className="w-8 h-8 text-gray-400" />
           </div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements found</h2>
-          <p className="text-gray-500">Generate your first statement using the button above.</p>
+          {hasActiveFilters ? (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements match your filters</h2>
+              <p className="text-gray-500">Try adjusting or clearing your filters to see results.</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">No statements found</h2>
+              <p className="text-gray-500">Generate your first statement using the button above.</p>
+            </>
+          )}
         </div>
       </div>
     );

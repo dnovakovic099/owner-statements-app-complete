@@ -1501,11 +1501,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <div className="bg-white rounded-lg shadow-md px-3 py-2 mb-4 relative z-20 flex-shrink-0">
             <div className="flex flex-wrap items-end gap-3">
               {/* Owner */}
-              <div className="min-w-[160px] w-[22%]">
+              <div className="min-w-[150px] flex-1">
                 <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Owner</label>
                 <div className="relative" ref={ownerDropdownRef}>
                   <button
                     type="button"
+                    aria-label="Filter by owner"
                     onClick={() => setIsOwnerDropdownOpen(!isOwnerDropdownOpen)}
                     className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isOwnerDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
                   >
@@ -1552,11 +1553,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               </div>
 
               {/* Property */}
-              <div className="flex-1 min-w-[200px]">
+              <div className="min-w-[150px] flex-1">
                 <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Property</label>
                 <div className="relative" ref={propertyDropdownRef}>
                   <button
                     type="button"
+                    aria-label="Filter by property"
                     onClick={() => setIsPropertyDropdownOpen(!isPropertyDropdownOpen)}
                     className={`w-full border rounded-lg px-3 py-1.5 text-sm text-left bg-white flex items-center justify-between transition-all duration-150 ${isPropertyDropdownOpen ? 'border-blue-400 ring-2 ring-blue-100 shadow-sm' : 'border-gray-300 hover:border-gray-400'}`}
                   >
