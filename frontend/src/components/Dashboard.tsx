@@ -67,7 +67,7 @@ const PAGE_TO_PATH: Record<Page, string> = {
   analytics: '/analytics',
   email: '/email',
   settings: '/settings',
-  wise: '/wise',
+  wise: '/payout-accounts',
   financials: '/financials',
 };
 
