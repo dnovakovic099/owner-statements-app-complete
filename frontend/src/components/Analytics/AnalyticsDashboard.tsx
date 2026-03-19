@@ -1082,7 +1082,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [trendData, cText, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
+  }, [trendData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Payout trend chart options
   const payoutTrendChartOption = useMemo(() => {
@@ -1139,7 +1139,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       }],
     };
-  }, [payoutTrendData, cText, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
+  }, [payoutTrendData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Expense breakdown chart options
   const expenseChartOption = useMemo(() => {
@@ -1173,7 +1173,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         })),
       }],
     };
-  }, [expenseData, cText, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
+  }, [expenseData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Statement status donut chart options
   const statementStatusChartOption = useMemo(() => {
@@ -1230,7 +1230,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         data: data,
       }],
     };
-  }, [statementStatusData, cText, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
+  }, [statementStatusData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property performance data
   const allPropertyData = useMemo(() => {
@@ -1362,7 +1362,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         },
       ],
     };
-  }, [propertyChartData, cText, cSubText, cBorder, cSplitLine, cTooltipBg, cTooltipBorder, cTooltipText]);
+  }, [propertyChartData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Owner breakdown chart data
   const ownerChartData = useMemo(() => {
