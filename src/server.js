@@ -16,7 +16,7 @@ const ListingService = require('./services/ListingService');
 const TagScheduleService = require('./services/TagScheduleService');
 
 // Authentication middleware
-const { authenticate, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
+const { authenticate, authorize, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
 
 // Security middleware
 const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter } = require('./middleware/rateLimiter');
@@ -1105,8 +1105,8 @@ app.post('/api/metrics/reset', authenticate, requireAdmin, (req, res) => {
     res.json({ success: true, message: 'Metrics reset' });
 });
 
-// Application Logs - Admin only (persistent logs from DB)
-app.get('/api/logs', authenticate, requireAdmin, async (req, res) => {
+// Application Logs - Admin/System only (persistent logs from DB)
+app.get('/api/logs', authenticate, authorize('admin', 'system'), async (req, res) => {
     try {
         const { Op } = require('sequelize');
         const { AppLog } = require('./models');
@@ -1131,7 +1131,7 @@ app.get('/api/logs', authenticate, requireAdmin, async (req, res) => {
     }
 });
 
-app.delete('/api/logs', authenticate, requireAdmin, async (req, res) => {
+app.delete('/api/logs', authenticate, authorize('admin', 'system'), async (req, res) => {
     try {
         const { Op } = require('sequelize');
         const { AppLog } = require('./models');
