@@ -452,3 +452,138 @@ describe('PM Commission sign convention', () => {
         expect(Math.abs(apiDisplay)).toBeCloseTo(dbValue, 2);
     });
 });
+
+// ─── Boundary conditions — synthetic data ─────────────────────────────────────
+
+describe('Boundary conditions — synthetic data (no DB)', () => {
+    const makeReservation = (overrides = {}) => ({
+        propertyId: 1,
+        guestName: 'Test Guest',
+        checkInDate: '2026-02-01',
+        checkOutDate: '2026-02-15',
+        grossAmount: 1000,
+        clientRevenue: 1000,
+        clientPayout: 900,
+        hasDetailedFinance: true,
+        clientTaxResponsibility: 0,
+        cleaningFee: 0,
+        status: 'confirmed',
+        source: 'Direct',
+        ...overrides,
+    });
+
+    const listingInfoMap = {
+        1: { id: 1, pmFeePercentage: 15, cleaningFeePassThrough: false },
+    };
+
+    const PERIOD_START = '2026-02-01';
+    const PERIOD_END   = '2026-02-28';
+
+    test('check-in exactly on period start is included in checkout mode', () => {
+        const reservations = [makeReservation({ checkInDate: '2026-02-01', checkOutDate: '2026-02-15' })];
+        const result = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'checkout',
+        });
+        expect(result.periodReservations).toHaveLength(1);
+    });
+
+    test('two reservations with identical checkout dates both included', () => {
+        const reservations = [
+            makeReservation({ guestName: 'Guest A', checkOutDate: '2026-02-14', grossAmount: 600, clientRevenue: 600 }),
+            makeReservation({ guestName: 'Guest B', checkOutDate: '2026-02-14', grossAmount: 400, clientRevenue: 400 }),
+        ];
+        const result = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'checkout',
+        });
+        expect(result.periodReservations).toHaveLength(2);
+        expect(result.totalRevenue).toBeCloseTo(1000, 2);
+    });
+
+    test('checkout exactly on period start boundary is included', () => {
+        const reservations = [makeReservation({ checkInDate: '2026-01-20', checkOutDate: '2026-02-01' })];
+        const result = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'checkout',
+        });
+        expect(result.periodReservations).toHaveLength(1);
+    });
+
+    test('checkout exactly on period end is included in checkout mode', () => {
+        const reservations = [makeReservation({ checkInDate: '2026-02-20', checkOutDate: '2026-02-28' })];
+        const result = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'checkout',
+        });
+        expect(result.periodReservations).toHaveLength(1);
+    });
+
+    test('checkout one day after period end excluded in checkout but included in calendar', () => {
+        const reservations = [makeReservation({ checkInDate: '2026-02-20', checkOutDate: '2026-03-01' })];
+
+        const checkoutResult = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'checkout',
+        });
+        expect(checkoutResult.periodReservations).toHaveLength(0);
+
+        const calendarResult = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'calendar',
+        });
+        expect(calendarResult.periodReservations).toHaveLength(1);
+    });
+
+    test('calendar mode: cleaning fee not charged when checkout is after period end', () => {
+        const passThroughListingInfoMap = {
+            1: { id: 1, pmFeePercentage: 15, cleaningFeePassThrough: true },
+        };
+        const reservations = [makeReservation({ checkInDate: '2026-02-20', checkOutDate: '2026-03-01', cleaningFee: 150 })];
+
+        const result = StatementCalculationService.calculateStatementFinancials({
+            reservations,
+            expenses: [],
+            listingInfoMap: passThroughListingInfoMap,
+            propertyIds: [1],
+            startDate: PERIOD_START,
+            endDate: PERIOD_END,
+            calculationType: 'calendar',
+        });
+
+        // Reservation is included in calendar mode
+        expect(result.periodReservations).toHaveLength(1);
+        // Cleaning fee should NOT be deducted since checkout is outside the period
+        expect(result.totalCleaningFee).toBe(0);
+    });
+});

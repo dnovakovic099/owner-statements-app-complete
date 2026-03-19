@@ -40,6 +40,7 @@ import { useAnalyticsFilters } from './hooks/useAnalyticsFilters';
 import { usePayoutTrend } from './hooks/usePayoutTrend';
 import { useDamageCoverage, DamageCoverageItem } from './hooks/useDamageCoverage';
 import { usePropertyFinancials, PropertyFinancialItem } from './hooks/usePropertyFinancials';
+import { useToast } from '../ui/toast';
 
 interface AnalyticsDashboardProps {
   onBack?: () => void;
@@ -252,6 +253,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     };
   };
 
+  const { showToast } = useToast();
+
   // State
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
   const [dateRange, setDateRange] = useState(getDateRange('monthly'));
@@ -413,7 +416,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Failed to export data. Please try again.');
+      showToast('Failed to export CSV.', 'error');
     } finally {
       setIsExporting(false);
       setShowExportMenu(false);
@@ -1964,6 +1967,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
               {pfSortedData.length > 0 && (
                 <button
                   onClick={() => {
+                    try {
                     const headers = visiblePfColumns.map(c => c.label);
                     const csvRows = [headers.join(',')];
                     pfSortedData.forEach((p: PropertyFinancialItem) => {
@@ -1993,6 +1997,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     a.download = `${presetLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange.start}-to-${dateRange.end}.csv`;
                     a.click();
                     URL.revokeObjectURL(url);
+                    } catch (e) {
+                      showToast('Failed to export CSV.', 'error');
+                    }
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                 >
@@ -2248,6 +2255,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                 </span>
                 <button
                   onClick={() => {
+                    try {
                     const csvRows = ['Property,Owner,Revenue,PM Fee %,PM Commission'];
                     pmCommissionData.forEach((p: any) => {
                       const name = (p.propertyName || p.name || '').replace(/,/g, ' ');
@@ -2261,6 +2269,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     a.download = `pm-commission-report-${dateRange.start}-to-${dateRange.end}.csv`;
                     a.click();
                     URL.revokeObjectURL(url);
+                    } catch (e) {
+                      showToast('Failed to export CSV.', 'error');
+                    }
                   }}
                   className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                 >
@@ -2395,6 +2406,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                     {dcFilteredData.length > 0 && (
                       <button
                         onClick={() => {
+                          try {
                           const csvRows = ['Property,Owner,Reservations,Damage Coverage'];
                           dcFilteredData.forEach((p: DamageCoverageItem) => {
                             const name = (p.name || '').replace(/,/g, ' ');
@@ -2410,6 +2422,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                           a.download = `damage-coverage-${dateRange.start}-to-${dateRange.end}.csv`;
                           a.click();
                           URL.revokeObjectURL(url);
+                          } catch (e) {
+                            showToast('Failed to export CSV.', 'error');
+                          }
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                       >

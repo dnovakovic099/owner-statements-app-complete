@@ -20,11 +20,23 @@ class StatementCalculationService {
     calculateStatementFinancials(options) {
         const { reservations, expenses, listingInfoMap, propertyIds, startDate, endDate, calculationType } = options;
 
+        // Input validation
+        if (!propertyIds || propertyIds.length === 0) {
+            return { periodReservations: [], filteredExpenses: [], llCoverExpenses: [], totalRevenue: 0, pmCommission: 0, ownerPayout: 0, totalExpenses: 0, totalUpsells: 0 };
+        }
+        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+            throw new Error(`calculateStatementFinancials: startDate (${startDate}) must not be after endDate (${endDate})`);
+        }
+        const missingListings = propertyIds.filter(id => !listingInfoMap[id]);
+        if (missingListings.length > 0) {
+            console.warn(`calculateStatementFinancials: listingInfoMap missing entries for propertyIds: ${missingListings.join(', ')}`);
+        }
+
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
 
         // Filter reservations by date and status
-        const periodReservations = this.filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType);
+        const periodReservations = this.filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType, endDate);
 
         // Process expenses - separate LL Cover, upsells, and regular expenses
         const { filteredExpenses, llCoverExpenses, totalExpenses, totalUpsells, duplicateWarnings } =
@@ -71,7 +83,7 @@ class StatementCalculationService {
     /**
      * Filter reservations by date, property, and status
      */
-    filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType) {
+    filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType, endDate) {
         const parsedPropertyIds = propertyIds.map(id => parseInt(id));
 
         return reservations.filter(res => {
@@ -87,7 +99,7 @@ class StatementCalculationService {
             } else {
                 // For checkout-based, filter by checkout date
                 const checkoutDate = new Date(res.checkOutDate);
-                if (checkoutDate < periodStart || checkoutDate > periodEnd) {
+                if (checkoutDate < periodStart || !this._isCheckoutInPeriod(res.checkOutDate, endDate)) {
                     return false;
                 }
             }
@@ -261,7 +273,8 @@ class StatementCalculationService {
     }
 
     /**
-     * Check if a reservation's checkout date falls within the statement period
+     * Boundary convention: checkout exactly on the end date IS considered "in period".
+     * This is used consistently by both filterReservations and calculateGrossPayoutSum.
      */
     _isCheckoutInPeriod(checkOutDate, endDate) {
         if (!checkOutDate || !endDate) return true;
