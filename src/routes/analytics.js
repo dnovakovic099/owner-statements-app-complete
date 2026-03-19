@@ -916,7 +916,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const dates = validateDateRange(req, res);
         if (!dates) return;
         const { start, end, startDate, endDate } = dates;
-        const { ownerId, propertyId, groupId, tag, includeZero } = req.query;
+        const { ownerId, propertyId, groupId, tag, includeZero, calculationType } = req.query;
 
         // Optional filter values used in both raw SQL (step 1) and Sequelize (step 3)
 
@@ -925,6 +925,15 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         //         to include (date-range dedup: newest wide statement beats older narrow ones).
         let metaRows;
         try {
+            // Build optional calculationType filter
+            const calcTypeFilter = (calculationType === 'checkout' || calculationType === 'calendar')
+                ? `AND calculation_type = :calculationType`
+                : '';
+            const replacements = { start: startDate, end: endDate };
+            if (calculationType === 'checkout' || calculationType === 'calendar') {
+                replacements.calculationType = calculationType;
+            }
+
             metaRows = await sequelize.query(
                 `SELECT id, property_id AS "propertyId",
                         week_start_date::text AS "weekStartDate",
@@ -933,8 +942,9 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                  WHERE week_start_date <= :end
                    AND week_end_date   >= :start
                    AND property_id IS NOT NULL
+                   ${calcTypeFilter}
                  ORDER BY id DESC`,
-                { replacements: { start: startDate, end: endDate }, type: sequelize.QueryTypes.SELECT }
+                { replacements, type: sequelize.QueryTypes.SELECT }
             );
         } catch (queryErr) {
             logger.error('property-financials meta query failed', { error: queryErr.message, stack: queryErr.stack });

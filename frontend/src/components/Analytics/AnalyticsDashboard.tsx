@@ -295,6 +295,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
   const [pfFilter, setPfFilter] = useState('');
   const [pfShowColumnMenu, setPfShowColumnMenu] = useState(false);
   const [pfIncludeZero, setPfIncludeZero] = useState(pfSavedPrefs?.includeZero || false);
+  const [pfCalcType, setPfCalcType] = useState<'' | 'checkout' | 'calendar'>(pfSavedPrefs?.calcType || '');
   const [pfActivePreset, setPfActivePreset] = useState(pfSavedPrefs?.preset || 'all');
   const pfColumnMenuRef = useRef<HTMLDivElement>(null);
 
@@ -358,10 +359,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
         sortDir: pfSortDir,
         preset: pfActivePreset,
         includeZero: pfIncludeZero,
+        calcType: pfCalcType,
         visibleCols: Array.from(pfVisibleCols),
       }));
     } catch {}
-  }, [pfSortKey, pfSortDir, pfActivePreset, pfIncludeZero, pfVisibleCols]);
+  }, [pfSortKey, pfSortDir, pfActivePreset, pfIncludeZero, pfCalcType, pfVisibleCols]);
 
   // Close export menu when clicking outside
   useEffect(() => {
@@ -818,6 +820,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
     groupId: selectedGroupId,
     tag: selectedTag,
     includeZero: pfIncludeZero,
+    calculationType: pfCalcType || undefined,
   });
 
   const { data: damageCoverageData, loading: damageCoverageLoading } = useDamageCoverage({
@@ -2057,6 +2060,25 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
                   <span className="text-xs font-bold">&times;</span>
                 </button>
               )}
+            </div>
+
+            <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
+
+            {/* Calculation type toggle */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5 flex-shrink-0">
+              {([['', 'All'], ['checkout', 'Checkout'], ['calendar', 'Calendar']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setPfCalcType(val as '' | 'checkout' | 'calendar')}
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                    pfCalcType === val
+                      ? 'bg-white text-gray-900 shadow-sm font-medium'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             <div className="h-4 w-px bg-gray-200 flex-shrink-0" />

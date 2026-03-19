@@ -9,6 +9,7 @@ interface PropertyFinancialsParams {
   groupId?: string;
   tag?: string;
   includeZero?: boolean;
+  calculationType?: string;
 }
 
 export interface PropertyFinancialItem {
@@ -52,6 +53,7 @@ export const usePropertyFinancials = (params: PropertyFinancialsParams) => {
       if (params.groupId) queryParams.set('groupId', params.groupId);
       if (params.tag) queryParams.set('tag', params.tag);
       if (params.includeZero) queryParams.set('includeZero', 'true');
+      if (params.calculationType) queryParams.set('calculationType', params.calculationType);
 
       const baseUrl = getBaseUrl();
       const response = await fetch(
@@ -79,7 +81,7 @@ export const usePropertyFinancials = (params: PropertyFinancialsParams) => {
     } finally {
       setLoading(false);
     }
-  }, [params.startDate, params.endDate, params.ownerId, params.propertyId, params.groupId, params.tag, params.includeZero]);
+  }, [params.startDate, params.endDate, params.ownerId, params.propertyId, params.groupId, params.tag, params.includeZero, params.calculationType]);
 
   useEffect(() => {
     fetchData();
