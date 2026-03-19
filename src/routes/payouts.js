@@ -159,54 +159,7 @@ router.get('/listings/:id/status', async (req, res) => {
     }
 });
 
-// ─── GET /statements/:id/receipt ─────────────────────────
-// Generate an internal payout receipt PDF for a paid statement
-router.get('/statements/:id/receipt', async (req, res) => {
-    try {
-        const statementId = parseInt(req.params.id);
-        const statement = await Statement.findByPk(statementId);
-        if (!statement) return res.status(404).json({ error: 'Statement not found' });
-        if (statement.payoutStatus !== 'paid' && statement.payoutStatus !== 'collected') {
-            return res.status(400).json({ error: 'Statement has not been paid yet' });
-        }
-
-        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
-        const wiseFee = parseFloat(statement.wiseFee) || 0;
-        const totalAmount = parseFloat(statement.totalTransferAmount) || (payoutAmount + wiseFee);
-        const paidAt = statement.paidAt ? new Date(statement.paidAt) : new Date();
-        const transferId = statement.payoutTransferId || 'N/A';
-
-        // Resolve property/owner info
-        const propertyName = statement.propertyName || 'Unknown Property';
-        const ownerName = statement.ownerName || 'Owner';
-        const periodStart = statement.weekStartDate ? new Date(statement.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        const periodEnd = statement.weekEndDate ? new Date(statement.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-
-        const html = payoutReceiptTemplate({
-            statementId,
-            payoutStatus: statement.payoutStatus,
-            propertyName,
-            ownerName,
-            periodStart,
-            periodEnd,
-            totalRevenue: parseFloat(statement.totalRevenue) || 0,
-            pmCommission: parseFloat(statement.pmCommission) || 0,
-            totalExpenses: parseFloat(statement.totalExpenses) || 0,
-            payoutAmount,
-            wiseFee,
-            totalTransferAmount: totalAmount,
-            transferId,
-            paidAtDate: paidAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            paidAtFull: paidAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + paidAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        });
-
-        res.set('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        logger.logError(error, { context: 'Payouts', action: 'receipt' });
-        res.status(500).json({ error: 'Failed to generate receipt' });
-    }
-});
+// Receipt route is handled in server.js (public, uses short-lived JWT token in query string)
 
 // ─── POST /statements/:id/mark-paid ─────────────────────────
 // Manually mark a statement as paid (admin use — for transfers done outside the app)
