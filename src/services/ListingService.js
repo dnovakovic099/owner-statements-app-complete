@@ -315,7 +315,7 @@ class ListingService {
                 attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'wiseRecipientId', 'wiseStatus', 'groupId']
             });
 
-            // Load groups that have Wise recipients for inheritance
+            // Load groups that have Increase recipients for inheritance
             const ListingGroup = require('../models/ListingGroup');
             const groups = await ListingGroup.findAll({
                 attributes: ['id', 'wiseRecipientId', 'wiseStatus']
@@ -326,8 +326,8 @@ class ListingService {
                 const json = l.toJSON();
                 // Model getters auto-decrypt wiseRecipientId, so no manual decrypt needed
 
-                // Apply group Wise recipient inheritance:
-                // If listing is in a group with a Wise recipient, use that unless listing has its own
+                // Apply group Increase recipient inheritance:
+                // If listing is in a group with an Increase recipient, use that unless listing has its own
                 if (json.groupId && !json.wiseRecipientId) {
                     const group = groupMap.get(json.groupId);
                     if (group && group.wiseRecipientId) {

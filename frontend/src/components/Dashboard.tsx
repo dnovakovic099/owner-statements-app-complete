@@ -19,7 +19,7 @@ const EditStatementModal = lazy(() => import('./EditStatementModal'));
 // const FinancialDashboard = lazy(() => import('./FinancialDashboard/FinancialDashboard'));
 const AnalyticsDashboard = lazy(() => import('./Analytics/AnalyticsDashboard'));
 const GroupsPage = lazy(() => import('./GroupsPage'));
-const WisePage = lazy(() => import('./WisePage'));
+const PayoutAccountsPage = lazy(() => import('./PayoutAccountsPage'));
 const GenerationReportModal = lazy(() => import('./GenerationReportModal'));
 
 interface User {
@@ -746,7 +746,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return;
         }
 
-        // Check if listing has a connected Wise recipient
+        // Check if listing has a connected Increase recipient
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
         if (listingId) {
           const listing = listings.find(l => l.id === listingId);
@@ -1407,7 +1407,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (currentPage === 'wise') {
       return (
         <Suspense fallback={<LoadingSpinner />}>
-          <WisePage />
+          <PayoutAccountsPage />
         </Suspense>
       );
     }

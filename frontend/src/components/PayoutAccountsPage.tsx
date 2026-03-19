@@ -40,9 +40,9 @@ import {
   DialogTitle,
 } from './ui/dialog';
 
-const COLUMN_SIZING_KEY = 'wise_column_sizing';
-const COLUMN_ORDER_KEY = 'wise_column_order';
-const COLUMN_VISIBILITY_KEY = 'wise_column_visibility';
+const COLUMN_SIZING_KEY = 'payout_column_sizing';
+const COLUMN_ORDER_KEY = 'payout_column_order';
+const COLUMN_VISIBILITY_KEY = 'payout_column_visibility';
 
 const defaultColumnOrder = ['expand', 'name', 'type', 'ownerEmail', 'schedule', 'wiseRecipient', 'wiseStatus', 'listingCount'];
 
@@ -52,7 +52,7 @@ const tagColors: Record<string, { bg: string; text: string; border: string }> = 
   MONTHLY: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
 };
 
-type WiseConnectionRow = {
+type PayoutConnectionRow = {
   type: 'group' | 'listing';
   id: number;
   name: string;
@@ -110,7 +110,7 @@ const InlineRecipientEditor: React.FC<{
   );
 };
 
-const WisePage: React.FC = () => {
+const PayoutAccountsPage: React.FC = () => {
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,7 +121,7 @@ const WisePage: React.FC = () => {
 
   // Invite modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [inviteTarget, setInviteTarget] = useState<WiseConnectionRow | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<PayoutConnectionRow | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ inviteUrl: string } | null>(null);
 
@@ -194,7 +194,7 @@ const WisePage: React.FC = () => {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startEditing = (row: WiseConnectionRow) => {
+  const startEditing = (row: PayoutConnectionRow) => {
     setEditingRowKey(getRowKey(row));
   };
 
@@ -202,7 +202,7 @@ const WisePage: React.FC = () => {
     setEditingRowKey(null);
   };
 
-  const saveWiseRecipientId = async (row: WiseConnectionRow, value: string) => {
+  const saveWiseRecipientId = async (row: PayoutConnectionRow, value: string) => {
     const newId = value.trim() || null;
     try {
       if (row.type === 'group') {
@@ -219,7 +219,7 @@ const WisePage: React.FC = () => {
     setEditingRowKey(null);
   };
 
-  const openInviteModal = (row: WiseConnectionRow) => {
+  const openInviteModal = (row: PayoutConnectionRow) => {
     setInviteTarget(row);
     setInviteResult(null);
     setInviteModalOpen(true);
@@ -245,7 +245,7 @@ const WisePage: React.FC = () => {
     }
   };
 
-  const handleRefreshStatus = async (row: WiseConnectionRow) => {
+  const handleRefreshStatus = async (row: PayoutConnectionRow) => {
     if (!row.wiseRecipientId) return;
     try {
       await payoutsAPI.refreshWiseStatus({
@@ -339,8 +339,8 @@ const WisePage: React.FC = () => {
   };
 
   // Build unified row model
-  const rows: WiseConnectionRow[] = useMemo(() => {
-    const result: WiseConnectionRow[] = [];
+  const rows: PayoutConnectionRow[] = useMemo(() => {
+    const result: PayoutConnectionRow[] = [];
 
     const groupedListingIds = new Set<number>();
     for (const group of groups) {
@@ -413,15 +413,15 @@ const WisePage: React.FC = () => {
     return `${id.slice(0, 5)}...${id.slice(-4)}`;
   };
 
-  const getRowKey = (row: WiseConnectionRow) => `${row.type}-${row.id}`;
+  const getRowKey = (row: PayoutConnectionRow) => `${row.type}-${row.id}`;
 
-  const toggleExpand = (row: WiseConnectionRow) => {
+  const toggleExpand = (row: PayoutConnectionRow) => {
     const key = getRowKey(row);
     setExpandedRowId(prev => prev === key ? null : key);
   };
 
   // Column definitions
-  const columns: ColumnDef<WiseConnectionRow>[] = useMemo(() => [
+  const columns: ColumnDef<PayoutConnectionRow>[] = useMemo(() => [
     {
       id: 'expand',
       size: 40,
@@ -1194,4 +1194,4 @@ const WisePage: React.FC = () => {
   );
 };
 
-export default WisePage;
+export default PayoutAccountsPage;

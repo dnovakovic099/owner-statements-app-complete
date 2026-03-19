@@ -95,7 +95,7 @@ router.post('/generate-invite', async (req, res) => {
 });
 
 // ─── POST /refresh-status ───────────────────────────────────
-// Check Wise recipient status
+// Check Increase recipient status
 router.post('/refresh-status', async (req, res) => {
     try {
         const { wiseRecipientId, listingId, groupId } = req.body;
@@ -132,7 +132,7 @@ router.post('/refresh-status', async (req, res) => {
         });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'refreshStatus' });
-        res.status(500).json({ error: 'Failed to refresh Wise status' });
+        res.status(500).json({ error: 'Failed to refresh payout status' });
     }
 });
 
@@ -396,7 +396,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
 });
 
 // ─── POST /statements/:id/collect ───────────────────────────
-// For negative balance — generate payment page + send invoice with Wise bank details
+// For negative balance — generate payment page + send invoice with bank details
 router.post('/statements/:id/collect', async (req, res) => {
     try {
         const statementId = parseInt(req.params.id);
@@ -438,7 +438,7 @@ router.post('/statements/:id/collect', async (req, res) => {
             logger.warn('Could not fetch Increase bank details', { error: e.message });
         }
 
-        // Send invoice email with payment link and Wise bank details
+        // Send invoice email with payment link and bank details
         let invoiceSent = false;
         if (recipientEmail && process.env.SENDGRID_API_KEY) {
             try {
@@ -542,7 +542,7 @@ router.get('/inbound-transactions', async (req, res) => {
 });
 
 // ─── POST /fund-and-queue ───────────────────────────────────
-// Bulk pay multiple statements via Wise
+// Bulk pay multiple statements via Increase
 router.post('/fund-and-queue', async (req, res) => {
     try {
         const { statementIds } = req.body;
@@ -575,7 +575,7 @@ router.post('/fund-and-queue', async (req, res) => {
 
             const { wiseRecipientId, error: resolveError } = await resolveWiseRecipientId(stmt);
             if (!wiseRecipientId) {
-                skipped.push({ id: stmt.id, reason: resolveError || 'No Wise recipient' });
+                skipped.push({ id: stmt.id, reason: resolveError || 'No Increase recipient' });
                 continue;
             }
 

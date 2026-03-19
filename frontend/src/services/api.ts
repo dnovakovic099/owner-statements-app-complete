@@ -585,7 +585,7 @@ export const listingsAPI = {
   },
 };
 
-// Payouts (Wise)
+// Payouts (Increase)
 export const payoutsAPI = {
   getConfig: async (): Promise<{ wiseConfigured: boolean }> => {
     const response = await api.get('/payouts/config');

@@ -622,7 +622,7 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
     }
 });
 
-// Payment page (public — owner visits to see amount owed and Wise bank details)
+// Payment page (public — owner visits to see amount owed and bank details)
 app.get('/pay/:token', async (req, res) => {
     try {
         const { token } = req.params;
@@ -645,7 +645,7 @@ app.get('/pay/:token', async (req, res) => {
         const collectAmount = Math.abs(parseFloat(statement.ownerPayout) || 0);
         const ownerName = statement.ownerName || 'Owner';
 
-        // Try to get Wise bank details
+        // Try to get bank details from Increase
         let bankDetailsHtml = '';
         try {
             const IncreaseService = require('./services/IncreaseService');
@@ -735,7 +735,7 @@ app.get('/pay/:token', async (req, res) => {
     }
 });
 
-// Payouts - Wise payout management
+// Payouts - Increase payout management
 // Public receipt endpoint — uses short-lived JWT token in query string so it works in a new browser tab
 app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
     try {
@@ -874,7 +874,7 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
       <div class="detail-row"><span class="label">Transfer ID</span><span class="value">${transferId}</span></div>
       <div class="detail-row"><span class="label">Transfer fee</span><span class="value">$${fmt(wiseFee)}</span></div>
       <div class="detail-row"><span class="label">Total debited</span><span class="value">$${fmt(totalAmount)}</span></div>
-      <div class="fee-note">The transfer fee ($${fmt(wiseFee)}) is charged by Wise for processing the ACH bank transfer. Total debited = Owner Payout + Transfer fee.</div>
+      <div class="fee-note">The transfer fee ($${fmt(wiseFee)}) is charged for processing the ACH bank transfer. Total debited = Owner Payout + Transfer fee.</div>
     </div>
     <div class="actions">
       <button class="btn btn-secondary" onclick="window.print()">

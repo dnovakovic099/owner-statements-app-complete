@@ -111,7 +111,7 @@ router.post('/bulk-update-pm-fees', async (req, res) => {
 // GET /api/listings/names - Get lightweight listing names for lookups (id, name, displayName, nickname only)
 // NOTE: This must come BEFORE /:id routes
 router.get('/names', asyncHandler(async (req, res) => {
-    // Short cache - Wise status can change anytime via payout setup
+    // Short cache - payout status can change anytime via payout setup
     res.set('Cache-Control', 'private, max-age=30');
     const listings = await ListingService.getListingNames();
     res.json({ success: true, listings });
