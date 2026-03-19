@@ -75,34 +75,21 @@ router.get('/', requireAdmin, async (req, res) => {
         };
 
         // First pass: normalize propertyName from existing details (groupName, listingName, etc.)
-        // Collect statement IDs that still need enrichment from DB
+        // Collect ALL statement IDs for enrichment — always prefer DB data over stored details
+        // (old logs may have fallback text like "Statement #123" instead of the real property name)
         const statementIdsToLookup = new Set();
         for (const log of enrichedLogs) {
             if (log.resource === 'statement' && log.resourceId && statementActions.includes(log.action)) {
-                const details = safeParseDetails(log.details);
-                if (details) {
-                    // Use groupName or listingName from details if propertyName is missing
-                    if (!details.propertyName && (details.groupName || details.listingName)) {
-                        details.propertyName = details.groupName || details.listingName;
-                        if (!details.period && details.startDate && details.endDate) {
-                            details.period = `${details.startDate} to ${details.endDate}`;
-                        }
-                        log.details = JSON.stringify(details);
-                    } else if (!details.propertyName) {
-                        statementIdsToLookup.add(parseInt(log.resourceId));
-                    }
-                } else {
-                    statementIdsToLookup.add(parseInt(log.resourceId));
-                }
+                statementIdsToLookup.add(parseInt(log.resourceId));
             }
         }
 
-        // Batch-load statements that still need enrichment from DB
+        // Batch-load statements and enrich all logs with property name + period
         if (statementIdsToLookup.size > 0) {
             try {
                 const statements = await Statement.findAll({
                     where: { id: Array.from(statementIdsToLookup) },
-                    attributes: ['id', 'propertyName', 'propertyNames', 'groupName', 'weekStartDate', 'weekEndDate']
+                    attributes: ['id', 'propertyName', 'propertyNames', 'groupName', 'weekStartDate', 'weekEndDate', 'ownerName', 'calculationType']
                 });
                 const statementMap = new Map(statements.map(s => [s.id, s]));
 
@@ -111,8 +98,11 @@ router.get('/', requireAdmin, async (req, res) => {
                         const stmt = statementMap.get(parseInt(log.resourceId));
                         if (stmt) {
                             const details = safeParseDetails(log.details) || {};
+                            // Always use DB data for property name (most accurate)
                             details.propertyName = stmt.groupName || stmt.propertyName || stmt.propertyNames || details.propertyName;
-                            if (!details.period && stmt.weekStartDate && stmt.weekEndDate) {
+                            details.ownerName = details.ownerName || stmt.ownerName;
+                            details.calculationType = details.calculationType || stmt.calculationType;
+                            if (stmt.weekStartDate && stmt.weekEndDate) {
                                 details.period = `${stmt.weekStartDate} to ${stmt.weekEndDate}`;
                             }
                             log.details = JSON.stringify(details);
