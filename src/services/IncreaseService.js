@@ -21,7 +21,11 @@ class IncreaseService {
     }
 
     isConfigured() {
-        return !!(this.apiKey && this.accountId);
+        const configured = !!(this.apiKey && this.accountId);
+        if (!configured) {
+            console.log('[IncreaseService] NOT configured — apiKey:', this.apiKey ? `set (${this.apiKey.substring(0, 8)}...)` : 'MISSING', '| accountId:', this.accountId ? `set (${this.accountId.substring(0, 10)}...)` : 'MISSING', '| baseUrl:', this.baseUrl);
+        }
+        return configured;
     }
 
     /**
