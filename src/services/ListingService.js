@@ -496,7 +496,17 @@ class ListingService {
             if (config.waiveCommissionUntil !== undefined) updates.waiveCommissionUntil = config.waiveCommissionUntil;
             if (config.pmFeePercentage !== undefined) updates.pmFeePercentage = config.pmFeePercentage;
             if (config.defaultPetFee !== undefined) updates.defaultPetFee = config.defaultPetFee;
-            if (config.tags !== undefined) updates.tags = config.tags;
+            // Only update tags if explicitly provided and non-empty — prevents accidental clearing
+            if (config.tags !== undefined) {
+                const newTags = Array.isArray(config.tags) ? config.tags.filter(t => t && t.trim()) : [];
+                if (newTags.length > 0) {
+                    updates.tags = config.tags;
+                }
+                // If tags is empty, only clear if explicitly requested via clearTags flag
+                if (newTags.length === 0 && config.clearTags === true) {
+                    updates.tags = [];
+                }
+            }
             if (config.ownerEmail !== undefined) updates.ownerEmail = config.ownerEmail;
             if (config.ownerGreeting !== undefined) updates.ownerGreeting = config.ownerGreeting;
             if (config.autoSendStatements !== undefined) updates.autoSendStatements = config.autoSendStatements;
