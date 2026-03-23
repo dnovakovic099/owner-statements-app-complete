@@ -692,6 +692,7 @@ export const groupsAPI = {
     data: {
       name?: string;
       tags?: string[];
+      calculationType?: 'checkout' | 'calendar';
       wiseRecipientId?: string | null;
     }
   ): Promise<{ group: any }> => {
