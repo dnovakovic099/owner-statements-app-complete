@@ -24,12 +24,14 @@ const ListingGroup = sequelize.define('ListingGroup', {
         },
         set(value) {
             if (Array.isArray(value)) {
-                this.setDataValue('tags', value.filter(tag => tag).join(','));
-            } else if (typeof value === 'string') {
+                const filtered = value.filter(tag => tag && tag.trim()).join(',');
+                if (filtered) {
+                    this.setDataValue('tags', filtered);
+                }
+            } else if (typeof value === 'string' && value.trim()) {
                 this.setDataValue('tags', value);
-            } else {
-                this.setDataValue('tags', null);
             }
+            // Never allow clearing tags to null/empty — groups must always have tags
         }
     },
     calculationType: {

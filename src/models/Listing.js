@@ -144,10 +144,16 @@ const Listing = sequelize.define('Listing', {
         },
         set(value) {
             if (Array.isArray(value)) {
-                this.setDataValue('tags', value.filter(tag => tag).join(','));
-            } else if (typeof value === 'string') {
+                const filtered = value.filter(tag => tag && tag.trim()).join(',');
+                // Only update if new value is non-empty — prevents accidental clearing
+                if (filtered) {
+                    this.setDataValue('tags', filtered);
+                }
+                // To explicitly clear tags, pass null directly
+            } else if (typeof value === 'string' && value.trim()) {
                 this.setDataValue('tags', value);
-            } else {
+            } else if (value === null) {
+                // Only explicit null clears tags (not empty string or empty array)
                 this.setDataValue('tags', null);
             }
         }
