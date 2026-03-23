@@ -351,4 +351,75 @@ router.put('/schedules/:tagName/skip-dates', async (req, res) => {
     }
 });
 
+// === Tag Backup Routes ===
+
+// Get latest tag backup
+router.get('/tag-backups', async (req, res) => {
+    try {
+        const { ActivityLog } = require('../models');
+        const backups = await ActivityLog.findAll({
+            where: { action: 'TAG_BACKUP' },
+            order: [['createdAt', 'DESC']],
+            limit: 7
+        });
+        res.json({
+            success: true,
+            backups: backups.map(b => ({
+                id: b.id,
+                date: b.createdAt,
+                listingCount: b.details?.listings?.length || 0,
+                groupCount: b.details?.groups?.length || 0
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Restore tags from a backup
+router.post('/tag-backups/:id/restore', async (req, res) => {
+    try {
+        const { ActivityLog } = require('../models');
+        const ListingModel = require('../models/Listing');
+
+        const backup = await ActivityLog.findOne({
+            where: { id: req.params.id, action: 'TAG_BACKUP' }
+        });
+        if (!backup || !backup.details) {
+            return res.status(404).json({ success: false, error: 'Backup not found' });
+        }
+
+        const snapshot = backup.details;
+        let restored = 0, skipped = 0;
+
+        // Restore listing tags
+        for (const entry of (snapshot.listings || [])) {
+            if (!entry.tags) continue;
+            const listing = await ListingModel.findByPk(entry.id);
+            if (listing) {
+                // Only restore if current tags are empty
+                const currentTags = listing.getDataValue('tags');
+                if (!currentTags || !currentTags.trim()) {
+                    await listing.update({ tags: entry.tags });
+                    restored++;
+                } else {
+                    skipped++;
+                }
+            }
+        }
+
+        // Log the restore action
+        await ActivityLog.log(req, 'TAG_RESTORE', 'system', backup.id, {
+            backupDate: backup.createdAt,
+            restored,
+            skipped
+        });
+
+        res.json({ success: true, restored, skipped, backupDate: backup.createdAt });
+    } catch (error) {
+        logger.logError(error, { context: 'TagSchedules', action: 'restoreTagBackup' });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;

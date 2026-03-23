@@ -98,38 +98,40 @@ class TagScheduleService {
     }
 
     /**
-     * Snapshot all listing and group tags to a JSON file for disaster recovery.
+     * Snapshot all listing and group tags to the database for disaster recovery.
+     * Stores in activity_logs so it persists across Railway deploys.
      * Keeps the last 7 daily backups.
      */
     async _backupTags() {
         try {
-            const fs = require('fs').promises;
-            const path = require('path');
-            const { Listing } = require('../models');
+            const { Listing, ActivityLog, sequelize } = require('../models');
             const ListingGroup = require('../models/ListingGroup');
+            const { Op } = require('sequelize');
 
             const listings = await Listing.findAll({ attributes: ['id', 'name', 'tags', 'groupId'] });
             const groups = await ListingGroup.findAll({ attributes: ['id', 'name', 'tags'] });
 
             const snapshot = {
                 timestamp: new Date().toISOString(),
-                listings: listings.map(l => ({ id: l.id, name: l.name, tags: l.getDataValue('tags'), groupId: l.groupId })),
+                listings: listings.filter(l => l.getDataValue('tags')).map(l => ({ id: l.id, tags: l.getDataValue('tags'), groupId: l.groupId })),
                 groups: groups.map(g => ({ id: g.id, name: g.name, tags: g.getDataValue('tags') }))
             };
 
-            const backupDir = path.join(__dirname, '../../data/tag-backups');
-            await fs.mkdir(backupDir, { recursive: true });
+            // Store backup as an activity log entry
+            await ActivityLog.log(null, 'TAG_BACKUP', 'system', null, snapshot);
 
-            const dateStr = new Date().toISOString().split('T')[0];
-            await fs.writeFile(path.join(backupDir, `tags-${dateStr}.json`), JSON.stringify(snapshot, null, 2));
-
-            // Keep only last 7 backups
-            const files = (await fs.readdir(backupDir)).filter(f => f.startsWith('tags-') && f.endsWith('.json')).sort();
-            for (const old of files.slice(0, -7)) {
-                await fs.unlink(path.join(backupDir, old));
+            // Clean up old backups — keep last 7
+            const backups = await ActivityLog.findAll({
+                where: { action: 'TAG_BACKUP' },
+                order: [['createdAt', 'DESC']],
+                attributes: ['id', 'createdAt']
+            });
+            if (backups.length > 7) {
+                const toDelete = backups.slice(7).map(b => b.id);
+                await ActivityLog.destroy({ where: { id: { [Op.in]: toDelete } } });
             }
 
-            logger.info(`[TagScheduleService] Tag backup saved: ${snapshot.listings.length} listings, ${snapshot.groups.length} groups`);
+            logger.info(`[TagScheduleService] Tag backup saved to DB: ${snapshot.listings.length} listings with tags, ${snapshot.groups.length} groups`);
         } catch (err) {
             logger.warn('[TagScheduleService] Tag backup failed', { error: err.message });
         }
