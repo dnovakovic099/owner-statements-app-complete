@@ -681,6 +681,7 @@ export const groupsAPI = {
     name: string;
     tags: string[];
     listingIds: number[];
+    calculationType?: 'checkout' | 'calendar';
     wiseRecipientId?: string | null;
   }): Promise<{ group: any }> => {
     const response = await api.post('/groups', data);

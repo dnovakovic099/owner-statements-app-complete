@@ -163,6 +163,7 @@ const GroupsPage: React.FC = () => {
         name: data.name,
         tags: data.tags,
         listingIds: data.listingIds,
+        calculationType: data.calculationType,
         wiseRecipientId: data.wiseRecipientId,
       });
       showToast(`Group "${data.name}" created`, 'success');

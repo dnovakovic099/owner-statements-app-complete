@@ -42,6 +42,12 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Group name is required' });
         }
 
+        // Validate tags are provided
+        const resolvedTags = Array.isArray(tags) ? tags.filter(t => t && t.trim()) : (typeof tags === 'string' ? tags.trim().split(',').filter(Boolean) : []);
+        if (resolvedTags.length === 0) {
+            return res.status(400).json({ error: 'At least one schedule tag is required' });
+        }
+
         const group = await ListingGroupService.createGroup(name, tags, listingIds, calculationType);
 
         // Log activity
