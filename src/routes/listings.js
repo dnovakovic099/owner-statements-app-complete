@@ -50,10 +50,19 @@ router.get('/', asyncHandler(async (req, res) => {
 
     const listings = await ListingService.getListingsWithPmFees(listingIds, filters);
 
-    // Mark offboarded using DB is_active flag (synced from Hostify during sync, no live API call)
-    listings.forEach(l => {
-        l.isOffboarded = l.isActive === false;
-    });
+    // Mark offboarded: DB listings NOT in Hostify active PMS set
+    try {
+        const HostifyService = require('../services/HostifyService');
+        const hostifyResponse = await HostifyService.getAllProperties();
+        const activeHostifyIds = new Set((hostifyResponse.result || []).map(l => l.id));
+        listings.forEach(l => {
+            l.isOffboarded = !activeHostifyIds.has(parseInt(l.id));
+        });
+    } catch (err) {
+        // If Hostify check fails, fall back to no offboarded flag
+        logger.warn('Failed to check offboarded status from Hostify, defaulting all to active', { context: 'Listings', error: err?.message });
+        listings.forEach(l => { l.isOffboarded = false; });
+    }
 
     res.json({ success: true, listings });
 }));
