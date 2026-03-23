@@ -204,8 +204,8 @@ router.post('/statements/:id/transfer', async (req, res) => {
             return res.status(400).json({ error: 'Statement has no positive payout amount' });
         }
 
-        if (statement.payoutStatus === 'paid') {
-            return res.status(400).json({ error: 'Statement already paid' });
+        if (statement.payoutStatus === 'paid' || statement.payoutStatus === 'pending') {
+            return res.status(400).json({ error: `Statement already ${statement.payoutStatus}` });
         }
 
         if (!IncreaseService.isConfigured()) {
@@ -218,8 +218,14 @@ router.post('/statements/:id/transfer', async (req, res) => {
             return res.status(400).json({ error: resolveError || 'No Increase external account found' });
         }
 
-        // Mark as pending
-        await statement.update({ payoutStatus: 'pending', payoutError: null });
+        // Atomic mark as pending — prevents double-payout from concurrent requests
+        const [affectedRows] = await Statement.update(
+            { payoutStatus: 'pending', payoutError: null },
+            { where: { id: statementId, payoutStatus: { [require('sequelize').Op.notIn]: ['paid', 'pending'] } } }
+        );
+        if (affectedRows === 0) {
+            return res.status(409).json({ error: 'Statement is already being processed' });
+        }
 
         // Check balance
         let balance;
@@ -248,6 +254,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
             amount: payoutAmount,
             reference,
             statementId,
+            individualName: ownerName,
         });
 
         const totalTransferAmount = payoutAmount + wiseFee;
@@ -530,6 +537,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     amount: parseFloat(statement.ownerPayout),
                     reference: `Payout - ${statement.ownerName} - Stmt #${statement.id}`,
                     statementId: statement.id,
+                    individualName: statement.ownerName || 'Owner',
                 }));
 
                 const { transfers } = await IncreaseService.sendBatchPayouts(batchPayouts);
@@ -568,6 +576,7 @@ router.post('/fund-and-queue', async (req, res) => {
                             amount,
                             reference,
                             statementId: statement.id,
+                            individualName: statement.ownerName || 'Owner',
                         });
 
                         await statement.update({
@@ -602,6 +611,7 @@ router.post('/fund-and-queue', async (req, res) => {
                         amount,
                         reference,
                         statementId: statement.id,
+                        individualName: statement.ownerName || 'Owner',
                     });
 
                     await statement.update({
@@ -756,6 +766,7 @@ async function processQueuedPayouts() {
                 amount: payoutAmount,
                 reference,
                 statementId: statement.id,
+                individualName: statement.ownerName || 'Owner',
             });
 
             await statement.update({

@@ -377,6 +377,9 @@ app.use('/api/financials', authenticate, require('./routes/financials'));
 app.use('/api/email', authenticate, require('./routes/email'));
 app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
 
+// HTML escape helper to prevent XSS in server-rendered pages
+const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 // Payout setup page (public — owner visits this link to add bank details)
 app.get('/payout-setup/:token', async (req, res) => {
     try {
@@ -400,7 +403,7 @@ app.get('/payout-setup/:token', async (req, res) => {
 
         // If already set up, show success
         if (entity.wiseRecipientId && entity.wiseStatus === 'verified') {
-            const connectedName = entity.displayName || entity.nickname || entity.name || 'Your Property';
+            const connectedName = escapeHtml(entity.displayName || entity.nickname || entity.name || 'Your Property');
             return res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Payout Connected</title>
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
             <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}</style></head>
@@ -414,11 +417,11 @@ app.get('/payout-setup/:token', async (req, res) => {
             </div></body></html>`);
         }
 
-        // Use displayName or nickname (friendly name), fall back to raw name
-        const entityName = entity.displayName || entity.nickname || entity.name || 'Your Property';
-        // Owner name for pre-filling
-        const ownerName = entity.ownerName || '';
-        const ownerEmail = entity.ownerEmail || '';
+        // Use displayName or nickname (friendly name), fall back to raw name — escape for XSS
+        const entityName = escapeHtml(entity.displayName || entity.nickname || entity.name || 'Your Property');
+        // Owner name for pre-filling — escape for XSS
+        const ownerName = escapeHtml(entity.ownerName || '');
+        const ownerEmail = escapeHtml(entity.ownerEmail || '');
 
         res.send(`<!DOCTYPE html>
 <html lang="en">

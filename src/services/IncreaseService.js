@@ -118,17 +118,22 @@ class IncreaseService {
      * Create a single ACH transfer to an external account.
      * Increase expects amount in cents (integer).
      */
-    async createTransfer({ externalAccountId, amount, statementDescriptor, statementId }) {
+    async createTransfer({ externalAccountId, amount, statementDescriptor, statementId, individualName }) {
         const amountCents = Math.round(amount * 100);
         const descriptor = (statementDescriptor || `Payout #${statementId}`).substring(0, 22);
-        const res = await this._client().post('/ach_transfers', {
+        const body = {
             account_id: this.accountId,
             external_account_id: externalAccountId,
             amount: amountCents,
             statement_descriptor: descriptor,
             standard_entry_class_code: 'prearranged_payments_and_deposit',
             company_entry_description: 'PAYOUT',
-        });
+        };
+        // individual_name is required for PPD (prearranged_payments_and_deposit) SEC code
+        if (individualName) {
+            body.individual_name = individualName.substring(0, 22);
+        }
+        const res = await this._client().post('/ach_transfers', body);
         return res.data;
     }
 
@@ -152,13 +157,14 @@ class IncreaseService {
      * Full single payout flow — create ACH transfer.
      * Returns { transfer, wiseFee: 0 } (Increase fees are billed separately, not per-API-call)
      */
-    async sendPayout({ recipientId, amount, reference, statementId }) {
+    async sendPayout({ recipientId, amount, reference, statementId, individualName }) {
         const descriptor = (reference || `Payout #${statementId}`).substring(0, 22);
         const transfer = await this.createTransfer({
             externalAccountId: recipientId,
             amount,
             statementDescriptor: descriptor,
             statementId,
+            individualName,
         });
         logger.info('Increase ACH transfer created', {
             transferId: transfer.id,
@@ -182,6 +188,7 @@ class IncreaseService {
                 amount: payout.amount,
                 statementDescriptor: descriptor,
                 statementId: payout.statementId,
+                individualName: payout.individualName,
             });
             transfers.push({ transfer, wiseFee: 0, statementId: payout.statementId });
             logger.info('Increase batch transfer created', {
