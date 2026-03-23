@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
  */
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5,
+    max: 30,
     message: { error: 'Too many authentication attempts, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -15,11 +15,12 @@ const authLimiter = rateLimit({
 
 /**
  * General API rate limiter.
- * 100 requests per 15 minutes per IP.
+ * 1000 requests per 15 minutes per IP.
+ * Dashboard loads ~19 calls per page, so needs headroom for normal use.
  */
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
+    max: 1000,
     message: { error: 'Too many requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -28,11 +29,11 @@ const apiLimiter = rateLimit({
 
 /**
  * Payout operation rate limiter.
- * 10 requests per 15 minutes per IP — financial operations should be tightly controlled.
+ * 30 requests per 15 minutes per IP — financial operations should be controlled.
  */
 const payoutLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10,
+    max: 30,
     message: { error: 'Too many payout requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,

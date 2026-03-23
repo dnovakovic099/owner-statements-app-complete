@@ -94,7 +94,7 @@ app.use(metricsMiddleware);
 // Rate limiting configuration
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 500, // Limit each IP to 500 requests per window
+    max: 2000, // Limit each IP to 2000 requests per window
     message: { error: 'Too many requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false
@@ -102,7 +102,7 @@ const generalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // Limit login attempts to 10 per window
+    max: 30, // Limit login attempts to 30 per window
     message: { error: 'Too many login attempts, please try again later' },
     standardHeaders: true,
     legacyHeaders: false
