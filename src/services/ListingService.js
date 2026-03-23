@@ -223,6 +223,25 @@ class ListingService {
                 const tagConds = filters.tags.map(tag => ({
                     tags: { [Op.iLike]: `%${tag}%` }
                 }));
+                // Also match listings whose group has the tag
+                const LGForTags = getListingGroup();
+                if (LGForTags) {
+                    try {
+                        const groupTagConds = filters.tags.map(tag => ({
+                            tags: { [Op.iLike]: `%${tag}%` }
+                        }));
+                        const matchingGroups = await LGForTags.findAll({
+                            where: { [Op.or]: groupTagConds },
+                            attributes: ['id']
+                        });
+                        if (matchingGroups.length > 0) {
+                            const groupIds = matchingGroups.map(g => g.id);
+                            tagConds.push({ groupId: { [Op.in]: groupIds } });
+                        }
+                    } catch (e) {
+                        logger.warn('Failed to check group tags for filter', e);
+                    }
+                }
                 where[Op.or] = where[Op.or] ? [...where[Op.or], ...tagConds] : tagConds;
             }
 

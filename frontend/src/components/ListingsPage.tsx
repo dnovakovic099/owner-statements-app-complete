@@ -383,6 +383,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
               allTags.add(tag);
             });
           }
+          // Also include group-level schedule tags
+          if (listing.group?.tags && listing.group.tags.length > 0) {
+            listing.group.tags.forEach((tag: string) => {
+              const upperTag = tag.toUpperCase();
+              frequencyTags.add(upperTag);
+              allTags.add(tag);
+            });
+          }
           if (listing.city) {
             allCities.add(listing.city);
           }
