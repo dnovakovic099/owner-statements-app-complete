@@ -37,13 +37,24 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /api/dashboard-file/properties - Get properties from Hostify with owner mapping
+// GET /api/dashboard-file/properties - Get properties from DB with owner mapping
 router.get('/properties', async (req, res) => {
     try {
-        const [listings, owners] = await Promise.all([
-            FileDataService.getListings(),
+        const ListingService = require('../services/ListingService');
+        const [dbListings, owners] = await Promise.all([
+            ListingService.getListingsWithPmFees(),
             FileDataService.getOwners()
         ]);
+        // Transform DB listings to match expected shape
+        const listings = dbListings.map(l => ({
+            id: l.id,
+            name: l.name,
+            nickname: l.nickname,
+            displayName: l.displayName,
+            address: [l.street, l.city, l.state].filter(Boolean).join(', '),
+            isActive: l.isActive !== false,
+            isOffboarded: l.isActive === false,
+        }));
         
         // Create a map of listing IDs to owner IDs
         const listingToOwnerMap = new Map();

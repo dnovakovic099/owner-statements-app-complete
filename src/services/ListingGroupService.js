@@ -42,20 +42,31 @@ class ListingGroupService {
                 order: [['name', 'ASC']]
             });
 
-            // Get member counts and listing IDs for each group
-            const groupsWithCounts = await Promise.all(
-                groups.map(async (group) => {
-                    const members = await this.Listing.findAll({
-                        where: { groupId: group.id },
-                        attributes: ['id']
-                    });
-                    return {
-                        ...group.toJSON(),
-                        memberCount: members.length,
-                        listingIds: members.map(m => m.id)
-                    };
+            // Batch fetch all listings with a groupId in one query (avoids N+1)
+            const groupIds = groups.map(g => g.id);
+            const allMembers = groupIds.length > 0
+                ? await this.Listing.findAll({
+                    where: { groupId: { [require('sequelize').Op.in]: groupIds } },
+                    attributes: ['id', 'groupId']
                 })
-            );
+                : [];
+
+            // Build a map: groupId -> [listingIds]
+            const memberMap = new Map();
+            allMembers.forEach(m => {
+                const gid = m.groupId;
+                if (!memberMap.has(gid)) memberMap.set(gid, []);
+                memberMap.get(gid).push(m.id);
+            });
+
+            const groupsWithCounts = groups.map(group => {
+                const listingIds = memberMap.get(group.id) || [];
+                return {
+                    ...group.toJSON(),
+                    memberCount: listingIds.length,
+                    listingIds
+                };
+            });
 
             return groupsWithCounts;
         } catch (error) {

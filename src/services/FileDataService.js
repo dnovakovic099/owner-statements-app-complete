@@ -15,12 +15,12 @@ class FileDataService {
         // In-memory cache for listings (reduces API calls)
         this._listingsCache = null;
         this._listingsCacheTime = null;
-        this._listingsCacheTTL = 5 * 60 * 1000; // 5 minutes TTL
+        this._listingsCacheTTL = 30 * 60 * 1000; // 30 minutes TTL
 
         // In-memory cache for owners
         this._ownersCache = null;
         this._ownersCacheTime = null;
-        this._ownersCacheTTL = 10 * 60 * 1000; // 10 minutes TTL
+        this._ownersCacheTTL = 30 * 60 * 1000; // 30 minutes TTL
     }
 
     clearListingsCache() {
