@@ -139,6 +139,7 @@ const GroupsPage: React.FC = () => {
       await groupsAPI.updateGroup(data.id, {
         name: data.name,
         tags: data.tags,
+        calculationType: data.calculationType,
         wiseRecipientId: data.wiseRecipientId,
       });
 

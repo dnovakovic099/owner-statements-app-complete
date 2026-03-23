@@ -99,6 +99,14 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: 'At least one field is required to update' });
         }
 
+        // Prevent accidental tag clearing
+        if (tags !== undefined) {
+            const resolvedTags = Array.isArray(tags) ? tags.filter(t => t && t.trim()) : (typeof tags === 'string' ? tags.trim().split(',').filter(Boolean) : []);
+            if (resolvedTags.length === 0) {
+                return res.status(400).json({ error: 'Tags cannot be empty. At least one schedule tag is required.' });
+            }
+        }
+
         const updates = {};
         if (name !== undefined) updates.name = name;
         if (tags !== undefined) updates.tags = tags;

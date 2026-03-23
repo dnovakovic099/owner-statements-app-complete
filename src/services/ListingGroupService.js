@@ -184,14 +184,18 @@ class ListingGroupService {
                 updateData.name = updates.name.trim();
             }
 
-            // Update tags if provided
+            // Update tags if provided (never allow clearing to empty)
             if (updates.tags !== undefined) {
+                let newTags = '';
                 if (Array.isArray(updates.tags)) {
-                    updateData.tags = updates.tags.filter(t => t && t.trim()).join(',');
+                    newTags = updates.tags.filter(t => t && t.trim()).join(',');
                 } else if (typeof updates.tags === 'string') {
-                    updateData.tags = updates.tags;
+                    newTags = updates.tags.trim();
+                }
+                if (newTags) {
+                    updateData.tags = newTags;
                 } else {
-                    updateData.tags = '';
+                    logger.warn(`Attempted to clear tags on group ${groupId}, ignoring`);
                 }
             }
 
