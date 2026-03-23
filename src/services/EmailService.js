@@ -947,10 +947,26 @@ This is an auto-generated email. If you have any questions or need clarification
             template = this.getEmailTemplate(frequencyTag, templateData, statementCalcType);
         }
 
-        // If testNote is provided, prepend it to the email body
+        // If a global email note is configured, insert it after the greeting
         let emailHtml = template.html;
         let emailText = template.text;
         let emailSubject = template.subject;
+
+        const globalNote = process.env.STATEMENT_EMAIL_NOTE;
+        if (globalNote && globalNote.trim()) {
+            const noteHtml = `
+                <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px 20px; margin: 16px 0; border-radius: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                    <p style="color: #92400e; font-size: 14px; line-height: 1.6; margin: 0;">${globalNote.trim()}</p>
+                </div>
+            `;
+            // Insert after <body> or at the start of the email
+            if (emailHtml.includes('<body>')) {
+                emailHtml = emailHtml.replace('<body>', '<body>' + noteHtml);
+            } else {
+                emailHtml = noteHtml + emailHtml;
+            }
+            emailText = globalNote.trim() + '\n\n' + emailText;
+        }
 
         if (testNote) {
             const testNoteHtml = `
