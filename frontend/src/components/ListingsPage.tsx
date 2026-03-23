@@ -1207,6 +1207,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             {tag}
                           </span>
                         ))}
+                        {listing.group?.tags && listing.group.tags.map((tag, idx) => (
+                          <span
+                            key={`grp-${idx}`}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
+                          >
+                            {tag}
+                          </span>
+                        ))}
                         {(listing as any).wiseRecipientId && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                             Increase: {(listing as any).wiseRecipientId.length > 10
