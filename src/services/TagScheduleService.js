@@ -91,6 +91,48 @@ class TagScheduleService {
         this.checkInterval = setInterval(() => {
             this.checkSchedules();
         }, this.CHECK_INTERVAL_MS);
+
+        // Daily tag backup — snapshot all listing and group tags for disaster recovery
+        this._backupTags();
+        this._tagBackupInterval = setInterval(() => this._backupTags(), 24 * 60 * 60 * 1000);
+    }
+
+    /**
+     * Snapshot all listing and group tags to a JSON file for disaster recovery.
+     * Keeps the last 7 daily backups.
+     */
+    async _backupTags() {
+        try {
+            const fs = require('fs').promises;
+            const path = require('path');
+            const { Listing } = require('../models');
+            const ListingGroup = require('../models/ListingGroup');
+
+            const listings = await Listing.findAll({ attributes: ['id', 'name', 'tags', 'groupId'] });
+            const groups = await ListingGroup.findAll({ attributes: ['id', 'name', 'tags'] });
+
+            const snapshot = {
+                timestamp: new Date().toISOString(),
+                listings: listings.map(l => ({ id: l.id, name: l.name, tags: l.getDataValue('tags'), groupId: l.groupId })),
+                groups: groups.map(g => ({ id: g.id, name: g.name, tags: g.getDataValue('tags') }))
+            };
+
+            const backupDir = path.join(__dirname, '../../data/tag-backups');
+            await fs.mkdir(backupDir, { recursive: true });
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            await fs.writeFile(path.join(backupDir, `tags-${dateStr}.json`), JSON.stringify(snapshot, null, 2));
+
+            // Keep only last 7 backups
+            const files = (await fs.readdir(backupDir)).filter(f => f.startsWith('tags-') && f.endsWith('.json')).sort();
+            for (const old of files.slice(0, -7)) {
+                await fs.unlink(path.join(backupDir, old));
+            }
+
+            logger.info(`[TagScheduleService] Tag backup saved: ${snapshot.listings.length} listings, ${snapshot.groups.length} groups`);
+        } catch (err) {
+            logger.warn('[TagScheduleService] Tag backup failed', { error: err.message });
+        }
     }
 
     /**
