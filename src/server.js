@@ -1162,11 +1162,13 @@ if (!appVersion) {
     } catch {}
 }
 
+const JWT_SECRET = process.env.JWT_SECRET || 'luxury-lodging-pm-jwt-secret-key-change-in-production';
+
 app.get('/api/events', (req, res) => {
     const token = req.query.token;
     if (!token) return res.status(401).json({ error: 'Token required' });
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
         const clientId = `${decoded.username || decoded.id}_${Date.now()}`;
         sseManager.addClient(clientId, res);
         // Send current version immediately so client can detect future deploys
