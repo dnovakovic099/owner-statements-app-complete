@@ -208,7 +208,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Bottom Actions Bar */}
       <div className="px-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 relative" ref={notificationRef}>
         {/* Row 1: Bell icons + dark mode */}
-        <div className={`flex items-center ${collapsed ? 'justify-center gap-0.5' : 'gap-1'} mb-1`}>
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'gap-1'} mb-1`}>
           <button
             onClick={() => { setIsNotificationOpen(!isNotificationOpen); setIsScheduleOpen(false); }}
             className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-all flex-shrink-0 ${
