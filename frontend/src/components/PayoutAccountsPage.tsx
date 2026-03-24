@@ -65,60 +65,12 @@ type PayoutConnectionRow = {
   listings: Listing[];
 };
 
-// Separate component for inline editing to avoid re-renders killing focus
-const InlineRecipientEditor: React.FC<{
-  initialValue: string;
-  onSave: (value: string) => void;
-  onCancel: () => void;
-}> = ({ initialValue, onSave, onCancel }) => {
-  const [value, setValue] = useState(initialValue);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onSave(value);
-          if (e.key === 'Escape') onCancel();
-        }}
-        placeholder="Recipient ID..."
-        className="w-full border border-blue-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-      />
-      <button
-        onClick={() => onSave(value)}
-        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
-        title="Save"
-      >
-        <Check className="w-3.5 h-3.5" />
-      </button>
-      <button
-        onClick={onCancel}
-        className="p-1 text-gray-400 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        title="Cancel"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-};
-
 const PayoutAccountsPage: React.FC = () => {
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
-
-  // Inline edit state
-  const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
 
   // Invite modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -207,31 +159,6 @@ const PayoutAccountsPage: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startEditing = (row: PayoutConnectionRow) => {
-    setEditingRowKey(getRowKey(row));
-  };
-
-  const cancelEditing = () => {
-    setEditingRowKey(null);
-  };
-
-  const saveWiseRecipientId = async (row: PayoutConnectionRow, value: string) => {
-    const newId = value.trim() || null;
-    try {
-      if (row.type === 'group') {
-        await groupsAPI.updateGroup(row.id, { wiseRecipientId: newId });
-      } else {
-        await listingsAPI.updateListingConfig(row.id, { wiseRecipientId: newId });
-      }
-      showToast(newId ? 'Increase Account ID saved' : 'Increase Account ID removed', 'success');
-      await fetchData();
-    } catch (err) {
-      console.error('Failed to save Increase Account ID:', err);
-      showToast('Failed to save Increase Account ID', 'error');
-    }
-    setEditingRowKey(null);
-  };
 
   const openInviteModal = (row: PayoutConnectionRow) => {
     setInviteTarget(row);
@@ -675,7 +602,7 @@ const PayoutAccountsPage: React.FC = () => {
         );
       },
     },
-  ], [expandedRowId, editingRowKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [expandedRowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const columnLabels: Record<string, string> = {
     name: 'Name',
