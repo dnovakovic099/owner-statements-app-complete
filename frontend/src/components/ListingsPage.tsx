@@ -1302,9 +1302,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
 
           {/* Listing Details/Edit Form - Fills remaining space */}
-          <div className={`${selectedListingId ? 'flex' : 'hidden lg:flex'} flex-1 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-gray-950/50 ${selectedListing ? 'flex-col overflow-hidden' : 'overflow-hidden'}`}>
+          <div className={`${selectedListingId ? 'flex' : 'hidden lg:flex'} flex-1 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-gray-950/50 ${selectedListing ? 'flex-col overflow-hidden' : 'items-center justify-center overflow-hidden'}`}>
             {!selectedListing ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400 p-6">
+              <div className="flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400 p-6">
                 <Search className="w-16 h-16 mb-4 text-gray-300 dark:text-gray-600" />
                 <p className="text-lg font-medium dark:text-gray-300">Select a listing to edit</p>
                 <p className="text-sm mt-2 dark:text-gray-500">Choose a listing from the list on the left</p>
