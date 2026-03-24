@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useRealtimeUpdates } from './useRealtimeUpdates';
 
-const CHECK_INTERVAL = 60_000; // Check every 60 seconds
+const FALLBACK_INTERVAL = 5 * 60_000; // Fallback poll every 5 minutes (was 60s)
 
 /**
- * Polls /version.json and shows a non-disruptive banner when a new deploy is detected.
+ * Detects new deploys via SSE `version` event, with a long-interval fallback poll.
  * Returns { updateAvailable, refresh } so the caller can render UI.
  */
 export function useVersionCheck() {
@@ -14,6 +15,19 @@ export function useVersionCheck() {
     window.location.reload();
   }, []);
 
+  // Listen for SSE version events
+  useRealtimeUpdates(useCallback((event: { type: string; data: any }) => {
+    if (event.type === 'version' && event.data?.v) {
+      const serverVersion = event.data.v;
+      if (currentVersion.current === null) {
+        currentVersion.current = serverVersion;
+      } else if (serverVersion !== currentVersion.current) {
+        setUpdateAvailable(true);
+      }
+    }
+  }, []));
+
+  // Fallback: poll /version.json infrequently + on tab focus
   useEffect(() => {
     async function checkVersion() {
       try {
@@ -34,7 +48,7 @@ export function useVersionCheck() {
     }
 
     checkVersion();
-    const timer = setInterval(checkVersion, CHECK_INTERVAL);
+    const timer = setInterval(checkVersion, FALLBACK_INTERVAL);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

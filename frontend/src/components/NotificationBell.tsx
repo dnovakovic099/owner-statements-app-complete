@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Clock, X, ChevronRight } from 'lucide-react';
 import { tagScheduleAPI } from '../services/api';
+import { useRealtimeUpdates } from '../hooks/useRealtimeUpdates';
 
 interface SkippedReportItem {
   name: string;
@@ -27,9 +28,11 @@ interface NotificationBellProps {
   refreshInterval?: number;
 }
 
+const FALLBACK_INTERVAL = 5 * 60_000; // Fallback poll every 5 min (was 60s)
+
 const NotificationBell: React.FC<NotificationBellProps> = ({
   onNotificationClick,
-  refreshInterval = 60000
+  refreshInterval = FALLBACK_INTERVAL
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<TagNotification[]>([]);
@@ -46,6 +49,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     }
   };
 
+  // Listen for SSE notification events — refresh full list when server pushes update
+  useRealtimeUpdates(useCallback((event: { type: string; data: any }) => {
+    if (event.type === 'notification_update') {
+      fetchNotifications();
+    }
+  }, []));
+
+  // Fallback poll at long interval + initial fetch
   useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, refreshInterval);

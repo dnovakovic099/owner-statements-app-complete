@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LayoutDashboard,
   Home,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { tagScheduleAPI } from '../../services/api';
+import { useRealtimeUpdates } from '../../hooks/useRealtimeUpdates';
 
 type Page = 'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics';
 
@@ -118,9 +119,17 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // Refresh instantly via SSE when server pushes a notification
+  useRealtimeUpdates(useCallback((event: { type: string; data: any }) => {
+    if (event.type === 'notification_update') {
+      fetchScheduleNotifications();
+    }
+  }, []));
+
+  // Fallback poll every 5 min + initial fetch
   useEffect(() => {
     fetchScheduleNotifications();
-    const interval = setInterval(fetchScheduleNotifications, 60000);
+    const interval = setInterval(fetchScheduleNotifications, 5 * 60_000);
     return () => clearInterval(interval);
   }, []);
 

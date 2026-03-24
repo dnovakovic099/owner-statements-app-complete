@@ -1143,6 +1143,25 @@ app.use('/api/reports', authenticate, require('./routes/reports'));
 // SSE - Real-time updates
 const sseManager = require('./utils/sseManager');
 const jwt = require('jsonwebtoken');
+
+// Read version hash once at startup for SSE clients
+let appVersion = null;
+try {
+    const versionPath = require('path').join(__dirname, '..', 'frontend', 'build', 'version.json');
+    if (require('fs').existsSync(versionPath)) {
+        appVersion = JSON.parse(require('fs').readFileSync(versionPath, 'utf8')).v;
+    }
+} catch {}
+// Also check public/ for dev mode
+if (!appVersion) {
+    try {
+        const devPath = require('path').join(__dirname, '..', 'frontend', 'public', 'version.json');
+        if (require('fs').existsSync(devPath)) {
+            appVersion = JSON.parse(require('fs').readFileSync(devPath, 'utf8')).v;
+        }
+    } catch {}
+}
+
 app.get('/api/events', (req, res) => {
     const token = req.query.token;
     if (!token) return res.status(401).json({ error: 'Token required' });
@@ -1150,10 +1169,17 @@ app.get('/api/events', (req, res) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const clientId = `${decoded.username || decoded.id}_${Date.now()}`;
         sseManager.addClient(clientId, res);
+        // Send current version immediately so client can detect future deploys
+        if (appVersion) {
+            sseManager.sendToClient(clientId, 'version', { v: appVersion });
+        }
     } catch {
         res.status(401).json({ error: 'Invalid token' });
     }
 });
+
+// Expose sseManager so services can broadcast events
+app.set('sseManager', sseManager);
 
 // Analytics - Any authenticated user can view
 app.use('/api/analytics', authenticate, require('./routes/analytics'));

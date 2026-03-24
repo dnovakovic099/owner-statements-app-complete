@@ -3,6 +3,7 @@ const TagSchedule = require('../models/TagSchedule');
 const TagNotification = require('../models/TagNotification');
 const Listing = require('../models/Listing');
 const logger = require('../utils/logger');
+const sseManager = require('../utils/sseManager');
 
 // Lazy load to avoid circular dependency
 let ListingGroupService = null;
@@ -438,6 +439,14 @@ class TagScheduleService {
             });
 
             logger.info(`[TagScheduleService] Created notification for tag "${schedule.tagName}" - ${listingCount} listings, ${groupResults.generated} group drafts, ${individualResults.generated} individual drafts${hasErrors ? ' (with errors)' : ''}`);
+
+            // Push notification to all connected clients via SSE
+            sseManager.broadcast('notification_update', {
+                id: notification.id,
+                tagName: notification.tagName,
+                message: notification.message,
+                unreadCount: await TagNotification.count({ where: { status: 'unread' } }),
+            });
 
             return notification;
         } catch (error) {
