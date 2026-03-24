@@ -235,6 +235,11 @@ const Listing = sequelize.define('Listing', {
         field: 'payout_invite_token',
         comment: 'Token for payout setup invite link'
     },
+    payoutInviteExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'payout_invite_expires_at'
+    },
     bankAccountHolder: {
         type: DataTypes.TEXT,
         allowNull: true,

@@ -40,4 +40,17 @@ const payoutLimiter = rateLimit({
     keyGenerator: (req) => req.ip,
 });
 
-module.exports = { authLimiter, apiLimiter, payoutLimiter };
+/**
+ * Public payout setup rate limiter.
+ * 10 requests per 15 minutes per IP — public-facing endpoints need tight limits.
+ */
+const payoutSetupLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,
+    message: { error: 'Too many payout setup requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip,
+});
+
+module.exports = { authLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter };

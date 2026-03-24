@@ -114,6 +114,7 @@ const PayoutAccountsPage: React.FC = () => {
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   // Inline edit state
@@ -127,9 +128,20 @@ const PayoutAccountsPage: React.FC = () => {
 
   const [csvExporting, setCsvExporting] = useState(false);
 
-  // Filter state
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  // Refresh debounce
+  const [refreshingRowKey, setRefreshingRowKey] = useState<string | null>(null);
+
+  // Filter state — persist to localStorage
+  const FILTER_STATUS_KEY = 'payout_filter_status';
+  const FILTER_TYPE_KEY = 'payout_filter_type';
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    try { return localStorage.getItem(FILTER_STATUS_KEY) || 'all'; } catch { return 'all'; }
+  });
+  const [typeFilter, setTypeFilter] = useState<string>(() => {
+    try { return localStorage.getItem(FILTER_TYPE_KEY) || 'all'; } catch { return 'all'; }
+  });
+  useEffect(() => { try { localStorage.setItem(FILTER_STATUS_KEY, statusFilter); } catch {} }, [statusFilter]);
+  useEffect(() => { try { localStorage.setItem(FILTER_TYPE_KEY, typeFilter); } catch {} }, [typeFilter]);
 
   const { showToast } = useToast();
 
@@ -176,6 +188,7 @@ const PayoutAccountsPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      setFetchError(false);
       const [groupsRes, listingsRes] = await Promise.all([
         groupsAPI.getGroups(),
         listingsAPI.getListings(),
@@ -184,6 +197,7 @@ const PayoutAccountsPage: React.FC = () => {
       setAllListings(listingsRes.listings || []);
     } catch (err) {
       console.error('Failed to fetch payout connections data:', err);
+      setFetchError(true);
       showToast('Failed to load payout connections', 'error');
     } finally {
       setLoading(false);
@@ -246,7 +260,9 @@ const PayoutAccountsPage: React.FC = () => {
   };
 
   const handleRefreshStatus = async (row: PayoutConnectionRow) => {
-    if (!row.wiseRecipientId) return;
+    const rowKey = getRowKey(row);
+    if (!row.wiseRecipientId || refreshingRowKey) return;
+    setRefreshingRowKey(rowKey);
     try {
       await payoutsAPI.refreshWiseStatus({
         wiseRecipientId: row.wiseRecipientId,
@@ -256,6 +272,8 @@ const PayoutAccountsPage: React.FC = () => {
       fetchData();
     } catch (err: any) {
       showToast(err?.response?.data?.error || 'Failed to refresh status', 'error');
+    } finally {
+      setRefreshingRowKey(null);
     }
   };
 
@@ -286,35 +304,16 @@ const PayoutAccountsPage: React.FC = () => {
       }
 
       const clients = Array.from(clientMap.values());
-      let failedLinks = 0;
-      const linkResults = await Promise.all(
-        clients.map(async (client) => {
-          if (client.wiseRecipientId) {
-            return '(already connected)';
-          }
-          try {
-            const result = await payoutsAPI.generateInvite({
-              entityType: client.entityType,
-              entityId: client.entityId,
-              email: client.email || undefined,
-            });
-            return result.inviteUrl || '';
-          } catch {
-            failedLinks++;
-            return '';
-          }
-        })
-      );
+      const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
 
-      const csvRows = [['client name', 'listings', 'email', 'increase account id', 'invite link'].join(',')];
-      clients.forEach((client, i) => {
-        const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
+      const csvRows = [['client name', 'listings', 'email', 'increase account id', 'status'].join(',')];
+      clients.forEach((client) => {
         csvRows.push([
           escapeCsv(client.name),
           escapeCsv(client.listings.join('; ')),
           escapeCsv(client.email),
           escapeCsv(client.wiseRecipientId || ''),
-          escapeCsv(linkResults[i]),
+          escapeCsv(client.wiseRecipientId ? 'connected' : 'not connected'),
         ].join(','));
       });
 
@@ -322,15 +321,11 @@ const PayoutAccountsPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'increase-invite-links.csv';
+      a.download = 'payout-accounts.csv';
       a.click();
       URL.revokeObjectURL(url);
 
-      if (failedLinks > 0) {
-        showToast(`CSV exported (${failedLinks} invite link(s) could not be generated)`, 'info');
-      } else {
-        showToast('CSV exported', 'success');
-      }
+      showToast('CSV exported', 'success');
     } catch (err) {
       showToast('Failed to export CSV', 'error');
     } finally {
@@ -665,10 +660,11 @@ const PayoutAccountsPage: React.FC = () => {
                   e.stopPropagation();
                   handleRefreshStatus(row.original);
                 }}
-                className="p-1 text-gray-400 dark:text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors"
+                disabled={refreshingRowKey === getRowKey(row.original)}
+                className="p-1 text-gray-400 dark:text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
                 title="Refresh status from Increase"
               >
-                <RefreshCw className="w-3 h-3" />
+                <RefreshCw className={`w-3 h-3 ${refreshingRowKey === getRowKey(row.original) ? 'animate-spin' : ''}`} />
               </button>
             )}
           </div>
@@ -738,7 +734,7 @@ const PayoutAccountsPage: React.FC = () => {
     },
   });
 
-  if (loading) {
+  if (loading || fetchError) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-3 py-3 flex-shrink-0">
@@ -746,32 +742,50 @@ const PayoutAccountsPage: React.FC = () => {
             <CreditCard className="w-5 h-5 text-purple-600" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Payout Accounts (Increase)</h2>
           </div>
-          <p className="text-sm text-gray-400 dark:text-gray-400 mt-0.5">Loading payout connections...</p>
+          <p className="text-sm text-gray-400 dark:text-gray-400 mt-0.5">
+            {fetchError ? 'Failed to load payout connections' : 'Loading payout connections...'}
+          </p>
         </div>
-        <div className="flex-1 overflow-auto px-3 py-2">
-          <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                  {['Name', 'Type', 'Owner Email', 'Schedule', 'Increase Account', 'Status', 'Listings'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...Array(6)].map((_, i) => (
-                  <tr key={i} className="border-b dark:border-gray-700 last:border-b-0">
-                    {[...Array(7)].map((_, j) => (
-                      <td key={j} className="px-3 py-3">
-                        <div className={`h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ${j === 0 ? 'w-36' : j === 4 ? 'w-28' : 'w-20'}`} />
-                      </td>
+        {fetchError ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+              <X className="w-5 h-5 text-red-500" />
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Could not load payout connections. Check your network and try again.</p>
+            <Button variant="outline" size="sm" onClick={fetchData}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto px-3 py-2">
+            <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                    {['Name', 'Type', 'Owner Email', 'Schedule', 'Increase Account', 'Status', 'Listings'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {[...Array(14)].map((_, i) => (
+                    <tr key={i} className="border-b dark:border-gray-700 last:border-b-0">
+                      {[...Array(7)].map((_, j) => (
+                        <td key={j} className="px-3 py-3">
+                          <div
+                            className={`h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ${j === 0 ? 'w-36' : j === 4 ? 'w-28' : 'w-20'}`}
+                            style={{ animationDelay: `${i * 50 + j * 30}ms` }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }

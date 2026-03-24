@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const ListingService = require('../services/ListingService');
 const IncreaseService = require('../services/IncreaseService');
@@ -9,6 +10,11 @@ const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption')
 
 const ListingGroup = require('../models/ListingGroup');
 const { Statement } = require('../models');
+
+const SAFE_PAYOUT_STATUSES = [null, 'failed', 'cancelled'];
+
+/** Round to 2 decimal places to avoid floating-point drift in currency math */
+const toCents = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
 const payoutReceiptTemplate = require('../templates/emails/payoutReceipt');
 const collectionInvoiceTemplate = require('../templates/emails/collectionInvoice');
 
@@ -74,11 +80,11 @@ router.post('/generate-invite', async (req, res) => {
         if (entityType === 'group') {
             const group = await ListingGroup.findByPk(parseInt(entityId));
             if (!group) return res.status(404).json({ error: 'Group not found' });
-            await group.update({ payoutInviteToken: token, wiseStatus: 'pending' });
+            await group.update({ payoutInviteToken: token, payoutInviteExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), wiseStatus: 'pending' });
         } else {
             const listing = await Listing.findByPk(parseInt(entityId));
             if (!listing) return res.status(404).json({ error: 'Listing not found' });
-            await listing.update({ payoutInviteToken: token, wiseStatus: 'pending' });
+            await listing.update({ payoutInviteToken: token, payoutInviteExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), wiseStatus: 'pending' });
         }
 
         const inviteUrl = `${appUrl}/payout-setup/${token}`;
@@ -221,7 +227,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
         // Atomic mark as pending — prevents double-payout from concurrent requests
         const [affectedRows] = await Statement.update(
             { payoutStatus: 'pending', payoutError: null },
-            { where: { id: statementId, payoutStatus: { [require('sequelize').Op.notIn]: ['paid', 'pending'] } } }
+            { where: { id: statementId, payoutStatus: { [Op.notIn]: ['paid', 'pending'] } } }
         );
         if (affectedRows === 0) {
             return res.status(409).json({ error: 'Statement is already being processed' });
@@ -499,7 +505,7 @@ router.post('/fund-and-queue', async (req, res) => {
         }
 
         // Check balance
-        const totalAmount = valid.reduce((sum, v) => sum + parseFloat(v.statement.ownerPayout), 0);
+        const totalAmount = valid.reduce((sum, v) => sum + toCents(v.statement.ownerPayout), 0);
         let balance;
         try {
             balance = await IncreaseService.getBalance();
@@ -527,12 +533,22 @@ router.post('/fund-and-queue', async (req, res) => {
         if (valid.length >= USE_BATCH_THRESHOLD) {
             // ── BATCH PAYMENT MODE ──
             try {
-                // Mark all as pending
+                // Atomically mark all as pending — skip any already claimed by another request
+                const claimedIds = [];
                 for (const { statement } of valid) {
-                    await statement.update({ payoutStatus: 'pending', payoutError: null });
+                    const [rows] = await Statement.update(
+                        { payoutStatus: 'pending', payoutError: null },
+                        { where: { id: statement.id, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
+                    );
+                    if (rows > 0) claimedIds.push(statement.id);
+                }
+                // Filter valid to only claimed statements
+                const claimed = valid.filter(v => claimedIds.includes(v.statement.id));
+                if (claimed.length === 0) {
+                    return res.status(409).json({ error: 'All statements are already being processed' });
                 }
 
-                const batchPayouts = valid.map(({ statement, wiseRecipientId }) => ({
+                const batchPayouts = claimed.map(({ statement, wiseRecipientId }) => ({
                     recipientId: wiseRecipientId,
                     amount: parseFloat(statement.ownerPayout),
                     reference: `Payout - ${statement.ownerName} - Stmt #${statement.id}`,
@@ -544,14 +560,14 @@ router.post('/fund-and-queue', async (req, res) => {
 
                 // Update each statement with its transfer result
                 for (const t of transfers) {
-                    const match = valid.find(v => v.statement.id === t.statementId);
+                    const match = claimed.find(v => v.statement.id === t.statementId);
                     if (match) {
                         await match.statement.update({
                             payoutStatus: 'paid',
                             payoutTransferId: String(t.transfer.id),
                             paidAt: new Date(),
                             wiseFee: t.wiseFee,
-                            totalTransferAmount: parseFloat(match.statement.ownerPayout) + t.wiseFee,
+                            totalTransferAmount: toCents(match.statement.ownerPayout) + t.wiseFee,
                             payoutError: null,
                         });
                         processed++;
@@ -559,12 +575,12 @@ router.post('/fund-and-queue', async (req, res) => {
                     }
                 }
 
-                logger.info('Batch payout completed', { batchSize: valid.length, processed });
+                logger.info('Batch payout completed', { batchSize: claimed.length, processed });
             } catch (batchErr) {
                 // Batch failed — fall back to individual transfers
                 logger.warn('Batch payment failed, falling back to individual transfers', { error: batchErr.message });
 
-                for (const { statement, wiseRecipientId } of valid) {
+                for (const { statement, wiseRecipientId } of claimed) {
                     if (statement.payoutStatus === 'paid') continue; // Already processed
                     try {
                         await statement.update({ payoutStatus: 'pending', payoutError: null });
@@ -601,7 +617,15 @@ router.post('/fund-and-queue', async (req, res) => {
             // ── INDIVIDUAL TRANSFER MODE (1-2 payouts) ──
             for (const { statement, wiseRecipientId } of valid) {
                 try {
-                    await statement.update({ payoutStatus: 'pending', payoutError: null });
+                    // Atomic claim — skip if already processing
+                    const [claimed] = await Statement.update(
+                        { payoutStatus: 'pending', payoutError: null },
+                        { where: { id: statement.id, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
+                    );
+                    if (claimed === 0) {
+                        skipped.push({ id: statement.id, reason: 'Already being processed' });
+                        continue;
+                    }
 
                     const amount = parseFloat(statement.ownerPayout);
                     const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
@@ -669,7 +693,6 @@ router.get('/balance', async (req, res) => {
             return res.status(500).json({ error: 'Increase is not configured' });
         }
         const balance = await IncreaseService.getBalance();
-        const { Op } = require('sequelize');
         const queuedCount = await Statement.count({ where: { payoutStatus: 'queued' } });
         const queuedTotal = queuedCount > 0
             ? (await Statement.sum('ownerPayout', { where: { payoutStatus: 'queued' } })) || 0
@@ -717,7 +740,6 @@ async function processQueuedPayouts() {
         return { success: false, error: 'Increase not configured' };
     }
 
-    const { Op } = require('sequelize');
     const queued = await Statement.findAll({
         where: { payoutStatus: 'queued' },
         order: [['created_at', 'ASC']],
@@ -728,7 +750,7 @@ async function processQueuedPayouts() {
         return { success: true, processed: 0, failed: 0 };
     }
 
-    const totalNeeded = queued.reduce((sum, s) => sum + parseFloat(s.ownerPayout), 0);
+    const totalNeeded = queued.reduce((sum, s) => sum + toCents(s.ownerPayout), 0);
     const balance = await IncreaseService.getBalance();
 
     if (balance < totalNeeded) {
@@ -741,8 +763,12 @@ async function processQueuedPayouts() {
 
     for (const statement of queued) {
         try {
-            await statement.reload();
-            if (statement.payoutStatus !== 'queued') continue;
+            // Atomic claim — skip if status changed since we queried
+            const [claimedRows] = await Statement.update(
+                { payoutStatus: 'pending', payoutError: null },
+                { where: { id: statement.id, payoutStatus: 'queued' } }
+            );
+            if (claimedRows === 0) continue;
 
             const payoutAmount = parseFloat(statement.ownerPayout);
             if (payoutAmount <= 0) {
@@ -757,8 +783,6 @@ async function processQueuedPayouts() {
                 failed++;
                 continue;
             }
-
-            await statement.update({ payoutStatus: 'pending', payoutError: null });
 
             const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
             const { transfer, wiseFee } = await IncreaseService.sendPayout({

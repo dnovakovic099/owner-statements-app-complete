@@ -118,7 +118,7 @@ class TagScheduleService {
             };
 
             // Store backup as an activity log entry
-            await ActivityLog.log(null, 'TAG_BACKUP', 'system', null, snapshot);
+            await ActivityLog.logSystem('TAG_BACKUP', 'system', null, snapshot);
 
             // Clean up old backups — keep last 7
             const backups = await ActivityLog.findAll({

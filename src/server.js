@@ -19,7 +19,7 @@ const TagScheduleService = require('./services/TagScheduleService');
 const { authenticate, authorize, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
 
 // Security middleware
-const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter } = require('./middleware/rateLimiter');
+const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter } = require('./middleware/rateLimiter');
 const sanitize = require('./middleware/sanitize');
 
 // Metrics
@@ -381,7 +381,7 @@ app.use('/api/email-templates', authenticate, require('./routes/email-templates'
 const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 // Payout setup page (public — owner visits this link to add bank details)
-app.get('/payout-setup/:token', async (req, res) => {
+app.get('/payout-setup/:token', payoutSetupLimiter, async (req, res) => {
     try {
         const { token } = req.params;
         const { Listing } = require('./models');
@@ -398,6 +398,12 @@ app.get('/payout-setup/:token', async (req, res) => {
         if (!entity) {
             return res.status(404).send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
                 <h2>Invalid or Expired Link</h2><p style="color:#6b7280">This payout setup link is no longer valid. Please contact your property manager for a new link.</p>
+            </body></html>`);
+        }
+
+        if (entity.payoutInviteExpiresAt && new Date() > new Date(entity.payoutInviteExpiresAt)) {
+            return res.status(410).send(`<html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px;color:#111">
+                <h2>Link Expired</h2><p style="color:#6b7280">This payout setup link has expired. Please contact your property manager for a new link.</p>
             </body></html>`);
         }
 
@@ -677,7 +683,7 @@ app.get('/payout-setup/:token', async (req, res) => {
 });
 
 // Payout setup form submission (public — no auth)
-app.post('/api/payouts/setup/:token', async (req, res) => {
+app.post('/api/payouts/setup/:token', payoutSetupLimiter, async (req, res) => {
     try {
         const { token } = req.params;
         const { name, email, accountType, routingNumber, accountNumber, street, city, state, zip } = req.body;
@@ -692,6 +698,20 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
 
         if (!/^[0-9]{9}$/.test(routingNumber)) {
             return res.status(400).json({ error: 'Routing number must be exactly 9 digits' });
+        }
+
+        if (!/^[0-9]{4,17}$/.test(accountNumber)) {
+            return res.status(400).json({ error: 'Account number must be 4-17 digits' });
+        }
+
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ error: 'Please enter a valid email address' });
+        }
+
+        const validAccountTypes = ['CHECKING', 'SAVINGS'];
+        const normalizedAccountType = (accountType || 'CHECKING').toUpperCase();
+        if (!validAccountTypes.includes(normalizedAccountType)) {
+            return res.status(400).json({ error: 'Account type must be Checking or Savings' });
         }
 
         const { Listing } = require('./models');
@@ -710,6 +730,10 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
             return res.status(404).json({ error: 'Invalid or expired link' });
         }
 
+        if (entity.payoutInviteExpiresAt && new Date() > new Date(entity.payoutInviteExpiresAt)) {
+            return res.status(410).json({ error: 'This setup link has expired. Please request a new one.' });
+        }
+
         if (!IncreaseService.isConfigured()) {
             return res.status(500).json({ error: 'Payment system not configured' });
         }
@@ -720,23 +744,32 @@ app.post('/api/payouts/setup/:token', async (req, res) => {
             email,
             routingNumber,
             accountNumber,
-            accountType: accountType || 'CHECKING',
+            accountType: normalizedAccountType,
         });
 
         logger.info('Increase external account created via payout setup', { entityType, entityId: entity.id, recipientId: recipient.id });
 
         // Save recipient ID + bank details (model setters handle encryption automatically)
-        await entity.update({
+        const updateData = {
             wiseRecipientId: String(recipient.id),
             wiseStatus: 'verified',
             payoutInviteToken: null,
+            payoutInviteExpiresAt: null,
             bankAccountHolder: name,
             bankEmail: email,
             bankRoutingNumber: routingNumber,
             bankAccountNumber: accountNumber,
-            bankAccountType: accountType || 'CHECKING',
+            bankAccountType: normalizedAccountType,
             bankAddress: JSON.stringify({ street, city, state, zip }),
-        });
+        };
+
+        // Also update ownerEmail if not already set on listings, so the
+        // details the owner entered are reflected in the main table
+        if (email && entityType === 'listing' && !entity.ownerEmail) {
+            updateData.ownerEmail = email;
+        }
+
+        await entity.update(updateData);
 
         res.json({ success: true, message: 'Bank account connected successfully' });
     } catch (err) {

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 
 class IncreaseService {
@@ -13,6 +14,7 @@ class IncreaseService {
     _client() {
         return axios.create({
             baseURL: this.baseUrl,
+            timeout: 30000,
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,
                 'Content-Type': 'application/json',
@@ -122,7 +124,7 @@ class IncreaseService {
      * Create a single ACH transfer to an external account.
      * Increase expects amount in cents (integer).
      */
-    async createTransfer({ externalAccountId, amount, statementDescriptor, statementId, individualName }) {
+    async createTransfer({ externalAccountId, amount, statementDescriptor, statementId, individualName, idempotencyKey }) {
         const amountCents = Math.round(amount * 100);
         const descriptor = (statementDescriptor || `Payout #${statementId}`).substring(0, 22);
         const body = {
@@ -137,7 +139,11 @@ class IncreaseService {
         if (individualName) {
             body.individual_name = individualName.substring(0, 22);
         }
-        const res = await this._client().post('/ach_transfers', body);
+        const headers = {};
+        if (idempotencyKey) {
+            headers['Idempotency-Key'] = idempotencyKey;
+        }
+        const res = await this._client().post('/ach_transfers', body, { headers });
         return res.data;
     }
 
@@ -163,12 +169,14 @@ class IncreaseService {
      */
     async sendPayout({ recipientId, amount, reference, statementId, individualName }) {
         const descriptor = (reference || `Payout #${statementId}`).substring(0, 22);
+        const idempotencyKey = crypto.createHash('sha256').update(`payout-${statementId}-${amount}-${recipientId}`).digest('hex');
         const transfer = await this.createTransfer({
             externalAccountId: recipientId,
             amount,
             statementDescriptor: descriptor,
             statementId,
             individualName,
+            idempotencyKey,
         });
         logger.info('Increase ACH transfer created', {
             transferId: transfer.id,
@@ -187,12 +195,14 @@ class IncreaseService {
         const transfers = [];
         for (const payout of payouts) {
             const descriptor = (payout.reference || `Payout #${payout.statementId}`).substring(0, 22);
+            const idempotencyKey = crypto.createHash('sha256').update(`batch-${payout.statementId}-${payout.amount}-${payout.recipientId}`).digest('hex');
             const transfer = await this.createTransfer({
                 externalAccountId: payout.recipientId,
                 amount: payout.amount,
                 statementDescriptor: descriptor,
                 statementId: payout.statementId,
                 individualName: payout.individualName,
+                idempotencyKey,
             });
             transfers.push({ transfer, wiseFee: 0, statementId: payout.statementId });
             logger.info('Increase batch transfer created', {
