@@ -559,60 +559,24 @@ const PayoutAccountsPage: React.FC = () => {
         </div>
       ),
       cell: ({ row }) => {
-        const rowKey = getRowKey(row.original);
-        const isEditing = editingRowKey === rowKey;
         const recipientId = row.original.wiseRecipientId;
-
-        if (isEditing) {
-          return (
-            <InlineRecipientEditor
-              initialValue={recipientId || ''}
-              onSave={(value) => saveWiseRecipientId(row.original, value)}
-              onCancel={cancelEditing}
-            />
-          );
-        }
 
         return (
           <div className="flex items-center gap-1.5 justify-center">
             {recipientId ? (
-              <>
-                <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-700 dark:text-gray-300">{maskRecipientId(recipientId)}</code>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startEditing(row.original);
-                  }}
-                  className="p-1 text-gray-300 dark:text-gray-600 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
-                  title="Edit Increase Account ID"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              </>
+              <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-700 dark:text-gray-300">{maskRecipientId(recipientId)}</code>
             ) : (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openInviteModal(row.original);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                  title="Send payout setup invite to owner"
-                >
-                  <Send className="w-3 h-3" />
-                  Invite Owner
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startEditing(row.original);
-                  }}
-                  className="p-1 text-gray-300 dark:text-gray-600 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
-                  title="Manually enter Increase External Account ID"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              </>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openInviteModal(row.original);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                title="Send payout setup invite to owner"
+              >
+                <Send className="w-3 h-3" />
+                Invite Owner
+              </button>
             )}
           </div>
         );
