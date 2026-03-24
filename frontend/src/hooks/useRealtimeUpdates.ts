@@ -10,9 +10,13 @@ let sharedES: EventSource | null = null;
 let sharedListeners: Set<(event: SSEEvent) => void> = new Set();
 let sharedReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let sharedConnected = false;
+let consecutiveErrors = 0;
+const MAX_RETRIES = 3;
+const BACKOFF_BASE = 5000; // 5s, 10s, 20s
 
 function getOrCreateEventSource() {
   if (sharedES && sharedES.readyState !== EventSource.CLOSED) return sharedES;
+  if (consecutiveErrors >= MAX_RETRIES) return null; // Stop retrying after repeated failures
 
   let token = '';
   try {
@@ -27,6 +31,7 @@ function getOrCreateEventSource() {
 
   es.addEventListener('connected', () => {
     sharedConnected = true;
+    consecutiveErrors = 0; // Reset on successful connection
   });
 
   const eventTypes = [
@@ -49,8 +54,14 @@ function getOrCreateEventSource() {
     sharedConnected = false;
     es.close();
     sharedES = null;
-    if (sharedReconnectTimer) clearTimeout(sharedReconnectTimer);
-    sharedReconnectTimer = setTimeout(getOrCreateEventSource, 5000);
+    consecutiveErrors++;
+
+    if (consecutiveErrors < MAX_RETRIES) {
+      const delay = BACKOFF_BASE * Math.pow(2, consecutiveErrors - 1);
+      if (sharedReconnectTimer) clearTimeout(sharedReconnectTimer);
+      sharedReconnectTimer = setTimeout(getOrCreateEventSource, delay);
+    }
+    // After MAX_RETRIES, stop trying — avoids 401 loop
   };
 
   return es;
@@ -74,7 +85,6 @@ export function useRealtimeUpdates(onEvent?: (event: SSEEvent) => void) {
 
     return () => {
       sharedListeners.delete(listener);
-      // Close connection only when no more listeners
       if (sharedListeners.size === 0 && sharedES) {
         sharedES.close();
         sharedES = null;

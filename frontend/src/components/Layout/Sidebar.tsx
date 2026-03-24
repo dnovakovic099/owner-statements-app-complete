@@ -126,11 +126,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, []));
 
-  // Fallback poll every 5 min + initial fetch
+  // Initial fetch only — SSE handles all updates after this
   useEffect(() => {
     fetchScheduleNotifications();
-    const interval = setInterval(fetchScheduleNotifications, 5 * 60_000);
-    return () => clearInterval(interval);
   }, []);
 
   // Close notification dropdown when clicking outside

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRealtimeUpdates } from './useRealtimeUpdates';
 
-const FALLBACK_INTERVAL = 5 * 60_000; // Fallback poll every 5 minutes (was 60s)
-
 /**
- * Detects new deploys via SSE `version` event, with a long-interval fallback poll.
- * Returns { updateAvailable, refresh } so the caller can render UI.
+ * Detects new deploys via SSE `version` event.
+ * Only fetches /version.json once on mount to seed the baseline.
+ * After that, relies entirely on SSE + tab-refocus check.
  */
 export function useVersionCheck() {
   const currentVersion = useRef<string | null>(null);
@@ -15,40 +14,39 @@ export function useVersionCheck() {
     window.location.reload();
   }, []);
 
-  // Listen for SSE version events
+  const handleVersion = useCallback((v: string) => {
+    if (!v) return;
+    if (currentVersion.current === null) {
+      currentVersion.current = v;
+    } else if (v !== currentVersion.current) {
+      setUpdateAvailable(true);
+    }
+  }, []);
+
+  // Listen for SSE version events (pushed on connect + on deploy)
   useRealtimeUpdates(useCallback((event: { type: string; data: any }) => {
     if (event.type === 'version' && event.data?.v) {
-      const serverVersion = event.data.v;
-      if (currentVersion.current === null) {
-        currentVersion.current = serverVersion;
-      } else if (serverVersion !== currentVersion.current) {
-        setUpdateAvailable(true);
-      }
+      handleVersion(event.data.v);
     }
-  }, []));
+  }, [handleVersion]));
 
-  // Fallback: poll /version.json infrequently + on tab focus
+  // Seed baseline version once on mount + check on tab refocus (no interval)
   useEffect(() => {
     async function checkVersion() {
       try {
         const res = await fetch('/version.json', { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
-        const serverVersion = data.v;
-        if (!serverVersion) return;
-
-        if (currentVersion.current === null) {
-          currentVersion.current = serverVersion;
-        } else if (serverVersion !== currentVersion.current) {
-          setUpdateAvailable(true);
-        }
+        if (data.v) handleVersion(data.v);
       } catch {
         // Silently ignore
       }
     }
 
-    checkVersion();
-    const timer = setInterval(checkVersion, FALLBACK_INTERVAL);
+    // One-time seed — SSE handles all updates after this
+    if (currentVersion.current === null) {
+      checkVersion();
+    }
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -58,10 +56,9 @@ export function useVersionCheck() {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [handleVersion]);
 
   return { updateAvailable, refresh };
 }

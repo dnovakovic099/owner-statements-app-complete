@@ -28,11 +28,8 @@ interface NotificationBellProps {
   refreshInterval?: number;
 }
 
-const FALLBACK_INTERVAL = 5 * 60_000; // Fallback poll every 5 min (was 60s)
-
 const NotificationBell: React.FC<NotificationBellProps> = ({
   onNotificationClick,
-  refreshInterval = FALLBACK_INTERVAL
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<TagNotification[]>([]);
@@ -56,12 +53,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     }
   }, []));
 
-  // Fallback poll at long interval + initial fetch
+  // Initial fetch only — SSE handles all updates after this
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, refreshInterval);
-    return () => clearInterval(interval);
-  }, [refreshInterval]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
