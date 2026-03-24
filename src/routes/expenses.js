@@ -173,8 +173,18 @@ router.get('/duplicates', async (req, res) => {
 router.delete('/uploaded/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
-        const filePath = path.join(process.cwd(), 'uploads', 'expenses', filename);
-        
+        // Sanitize filename — strip path separators to prevent directory traversal
+        const safeName = path.basename(filename);
+        if (!safeName || safeName !== filename || safeName.startsWith('.')) {
+            return res.status(400).json({ success: false, error: 'Invalid filename' });
+        }
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'expenses');
+        const filePath = path.join(uploadsDir, safeName);
+        // Double-check resolved path stays inside uploads directory
+        if (!filePath.startsWith(uploadsDir)) {
+            return res.status(400).json({ success: false, error: 'Invalid filename' });
+        }
+
         // Check if file exists
         try {
             await fs.access(filePath);

@@ -786,10 +786,10 @@ app.get('/pay/:token', async (req, res) => {
         const { Statement } = require('./models');
         const { Op } = require('sequelize');
 
-        // Find statement by payment token stored in payoutError field
+        // Find statement by payment token stored in payoutError field (exact match)
         const statement = await Statement.findOne({
             where: {
-                payoutError: { [Op.like]: `payment_token:${token}` },
+                payoutError: `payment_token:${token}`,
             },
         });
 

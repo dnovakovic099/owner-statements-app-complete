@@ -503,10 +503,11 @@ class FinancialDataService {
      */
     async cleanupExpiredCache(olderThanDays = 30) {
         try {
-            const [, metadata] = await this.sequelize.query(`
-                DELETE FROM financial_cache
-                WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL '${olderThanDays} days'
-            `);
+            const days = parseInt(olderThanDays, 10) || 30;
+            const [, metadata] = await this.sequelize.query(
+                `DELETE FROM financial_cache WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL :days`,
+                { replacements: { days: `${days} days` } }
+            );
 
             logger.info(`Cleaned up ${metadata.rowCount} expired cache entries`);
             return metadata.rowCount;
