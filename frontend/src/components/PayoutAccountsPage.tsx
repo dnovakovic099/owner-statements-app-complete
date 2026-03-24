@@ -655,17 +655,29 @@ const PayoutAccountsPage: React.FC = () => {
               {statusConfig.label}
             </span>
             {hasRecipient && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRefreshStatus(row.original);
-                }}
-                disabled={refreshingRowKey === getRowKey(row.original)}
-                className="p-1 text-gray-400 dark:text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
-                title="Refresh status from Increase"
-              >
-                <RefreshCw className={`w-3 h-3 ${refreshingRowKey === getRowKey(row.original) ? 'animate-spin' : ''}`} />
-              </button>
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openInviteModal(row.original);
+                  }}
+                  className="p-1 text-gray-400 dark:text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded transition-colors"
+                  title="Update bank account — send new setup link to owner"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRefreshStatus(row.original);
+                  }}
+                  disabled={refreshingRowKey === getRowKey(row.original)}
+                  className="p-1 text-gray-400 dark:text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
+                  title="Refresh status from Increase"
+                >
+                  <RefreshCw className={`w-3 h-3 ${refreshingRowKey === getRowKey(row.original) ? 'animate-spin' : ''}`} />
+                </button>
+              </>
             )}
           </div>
         );
@@ -1209,7 +1221,10 @@ const PayoutAccountsPage: React.FC = () => {
           ) : (
             <div className="space-y-4 pt-2">
               <div className="text-sm text-gray-500">
-                Generate a secure link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to connect their bank account for Increase ACH payouts.
+                {inviteTarget?.connected
+                  ? <>Generate a new setup link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to update their bank account details. The new account will replace the current one.</>
+                  : <>Generate a secure link for <span className="font-medium text-gray-900">{inviteTarget?.name}</span> to connect their bank account for Increase ACH payouts.</>
+                }
               </div>
 
               {inviteTarget?.ownerEmail && (
