@@ -73,19 +73,49 @@ router.post('/disconnect', async (req, res) => {
         }
         if (!entity) return res.status(404).json({ error: `${entityType} not found` });
 
+        // Block disconnect if there are pending/queued payouts referencing this entity
+        const pendingFilter = entityType === 'group'
+            ? { groupId: parseInt(entityId) }
+            : { propertyId: parseInt(entityId) };
+        const pendingCount = await Statement.count({
+            where: { ...pendingFilter, payoutStatus: { [Op.in]: ['pending', 'queued'] } },
+        });
+        if (pendingCount > 0) {
+            return res.status(409).json({
+                error: `Cannot disconnect — ${pendingCount} payout(s) are currently pending or queued. Wait for them to complete first.`,
+            });
+        }
+
         const oldRecipientId = entity.wiseRecipientId;
 
-        // Archive the external account in Increase if possible
+        // Only archive in Increase if no OTHER entity shares this recipient ID.
+        // wiseRecipientId is encrypted with a random IV so SQL equality won't work —
+        // fetch all non-null rows and compare decrypted values in JS.
         if (oldRecipientId && IncreaseService.isConfigured()) {
+            let shared = false;
             try {
-                await IncreaseService.archiveRecipient(oldRecipientId);
-                logger.info('Archived Increase external account', { entityType, entityId, recipientId: oldRecipientId });
-            } catch (archiveErr) {
-                logger.warn('Could not archive Increase external account', { error: archiveErr.message });
+                const allListings = await Listing.findAll({ where: { wiseRecipientId: { [Op.ne]: null } }, attributes: ['id', 'wiseRecipientId'] });
+                const allGroups = await ListingGroup.findAll({ where: { wiseRecipientId: { [Op.ne]: null } }, attributes: ['id', 'wiseRecipientId'] });
+                shared = allListings.some(l => l.wiseRecipientId === oldRecipientId && !(entityType === 'listing' && l.id === parseInt(entityId)))
+                      || allGroups.some(g => g.wiseRecipientId === oldRecipientId && !(entityType === 'group' && g.id === parseInt(entityId)));
+            } catch (e) {
+                logger.warn('Could not check for shared recipients, skipping archive', { error: e.message });
+                shared = true; // err on the safe side
+            }
+
+            if (!shared) {
+                try {
+                    await IncreaseService.archiveRecipient(oldRecipientId);
+                    logger.info('Archived Increase external account', { entityType, entityId, recipientId: oldRecipientId });
+                } catch (archiveErr) {
+                    logger.warn('Could not archive Increase external account', { error: archiveErr.message });
+                }
+            } else {
+                logger.info('Skipped archiving — recipient shared with other entities', { recipientId: oldRecipientId });
             }
         }
 
-        // Clear payout fields
+        // Clear payout fields on this entity only
         await entity.update({
             wiseRecipientId: null,
             wiseStatus: null,
