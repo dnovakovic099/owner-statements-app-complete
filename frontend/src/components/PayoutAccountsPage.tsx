@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { useToast } from './ui/toast';
+import ConfirmDialog from './ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -82,6 +83,7 @@ const PayoutAccountsPage: React.FC = () => {
 
   // Refresh debounce
   const [refreshingRowKey, setRefreshingRowKey] = useState<string | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<PayoutConnectionRow | null>(null);
 
   // Filter state — persist to localStorage
   const FILTER_STATUS_KEY = 'payout_filter_status';
@@ -204,12 +206,17 @@ const PayoutAccountsPage: React.FC = () => {
     }
   };
 
-  const handleDisconnect = async (row: PayoutConnectionRow) => {
-    if (!window.confirm(`Disconnect payout account for "${row.name}"? This will archive the Increase external account.`)) return;
-    const rowKey = getRowKey(row);
+  const handleDisconnect = (row: PayoutConnectionRow) => {
+    setDisconnectTarget(row);
+  };
+
+  const confirmDisconnect = async () => {
+    if (!disconnectTarget) return;
+    const rowKey = getRowKey(disconnectTarget);
+    setDisconnectTarget(null);
     setRefreshingRowKey(rowKey);
     try {
-      await payoutsAPI.disconnectAccount({ entityType: row.type, entityId: row.id });
+      await payoutsAPI.disconnectAccount({ entityType: disconnectTarget.type, entityId: disconnectTarget.id });
       showToast('Payout account disconnected', 'success');
       fetchData();
     } catch (err: any) {
@@ -1171,6 +1178,17 @@ const PayoutAccountsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        isOpen={!!disconnectTarget}
+        onClose={() => setDisconnectTarget(null)}
+        onConfirm={confirmDisconnect}
+        title="Disconnect Payout Account"
+        message={`This will remove the bank account connection for "${disconnectTarget?.name}". The owner will need to set up their payout details again via a new invite link.`}
+        confirmText="Disconnect"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };
