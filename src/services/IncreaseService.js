@@ -35,14 +35,65 @@ class IncreaseService {
      * Returns Increase external_account object with { id, status, description, ... }
      */
     async createRecipient({ name, routingNumber, accountNumber, accountType = 'CHECKING' }) {
-        const res = await this._client().post('/external_accounts', {
-            account_number: accountNumber,
-            routing_number: routingNumber,
-            description: name,
-            account_holder: 'individual',
-            funding: accountType.toLowerCase() === 'savings' ? 'savings' : 'checking',
-        });
-        return res.data;
+        try {
+            const res = await this._client().post('/external_accounts', {
+                account_number: accountNumber,
+                routing_number: routingNumber,
+                description: name,
+                account_holder: 'individual',
+                funding: accountType.toLowerCase() === 'savings' ? 'savings' : 'checking',
+            });
+            return res.data;
+        } catch (err) {
+            // 409 = duplicate external account already exists in Increase
+            // (can happen if a previous setup attempt created the account in Increase
+            //  but the app DB update failed, leaving 0 "connected" accounts in the UI)
+            if (err.response && err.response.status === 409) {
+                logger.info('External account already exists in Increase (409 conflict)', {
+                    routingNumber,
+                    accountNumberLast4: accountNumber.slice(-4),
+                    increaseResponse: err.response.data,
+                });
+                const existing = await this.findExternalAccount(routingNumber, accountNumber);
+                if (existing) {
+                    logger.info('Found existing external account, reusing', { id: existing.id });
+                    // Update description if name changed
+                    if (existing.description !== name) {
+                        try {
+                            const updated = await this._client().patch(`/external_accounts/${existing.id}`, { description: name });
+                            return updated.data;
+                        } catch (updateErr) {
+                            logger.warn('Could not update existing external account description', { error: updateErr.message });
+                        }
+                    }
+                    return existing;
+                }
+                logger.error('409 conflict but could not find existing external account');
+            }
+            throw err;
+        }
+    }
+
+    /**
+     * Find an existing external account by routing and account number
+     */
+    async findExternalAccount(routingNumber, accountNumber) {
+        try {
+            const res = await this._client().get('/external_accounts', {
+                params: { routing_number: routingNumber, account_number: accountNumber },
+            });
+            const accounts = res.data.data || [];
+            return accounts.length > 0 ? accounts[0] : null;
+        } catch (err) {
+            logger.warn('Failed to search external accounts', { error: err.message });
+            // Fallback: list all and filter
+            try {
+                const all = await this.listRecipients();
+                return all.find(a => a.routing_number === routingNumber && a.account_number === accountNumber) || null;
+            } catch (e) {
+                return null;
+            }
+        }
     }
 
     /**
