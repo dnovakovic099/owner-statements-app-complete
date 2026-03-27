@@ -100,6 +100,16 @@ class IncreaseService {
     }
 
     /**
+     * Archive (deactivate) an external account in Increase
+     */
+    async archiveRecipient(externalAccountId) {
+        const res = await this._client().patch(`/external_accounts/${externalAccountId}`, {
+            status: 'archived',
+        });
+        return res.data;
+    }
+
+    /**
      * Get external account by ID
      * Returns shape compatible with legacy WiseService: { active, accountHolderName, ...raw }
      */

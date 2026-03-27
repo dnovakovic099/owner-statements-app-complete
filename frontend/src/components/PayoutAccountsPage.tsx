@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Copy, Download, ExternalLink, RefreshCw, Info } from 'lucide-react';
+import { Search, FolderOpen, Home, ChevronDown, ChevronRight, ArrowUpDown, GripVertical, SlidersHorizontal, CreditCard, Pencil, Check, X, Send, Copy, Download, ExternalLink, RefreshCw, Info, Unplug } from 'lucide-react';
 import { groupsAPI, listingsAPI, payoutsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types/index';
 import { Button } from './ui/button';
@@ -199,6 +199,21 @@ const PayoutAccountsPage: React.FC = () => {
       fetchData();
     } catch (err: any) {
       showToast(err?.response?.data?.error || 'Failed to refresh status', 'error');
+    } finally {
+      setRefreshingRowKey(null);
+    }
+  };
+
+  const handleDisconnect = async (row: PayoutConnectionRow) => {
+    if (!window.confirm(`Disconnect payout account for "${row.name}"? This will archive the Increase external account.`)) return;
+    const rowKey = getRowKey(row);
+    setRefreshingRowKey(rowKey);
+    try {
+      await payoutsAPI.disconnectAccount({ entityType: row.type, entityId: row.id });
+      showToast('Payout account disconnected', 'success');
+      fetchData();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to disconnect', 'error');
     } finally {
       setRefreshingRowKey(null);
     }
@@ -567,6 +582,17 @@ const PayoutAccountsPage: React.FC = () => {
                   title="Refresh status from Increase"
                 >
                   <RefreshCw className={`w-3 h-3 ${refreshingRowKey === getRowKey(row.original) ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDisconnect(row.original);
+                  }}
+                  disabled={refreshingRowKey === getRowKey(row.original)}
+                  className="p-1 text-gray-400 dark:text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
+                  title="Disconnect payout account"
+                >
+                  <Unplug className="w-3 h-3" />
                 </button>
               </>
             )}

@@ -607,6 +607,14 @@ export const payoutsAPI = {
     return response.data;
   },
 
+  disconnectAccount: async (data: { entityType: 'listing' | 'group'; entityId: number }): Promise<{
+    success: boolean;
+    message: string;
+  }> => {
+    const response = await api.post('/payouts/disconnect', data);
+    return response.data;
+  },
+
   transferToOwner: async (statementId: number): Promise<{
     success: boolean;
     message: string;

@@ -56,6 +56,55 @@ async function resolveWiseRecipientId(statement) {
     return { wiseRecipientId: recipientId, source: 'listing' };
 }
 
+// ─── POST /disconnect ────────────────────────────────────────
+// Disconnect (remove) an Increase external account from a listing or group
+router.post('/disconnect', async (req, res) => {
+    try {
+        const { entityType, entityId } = req.body;
+        if (!['listing', 'group'].includes(entityType) || !entityId) {
+            return res.status(400).json({ error: 'entityType (listing|group) and entityId are required' });
+        }
+
+        let entity;
+        if (entityType === 'group') {
+            entity = await ListingGroup.findByPk(parseInt(entityId));
+        } else {
+            entity = await Listing.findByPk(parseInt(entityId));
+        }
+        if (!entity) return res.status(404).json({ error: `${entityType} not found` });
+
+        const oldRecipientId = entity.wiseRecipientId;
+
+        // Archive the external account in Increase if possible
+        if (oldRecipientId && IncreaseService.isConfigured()) {
+            try {
+                await IncreaseService.archiveRecipient(oldRecipientId);
+                logger.info('Archived Increase external account', { entityType, entityId, recipientId: oldRecipientId });
+            } catch (archiveErr) {
+                logger.warn('Could not archive Increase external account', { error: archiveErr.message });
+            }
+        }
+
+        // Clear payout fields
+        await entity.update({
+            wiseRecipientId: null,
+            wiseStatus: null,
+            bankAccountHolder: null,
+            bankEmail: null,
+            bankRoutingNumber: null,
+            bankAccountNumber: null,
+            bankAccountType: null,
+            bankAddress: null,
+        });
+
+        logger.info('Payout account disconnected', { entityType, entityId });
+        res.json({ success: true, message: 'Payout account disconnected' });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'disconnect' });
+        res.status(500).json({ error: 'Failed to disconnect payout account' });
+    }
+});
+
 // ─── GET /config ─────────────────────────────────────────────
 router.get('/config', async (req, res) => {
     res.json({
