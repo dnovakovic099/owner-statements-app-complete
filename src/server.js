@@ -773,8 +773,16 @@ app.post('/api/payouts/setup/:token', payoutSetupLimiter, async (req, res) => {
 
         res.json({ success: true, message: 'Bank account connected successfully' });
     } catch (err) {
-        logger.error('Payout setup submission error', { error: err.response?.data || err.message });
-        const msg = err.response?.data?.errors?.[0]?.message || err.response?.data?.message || err.message || 'Failed to connect bank account';
+        // Validation errors (e.g. invalid routing number) → 400 with clear message
+        if (err.isValidation) {
+            return res.status(400).json({ error: err.message });
+        }
+        logger.error('Payout setup submission error', {
+            error: err.message,
+            status: err.response?.status,
+            responseData: err.response?.data,
+        });
+        const msg = err.response?.data?.detail || err.response?.data?.errors?.[0]?.message || err.response?.data?.message || err.message || 'Failed to connect bank account';
         res.status(500).json({ error: msg });
     }
 });

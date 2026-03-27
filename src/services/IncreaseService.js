@@ -45,19 +45,23 @@ class IncreaseService {
             });
             return res.data;
         } catch (err) {
-            // 409 = duplicate external account already exists in Increase
-            // (can happen if a previous setup attempt created the account in Increase
-            //  but the app DB update failed, leaving 0 "connected" accounts in the UI)
             if (err.response && err.response.status === 409) {
+                const detail = err.response.data?.detail || '';
+                // "No institution found for routing number" = invalid routing number, not a duplicate
+                if (detail.toLowerCase().includes('no institution found')) {
+                    const userMsg = 'Invalid routing number — no bank found for this ABA routing number. Please double-check and try again.';
+                    const validationErr = new Error(userMsg);
+                    validationErr.isValidation = true;
+                    throw validationErr;
+                }
+                // Otherwise it's a true duplicate — find and reuse the existing account
                 logger.info('External account already exists in Increase (409 conflict)', {
                     routingNumber,
                     accountNumberLast4: accountNumber.slice(-4),
-                    increaseResponse: err.response.data,
                 });
                 const existing = await this.findExternalAccount(routingNumber, accountNumber);
                 if (existing) {
                     logger.info('Found existing external account, reusing', { id: existing.id });
-                    // Update description if name changed
                     if (existing.description !== name) {
                         try {
                             const updated = await this._client().patch(`/external_accounts/${existing.id}`, { description: name });
@@ -68,7 +72,6 @@ class IncreaseService {
                     }
                     return existing;
                 }
-                logger.error('409 conflict but could not find existing external account');
             }
             throw err;
         }
