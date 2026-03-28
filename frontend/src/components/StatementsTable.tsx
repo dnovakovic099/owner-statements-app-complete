@@ -667,6 +667,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   onClick={() => onAction(statement.id, 'pay-owner')}
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
+                      statement.payoutStatus === 'pending' ? 'Payment is being processed' :
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
                       !hasWiseRecipient ? 'No Increase account connected' :
                         isRestricted ? 'Increase account not yet verified' :
@@ -677,7 +678,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
                 />
               );
             })()}

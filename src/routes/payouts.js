@@ -306,7 +306,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
         // Atomic mark as pending — prevents double-payout from concurrent requests
         const [affectedRows] = await Statement.update(
             { payoutStatus: 'pending', payoutError: null },
-            { where: { id: statementId, payoutStatus: { [Op.notIn]: ['paid', 'pending'] } } }
+            { where: { id: statementId, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
         );
         if (affectedRows === 0) {
             return res.status(409).json({ error: 'Statement is already being processed' });
