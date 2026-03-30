@@ -5011,11 +5011,11 @@ router.get('/:id/view', async (req, res) => {
     </div>
     ` : ''}
 
-    <!-- Internal Notes (if any - visible on screen only, not in PDF) -->
-    ${(statement.internalNotes && !isPdf) ? `
+    <!-- PM Fee Info (visible on screen only, not in PDF) -->
+    ${!isPdf ? `
     <div class="internal-notes-banner">
         <div class="internal-notes-header">
-            <span class="internal-notes-title">INTERNAL NOTES - PM ${(() => {
+            <span class="internal-notes-title">PM Fee: ${(() => {
                 const basePm = statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15;
                 const props = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
                 const transitionListings = props.map(pid => listingSettingsMap[pid]).filter(s => s && s.newPmFeeEnabled && s.newPmFeeStartDate && s.newPmFeePercentage != null);
@@ -5028,7 +5028,7 @@ router.get('/:id/view', async (req, res) => {
                 return basePm + '%';
             })()}</span>
         </div>
-        <div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+        ${statement.internalNotes ? `<div class="internal-notes-content">${statement.internalNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>` : ''}
     </div>
     ` : ''}
 
