@@ -107,7 +107,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   // Base tags that are always available as suggestions (frequencies + categories)
-  const BASE_TAGS = ['WEEKLY', 'BI-WEEKLY', 'MONTHLY', 'QUARTERLY', 'ARBITRAGE', 'OWNED', 'SHARED'];
+  const BASE_TAGS = ['WEEKLY', 'BI-WEEKLY', 'MONTHLY', 'QUARTERLY', 'ARBITRAGE', 'OWNED', 'SHARED', 'LUXURY LODGING'];
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerGreeting, setOwnerGreeting] = useState('');
   const [autoSendStatements, setAutoSendStatements] = useState(true);
