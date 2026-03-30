@@ -1204,7 +1204,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             </div>
           </div>
           )}
-        </div>
 
       {/* Edit Schedule Modal */}
       {editingSchedule && (
@@ -1770,6 +1769,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
           )}
         </div>
       )}
+      </div>
 
       {/* Confirm Dialog */}
       <ConfirmDialog
