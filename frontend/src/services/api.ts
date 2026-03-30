@@ -216,7 +216,12 @@ export const statementsAPI = {
   },
 
   deleteStatement: async (id: number): Promise<void> => {
-    await api.delete(`/statements/${id}`);
+    try {
+      await api.delete(`/statements/${id}`);
+    } catch (err: any) {
+      // 404 means already deleted — safe to ignore during regeneration
+      if (err?.response?.status !== 404) throw err;
+    }
   },
 
   getJobStatus: async (jobId: string): Promise<{ status: string; progress?: { current: number; total: number }; result?: { summary: { generated: number; skipped: number; errors: number }; results?: { skipped?: Array<{ propertyId: number; propertyName: string; reason: string }>; errors?: Array<{ propertyId: number; propertyName: string; error: string }> } } }> => {
