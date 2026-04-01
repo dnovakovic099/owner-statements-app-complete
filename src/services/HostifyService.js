@@ -1554,14 +1554,19 @@ class HostifyService {
                         pageNumbers.push(p);
                     }
 
-                    const [firstPageChildren, ...otherResults] = await Promise.all([
-                        // Process first page
-                        Promise.resolve(firstRes.reservations.filter(r => {
-                            const parentListingId = String(r.parent_listing_id || '');
-                            return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
-                        })),
-                        // Fetch remaining pages in parallel
-                        ...pageNumbers.map(async (pageNum) => {
+                    // Process first page immediately
+                    const firstPageChildren = firstRes.reservations.filter(r => {
+                        const parentListingId = String(r.parent_listing_id || '');
+                        return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
+                    });
+
+                    // Fetch remaining pages with concurrency limit to avoid 429s
+                    const CHILD_CONCURRENCY = 3;
+                    const otherResults = [];
+                    for (let i = 0; i < pageNumbers.length; i += CHILD_CONCURRENCY) {
+                        const pageBatch = pageNumbers.slice(i, i + CHILD_CONCURRENCY);
+                        const batchResults = await Promise.all(
+                            pageBatch.map(async (pageNum) => {
                             try {
                                 const res = await this.getReservations(fromDate, toDate, pageNum, 100, null, dateType);
                                 if (res.success && res.reservations?.length > 0) {
@@ -1573,7 +1578,9 @@ class HostifyService {
                             } catch (err) { }
                             return [];
                         })
-                    ]);
+                        );
+                        otherResults.push(...batchResults);
+                    }
 
                     // Combine all child reservations
                     const allChildRes = [firstPageChildren, ...otherResults].flat();
