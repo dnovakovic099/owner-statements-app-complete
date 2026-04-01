@@ -726,10 +726,12 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const propReservations = reservationsByProperty[propId] || [];
             const propExpenseData = expensesByProperty[propId] || { expenses: [], duplicateWarnings: [] };
 
+            logger.info(`[REGEN-TRACE] Property ${propId}: ${propReservations.length} reservations, ${propExpenseData.expenses?.length || 0} expenses`, { context: 'StatementsFile' });
             allReservations.push(...propReservations);
             allExpenses.push(...propExpenseData.expenses);
             allDuplicateWarnings.push(...propExpenseData.duplicateWarnings);
         }
+        logger.info(`[REGEN-TRACE] Combined totals: ${allReservations.length} reservations, ${allExpenses.length} expenses for ${parsedPropertyIds.length} properties (${startDate} to ${endDate}, ${calculationType})`, { context: 'StatementsFile' });
 
         // Filter reservations by date and status
         const periodReservations = allReservations.filter(res => {

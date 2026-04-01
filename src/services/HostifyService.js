@@ -367,8 +367,12 @@ class HostifyService {
                 }
             }
         } catch (error) {
-            console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: ${error.message}`);
+            console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: ${error.message} | status=${error.response?.status} | code=${error.code}`);
             return [];
+        }
+
+        if (allReservations.length === 0) {
+            console.log(`[LISTING-EMPTY] Listing ${listingId}: 0 reservations for ${startDate} to ${endDate} (dateType=${dateType})`);
         }
 
         return allReservations.map(r => this.transformReservation(r));
@@ -1574,6 +1578,7 @@ class HostifyService {
         }
 
         // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
+        const preFilterCount = allReservations.length;
         const allowedStatuses = ['confirmed', 'accepted'];
         allReservations = allReservations.filter(res => {
             if (!allowedStatuses.includes(res.status)) {
@@ -1582,6 +1587,7 @@ class HostifyService {
             }
             return true;
         });
+        console.log(`[FINANCE-FILTER] ${preFilterCount} raw reservations → ${allReservations.length} after status filter (removed ${preFilterCount - allReservations.length})`);
 
         // Attribute child reservations to parent
         allReservations = allReservations.map(res => {

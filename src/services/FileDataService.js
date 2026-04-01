@@ -466,7 +466,9 @@ class FileDataService {
                     listingMapIds: propertyIds
                 };
 
+                console.log(`[BATCH-FETCH] Checkout-based fetch for ${propertyIds.length} properties: ${startDate} to ${endDate}`);
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
+                console.log(`[BATCH-FETCH] Got ${apiReservations.length} reservations from Hostify for properties: ${propertyIds.join(', ')}`);
 
                 // Group by propertyId
                 const reservationsByProperty = {};
@@ -476,6 +478,12 @@ class FileDataService {
                     if (reservationsByProperty[res.propertyId]) {
                         reservationsByProperty[res.propertyId].push(res);
                     }
+                });
+
+                // Log per-property breakdown
+                propertyIds.forEach(id => {
+                    const count = reservationsByProperty[id]?.length || 0;
+                    if (count === 0) console.log(`[BATCH-FETCH] WARNING: Property ${id} has 0 reservations`);
                 });
 
                 // Add imported reservations per property (in parallel)
@@ -490,6 +498,7 @@ class FileDataService {
             }
         } catch (error) {
             // Fall back to per-property fetching
+            console.log(`[BATCH-FETCH] FALLBACK triggered: ${error.message} — falling back to per-property fetching`);
             const reservationsByProperty = {};
             for (const propId of propertyIds) {
                 reservationsByProperty[propId] = await this.getReservations(startDate, endDate, propId, calculationType);
