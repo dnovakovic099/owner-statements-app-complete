@@ -252,8 +252,10 @@ class HostifyService {
                     throw new Error('Hostify API Authentication Error. Check API key.');
                 }
 
-                // Check if it's a retryable error (timeout, network, server error)
-                const isRetryable = error.code === 'ECONNABORTED' ||
+                // Check if it's a retryable error (timeout, network, server error, rate limit)
+                const isRateLimit = error.response?.status === 429;
+                const isRetryable = isRateLimit ||
+                                    error.code === 'ECONNABORTED' ||
                                     error.code === 'ETIMEDOUT' ||
                                     error.code === 'ENOTFOUND' ||
                                     error.code === 'ECONNRESET' ||
@@ -267,8 +269,9 @@ class HostifyService {
 
                 // If we have more retries left, wait and retry
                 if (attempt < maxRetries) {
-                    const delay = 1000 * attempt; // 1s, 2s, 3s, 4s, 5s, 6s
-                    console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${error.message} (waiting ${delay}ms)`);
+                    // Use longer backoff for rate limits (3s, 6s, 9s) vs normal errors (1s, 2s, 3s)
+                    const delay = isRateLimit ? 3000 * attempt : 1000 * attempt;
+                    console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${isRateLimit ? '429 RATE LIMITED' : error.message} (waiting ${delay}ms)`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -380,14 +383,21 @@ class HostifyService {
 
     // Fetch reservations for multiple listings in parallel
     async getReservationsForListings(listingIds, startDate, endDate, dateType = 'checkIn') {
-        console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings in parallel...`);
+        console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings (max 3 concurrent)...`);
 
-        const results = await Promise.all(
-            listingIds.map(async listingId => {
-                const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
-                return { listingId, reservations };
-            })
-        );
+        // Limit concurrency to 3 to avoid Hostify 429 rate limits
+        const CONCURRENCY = 3;
+        const results = [];
+        for (let i = 0; i < listingIds.length; i += CONCURRENCY) {
+            const batch = listingIds.slice(i, i + CONCURRENCY);
+            const batchResults = await Promise.all(
+                batch.map(async listingId => {
+                    const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
+                    return { listingId, reservations };
+                })
+            );
+            results.push(...batchResults);
+        }
 
         // Merge all reservations
         let allReservations = [];
