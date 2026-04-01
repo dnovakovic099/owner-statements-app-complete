@@ -6,6 +6,9 @@ class IncreaseService {
     constructor() {
         this.apiKey = process.env.INCREASE_API_KEY;
         this.accountId = process.env.INCREASE_ACCOUNT_ID; // Your Increase source account ID
+        this.fundingAccountId = process.env.INCREASE_FUNDING_ACCOUNT_ID; // External account ID for your business bank (funding source)
+        this.minBalance = parseFloat(process.env.INCREASE_MIN_BALANCE) || 3000;   // Replenish trigger threshold (dollars)
+        this.replenishAmount = parseFloat(process.env.INCREASE_REPLENISH_AMOUNT) || 5000; // Amount to pull when replenishing (dollars)
         this.baseUrl = process.env.INCREASE_SANDBOX === 'true'
             ? 'https://sandbox.increase.com'
             : 'https://api.increase.com';
@@ -276,6 +279,266 @@ class IncreaseService {
             });
         }
         logger.info('Increase batch payouts complete', { count: transfers.length });
+        return { transfers };
+    }
+
+    /**
+     * Whether a funding source (business bank external account) is configured.
+     */
+    isFundingConfigured() {
+        return !!(this.apiKey && this.accountId && this.fundingAccountId);
+    }
+
+    /**
+     * Pull funds from your business bank into the Increase account via ACH debit.
+     * Creates an inbound ACH transfer by debiting the funding external account.
+     * Amount is in dollars. Returns the ACH transfer object.
+     *
+     * Note: ACH debits typically settle same-day or next business day.
+     */
+    async requestFunding(amountDollars) {
+        if (!this.isFundingConfigured()) {
+            throw new Error('Funding source not configured — set INCREASE_FUNDING_ACCOUNT_ID');
+        }
+        const amountCents = Math.round(amountDollars * 100);
+        const idempotencyKey = crypto.createHash('sha256')
+            .update(`funding-${this.accountId}-${amountCents}-${new Date().toISOString().slice(0, 10)}`)
+            .digest('hex');
+        const body = {
+            account_id: this.accountId,
+            external_account_id: this.fundingAccountId,
+            amount: -amountCents,  // negative = ACH debit (pull funds IN)
+            statement_descriptor: 'ACCOUNT FUNDING',
+            standard_entry_class_code: 'prearranged_payments_and_deposit',
+            company_entry_description: 'FUNDING',
+        };
+        const res = await this._client().post('/ach_transfers', body, {
+            headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+        });
+        logger.info('Funding transfer initiated', {
+            transferId: res.data.id,
+            amount: amountDollars,
+            status: res.data.status,
+        });
+        return res.data;
+    }
+
+    /**
+     * Check balance and auto-fund if insufficient for the given payout amount.
+     * Returns { balance, funded, fundingTransferId, deficit }.
+     * - funded=false means balance was already sufficient.
+     * - funded=true means a funding ACH debit was initiated (payouts should be queued).
+     */
+    async checkAndAutoFund(neededAmountDollars) {
+        let balance;
+        try {
+            balance = await this.getBalance();
+        } catch (e) {
+            logger.warn('Failed to check Increase balance', { error: e.message });
+            return { balance: null, funded: false, fundingTransferId: null, deficit: 0 };
+        }
+
+        if (balance >= neededAmountDollars) {
+            return { balance, funded: false, fundingTransferId: null, deficit: 0 };
+        }
+
+        // Insufficient — pull funds from business bank
+        const deficit = neededAmountDollars - balance;
+        // Pull at least the replenish amount, or the deficit + buffer, whichever is larger
+        const fundingAmount = Math.max(this.replenishAmount, Math.ceil((deficit * 1.1) * 100) / 100);
+
+        if (!this.isFundingConfigured()) {
+            logger.warn('Insufficient balance and no funding source configured', { balance, needed: neededAmountDollars });
+            return { balance, funded: false, fundingTransferId: null, deficit, error: 'No funding source configured' };
+        }
+
+        const transfer = await this.requestFunding(fundingAmount);
+        return {
+            balance,
+            funded: true,
+            fundingTransferId: transfer.id,
+            fundingAmount,
+            deficit,
+        };
+    }
+
+    /**
+     * Proactive threshold-based replenish.
+     * Called during reconciliation — if balance drops below INCREASE_MIN_BALANCE,
+     * pull INCREASE_REPLENISH_AMOUNT from the business bank.
+     * Returns { replenished, balance, fundingTransferId } or null if not needed.
+     */
+    async checkAndReplenish() {
+        if (!this.isFundingConfigured()) return null;
+
+        let balance;
+        try {
+            balance = await this.getBalance();
+        } catch (e) {
+            logger.warn('Failed to check balance for replenish', { error: e.message });
+            return null;
+        }
+
+        if (balance >= this.minBalance) {
+            logger.info('Balance above threshold, no replenish needed', { balance, minBalance: this.minBalance });
+            return { replenished: false, balance };
+        }
+
+        logger.info('Balance below threshold, initiating replenish', {
+            balance, minBalance: this.minBalance, replenishAmount: this.replenishAmount,
+        });
+
+        try {
+            const transfer = await this.requestFunding(this.replenishAmount);
+            return {
+                replenished: true,
+                balance,
+                fundingTransferId: transfer.id,
+                fundingAmount: this.replenishAmount,
+            };
+        } catch (e) {
+            logger.error('Auto-replenish failed', { error: e.message, balance });
+            return { replenished: false, balance, error: e.message };
+        }
+    }
+
+    // ─── Real-Time Payments (RTP) ────────────────────────────────
+
+    /**
+     * Check if a routing number supports Real-Time Payments.
+     * Returns { supportsRtp: boolean, routingNumber }.
+     */
+    async checkRtpSupport(routingNumber) {
+        try {
+            const res = await this._client().get('/routing_numbers', {
+                params: { routing_number: routingNumber },
+            });
+            const data = res.data.data?.[0] || res.data;
+            const supportsRtp = data.real_time_payments_transfers === 'supported';
+            return { supportsRtp, routingNumber, raw: data };
+        } catch (e) {
+            logger.warn('Failed to check RTP support for routing number', { routingNumber, error: e.message });
+            return { supportsRtp: false, routingNumber, error: e.message };
+        }
+    }
+
+    /**
+     * Create a Real-Time Payments transfer (instant, irrevocable).
+     * Amount in dollars. Returns the RTP transfer object.
+     */
+    async createRtpTransfer({ accountNumber, routingNumber, amount, remittanceInfo, idempotencyKey }) {
+        const amountCents = Math.round(amount * 100);
+        const body = {
+            source_account_number_id: await this._getAccountNumberId(),
+            destination_account_number: accountNumber,
+            destination_routing_number: routingNumber,
+            amount: amountCents,
+            remittance_information: (remittanceInfo || 'Owner Payout').substring(0, 140),
+        };
+        const headers = {};
+        if (idempotencyKey) {
+            headers['Idempotency-Key'] = idempotencyKey;
+        }
+        const res = await this._client().post('/real_time_payments_transfers', body, { headers });
+        return res.data;
+    }
+
+    /**
+     * Get the account number ID for the Increase account (needed for RTP source).
+     * Caches after first lookup.
+     */
+    async _getAccountNumberId() {
+        if (this._accountNumberId) return this._accountNumberId;
+        const res = await this._client().get(`/account_numbers?account_id=${this.accountId}`);
+        const numbers = res.data.data || [];
+        if (numbers.length === 0) {
+            throw new Error('No account numbers found for Increase account — cannot send RTP');
+        }
+        this._accountNumberId = numbers[0].id;
+        return this._accountNumberId;
+    }
+
+    /**
+     * Get RTP transfer status.
+     */
+    async getRtpTransfer(transferId) {
+        const res = await this._client().get(`/real_time_payments_transfers/${transferId}`);
+        return res.data;
+    }
+
+    /**
+     * Send payout via RTP if supported, otherwise fall back to ACH.
+     * Resolves the recipient's routing number, checks RTP support, then sends.
+     * Returns { transfer, method: 'rtp'|'ach', wiseFee: 0 }.
+     */
+    async sendPayoutPreferRtp({ recipientId, amount, reference, statementId, individualName }) {
+        // Look up the external account to get routing number for RTP check
+        let recipient;
+        try {
+            recipient = await this.getRecipient(recipientId);
+        } catch (e) {
+            logger.warn('Could not fetch recipient for RTP check, falling back to ACH', { recipientId, error: e.message });
+            const result = await this.sendPayout({ recipientId, amount, reference, statementId, individualName });
+            return { ...result, method: 'ach' };
+        }
+
+        const routingNumber = recipient.routing_number;
+        const accountNumber = recipient.account_number;
+
+        // Check if recipient's bank supports RTP
+        if (routingNumber && accountNumber) {
+            const { supportsRtp } = await this.checkRtpSupport(routingNumber);
+            if (supportsRtp) {
+                try {
+                    const remittanceInfo = (reference || `Payout #${statementId}`).substring(0, 140);
+                    const idempotencyKey = crypto.createHash('sha256')
+                        .update(`rtp-${statementId}-${amount}-${recipientId}`)
+                        .digest('hex');
+                    const transfer = await this.createRtpTransfer({
+                        accountNumber,
+                        routingNumber,
+                        amount,
+                        remittanceInfo,
+                        idempotencyKey,
+                    });
+                    logger.info('RTP payout sent (instant)', {
+                        transferId: transfer.id, amount, statementId, status: transfer.status,
+                    });
+                    return { transfer, method: 'rtp', wiseFee: 0 };
+                } catch (rtpErr) {
+                    logger.warn('RTP transfer failed, falling back to ACH', {
+                        statementId, error: rtpErr.response?.data?.detail || rtpErr.message,
+                    });
+                }
+            }
+        }
+
+        // Fall back to ACH
+        const result = await this.sendPayout({ recipientId, amount, reference, statementId, individualName });
+        return { ...result, method: 'ach' };
+    }
+
+    /**
+     * Batch payouts with RTP preference — tries RTP for each, falls back to ACH.
+     */
+    async sendBatchPayoutsPreferRtp(payouts) {
+        const transfers = [];
+        for (const payout of payouts) {
+            const reference = (payout.reference || `Payout #${payout.statementId}`).substring(0, 22);
+            const result = await this.sendPayoutPreferRtp({
+                recipientId: payout.recipientId,
+                amount: payout.amount,
+                reference,
+                statementId: payout.statementId,
+                individualName: payout.individualName,
+            });
+            transfers.push({ ...result, statementId: payout.statementId });
+        }
+        logger.info('Batch payouts (RTP-preferred) complete', {
+            count: transfers.length,
+            rtp: transfers.filter(t => t.method === 'rtp').length,
+            ach: transfers.filter(t => t.method === 'ach').length,
+        });
         return { transfers };
     }
 

@@ -11,7 +11,7 @@ const { encryptOptional, decryptOptional } = require('../utils/fieldEncryption')
 const ListingGroup = require('../models/ListingGroup');
 const { Statement } = require('../models');
 
-const SAFE_PAYOUT_STATUSES = [null, 'failed', 'cancelled'];
+const SAFE_PAYOUT_STATUSES = [null, 'failed', 'cancelled', 'awaiting_funding'];
 
 /** Round to 2 decimal places to avoid floating-point drift in currency math */
 const toCents = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
@@ -312,29 +312,46 @@ router.post('/statements/:id/transfer', async (req, res) => {
             return res.status(409).json({ error: 'Statement is already being processed' });
         }
 
-        // Check balance
-        let balance;
-        try {
-            balance = await IncreaseService.getBalance();
-        } catch (e) {
-            logger.warn('Failed to check Increase balance', { error: e.message });
-            balance = null;
-        }
+        // Check balance — auto-fund from business bank if insufficient
+        const fundResult = await IncreaseService.checkAndAutoFund(payoutAmount);
 
-        if (balance !== null && balance < payoutAmount) {
-            await statement.update({ payoutStatus: 'failed', payoutError: `Insufficient balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)})` });
-            return res.status(400).json({
-                error: `Insufficient Increase balance ($${balance.toFixed(2)}, need $${payoutAmount.toFixed(2)}). Please fund your Increase account.`,
-                balance,
+        if (fundResult.funded) {
+            // Funding ACH debit initiated — queue payout until funds arrive
+            await statement.update({
+                payoutStatus: 'awaiting_funding',
+                payoutError: null,
+                payoutTransferId: `funding:${fundResult.fundingTransferId}`,
+            });
+            logger.info('Payout queued awaiting funding', {
+                statementId, balance: fundResult.balance,
+                deficit: fundResult.deficit, fundingAmount: fundResult.fundingAmount,
+            });
+            return res.json({
+                success: true,
+                queued: true,
+                awaitingFunding: true,
+                message: `Insufficient balance ($${fundResult.balance.toFixed(2)}). Funding transfer of $${fundResult.fundingAmount.toFixed(2)} initiated from your business bank. Payout will process automatically when funds arrive.`,
+                fundingTransferId: fundResult.fundingTransferId,
+                balance: fundResult.balance,
                 needed: payoutAmount,
             });
         }
 
-        // Execute payout
+        if (fundResult.balance !== null && fundResult.balance < payoutAmount && fundResult.error) {
+            // No funding source configured and balance insufficient
+            await statement.update({ payoutStatus: 'failed', payoutError: `Insufficient balance ($${fundResult.balance.toFixed(2)}, need $${payoutAmount.toFixed(2)})` });
+            return res.status(400).json({
+                error: `Insufficient Increase balance ($${fundResult.balance.toFixed(2)}, need $${payoutAmount.toFixed(2)}). Configure INCREASE_FUNDING_ACCOUNT_ID for auto-funding or manually fund your Increase account.`,
+                balance: fundResult.balance,
+                needed: payoutAmount,
+            });
+        }
+
+        // Execute payout — try RTP (instant) first, fall back to ACH
         const ownerName = statement.ownerName || 'Owner';
         const reference = `Payout - ${ownerName} - Stmt #${statementId}`;
 
-        const { transfer, wiseFee } = await IncreaseService.sendPayout({
+        const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
             recipientId: wiseRecipientId,
             amount: payoutAmount,
             reference,
@@ -346,20 +363,21 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         await statement.update({
             payoutStatus: 'paid',
-            payoutTransferId: String(transfer.id),
+            payoutTransferId: `${method}:${transfer.id}`,
             paidAt: new Date(),
             wiseFee: wiseFee,
             totalTransferAmount: totalTransferAmount,
             payoutError: null,
         });
 
-        logger.info('Increase payout completed', { statementId, transferId: transfer.id, amount: payoutAmount });
+        logger.info('Payout completed', { statementId, transferId: transfer.id, method, amount: payoutAmount });
 
         res.json({
             success: true,
             queued: false,
-            message: 'Payout sent via Increase ACH',
-            transferId: String(transfer.id),
+            method,
+            message: method === 'rtp' ? 'Payout sent instantly via Real-Time Payments' : 'Payout sent via ACH',
+            transferId: `${method}:${transfer.id}`,
             ownerPayout: payoutAmount,
             wiseFee,
             totalTransferAmount,
@@ -583,20 +601,40 @@ router.post('/fund-and-queue', async (req, res) => {
             });
         }
 
-        // Check balance
+        // Check balance — auto-fund from business bank if insufficient
         const totalAmount = valid.reduce((sum, v) => sum + toCents(v.statement.ownerPayout), 0);
-        let balance;
-        try {
-            balance = await IncreaseService.getBalance();
-        } catch (e) {
-            logger.warn('Failed to check Increase balance', { error: e.message });
-            balance = null;
+        const fundResult = await IncreaseService.checkAndAutoFund(totalAmount);
+
+        if (fundResult.funded) {
+            // Funding initiated — queue all payouts until funds arrive
+            for (const { statement } of valid) {
+                await statement.update({
+                    payoutStatus: 'awaiting_funding',
+                    payoutError: null,
+                    payoutTransferId: `funding:${fundResult.fundingTransferId}`,
+                });
+            }
+            logger.info('Bulk payouts queued awaiting funding', {
+                count: valid.length, totalAmount,
+                balance: fundResult.balance, fundingAmount: fundResult.fundingAmount,
+            });
+            return res.json({
+                success: true,
+                mode: 'awaiting_funding',
+                awaitingFunding: true,
+                message: `Insufficient balance ($${fundResult.balance.toFixed(2)}). Funding transfer of $${fundResult.fundingAmount.toFixed(2)} initiated. ${valid.length} payout(s) will process automatically when funds arrive.`,
+                fundingTransferId: fundResult.fundingTransferId,
+                queuedCount: valid.length,
+                totalAmount,
+                balance: fundResult.balance,
+                skipped,
+            });
         }
 
-        if (balance !== null && balance < totalAmount) {
+        if (fundResult.balance !== null && fundResult.balance < totalAmount && fundResult.error) {
             return res.status(400).json({
-                error: `Insufficient Increase balance ($${balance.toFixed(2)}, need $${totalAmount.toFixed(2)}). Please fund your Increase account.`,
-                balance,
+                error: `Insufficient Increase balance ($${fundResult.balance.toFixed(2)}, need $${totalAmount.toFixed(2)}). Configure INCREASE_FUNDING_ACCOUNT_ID for auto-funding or manually fund your Increase account.`,
+                balance: fundResult.balance,
                 needed: totalAmount,
             });
         }
@@ -635,7 +673,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     individualName: statement.ownerName || 'Owner',
                 }));
 
-                const { transfers } = await IncreaseService.sendBatchPayouts(batchPayouts);
+                const { transfers } = await IncreaseService.sendBatchPayoutsPreferRtp(batchPayouts);
 
                 // Update each statement with its transfer result
                 for (const t of transfers) {
@@ -643,14 +681,14 @@ router.post('/fund-and-queue', async (req, res) => {
                     if (match) {
                         await match.statement.update({
                             payoutStatus: 'paid',
-                            payoutTransferId: String(t.transfer.id),
+                            payoutTransferId: `${t.method}:${t.transfer.id}`,
                             paidAt: new Date(),
                             wiseFee: t.wiseFee,
                             totalTransferAmount: toCents(match.statement.ownerPayout) + t.wiseFee,
                             payoutError: null,
                         });
                         processed++;
-                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id });
+                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id, method: t.method });
                     }
                 }
 
@@ -666,7 +704,7 @@ router.post('/fund-and-queue', async (req, res) => {
                         const amount = parseFloat(statement.ownerPayout);
                         const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                        const { transfer, wiseFee } = await IncreaseService.sendPayout({
+                        const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
                             recipientId: wiseRecipientId,
                             amount,
                             reference,
@@ -676,14 +714,14 @@ router.post('/fund-and-queue', async (req, res) => {
 
                         await statement.update({
                             payoutStatus: 'paid',
-                            payoutTransferId: String(transfer.id),
+                            payoutTransferId: `${method}:${transfer.id}`,
                             paidAt: new Date(),
                             wiseFee,
                             totalTransferAmount: amount + wiseFee,
                             payoutError: null,
                         });
                         processed++;
-                        results.push({ id: statement.id, success: true, transferId: transfer.id });
+                        results.push({ id: statement.id, success: true, transferId: transfer.id, method });
                     } catch (err) {
                         failed++;
                         const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
@@ -709,7 +747,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     const amount = parseFloat(statement.ownerPayout);
                     const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                    const { transfer, wiseFee } = await IncreaseService.sendPayout({
+                    const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
                         recipientId: wiseRecipientId,
                         amount,
                         reference,
@@ -719,7 +757,7 @@ router.post('/fund-and-queue', async (req, res) => {
 
                     await statement.update({
                         payoutStatus: 'paid',
-                        payoutTransferId: String(transfer.id),
+                        payoutTransferId: `${method}:${transfer.id}`,
                         paidAt: new Date(),
                         wiseFee,
                         totalTransferAmount: amount + wiseFee,
@@ -727,7 +765,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     });
 
                     processed++;
-                    results.push({ id: statement.id, success: true, transferId: transfer.id });
+                    results.push({ id: statement.id, success: true, transferId: transfer.id, method });
                 } catch (err) {
                     failed++;
                     const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
@@ -799,10 +837,16 @@ router.get('/reconcile', async (req, res) => {
         }
 
         const reconciliationService = require('../services/ReconciliationService');
-        const result = await reconciliationService.reconcileTransfers();
+        const result = await reconciliationService.runFullReconciliation();
 
-        logger.info('Reconciliation completed', result);
-        res.json({ success: true, ...result });
+        // If any awaiting_funding were promoted to queued, process them immediately
+        let queuedResult = { processed: 0, failed: 0 };
+        if (result.funding?.promoted > 0) {
+            queuedResult = await processQueuedPayouts();
+        }
+
+        logger.info('Reconciliation completed', { ...result, queued: queuedResult });
+        res.json({ success: true, ...result, queued: queuedResult });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'reconcile' });
         res.status(500).json({ error: 'Reconciliation failed' });
@@ -820,7 +864,7 @@ async function processQueuedPayouts() {
     }
 
     const queued = await Statement.findAll({
-        where: { payoutStatus: 'queued' },
+        where: { payoutStatus: { [Op.in]: ['queued', 'awaiting_funding'] } },
         order: [['created_at', 'ASC']],
     });
 
@@ -864,7 +908,7 @@ async function processQueuedPayouts() {
             }
 
             const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
-            const { transfer, wiseFee } = await IncreaseService.sendPayout({
+            const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
                 recipientId: wiseRecipientId,
                 amount: payoutAmount,
                 reference,
@@ -874,14 +918,14 @@ async function processQueuedPayouts() {
 
             await statement.update({
                 payoutStatus: 'paid',
-                payoutTransferId: String(transfer.id),
+                payoutTransferId: `${method}:${transfer.id}`,
                 paidAt: new Date(),
                 payoutError: null,
                 wiseFee,
                 totalTransferAmount: payoutAmount + wiseFee,
             });
             processed++;
-            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
+            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id, method });
         } catch (err) {
             failed++;
             const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';

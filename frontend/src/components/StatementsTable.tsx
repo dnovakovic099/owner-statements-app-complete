@@ -555,11 +555,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         if (!payoutStatus) {
           return <span className="text-xs text-gray-300 dark:text-gray-600">--</span>;
         }
+        const isRtp = payoutStatus === 'paid' && row.original.payoutTransferId?.startsWith('rtp:');
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
-          paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Paid' },
+          paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: isRtp ? 'Paid (RTP)' : 'Paid' },
           collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', label: 'Collected' },
           pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
           queued: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500', label: 'Queued' },
+          awaiting_funding: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500 animate-pulse', label: 'Funding' },
           failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Failed' },
           topup_failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Top-up Failed' },
           invoice_sent: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Invoice Sent' },
@@ -668,6 +670,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   tooltip={
                     (statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected') ? 'Already Settled' :
                       statement.payoutStatus === 'pending' ? 'Payment is being processed' :
+                      statement.payoutStatus === 'awaiting_funding' ? 'Funding in progress — payout will process automatically' :
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
                       !hasWiseRecipient ? 'No Increase account connected' :
                         isRestricted ? 'Increase account not yet verified' :
@@ -678,7 +681,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
+                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
                 />
               );
             })()}
@@ -1017,6 +1020,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   { value: 'collected', label: 'Collected' },
                   { value: 'pending', label: 'Pending' },
                   { value: 'queued', label: 'Queued' },
+                  { value: 'awaiting_funding', label: 'Funding' },
                   { value: 'failed', label: 'Failed' },
                   { value: 'topup_failed', label: 'Top-up Failed' },
                   { value: 'invoice_sent', label: 'Invoice Sent' },

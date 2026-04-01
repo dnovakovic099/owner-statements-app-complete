@@ -8,6 +8,20 @@ class ReconciliationService {
      * Check all statements with payoutStatus='paid' and a sandbox/real transfer ID.
      * Update status if the transfer was returned, rejected, or completed.
      */
+    /**
+     * Parse a payoutTransferId which may be prefixed with method:
+     * e.g. "rtp:rtp_transfer_abc123" or "ach:ach_transfer_xyz" or legacy "ach_transfer_xyz"
+     */
+    _parseTransferId(payoutTransferId) {
+        if (!payoutTransferId) return { method: null, transferId: null };
+        // Skip funding references — they aren't payout transfers
+        if (payoutTransferId.startsWith('funding:')) return { method: 'funding', transferId: null };
+        if (payoutTransferId.startsWith('rtp:')) return { method: 'rtp', transferId: payoutTransferId.slice(4) };
+        if (payoutTransferId.startsWith('ach:')) return { method: 'ach', transferId: payoutTransferId.slice(4) };
+        // Legacy format (no prefix) — assume ACH
+        return { method: 'ach', transferId: payoutTransferId };
+    }
+
     async reconcileTransfers() {
         // Find statements with transfer IDs that need checking
         const statements = await Statement.findAll({
@@ -24,18 +38,35 @@ class ReconciliationService {
         let updated = 0;
         for (const stmt of statements) {
             try {
-                const transfer = await IncreaseService.getTransfer(stmt.payoutTransferId);
-                const newStatus = this._mapTransferStatus(transfer.status);
+                const { method, transferId } = this._parseTransferId(stmt.payoutTransferId);
+                if (!transferId) continue; // skip funding or invalid
+
+                let transfer;
+                if (method === 'rtp') {
+                    transfer = await IncreaseService.getRtpTransfer(transferId);
+                } else {
+                    transfer = await IncreaseService.getTransfer(transferId);
+                }
+
+                const newStatus = method === 'rtp'
+                    ? this._mapRtpStatus(transfer.status)
+                    : this._mapTransferStatus(transfer.status);
 
                 if (newStatus && newStatus !== stmt.payoutStatus) {
+                    const errorMsg = transfer.status === 'returned'
+                        ? `ACH returned: ${transfer.return_reason || 'unknown'}`
+                        : (transfer.status === 'rejected' || transfer.status === 'canceled')
+                            ? `${method.toUpperCase()} ${transfer.status}: ${transfer.rejection?.reason || transfer.cancellation?.reason || 'unknown'}`
+                            : null;
                     await stmt.update({
                         payoutStatus: newStatus,
-                        payoutError: transfer.status === 'returned' ? `ACH returned: ${transfer.return_reason || 'unknown'}` : null,
+                        payoutError: errorMsg,
                     });
                     updated++;
                     logger.info('Reconciliation updated statement', {
                         statementId: stmt.id,
                         transferId: stmt.payoutTransferId,
+                        method,
                         oldStatus: stmt.payoutStatus,
                         newStatus,
                         transferStatus: transfer.status,
@@ -54,6 +85,49 @@ class ReconciliationService {
         return { checked: statements.length, updated };
     }
 
+    /**
+     * Process statements stuck in 'awaiting_funding' — check if balance is now
+     * sufficient and promote them to queued so processQueuedPayouts picks them up.
+     */
+    async processAwaitingFunding() {
+        const awaiting = await Statement.findAll({
+            where: { payoutStatus: 'awaiting_funding' },
+            order: [['created_at', 'ASC']],
+            limit: 50,
+        });
+
+        if (awaiting.length === 0) return { awaitingChecked: 0, promoted: 0 };
+
+        let balance;
+        try {
+            balance = await IncreaseService.getBalance();
+        } catch (e) {
+            logger.warn('Cannot check balance for awaiting_funding reconciliation', { error: e.message });
+            return { awaitingChecked: awaiting.length, promoted: 0, error: 'Balance check failed' };
+        }
+
+        const totalNeeded = awaiting.reduce((sum, s) => sum + (parseFloat(s.ownerPayout) || 0), 0);
+
+        if (balance < totalNeeded) {
+            logger.info('Awaiting funding: balance still insufficient', { balance, totalNeeded, count: awaiting.length });
+            return { awaitingChecked: awaiting.length, promoted: 0, balance, totalNeeded };
+        }
+
+        // Balance is sufficient — promote to 'queued' so processQueuedPayouts handles them
+        let promoted = 0;
+        for (const stmt of awaiting) {
+            try {
+                await stmt.update({ payoutStatus: 'queued', payoutError: null });
+                promoted++;
+                logger.info('Promoted awaiting_funding to queued', { statementId: stmt.id });
+            } catch (e) {
+                logger.warn('Failed to promote awaiting_funding statement', { statementId: stmt.id, error: e.message });
+            }
+        }
+
+        return { awaitingChecked: awaiting.length, promoted, balance };
+    }
+
     _mapTransferStatus(increaseStatus) {
         switch (increaseStatus) {
             case 'submitted':
@@ -70,6 +144,43 @@ class ReconciliationService {
             default:
                 return null; // unknown — don't change
         }
+    }
+
+    _mapRtpStatus(rtpStatus) {
+        switch (rtpStatus) {
+            case 'pending_submission':
+            case 'pending_approval':
+            case 'pending_reviewing':
+            case 'submitted':
+                return 'paid'; // in progress
+            case 'complete':
+                return 'paid'; // settled instantly
+            case 'rejected':
+            case 'canceled':
+            case 'requires_attention':
+                return 'failed';
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Full reconciliation cycle: check transfers, process awaiting_funding,
+     * and proactively replenish balance if below threshold.
+     */
+    async runFullReconciliation() {
+        const transferResult = await this.reconcileTransfers();
+        const fundingResult = await this.processAwaitingFunding();
+
+        // Proactive replenish — keep balance above threshold
+        let replenishResult = null;
+        try {
+            replenishResult = await IncreaseService.checkAndReplenish();
+        } catch (e) {
+            logger.warn('Auto-replenish check failed during reconciliation', { error: e.message });
+        }
+
+        return { transfers: transferResult, funding: fundingResult, replenish: replenishResult };
     }
 }
 
