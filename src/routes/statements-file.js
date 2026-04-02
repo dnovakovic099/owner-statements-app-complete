@@ -1331,12 +1331,15 @@ router.post('/generate', async (req, res) => {
             propertyId ? FileDataService.getPriorStatementExpenses([parseInt(propertyId)]) : Promise.resolve(null)
         ];
 
-        // NOTE: Previously fetched calendar-based reservations here to detect overlapping stays,
-        // but this doubled all Hostify API calls. Overlap detection now uses checkout reservations.
+        // Also fetch calendar-based reservations to detect overlapping/long-term stays
+        // that need calendar conversion (these don't check out within the period)
+        if (calculationType === 'checkout' && propertyId) {
+            fetchPromises.push(FileDataService.getReservations(startDate, endDate, propertyId, 'calendar'));
+        }
 
         const results = await Promise.all(fetchPromises);
         const [listings, reservations, expenses, owners, priorStatementsEarly] = results;
-        const calendarReservations = null;
+        const calendarReservations = calculationType === 'checkout' && propertyId ? results[5] : null;
 
         // Check for duplicate warnings
         const duplicateWarnings = expenses.duplicateWarnings || [];
