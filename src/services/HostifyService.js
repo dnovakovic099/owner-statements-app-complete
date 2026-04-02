@@ -36,6 +36,39 @@ class HostifyService {
         // Offboarded listing cache - stores service_pms status for listings
         this._offboardedCache = new Map(); // key: listingId, value: { isOffboarded, time }
         this._offboardedCacheTTL = 10 * 60 * 1000; // 10 minutes
+
+        // Global concurrency limiter — ensures the ENTIRE app never exceeds this
+        // many concurrent Hostify API calls, regardless of how many statements
+        // are generating simultaneously
+        this._maxConcurrent = 2;
+        this._activeRequests = 0;
+        this._requestQueue = [];
+    }
+
+    /**
+     * Acquire a slot from the global concurrency limiter.
+     * If all slots are in use, waits until one frees up.
+     */
+    _acquireSlot() {
+        if (this._activeRequests < this._maxConcurrent) {
+            this._activeRequests++;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => {
+            this._requestQueue.push(resolve);
+        });
+    }
+
+    /**
+     * Release a slot back to the global concurrency limiter.
+     */
+    _releaseSlot() {
+        if (this._requestQueue.length > 0) {
+            const next = this._requestQueue.shift();
+            next(); // hand slot to next waiter (activeRequests stays the same)
+        } else {
+            this._activeRequests--;
+        }
     }
 
     /**
@@ -233,6 +266,17 @@ class HostifyService {
             throw new Error('Hostify API Key is required.');
         }
 
+        // Wait for a global concurrency slot before making ANY Hostify API call
+        await this._acquireSlot();
+
+        try {
+            return await this._makeRequestInner(endpoint, params, method, maxRetries);
+        } finally {
+            this._releaseSlot();
+        }
+    }
+
+    async _makeRequestInner(endpoint, params, method, maxRetries) {
         const config = {
             headers: {
                 'x-api-key': this.apiKey,
