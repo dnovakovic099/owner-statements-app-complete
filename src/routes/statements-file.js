@@ -732,6 +732,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             allDuplicateWarnings.push(...propExpenseData.duplicateWarnings);
         }
         logger.info(`[REGEN-TRACE] Combined totals: ${allReservations.length} reservations, ${allExpenses.length} expenses for ${parsedPropertyIds.length} properties (${startDate} to ${endDate}, ${calculationType})`, { context: 'StatementsFile' });
+        if (allReservations.length === 0 && parsedPropertyIds.length > 0) {
+            logger.warn(`[REGEN-WARNING] ⚠ ZERO reservations returned for ${parsedPropertyIds.length} properties (${parsedPropertyIds.join(', ')}). Date range: ${startDate} to ${endDate}, type: ${calculationType}. Possible API failure — check [PARALLEL], [BATCH-FETCH], and [FINANCE-CHILD] logs above.`, { context: 'StatementsFile' });
+        }
 
         // Filter reservations by date and status
         const periodReservations = allReservations.filter(res => {
@@ -1218,6 +1221,11 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 router.post('/generate', async (req, res) => {
     try {
         let { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
+
+        logger.info('[GENERATE] Statement generation requested', {
+            context: 'StatementsFile', action: 'generate',
+            propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType, generateCombined
+        });
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'Start date and end date are required' });
@@ -2131,18 +2139,31 @@ router.put('/:id/reconfigure', async (req, res) => {
             const targetListings = listings.filter(l => propertyIds.includes(l.id) || propertyIds.includes(l.id.toString()));
             const owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
 
-            // Fetch reservations and expenses for all properties
-            const reservationPromises = propertyIds.map(pid =>
-                FileDataService.getReservations(startDate, endDate, pid, calculationType)
-            );
-            const expensePromises = propertyIds.map(pid =>
-                FileDataService.getExpenses(startDate, endDate, pid)
-            );
-
-            const [reservationsArrays, expensesArrays] = await Promise.all([
-                Promise.all(reservationPromises),
-                Promise.all(expensePromises)
-            ]);
+            // Fetch reservations and expenses for all properties (throttled to avoid 429s)
+            const REGEN_CONCURRENCY = 3;
+            const reservationsArrays = [];
+            const expensesArrays = [];
+            for (let i = 0; i < propertyIds.length; i += REGEN_CONCURRENCY) {
+                const batch = propertyIds.slice(i, i + REGEN_CONCURRENCY);
+                const batchResults = await Promise.all(
+                    batch.map(async pid => {
+                        try {
+                            const [reservations, expenses] = await Promise.all([
+                                FileDataService.getReservations(startDate, endDate, pid, calculationType),
+                                FileDataService.getExpenses(startDate, endDate, pid)
+                            ]);
+                            return { reservations, expenses };
+                        } catch (err) {
+                            logger.logError(err, { context: 'StatementsFile', action: 'regenPropertyFetch', propertyId: pid });
+                            return { reservations: [], expenses: [] };
+                        }
+                    })
+                );
+                batchResults.forEach(r => {
+                    reservationsArrays.push(r.reservations);
+                    expensesArrays.push(r.expenses);
+                });
+            }
 
             // Flatten and dedupe
             const allReservations = reservationsArrays.flat();
@@ -6398,6 +6419,7 @@ router.post('/bulk-download', async (req, res) => {
 router.get('/:id/download', async (req, res) => {
     try {
         const { id } = req.params;
+        logger.info(`[PDF] Download requested for statement ${id}`, { context: 'StatementsFile', action: 'downloadPDF' });
         const statement = await FileDataService.getStatementById(id);
 
         if (!statement) {
@@ -6455,6 +6477,8 @@ router.get('/:id/download', async (req, res) => {
             pdfCache.set(id, statementUpdatedAt, pdfBuffer);
             cacheStatus = 'MISS';
         }
+
+        logger.info(`[PDF] Statement ${id}: cache ${cacheStatus}, ${pdfBuffer.length} bytes`, { context: 'StatementsFile', action: 'downloadPDF' });
 
         // Get property nickname for filename (nickname only, no ID)
         let propertyNickname = 'Statement';

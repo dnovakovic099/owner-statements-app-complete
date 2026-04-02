@@ -39,7 +39,7 @@ class HostawayService {
             logger.info('Hostaway access token obtained successfully');
             return this.authToken;
         } catch (error) {
-            logger.error('Hostaway auth error:', error.response?.data || error.message);
+            logger.logError(error, { context: 'HostawayService', action: 'getAuthToken', responseData: error.response?.data });
             throw new Error('Failed to authenticate with Hostaway');
         }
     }
@@ -65,10 +65,8 @@ class HostawayService {
             
             return response.data;
         } catch (error) {
-            logger.error(`Hostaway API request failed: ${endpoint}`, error.message);
+            logger.logError(error, { context: 'HostawayService', action: 'makeRequest', endpoint, responseStatus: error.response?.status, responseData: error.response?.data });
             if (error.response) {
-                logger.error('Response status:', error.response.status);
-                logger.error('Response data:', error.response.data);
                 
                 if (error.response.status === 401) {
                     // Token might be expired, clear it
@@ -197,7 +195,7 @@ class HostawayService {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
             } catch (error) {
-                logger.error(`Error enriching reservation ${rawReservation.id}:`, error);
+                logger.logError(error, { context: 'HostawayService', action: 'getAllReservationsWithFinanceData', reservationId: rawReservation.id });
                 // Fall back to basic transformation
                 const basicReservation = this.transformReservation(rawReservation);
                 enrichedReservations.push(basicReservation);
@@ -302,7 +300,7 @@ class HostawayService {
             logger.info(`No finance fields found for reservation ${reservationId}`);
             return null;
         } catch (error) {
-            logger.error(`Error fetching finance fields for reservation ${reservationId}:`, error.response?.data || error.message);
+            logger.logError(error, { context: 'HostawayService', action: 'getReservationFinanceFields', reservationId, responseData: error.response?.data });
             return null;
         }
     }
@@ -477,7 +475,7 @@ class HostawayService {
             return uniqueReservations;
             
         } catch (error) {
-            logger.error('Error fetching overlapping reservations:', error);
+            logger.logError(error, { context: 'HostawayService', action: 'getOverlappingReservations' });
             throw error;
         }
     }
@@ -527,7 +525,7 @@ class HostawayService {
             logger.info('No data returned from consolidated finance report');
             return [];
         } catch (error) {
-            logger.error('Consolidated finance report error:', error.response?.data || error.message);
+            logger.logError(error, { context: 'HostawayService', action: 'getConsolidatedFinanceReport', responseData: error.response?.data });
             throw new Error('Failed to fetch consolidated finance report');
         }
     }

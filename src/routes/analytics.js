@@ -947,7 +947,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 { replacements, type: sequelize.QueryTypes.SELECT }
             );
         } catch (queryErr) {
-            logger.error('property-financials meta query failed', { error: queryErr.message, stack: queryErr.stack });
+            logger.logError(queryErr, { context: 'Analytics', action: 'propertyFinancials' });
             throw queryErr;
         }
 

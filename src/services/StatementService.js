@@ -243,7 +243,7 @@ class StatementService {
                 const existing = await this.checkExistingStatement({ groupId, startDate, endDate });
                 return { skipped: true, existingId: existing?.id, reason: 'duplicate' };
             }
-            logger.error(`FAILED - Error generating group statement for "${groupName}"`, { context: 'StatementService', action: 'generateGroupStatement', groupId, groupName, error: error.message, stack: error.stack });
+            logger.logError(error, { context: 'StatementService', action: 'generateGroupStatement', groupId, groupName });
             throw error;
         }
     }
@@ -402,7 +402,7 @@ class StatementService {
                 const existing = await this.checkExistingStatement({ listingId, startDate, endDate });
                 return { skipped: true, existingId: existing?.id, reason: 'duplicate' };
             }
-            logger.error(`Error generating individual statement`, { context: 'StatementService', action: 'generateIndividualStatement', error: error.message, stack: error.stack });
+            logger.logError(error, { context: 'StatementService', action: 'generateIndividualStatement' });
             throw error;
         }
     }

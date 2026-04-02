@@ -49,7 +49,7 @@ router.post('/send-summary', requireAdmin, async (req, res) => {
         const result = await ScheduledReportService.sendReport(recipientEmail, startDate, endDate);
         res.json(result);
     } catch (error) {
-        logger.error('Failed to send summary report', { error: error.message });
+        logger.logError(error, { context: 'Reports', action: 'sendSummary' });
         res.status(500).json({ error: 'Failed to send summary report' });
     }
 });
@@ -83,7 +83,7 @@ router.get('/preview', requireAdmin, async (req, res) => {
         const summary = await ScheduledReportService.generateSummary(startDate, endDate);
         res.json(summary);
     } catch (error) {
-        logger.error('Failed to generate summary preview', { error: error.message });
+        logger.logError(error, { context: 'Reports', action: 'previewSummary' });
         res.status(500).json({ error: 'Failed to generate summary preview' });
     }
 });

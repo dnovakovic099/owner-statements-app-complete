@@ -28,7 +28,7 @@ class IncreaseService {
     isConfigured() {
         const configured = !!(this.apiKey && this.accountId);
         if (!configured) {
-            console.log('[IncreaseService] NOT configured — apiKey:', this.apiKey ? `set (${this.apiKey.substring(0, 8)}...)` : 'MISSING', '| accountId:', this.accountId ? `set (${this.accountId.substring(0, 10)}...)` : 'MISSING', '| baseUrl:', this.baseUrl);
+            logger.warn(`[INCREASE] NOT configured — apiKey: ${this.apiKey ? 'set' : 'MISSING'}, accountId: ${this.accountId ? 'set' : 'MISSING'}`);
         }
         return configured;
     }
@@ -397,149 +397,9 @@ class IncreaseService {
                 fundingAmount: this.replenishAmount,
             };
         } catch (e) {
-            logger.error('Auto-replenish failed', { error: e.message, balance });
+            logger.logError(e, { context: 'IncreaseService', action: 'autoReplenishIfNeeded', balance });
             return { replenished: false, balance, error: e.message };
         }
-    }
-
-    // ─── Real-Time Payments (RTP) ────────────────────────────────
-
-    /**
-     * Check if a routing number supports Real-Time Payments.
-     * Returns { supportsRtp: boolean, routingNumber }.
-     */
-    async checkRtpSupport(routingNumber) {
-        try {
-            const res = await this._client().get('/routing_numbers', {
-                params: { routing_number: routingNumber },
-            });
-            const data = res.data.data?.[0] || res.data;
-            const supportsRtp = data.real_time_payments_transfers === 'supported';
-            return { supportsRtp, routingNumber, raw: data };
-        } catch (e) {
-            logger.warn('Failed to check RTP support for routing number', { routingNumber, error: e.message });
-            return { supportsRtp: false, routingNumber, error: e.message };
-        }
-    }
-
-    /**
-     * Create a Real-Time Payments transfer (instant, irrevocable).
-     * Amount in dollars. Returns the RTP transfer object.
-     */
-    async createRtpTransfer({ accountNumber, routingNumber, amount, remittanceInfo, idempotencyKey }) {
-        const amountCents = Math.round(amount * 100);
-        const body = {
-            source_account_number_id: await this._getAccountNumberId(),
-            destination_account_number: accountNumber,
-            destination_routing_number: routingNumber,
-            amount: amountCents,
-            remittance_information: (remittanceInfo || 'Owner Payout').substring(0, 140),
-        };
-        const headers = {};
-        if (idempotencyKey) {
-            headers['Idempotency-Key'] = idempotencyKey;
-        }
-        const res = await this._client().post('/real_time_payments_transfers', body, { headers });
-        return res.data;
-    }
-
-    /**
-     * Get the account number ID for the Increase account (needed for RTP source).
-     * Caches after first lookup.
-     */
-    async _getAccountNumberId() {
-        if (this._accountNumberId) return this._accountNumberId;
-        const res = await this._client().get(`/account_numbers?account_id=${this.accountId}`);
-        const numbers = res.data.data || [];
-        if (numbers.length === 0) {
-            throw new Error('No account numbers found for Increase account — cannot send RTP');
-        }
-        this._accountNumberId = numbers[0].id;
-        return this._accountNumberId;
-    }
-
-    /**
-     * Get RTP transfer status.
-     */
-    async getRtpTransfer(transferId) {
-        const res = await this._client().get(`/real_time_payments_transfers/${transferId}`);
-        return res.data;
-    }
-
-    /**
-     * Send payout via RTP if supported, otherwise fall back to ACH.
-     * Resolves the recipient's routing number, checks RTP support, then sends.
-     * Returns { transfer, method: 'rtp'|'ach', wiseFee: 0 }.
-     */
-    async sendPayoutPreferRtp({ recipientId, amount, reference, statementId, individualName }) {
-        // Look up the external account to get routing number for RTP check
-        let recipient;
-        try {
-            recipient = await this.getRecipient(recipientId);
-        } catch (e) {
-            logger.warn('Could not fetch recipient for RTP check, falling back to ACH', { recipientId, error: e.message });
-            const result = await this.sendPayout({ recipientId, amount, reference, statementId, individualName });
-            return { ...result, method: 'ach' };
-        }
-
-        const routingNumber = recipient.routing_number;
-        const accountNumber = recipient.account_number;
-
-        // Check if recipient's bank supports RTP
-        if (routingNumber && accountNumber) {
-            const { supportsRtp } = await this.checkRtpSupport(routingNumber);
-            if (supportsRtp) {
-                try {
-                    const remittanceInfo = (reference || `Payout #${statementId}`).substring(0, 140);
-                    const idempotencyKey = crypto.createHash('sha256')
-                        .update(`rtp-${statementId}-${amount}-${recipientId}`)
-                        .digest('hex');
-                    const transfer = await this.createRtpTransfer({
-                        accountNumber,
-                        routingNumber,
-                        amount,
-                        remittanceInfo,
-                        idempotencyKey,
-                    });
-                    logger.info('RTP payout sent (instant)', {
-                        transferId: transfer.id, amount, statementId, status: transfer.status,
-                    });
-                    return { transfer, method: 'rtp', wiseFee: 0 };
-                } catch (rtpErr) {
-                    logger.warn('RTP transfer failed, falling back to ACH', {
-                        statementId, error: rtpErr.response?.data?.detail || rtpErr.message,
-                    });
-                }
-            }
-        }
-
-        // Fall back to ACH
-        const result = await this.sendPayout({ recipientId, amount, reference, statementId, individualName });
-        return { ...result, method: 'ach' };
-    }
-
-    /**
-     * Batch payouts with RTP preference — tries RTP for each, falls back to ACH.
-     */
-    async sendBatchPayoutsPreferRtp(payouts) {
-        const transfers = [];
-        for (const payout of payouts) {
-            const reference = (payout.reference || `Payout #${payout.statementId}`).substring(0, 22);
-            const result = await this.sendPayoutPreferRtp({
-                recipientId: payout.recipientId,
-                amount: payout.amount,
-                reference,
-                statementId: payout.statementId,
-                individualName: payout.individualName,
-            });
-            transfers.push({ ...result, statementId: payout.statementId });
-        }
-        logger.info('Batch payouts (RTP-preferred) complete', {
-            count: transfers.length,
-            rtp: transfers.filter(t => t.method === 'rtp').length,
-            ach: transfers.filter(t => t.method === 'ach').length,
-        });
-        return { transfers };
     }
 
     /**

@@ -139,7 +139,7 @@ class BackgroundJobService {
             try {
                 await jobFunction(jobId);
             } catch (error) {
-                logger.error(`Background job ${jobId} failed:`, error);
+                logger.logError(error, { context: 'BackgroundJobService', action: 'runInBackground', jobId });
                 this.failJob(jobId, error);
             }
         });

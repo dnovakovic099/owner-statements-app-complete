@@ -8,6 +8,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const Statement = require('../models/Statement');
 const sequelize = require('../config/database');
+const logger = require('../utils/logger');
 
 class StatementsFinancialService {
     /**
@@ -499,7 +500,7 @@ class StatementsFinancialService {
             await sequelize.authenticate();
             return true;
         } catch (error) {
-            console.warn('StatementsFinancialService: Database not available:', error.message);
+            logger.warn('[STATEMENTS-FIN] Database not available: ' + error.message);
             return false;
         }
     }

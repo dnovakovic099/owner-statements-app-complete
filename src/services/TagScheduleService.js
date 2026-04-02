@@ -184,11 +184,11 @@ class TagScheduleService {
                         this._runScheduleWithTimeout(schedule, now);
                     }
                 } catch (schedError) {
-                    logger.error(`[TagScheduleService] Error checking schedule "${schedule.tagName}":`, schedError.message);
+                    logger.logError(schedError, { context: 'TagScheduleService', action: 'checkSchedules', tagName: schedule.tagName });
                 }
             }
         } catch (error) {
-            logger.error('[TagScheduleService] Error checking schedules:', error);
+            logger.logError(error, { context: 'TagScheduleService', action: 'checkSchedules' });
         } finally {
             this._isChecking = false;
         }
@@ -216,7 +216,7 @@ class TagScheduleService {
             .catch((err) => {
                 clearTimeout(timeoutId);
                 this._runningSchedules.delete(tagName);
-                logger.error(`[TagScheduleService] Schedule "${tagName}" failed:`, err.message);
+                logger.logError(err, { context: 'TagScheduleService', action: 'runScheduleWithTimeout', tagName });
             });
     }
 
@@ -376,7 +376,7 @@ class TagScheduleService {
             const listings = await this.getListingsWithTag(schedule.tagName);
             listingCount = listings.length;
         } catch (error) {
-            logger.error(`[TagScheduleService] Error getting listings for ${schedule.tagName}:`, error.message);
+            logger.logError(error, { context: 'TagScheduleService', action: 'triggerNotification', tagName: schedule.tagName, step: 'getListings' });
             hasErrors = true;
             errorMessage = 'Failed to get listings. ';
         }
@@ -385,7 +385,7 @@ class TagScheduleService {
             // Auto-generate draft statements for groups with this tag
             groupResults = await this.autoGenerateGroupStatements(schedule.tagName, schedule);
         } catch (error) {
-            logger.error(`[TagScheduleService] Error generating group statements for ${schedule.tagName}:`, error.message);
+            logger.logError(error, { context: 'TagScheduleService', action: 'triggerNotification', tagName: schedule.tagName, step: 'groupStatements' });
             hasErrors = true;
             errorMessage += 'Group generation failed. ';
         }
@@ -394,7 +394,7 @@ class TagScheduleService {
             // Auto-generate draft statements for individual (non-grouped) listings with this tag
             individualResults = await this.autoGenerateIndividualStatements(schedule.tagName, schedule);
         } catch (error) {
-            logger.error(`[TagScheduleService] Error generating individual statements for ${schedule.tagName}:`, error.message);
+            logger.logError(error, { context: 'TagScheduleService', action: 'triggerNotification', tagName: schedule.tagName, step: 'individualStatements' });
             hasErrors = true;
             errorMessage += 'Individual generation failed. ';
         }
@@ -450,7 +450,7 @@ class TagScheduleService {
 
             return notification;
         } catch (error) {
-            logger.error(`[TagScheduleService] Error creating notification for ${schedule.tagName}:`, error);
+            logger.logError(error, { context: 'TagScheduleService', action: 'triggerNotification', tagName: schedule.tagName, step: 'createNotification' });
             // Still try to update lastNotifiedAt to prevent infinite retries
             try {
                 await schedule.update({
@@ -458,7 +458,7 @@ class TagScheduleService {
                     nextScheduledAt: this.calculateNextScheduledTime(schedule, now)
                 });
             } catch (updateError) {
-                logger.error(`[TagScheduleService] Failed to update lastNotifiedAt:`, updateError.message);
+                logger.logError(updateError, { context: 'TagScheduleService', action: 'triggerNotification', step: 'updateLastNotifiedAt' });
             }
             throw error;
         }
@@ -536,7 +536,7 @@ class TagScheduleService {
 
                     logger.info(`[TagScheduleService] Generated draft statement for group "${group.name}" (ID: ${group.id})`);
                 } catch (groupError) {
-                    logger.error(`[TagScheduleService] Error generating statement for group "${group.name}":`, groupError.message);
+                    logger.logError(groupError, { context: 'TagScheduleService', action: 'autoGenerateGroupStatements', groupName: group.name });
                     results.errors++;
                     results.skippedDetails.push({
                         name: group.name,
@@ -553,7 +553,7 @@ class TagScheduleService {
 
             logger.info(`[TagScheduleService] Auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
         } catch (error) {
-            logger.error('[TagScheduleService] Error in autoGenerateGroupStatements:', error);
+            logger.logError(error, { context: 'TagScheduleService', action: 'autoGenerateGroupStatements' });
         }
 
         return results;
@@ -689,7 +689,7 @@ class TagScheduleService {
 
                     logger.info(`[TagScheduleService] Generated draft statement for listing "${listing.displayName || listing.name}" (ID: ${listing.id})`);
                 } catch (listingError) {
-                    logger.error(`[TagScheduleService] Error generating statement for listing "${listing.name}":`, listingError.message);
+                    logger.logError(listingError, { context: 'TagScheduleService', action: 'autoGenerateIndividualStatements', listingName: listing.name });
                     results.errors++;
                     results.skippedDetails.push({
                         name: listing.displayName || listing.name,
@@ -708,7 +708,7 @@ class TagScheduleService {
 
             logger.info(`[TagScheduleService] Individual auto-generation complete: ${results.generated} drafts created, ${results.errors} errors`);
         } catch (error) {
-            logger.error('[TagScheduleService] Error in autoGenerateIndividualStatements:', error);
+            logger.logError(error, { context: 'TagScheduleService', action: 'autoGenerateIndividualStatements' });
         }
 
         return results;
@@ -944,7 +944,7 @@ class TagScheduleService {
                 return lastStatement.calculationType;
             }
         } catch (error) {
-            logger.error(`[TagScheduleService] Error getting last calculation type for group ${groupId}:`, error.message);
+            logger.logError(error, { context: 'TagScheduleService', action: 'getLastCalculationTypeForGroup', groupId });
         }
         return fallback;
     }
@@ -967,7 +967,7 @@ class TagScheduleService {
                 return lastStatement.calculationType;
             }
         } catch (error) {
-            logger.error(`[TagScheduleService] Error getting last calculation type for listing ${listingId}:`, error.message);
+            logger.logError(error, { context: 'TagScheduleService', action: 'getLastCalculationTypeForListing', listingId });
         }
         return fallback;
     }

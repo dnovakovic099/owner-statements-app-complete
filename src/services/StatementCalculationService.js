@@ -4,6 +4,8 @@
  * This ensures consistent financial calculations across the application
  */
 
+const logger = require('../utils/logger');
+
 class StatementCalculationService {
     /**
      * Calculate all financials for a statement
@@ -29,7 +31,7 @@ class StatementCalculationService {
         }
         const missingListings = propertyIds.filter(id => !listingInfoMap[id]);
         if (missingListings.length > 0) {
-            console.warn(`calculateStatementFinancials: listingInfoMap missing entries for propertyIds: ${missingListings.join(', ')}`);
+            logger.warn(`[CALC] listingInfoMap missing entries for propertyIds: ${missingListings.join(', ')}`);
         }
 
         const periodStart = new Date(startDate);

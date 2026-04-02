@@ -555,9 +555,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         if (!payoutStatus) {
           return <span className="text-xs text-gray-300 dark:text-gray-600">--</span>;
         }
-        const isRtp = payoutStatus === 'paid' && row.original.payoutTransferId?.startsWith('rtp:');
         const config: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
-          paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: isRtp ? 'Paid (RTP)' : 'Paid' },
+          paid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Paid' },
           collected: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', label: 'Collected' },
           pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Pending' },
           queued: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500', label: 'Queued' },

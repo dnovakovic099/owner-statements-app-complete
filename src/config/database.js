@@ -60,7 +60,7 @@ sequelize.authenticate()
         logger.info('Connection established successfully', { context: 'DB' });
     })
     .catch(err => {
-        logger.error('Unable to connect to database', { context: 'DB', error: err.message });
+        logger.logError(err, { context: 'DB', action: 'authenticate' });
     });
 
 module.exports = sequelize;

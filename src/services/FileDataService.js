@@ -319,10 +319,12 @@ class FileDataService {
                 return [...apiReservations, ...importedReservations];
             }
         } catch (error) {
+            logger.logError(error, { context: 'FileDataService', action: 'getReservationsForProperty', propertyId });
             // Try to return imported reservations even if API fails
             try {
                 return await this.getImportedReservations(startDate, endDate, propertyId);
             } catch (importError) {
+                logger.logError(importError, { context: 'FileDataService', action: 'getReservationsForProperty', propertyId, step: 'importFallback' });
                 return [];
             }
         }
@@ -368,6 +370,7 @@ class FileDataService {
             return filtered;
 
         } catch (error) {
+            logger.logError(error, { context: 'FileDataService', action: 'getImportedReservations' });
             return [];
         }
     }
@@ -466,9 +469,9 @@ class FileDataService {
                     listingMapIds: propertyIds
                 };
 
-                console.log(`[BATCH-FETCH] Checkout-based fetch for ${propertyIds.length} properties: ${startDate} to ${endDate}`);
+                logger.info(`[BATCH-FETCH] Checkout-based fetch for ${propertyIds.length} properties: ${startDate} to ${endDate}`);
                 const apiReservations = await hostifyService.getConsolidatedFinanceReport(params);
-                console.log(`[BATCH-FETCH] Got ${apiReservations.length} reservations from Hostify for properties: ${propertyIds.join(', ')}`);
+                logger.info(`[BATCH-FETCH] Got ${apiReservations.length} reservations from Hostify for properties: ${propertyIds.join(', ')}`);
 
                 // Group by propertyId
                 const reservationsByProperty = {};
@@ -483,13 +486,19 @@ class FileDataService {
                 // Log per-property breakdown
                 propertyIds.forEach(id => {
                     const count = reservationsByProperty[id]?.length || 0;
-                    if (count === 0) console.log(`[BATCH-FETCH] WARNING: Property ${id} has 0 reservations`);
+                    if (count === 0) logger.warn(`[BATCH-FETCH] WARNING: Property ${id} has 0 reservations`);
                 });
 
-                // Add imported reservations per property (in parallel)
-                const importedResults = await Promise.all(
-                    propertyIds.map(propId => this.getImportedReservations(startDate, endDate, propId))
-                );
+                // Add imported reservations per property (throttled)
+                const IMPORT_CONCURRENCY = 5;
+                const importedResults = [];
+                for (let i = 0; i < propertyIds.length; i += IMPORT_CONCURRENCY) {
+                    const batch = propertyIds.slice(i, i + IMPORT_CONCURRENCY);
+                    const batchResults = await Promise.all(
+                        batch.map(propId => this.getImportedReservations(startDate, endDate, propId))
+                    );
+                    importedResults.push(...batchResults);
+                }
                 propertyIds.forEach((propId, i) => {
                     reservationsByProperty[propId].push(...importedResults[i]);
                 });
@@ -498,7 +507,7 @@ class FileDataService {
             }
         } catch (error) {
             // Fall back to per-property fetching
-            console.log(`[BATCH-FETCH] FALLBACK triggered: ${error.message} — falling back to per-property fetching`);
+            logger.warn(`[BATCH-FETCH] FALLBACK triggered: ${error.message} — falling back to per-property fetching`);
             const reservationsByProperty = {};
             for (const propId of propertyIds) {
                 reservationsByProperty[propId] = await this.getReservations(startDate, endDate, propId, calculationType);
@@ -568,6 +577,7 @@ class FileDataService {
             const apiExpenses = await secureStayService.getExpensesForPeriod(startDate, endDate, null);
             return apiExpenses || [];
         } catch (error) {
+            logger.logError(error, { context: 'FileDataService', action: 'fetchAllSecureStayExpenses', startDate, endDate });
             return [];
         }
     }

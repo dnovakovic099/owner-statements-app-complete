@@ -81,7 +81,7 @@ ActivityLog.log = async function(req, action, resource, resourceId = null, detai
             userAgent: req.headers?.['user-agent']?.substring(0, 500)
         });
     } catch (error) {
-        logger.error('Failed to log activity', { context: 'ActivityLog', error: error.message });
+        logger.logError(error, { context: 'ActivityLog', action: 'logAction' });
     }
 };
 
@@ -99,7 +99,7 @@ ActivityLog.logSystem = async function(action, resource, resourceId = null, deta
             userAgent: 'TagScheduleService/AutoGeneration'
         });
     } catch (error) {
-        logger.error('Failed to log system activity', { context: 'ActivityLog', error: error.message });
+        logger.logError(error, { context: 'ActivityLog', action: 'logSystem' });
     }
 };
 

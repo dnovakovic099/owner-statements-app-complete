@@ -300,7 +300,7 @@ router.get('/comparison', async (req, res) => {
             currentSummary = extractPLTotals(currentPL);
             previousSummary = extractPLTotals(previousPL);
         } catch (qbError) {
-            logger.error('QuickBooks P&L fetch failed for comparison', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'plComparison' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -554,7 +554,7 @@ router.get('/summary', async (req, res) => {
 
             logger.debug(`[Financials] QuickBooks P&L FINAL: Income=${totalIncome}, Expenses=${totalExpenses}, Net=${totalIncome - totalExpenses}`);
         } catch (qbError) {
-            logger.error('QuickBooks P&L fetch failed', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'plFetch' });
             // Check if it's a token/auth issue
             const errorMsg = qbError.message || '';
             const isAuthError = errorMsg.includes('refresh') || errorMsg.includes('token') ||
@@ -1699,7 +1699,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchInvoices' });
                             resolve({ QueryResponse: { Invoice: [] } });
                             return;
                         }
@@ -1709,7 +1709,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findPayments({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching payments', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchPayments' });
                             resolve({ QueryResponse: { Payment: [] } });
                             return;
                         }
@@ -1719,7 +1719,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching sales receipts', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchSalesReceipts' });
                             resolve({ QueryResponse: { SalesReceipt: [] } });
                             return;
                         }
@@ -1730,7 +1730,7 @@ router.get('/payment-status', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findDeposits({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching deposits', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchDeposits' });
                             resolve({ QueryResponse: { Deposit: [] } });
                             return;
                         }
@@ -1838,7 +1838,7 @@ router.get('/payment-status', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            logger.error('QuickBooks error in payment-status', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'paymentStatus' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -1870,7 +1870,7 @@ router.get('/invoices-summary', async (req, res) => {
             const invoicesData = await new Promise((resolve) => {
                 qbo.findInvoices({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
+                        logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchInvoices' });
                         resolve({ QueryResponse: { Invoice: [] } });
                         return;
                     }
@@ -1934,7 +1934,7 @@ router.get('/invoices-summary', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            logger.error('QuickBooks error in invoices-summary', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'invoicesSummary' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -1965,7 +1965,7 @@ router.get('/deposits', async (req, res) => {
             const paymentsData = await new Promise((resolve) => {
                 qbo.findPayments({ limit: 500 }, (err, data) => {
                     if (err) {
-                        logger.error('Error fetching payments', { context: 'Financials', error: err?.message || err });
+                        logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchPayments' });
                         resolve({ QueryResponse: { Payment: [] } });
                         return;
                     }
@@ -2011,7 +2011,7 @@ router.get('/deposits', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            logger.error('QuickBooks error in deposits', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'deposits' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -2045,7 +2045,7 @@ router.get('/sales-chart', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findInvoices({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching invoices', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchInvoices' });
                             resolve({ QueryResponse: { Invoice: [] } });
                             return;
                         }
@@ -2055,7 +2055,7 @@ router.get('/sales-chart', async (req, res) => {
                 new Promise((resolve) => {
                     qbo.findSalesReceipts({ limit: 1000 }, (err, data) => {
                         if (err) {
-                            logger.error('Error fetching sales receipts', { context: 'Financials', error: err?.message || err });
+                            logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchSalesReceipts' });
                             resolve({ QueryResponse: { SalesReceipt: [] } });
                             return;
                         }
@@ -2106,7 +2106,7 @@ router.get('/sales-chart', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            logger.error('QuickBooks error in sales-chart', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'salesChart' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',
@@ -2138,7 +2138,7 @@ router.get('/owner-distributions', async (req, res) => {
             const purchasesData = await new Promise((resolve) => {
                 qbo.findPurchases({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        logger.error('Error fetching purchases', { context: 'Financials', error: err?.message || err });
+                        logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchPurchases' });
                         resolve({ QueryResponse: { Purchase: [] } });
                         return;
                     }
@@ -2150,7 +2150,7 @@ router.get('/owner-distributions', async (req, res) => {
             const transfersData = await new Promise((resolve) => {
                 qbo.findTransfers({ limit: 1000 }, (err, data) => {
                     if (err) {
-                        logger.error('Error fetching transfers', { context: 'Financials', error: err?.message || err });
+                        logger.logError(err instanceof Error ? err : new Error(err?.message || String(err)), { context: 'Financials', action: 'fetchTransfers' });
                         resolve({ QueryResponse: { Transfer: [] } });
                         return;
                     }
@@ -2277,7 +2277,7 @@ router.get('/owner-distributions', async (req, res) => {
 
             return res.json(response);
         } catch (qbError) {
-            logger.error('QuickBooks error in owner-distributions', { context: 'Financials', error: qbError.message });
+            logger.logError(qbError, { context: 'Financials', action: 'ownerDistributions' });
             return res.status(503).json({
                 success: false,
                 error: 'QuickBooks connection failed',

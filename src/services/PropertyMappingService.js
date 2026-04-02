@@ -1,10 +1,12 @@
 /**
  * Service to map between Hostify property IDs and SecureStay listing names
  * This service uses Hostify's nickname or name field to automatically map to SecureStay
- * 
+ *
  * SECURITY NOTE: This mapping uses Hostify's nickname/name field
  * which should match SecureStay listing names for automatic mapping
  */
+
+const logger = require('../utils/logger');
 
 class PropertyMappingService {
     constructor() {
@@ -40,11 +42,11 @@ class PropertyMappingService {
             300018767: "Bowers St (Floor 2) - Sharvan",
             300018863: "Congress St. (Unit #1) - Akriti Agarwal",
         };
-        
+
         // Cache for Hostify listing data to avoid repeated API calls
         this.hostawayListingCache = new Map();
     }
-    
+
     /**
      * Get SecureStay listing name using Hostify's nickname or name
      * @param {number} propertyId - Hostify property ID
@@ -55,7 +57,7 @@ class PropertyMappingService {
         if (this.manualOverrides[propertyId]) {
             return this.manualOverrides[propertyId];
         }
-        
+
         try {
             // Get Hostify listing data
             const listingData = await this.getHostifyListingData(propertyId);
@@ -63,18 +65,18 @@ class PropertyMappingService {
                 // Try nickname first, then name
                 const listingName = listingData.nickname || listingData.name;
                 if (listingName) {
-                    console.log(`Auto-mapped property ${propertyId} to SecureStay listing: "${listingName}"`);
+                    logger.debug(`[PROP-MAP] Auto-mapped property ${propertyId} to SecureStay listing: "${listingName}"`);
                     return listingName;
                 }
             }
         } catch (error) {
-            console.warn(`Failed to get Hostify listing data for property ${propertyId}:`, error.message);
+            logger.warn(`[PROP-MAP] Failed to get Hostify listing data for property ${propertyId}: ${error.message}`);
         }
-        
-        console.warn(`No SecureStay mapping found for property ${propertyId}`);
+
+        logger.warn(`[PROP-MAP] No SecureStay mapping found for property ${propertyId}`);
         return null;
     }
-    
+
     /**
      * Get Hostify listing data with caching
      * @param {number} propertyId - Hostify property ID
@@ -85,36 +87,36 @@ class PropertyMappingService {
         if (this.hostawayListingCache.has(propertyId)) {
             return this.hostawayListingCache.get(propertyId);
         }
-        
+
         try {
             const HostifyService = require('./HostifyService');
             const response = await HostifyService.getProperty(propertyId);
             const listingData = response.success ? response.listing : null;
-            
+
             // Cache the result
             this.hostawayListingCache.set(propertyId, listingData);
             return listingData;
         } catch (error) {
-            console.error(`Failed to fetch Hostify listing ${propertyId}:`, error.message);
+            logger.logError(error, { context: 'PropertyMappingService', action: 'getHostifyListingData', propertyId });
             return null;
         }
     }
-    
+
     // Backward compatibility alias
     async getHostawayListingData(propertyId) {
         return this.getHostifyListingData(propertyId);
     }
-    
+
     /**
      * Add a manual override mapping
      * @param {number} propertyId - Hostify property ID
      * @param {string} listingName - SecureStay listing name
      */
     addManualOverride(propertyId, listingName) {
-        console.warn(`Adding manual override mapping: ${propertyId} -> ${listingName}`);
+        logger.info(`[PROP-MAP] Adding manual override: ${propertyId} -> ${listingName}`);
         this.manualOverrides[propertyId] = listingName;
     }
-    
+
     /**
      * Get mapping status for a property
      * @param {number} propertyId - Hostify property ID
@@ -123,7 +125,7 @@ class PropertyMappingService {
     async getMappingStatus(propertyId) {
         const listingName = await this.getSecureStayListingName(propertyId);
         const listingData = await this.getHostifyListingData(propertyId);
-        
+
         return {
             propertyId,
             listingName,
@@ -133,23 +135,22 @@ class PropertyMappingService {
             hostifyName: listingData?.name || null
         };
     }
-    
+
     /**
      * Log mapping status for debugging
      * @param {number[]} propertyIds - Array of property IDs to check
      */
     async logMappingStatus(propertyIds = []) {
-        console.log('=== Property Mapping Status ===');
+        logger.info('[PROP-MAP] === Property Mapping Status ===');
         for (const propertyId of propertyIds) {
             const status = await this.getMappingStatus(propertyId);
             const mappingType = status.isManualOverride ? 'MANUAL' : 'AUTO';
             const statusIcon = status.isValidMapping ? 'MAPPED' : 'NO MAPPING';
-            console.log(`Property ${propertyId}: "${status.listingName || 'NO MAPPING'}" ${mappingType} ${statusIcon}`);
+            logger.info(`[PROP-MAP] Property ${propertyId}: "${status.listingName || 'NO MAPPING'}" ${mappingType} ${statusIcon}`);
             if (status.hostifyNickname || status.hostifyName) {
-                console.log(`  └─ Hostify Nickname: "${status.hostifyNickname || status.hostifyName}"`);
+                logger.info(`[PROP-MAP]   └─ Hostify Nickname: "${status.hostifyNickname || status.hostifyName}"`);
             }
         }
-        console.log('===============================');
     }
 }
 

@@ -262,7 +262,7 @@ app.get('/api/quickbooks/auth/callback', async (req, res) => {
             </html>
         `);
     } catch (error) {
-        logger.error('OAuth error', { error: error.message });
+        logger.logError(error, { context: 'Server', action: 'oauthCallback' });
         res.status(500).send(`
             <!DOCTYPE html>
             <html>
@@ -677,7 +677,7 @@ app.get('/payout-setup/:token', payoutSetupLimiter, async (req, res) => {
 </body>
 </html>`);
     } catch (err) {
-        logger.error('Payout setup page error', { error: err.message });
+        logger.logError(err, { context: 'Server', action: 'payoutSetupPage' });
         res.status(500).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Error</h2><p>Something went wrong. Please try again later.</p></body></html>');
     }
 });
@@ -777,11 +777,7 @@ app.post('/api/payouts/setup/:token', payoutSetupLimiter, async (req, res) => {
         if (err.isValidation) {
             return res.status(400).json({ error: err.message });
         }
-        logger.error('Payout setup submission error', {
-            error: err.message,
-            status: err.response?.status,
-            responseData: err.response?.data,
-        });
+        logger.logError(err, { context: 'Server', action: 'payoutSetupSubmission', status: err.response?.status, responseData: err.response?.data });
         const msg = err.response?.data?.detail || err.response?.data?.errors?.[0]?.message || err.response?.data?.message || err.message || 'Failed to connect bank account';
         res.status(500).json({ error: msg });
     }
@@ -895,7 +891,7 @@ app.get('/pay/:token', async (req, res) => {
 </body>
 </html>`);
     } catch (err) {
-        logger.error('Payment page error', { error: err.message });
+        logger.logError(err, { context: 'Server', action: 'paymentPage' });
         res.status(500).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Error</h2><p>Something went wrong.</p></body></html>');
     }
 });
@@ -1126,7 +1122,7 @@ const startQueuedPayoutChecker = () => {
                 logger.info('[QueuedPayoutChecker] Processing complete', result);
             }
         } catch (err) {
-            logger.error('[QueuedPayoutChecker] Error', { error: err.message });
+            logger.logError(err, { context: 'Server', action: 'queuedPayoutChecker' });
         }
     }, CHECK_INTERVAL);
     logger.info('Queued payout checker started - checking every 5 minutes');
@@ -1230,7 +1226,7 @@ app.get('/api/logs', authenticate, authorize('admin', 'system'), async (req, res
 
         res.json({ logs, total });
     } catch (error) {
-        logger.error('Failed to fetch logs', { context: 'LogsAPI', error: error.message });
+        logger.logError(error, { context: 'Server', action: 'fetchLogs' });
         res.status(500).json({ error: 'Failed to fetch logs' });
     }
 });
@@ -1252,7 +1248,7 @@ app.delete('/api/logs', authenticate, authorize('admin', 'system'), async (req, 
         const deleted = await AppLog.destroy({ where });
         res.json({ success: true, deleted });
     } catch (error) {
-        logger.error('Failed to delete logs', { context: 'LogsAPI', error: error.message });
+        logger.logError(error, { context: 'Server', action: 'deleteLogs' });
         res.status(500).json({ error: 'Failed to delete logs' });
     }
 });
@@ -1353,7 +1349,7 @@ async function startServer() {
             });
         });
     } catch (error) {
-        logger.error('Failed to start server', { error: error.message, stack: error.stack });
+        logger.logError(error, { context: 'Server', action: 'startServer' });
         process.exit(1);
     }
 }
@@ -1372,7 +1368,7 @@ async function gracefulShutdown(signal) {
 
     // Force exit after 10 seconds if cleanup stalls
     const forceExitTimer = setTimeout(() => {
-        logger.error('Graceful shutdown timed out, forcing exit');
+        logger.logError(new Error('Graceful shutdown timed out, forcing exit'), { context: 'Server', action: 'gracefulShutdown' });
         process.exit(1);
     }, 10000);
     forceExitTimer.unref();
@@ -1393,7 +1389,7 @@ async function gracefulShutdown(signal) {
         await sequelize.close();
         logger.info('Database connections closed');
     } catch (err) {
-        logger.error('Error closing database connections', { error: err.message });
+        logger.logError(err, { context: 'Server', action: 'gracefulShutdown', step: 'closeDatabaseConnections' });
     }
 
     process.exit(0);

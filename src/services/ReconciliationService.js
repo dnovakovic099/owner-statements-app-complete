@@ -10,13 +10,12 @@ class ReconciliationService {
      */
     /**
      * Parse a payoutTransferId which may be prefixed with method:
-     * e.g. "rtp:rtp_transfer_abc123" or "ach:ach_transfer_xyz" or legacy "ach_transfer_xyz"
+     * e.g. "ach:ach_transfer_xyz" or legacy "ach_transfer_xyz"
      */
     _parseTransferId(payoutTransferId) {
         if (!payoutTransferId) return { method: null, transferId: null };
         // Skip funding references — they aren't payout transfers
         if (payoutTransferId.startsWith('funding:')) return { method: 'funding', transferId: null };
-        if (payoutTransferId.startsWith('rtp:')) return { method: 'rtp', transferId: payoutTransferId.slice(4) };
         if (payoutTransferId.startsWith('ach:')) return { method: 'ach', transferId: payoutTransferId.slice(4) };
         // Legacy format (no prefix) — assume ACH
         return { method: 'ach', transferId: payoutTransferId };
@@ -41,22 +40,14 @@ class ReconciliationService {
                 const { method, transferId } = this._parseTransferId(stmt.payoutTransferId);
                 if (!transferId) continue; // skip funding or invalid
 
-                let transfer;
-                if (method === 'rtp') {
-                    transfer = await IncreaseService.getRtpTransfer(transferId);
-                } else {
-                    transfer = await IncreaseService.getTransfer(transferId);
-                }
-
-                const newStatus = method === 'rtp'
-                    ? this._mapRtpStatus(transfer.status)
-                    : this._mapTransferStatus(transfer.status);
+                const transfer = await IncreaseService.getTransfer(transferId);
+                const newStatus = this._mapTransferStatus(transfer.status);
 
                 if (newStatus && newStatus !== stmt.payoutStatus) {
                     const errorMsg = transfer.status === 'returned'
                         ? `ACH returned: ${transfer.return_reason || 'unknown'}`
                         : (transfer.status === 'rejected' || transfer.status === 'canceled')
-                            ? `${method.toUpperCase()} ${transfer.status}: ${transfer.rejection?.reason || transfer.cancellation?.reason || 'unknown'}`
+                            ? `ACH ${transfer.status}: ${transfer.rejection?.reason || transfer.cancellation?.reason || 'unknown'}`
                             : null;
                     await stmt.update({
                         payoutStatus: newStatus,
@@ -143,24 +134,6 @@ class ReconciliationService {
                 return 'failed';
             default:
                 return null; // unknown — don't change
-        }
-    }
-
-    _mapRtpStatus(rtpStatus) {
-        switch (rtpStatus) {
-            case 'pending_submission':
-            case 'pending_approval':
-            case 'pending_reviewing':
-            case 'submitted':
-                return 'paid'; // in progress
-            case 'complete':
-                return 'paid'; // settled instantly
-            case 'rejected':
-            case 'canceled':
-            case 'requires_attention':
-                return 'failed';
-            default:
-                return null;
         }
     }
 

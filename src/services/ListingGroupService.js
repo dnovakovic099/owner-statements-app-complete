@@ -69,7 +69,7 @@ class ListingGroupService {
 
             return groupsWithCounts;
         } catch (error) {
-            logger.error('[ListingGroupService] Error getting all groups:', error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'getAllGroups' });
             throw error;
         }
     }
@@ -101,7 +101,7 @@ class ListingGroupService {
                 memberCount: members.length
             };
         } catch (error) {
-            logger.error(`[ListingGroupService] Error getting group ${id}:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'getGroupById', groupId: id });
             throw error;
         }
     }
@@ -153,7 +153,7 @@ class ListingGroupService {
             // Return the group with members
             return await this.getGroupById(group.id);
         } catch (error) {
-            logger.error('[ListingGroupService] Error creating group:', error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'createGroup' });
             throw error;
         }
     }
@@ -232,7 +232,7 @@ class ListingGroupService {
             // Return the updated group with members
             return await this.getGroupById(id);
         } catch (error) {
-            logger.error(`[ListingGroupService] Error updating group ${id}:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'updateGroup', groupId: id });
             throw error;
         }
     }
@@ -274,7 +274,7 @@ class ListingGroupService {
                 ungroupedListings: affectedCount
             };
         } catch (error) {
-            logger.error(`[ListingGroupService] Error deleting group ${id}:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'deleteGroup', groupId: id });
             throw error;
         }
     }
@@ -349,7 +349,7 @@ class ListingGroupService {
                 ...results
             };
         } catch (error) {
-            logger.error(`[ListingGroupService] Error adding listings to group ${groupId}:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'addListingsToGroup', groupId });
             throw error;
         }
     }
@@ -393,7 +393,7 @@ class ListingGroupService {
                 previousGroupName: previousGroup ? previousGroup.name : null
             };
         } catch (error) {
-            logger.error(`[ListingGroupService] Error removing listing ${listingId} from group:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'removeListingFromGroup', listingId });
             throw error;
         }
     }
@@ -412,7 +412,7 @@ class ListingGroupService {
 
             return listings.map(l => l.toJSON());
         } catch (error) {
-            logger.error(`[ListingGroupService] Error getting listings for group ${groupId}:`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'getGroupListings', groupId });
             throw error;
         }
     }
@@ -477,7 +477,7 @@ class ListingGroupService {
             logger.debug(`[ListingGroupService] Found ${matchedGroups.length} groups matching tag "${tag}": [${matchedGroups.map(g => g.name).join(', ')}]`);
             return matchedGroups;
         } catch (error) {
-            logger.error(`[ListingGroupService] Error getting groups by tag "${tag}":`, error);
+            logger.logError(error, { context: 'ListingGroupService', action: 'getGroupsByTag', tag });
             throw error;
         }
     }

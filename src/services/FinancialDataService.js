@@ -512,7 +512,7 @@ class FinancialDataService {
             logger.info(`Cleaned up ${metadata.rowCount} expired cache entries`);
             return metadata.rowCount;
         } catch (error) {
-            logger.error('Error cleaning up expired cache:', error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'cleanupExpiredCache' });
             throw error;
         }
     }
@@ -565,7 +565,7 @@ class FinancialDataService {
                 avgDailyRate: parseFloat(result.avg_daily_rate) || null
             };
         } catch (error) {
-            logger.error('Error getting aggregated financial summary:', error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'getAggregatedFinancialSummary' });
             throw error;
         }
     }
@@ -608,7 +608,7 @@ class FinancialDataService {
             await this.sequelize.authenticate();
             return true;
         } catch (error) {
-            logger.error('Database connection check failed:', error);
+            logger.logError(error, { context: 'FinancialDataService', action: 'checkConnection' });
             return false;
         }
     }

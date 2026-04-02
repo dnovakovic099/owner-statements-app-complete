@@ -143,7 +143,7 @@ router.post('/', (req, res) => {
 
         res.status(200).json({ ok: true, accepted });
     } catch (error) {
-        logger.error('[AnalyticsEvents] Error processing events', { error: error.message });
+        logger.logError(error, { context: 'AnalyticsEvents', action: 'processEvents' });
         res.status(500).json({ error: 'Failed to process events' });
     }
 });
@@ -214,7 +214,7 @@ router.get('/summary', requireAdmin, (req, res) => {
             totalEventsStored: events.length,
         });
     } catch (error) {
-        logger.error('[AnalyticsEvents] Error generating summary', { error: error.message });
+        logger.logError(error, { context: 'AnalyticsEvents', action: 'generateSummary' });
         res.status(500).json({ error: 'Failed to generate summary' });
     }
 });

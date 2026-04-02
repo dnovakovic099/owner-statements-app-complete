@@ -2,13 +2,14 @@ const OAuthClient = require('intuit-oauth');
 const QuickBooks = require('node-quickbooks');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 
 // Import database model for multi-worker token sharing
 let QuickBooksToken = null;
 try {
     QuickBooksToken = require('../models/QuickBooksToken');
 } catch (e) {
-    console.log('[QuickBooks] Token model not available, using memory-only storage');
+    logger.debug('[QB] Token model not available, using memory-only storage');
 }
 
 class QuickBooksService {
@@ -75,10 +76,10 @@ class QuickBooksService {
                 scope: [OAuthClient.scopes.Accounting], // Use proper scope constant
                 state: 'secureRandomState123',
             });
-            console.log('Generated auth URI:', url);
+            logger.info('[QB] Generated auth URI:', url);
             return url;
         } catch (error) {
-            console.error('Error generating auth URL:', error);
+            logger.logError(error, { context: 'QB', action: 'getAuthorizationUrl' });
             throw error;
         }
     }
@@ -90,15 +91,15 @@ class QuickBooksService {
      */
     async exchangeCodeForTokens(reqUrl) {
         try {
-            console.log('Exchanging code for tokens with URL:', reqUrl);
+            logger.info('[QB] Exchanging code for tokens with URL:', reqUrl);
 
             // This parses the full redirect URL (including ?code= & realmId=)
             const authResponse = await this.oauthClient.createToken(reqUrl);
             this.tokenSet = authResponse.getJson();
             this.realmId = this.oauthClient.getToken().realmId;
 
-            console.log('Token exchange successful');
-            console.log('Realm ID:', this.realmId);
+            logger.info('[QB] Token exchange successful');
+            logger.info('[QB] Realm ID:', this.realmId);
 
             return {
                 accessToken: this.tokenSet.access_token,
@@ -108,7 +109,7 @@ class QuickBooksService {
                 tokenType: this.tokenSet.token_type
             };
         } catch (error) {
-            console.error('Token exchange error:', error);
+            logger.logError(error, { context: 'QB', action: 'exchangeCodeForTokens' });
             throw new Error(`Token exchange failed: ${error.message}`);
         }
     }
@@ -140,7 +141,7 @@ class QuickBooksService {
 
         // Also save to database for multi-worker sharing
         this.saveTokensToDatabase(accessToken, refreshToken, companyId).catch(err => {
-            console.error('[QuickBooks] Failed to save tokens to database:', err.message);
+            logger.logError(err, { context: 'QB', action: 'initializeClient', step: 'saveTokensToDatabase' });
         });
     }
 
@@ -149,7 +150,7 @@ class QuickBooksService {
      */
     async saveTokensToDatabase(accessToken, refreshToken, companyId) {
         if (!QuickBooksToken) {
-            console.log('[QuickBooks] Database model not available, skipping DB save');
+            logger.info('[QB] Database model not available, skipping DB save');
             return;
         }
 
@@ -163,9 +164,9 @@ class QuickBooksService {
             }, {
                 returning: true
             });
-            console.log(`[QuickBooks] Tokens ${created ? 'created' : 'updated'} in database for company ${companyId}`);
+            logger.info(`[QB] Tokens ${created ? 'created' : 'updated'} in database for company ${companyId}`);
         } catch (error) {
-            console.error('[QuickBooks] Database save error:', error.message);
+            logger.logError(error, { context: 'QB', action: 'saveTokensToDatabase' });
             throw error;
         }
     }
@@ -191,7 +192,7 @@ class QuickBooksService {
                     this.refreshToken !== token.refreshToken ||
                     this.companyId !== token.companyId) {
 
-                    console.log('[QuickBooks] Loading tokens from database for company:', token.companyId);
+                    logger.info('[QB] Loading tokens from database for company:', token.companyId);
                     this.accessToken = token.accessToken;
                     this.refreshToken = token.refreshToken;
                     this.companyId = token.companyId;
@@ -202,7 +203,7 @@ class QuickBooksService {
                     const now = new Date();
                     const expiresInSeconds = expiresAt ? Math.max(0, Math.floor((expiresAt - now) / 1000)) : 0;
 
-                    console.log(`[QuickBooks] Token expires in ${expiresInSeconds} seconds (at ${expiresAt})`);
+                    logger.info(`[QB] Token expires in ${expiresInSeconds} seconds (at ${expiresAt})`);
 
                     this.tokenSet = {
                         access_token: token.accessToken,
@@ -218,7 +219,7 @@ class QuickBooksService {
             }
             return false;
         } catch (error) {
-            console.error('[QuickBooks] Database load error:', error.message);
+            logger.logError(error, { context: 'QB', action: 'loadTokensFromDatabase' });
             return false;
         }
     }
@@ -245,13 +246,13 @@ class QuickBooksService {
         const needsProactiveRefresh = expiresIn < 300; // Less than 5 minutes
 
         if (isValid && !needsProactiveRefresh) {
-            console.log(`[QuickBooks] Token valid, expires in ${expiresIn}s`);
+            logger.info(`[QB] Token valid, expires in ${expiresIn}s`);
             return token.access_token;
         }
 
         // Token expired or expiring soon - refresh it
         const reason = !isValid ? 'expired' : 'expiring soon';
-        console.log(`[QuickBooks] Token ${reason}, refreshing...`);
+        logger.info(`[QB] Token ${reason}, refreshing...`);
 
         return await this._refreshTokenWithRetry();
     }
@@ -262,23 +263,23 @@ class QuickBooksService {
     async _refreshTokenWithRetry(retries = 2) {
         for (let attempt = 1; attempt <= retries; attempt++) {
             try {
-                console.log(`[QuickBooks] Refresh attempt ${attempt}/${retries}`);
+                logger.info(`[QB] Refresh attempt ${attempt}/${retries}`);
                 const refreshResponse = await this.oauthClient.refresh();
                 this.tokenSet = refreshResponse.getJson();
                 this.accessToken = this.tokenSet.access_token;
                 this.refreshToken = this.tokenSet.refresh_token;
 
-                console.log('[QuickBooks] Token refreshed successfully');
+                logger.info('[QB] Token refreshed successfully');
 
                 // Save refreshed tokens to database for other workers
                 await this.saveTokensToDatabase(this.accessToken, this.refreshToken, this.companyId).catch(err => {
-                    console.error('[QuickBooks] Failed to save refreshed tokens:', err.message);
+                    logger.logError(err, { context: 'QB', action: 'refreshTokenWithRetry', step: 'saveTokens' });
                 });
 
                 return this.tokenSet.access_token;
             } catch (refreshError) {
                 const errorMsg = refreshError.message || '';
-                console.error(`[QuickBooks] Refresh attempt ${attempt} failed:`, errorMsg);
+                logger.logError(refreshError instanceof Error ? refreshError : new Error(String(refreshError)), { context: 'QB', action: 'refreshTokenWithRetry', attempt });
 
                 // Check for specific error types
                 if (errorMsg.includes('invalid_grant') || errorMsg.includes('Token has been revoked')) {
@@ -328,7 +329,7 @@ class QuickBooksService {
                 // Simple query for purchases (transactions)
                 qbo.findPurchases({ limit: 20 }, (err, data) => {
                     if (err) {
-                        console.error('QBO API error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getTransactions' });
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
@@ -349,7 +350,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Transaction fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getTransactions' });
             throw new Error(`Failed to fetch transactions: ${error.message}`);
         }
     }
@@ -380,7 +381,7 @@ class QuickBooksService {
 
                 qbo.findAccounts({ limit: 50 }, (err, data) => {
                     if (err) {
-                        console.error('QBO API error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getAccounts' });
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
@@ -400,7 +401,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Accounts fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getAccounts' });
             throw new Error(`Failed to fetch accounts: ${error.message}`);
         }
     }
@@ -430,7 +431,7 @@ class QuickBooksService {
 
                 qbo.findCustomers({ limit: 10 }, (err, data) => {
                     if (err) {
-                        console.error('QBO API error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getCustomers' });
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
@@ -439,7 +440,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Customers fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getCustomers' });
             throw new Error(`Failed to fetch customers: ${error.message}`);
         }
     }
@@ -483,7 +484,7 @@ class QuickBooksService {
 
                 qbo.getCompanyInfo(this.realmId, (err, data) => {
                     if (err) {
-                        console.error('QBO API error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getCompanyInfo' });
                         reject(new Error(`QBO API error: ${err.message || err}`));
                         return;
                     }
@@ -492,7 +493,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Company info fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getCompanyInfo' });
             throw new Error(`Failed to fetch company info: ${error.message}`);
         }
     }
@@ -533,7 +534,7 @@ class QuickBooksService {
      */
     async _getQboClient(forceRefresh = false) {
         if (forceRefresh) {
-            console.log('[QuickBooks] Force refreshing token before API call');
+            logger.info('[QB] Force refreshing token before API call');
             await this._refreshTokenWithRetry();
         } else {
             await this.ensureFreshToken();
@@ -599,11 +600,11 @@ class QuickBooksService {
 
                 return result;
             } catch (err) {
-                console.error(`[QuickBooks] P&L attempt ${attempt} failed:`, err.message || err);
+                logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getProfitAndLoss', attempt });
 
                 // If auth error and first attempt, retry with force refresh
                 if (attempt === 1 && this._isAuthError(err)) {
-                    console.log('[QuickBooks] Auth error detected, will retry with fresh token');
+                    logger.info('[QB] Auth error detected, will retry with fresh token');
                     continue;
                 }
 
@@ -631,7 +632,7 @@ class QuickBooksService {
                     account: accountId
                 }, (err, data) => {
                     if (err) {
-                        console.error('QBO Transaction List error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getTransactionsByAccount', accountId });
                         reject(new Error(`QBO API error: ${err.message || JSON.stringify(err)}`));
                         return;
                     }
@@ -642,7 +643,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Transactions by account fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getTransactionsByAccount' });
             throw new Error(`Failed to fetch transactions by account: ${error.message}`);
         }
     }
@@ -663,7 +664,7 @@ class QuickBooksService {
                     end_date: endDate
                 }, (err, data) => {
                     if (err) {
-                        console.error('QBO Transaction List error:', err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getTransactionsByDateRange' });
                         reject(new Error(`QBO API error: ${err.message || JSON.stringify(err)}`));
                         return;
                     }
@@ -673,7 +674,7 @@ class QuickBooksService {
                 });
             });
         } catch (error) {
-            console.error('Transactions by date range fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getTransactionsByDateRange' });
             throw new Error(`Failed to fetch transactions by date range: ${error.message}`);
         }
     }
@@ -705,7 +706,7 @@ class QuickBooksService {
 
             return expenses;
         } catch (error) {
-            console.error('All expenses fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getAllExpenses' });
             throw new Error(`Failed to fetch all expenses: ${error.message}`);
         }
     }
@@ -739,7 +740,7 @@ class QuickBooksService {
 
             return income;
         } catch (error) {
-            console.error('All income fetch error:', error);
+            logger.logError(error, { context: 'QB', action: 'getAllIncome' });
             throw new Error(`Failed to fetch all income: ${error.message}`);
         }
     }
@@ -767,7 +768,7 @@ class QuickBooksService {
                     offset: startPosition - 1 // node-quickbooks uses 0-based offset
                 }, (err, data) => {
                     if (err) {
-                        console.error(`QBO ${entityName} query error:`, err);
+                        logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'fetchAllWithPagination', entityName });
                         resolve([]);
                         return;
                     }
@@ -787,7 +788,7 @@ class QuickBooksService {
         }
 
         if (pageCount > 1) {
-            console.log(`[QuickBooks] Fetched ${allRecords.length} ${entityName} records across ${pageCount} pages`);
+            logger.info(`[QB] Fetched ${allRecords.length} ${entityName} records across ${pageCount} pages`);
         }
 
         return allRecords;
@@ -1094,7 +1095,7 @@ class QuickBooksService {
                         params.source_account_type = sourceAccountType;
                     }
 
-                    console.log('[QuickBooks] Fetching GeneralLedger report with params:', params);
+                    logger.info('[QB] Fetching GeneralLedger report with params:', params);
 
                     // Use General Ledger Detail report - this shows transactions by account
                     qbo.reportGeneralLedgerDetail(params, (err, data) => {
@@ -1110,11 +1111,11 @@ class QuickBooksService {
                 const parsed = this._parseTransactionListByAccount(result);
                 return parsed;
             } catch (err) {
-                console.error(`[QuickBooks] GeneralLedger attempt ${attempt} failed:`, err.message || err);
+                logger.logError(err instanceof Error ? err : new Error(String(err?.message || err)), { context: 'QB', action: 'getTransactionListByAccount', attempt });
 
                 // If auth error and first attempt, retry with force refresh
                 if (attempt === 1 && this._isAuthError(err)) {
-                    console.log('[QuickBooks] Auth error detected, will retry with fresh token');
+                    logger.info('[QB] Auth error detected, will retry with fresh token');
                     continue;
                 }
 
@@ -1147,7 +1148,7 @@ class QuickBooksService {
         // Get column definitions
         const columns = reportData.Columns?.Column || [];
         const columnNames = columns.map(c => c.ColTitle || c.ColType);
-        console.log('[QuickBooks] TransactionList columns:', columnNames);
+        logger.info('[QB] TransactionList columns:', columnNames);
 
         // Parse rows - grouped by Account means we have Section rows with account names
         const parseSection = (section, accountName = null) => {
@@ -1271,7 +1272,7 @@ class QuickBooksService {
             }
         }
 
-        console.log(`[QuickBooks] Parsed ${result.accounts.length} accounts with ${result.transactions.length} transactions`);
+        logger.info(`[QB] Parsed ${result.accounts.length} accounts with ${result.transactions.length} transactions`);
         return result;
     }
 
@@ -1287,8 +1288,8 @@ class QuickBooksService {
         const allData = await this.getTransactionListByAccount(startDate, endDate);
 
         // Log all available accounts in the GL report for debugging
-        console.log(`[QuickBooks] GL report has ${allData.accounts.length} accounts, ${allData.transactions.length} transactions`);
-        console.log(`[QuickBooks] Searching for accounts:`, accountNames);
+        logger.info(`[QB] GL report has ${allData.accounts.length} accounts, ${allData.transactions.length} transactions`);
+        logger.info(`[QB] Searching for accounts:`, accountNames);
 
         // Check if we're looking for distribution accounts (need special handling)
         const isDistributionSearch = accountNames.some(name =>
@@ -1420,13 +1421,13 @@ class QuickBooksService {
             total = mappedTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
         }
 
-        console.log(`[QuickBooks] Found ${mappedTransactions.length} transactions for accounts:`, accountNames);
-        console.log(`[QuickBooks] Matching GL accounts:`, matchingAccounts.map(a => `${a.name} ($${a.total})`));
-        console.log(`[QuickBooks] Total from GL: $${total}`);
+        logger.info(`[QB] Found ${mappedTransactions.length} transactions for accounts:`, accountNames);
+        logger.info(`[QB] Matching GL accounts:`, matchingAccounts.map(a => `${a.name} ($${a.total})`));
+        logger.info(`[QB] Total from GL: $${total}`);
 
         // Log first few transactions for debugging
         if (mappedTransactions.length > 0) {
-            console.log(`[QuickBooks] First 3 transactions:`, mappedTransactions.slice(0, 3).map(t => ({
+            logger.info(`[QB] First 3 transactions:`, mappedTransactions.slice(0, 3).map(t => ({
                 date: t.date,
                 account: t.account,
                 name: t.name,
@@ -1468,7 +1469,7 @@ class QuickBooksService {
      */
     async getExpensesByAccountNames(accountNames, startDate, endDate) {
         try {
-            console.log(`[QuickBooks] getExpensesByAccountNames called with:`, accountNames);
+            logger.info(`[QB] getExpensesByAccountNames called with:`, accountNames);
             const qbo = await this._getQboClient();
 
             // Fetch both Purchases and Bills (same as getAllExpenses)
@@ -1477,7 +1478,7 @@ class QuickBooksService {
                 this._fetchBills(qbo, startDate, endDate)
             ]);
 
-            console.log(`[QuickBooks] Fetched ${purchases.length} purchases, ${bills.length} bills`);
+            logger.info(`[QB] Fetched ${purchases.length} purchases, ${bills.length} bills`);
 
             // Import category mapping to properly handle "Other" category
             const { mapToCategory, ALL_CATEGORIES } = require('../utils/categoryMapping');
@@ -1571,8 +1572,8 @@ class QuickBooksService {
 
             const total = matchingExpenses.reduce((sum, t) => sum + t.amount, 0);
 
-            console.log(`[QuickBooks] Found ${matchingExpenses.length} matching expenses, total: $${total.toFixed(2)}`);
-            console.log(`[QuickBooks] Matching accounts:`, Array.from(matchingAccounts));
+            logger.info(`[QB] Found ${matchingExpenses.length} matching expenses, total: $${total.toFixed(2)}`);
+            logger.info(`[QB] Matching accounts:`, Array.from(matchingAccounts));
 
             return {
                 searchedAccounts: accountNames,
@@ -1582,7 +1583,7 @@ class QuickBooksService {
                 transactionCount: matchingExpenses.length
             };
         } catch (error) {
-            console.error('getExpensesByAccountNames error:', error);
+            logger.logError(error, { context: 'QB', action: 'getExpensesByAccountNames' });
             throw new Error(`Failed to get expenses by account names: ${error.message}`);
         }
     }
@@ -1596,7 +1597,7 @@ class QuickBooksService {
      */
     async getIncomeByAccountNames(accountNames, startDate, endDate) {
         try {
-            console.log(`[QuickBooks] getIncomeByAccountNames called with:`, accountNames);
+            logger.info(`[QB] getIncomeByAccountNames called with:`, accountNames);
             const qbo = await this._getQboClient();
 
             // Import category mapping to properly handle "Other" category
@@ -1608,7 +1609,7 @@ class QuickBooksService {
                 this._fetchSalesReceipts(qbo, startDate, endDate)
             ]);
 
-            console.log(`[QuickBooks] Fetched ${invoices.length} invoices, ${salesReceipts.length} sales receipts`);
+            logger.info(`[QB] Fetched ${invoices.length} invoices, ${salesReceipts.length} sales receipts`);
 
             // Check if we're searching for "Other" category
             const searchingForOther = accountNames.some(a => a.toLowerCase() === 'other');
@@ -1695,7 +1696,7 @@ class QuickBooksService {
 
             const total = matchingIncome.reduce((sum, t) => sum + t.amount, 0);
 
-            console.log(`[QuickBooks] Found ${matchingIncome.length} matching income transactions, total: $${total.toFixed(2)}`);
+            logger.info(`[QB] Found ${matchingIncome.length} matching income transactions, total: $${total.toFixed(2)}`);
 
             return {
                 searchedAccounts: accountNames,
@@ -1705,7 +1706,7 @@ class QuickBooksService {
                 transactionCount: matchingIncome.length
             };
         } catch (error) {
-            console.error('getIncomeByAccountNames error:', error);
+            logger.logError(error, { context: 'QB', action: 'getIncomeByAccountNames' });
             throw new Error(`Failed to get income by account names: ${error.message}`);
         }
     }
@@ -1720,7 +1721,7 @@ class QuickBooksService {
      * @returns {Promise<Object>} Filtered transactions matching the accounts
      */
     async getTransactionsByAccountNames(accountNames, startDate, endDate, type = 'all') {
-        console.log(`[QuickBooks] getTransactionsByAccountNames type=${type}, accounts:`, accountNames);
+        logger.info(`[QB] getTransactionsByAccountNames type=${type}, accounts:`, accountNames);
 
         if (type === 'expense') {
             return this.getExpensesByAccountNames(accountNames, startDate, endDate);

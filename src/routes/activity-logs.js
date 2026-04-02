@@ -110,7 +110,7 @@ router.get('/', requireAdmin, async (req, res) => {
                     }
                 }
             } catch (enrichError) {
-                logger.error('Failed to enrich activity logs with statement data', { context: 'ActivityLogs', error: enrichError.message });
+                logger.logError(enrichError, { context: 'ActivityLogs', action: 'enrichLogs' });
             }
         }
 

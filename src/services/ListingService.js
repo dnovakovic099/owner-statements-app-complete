@@ -163,7 +163,7 @@ class ListingService {
                         logger.info('Created new listing', { name: hostifyListing.nickname || hostifyListing.name, id: hostifyListing.id, pmFee: pmFeePercentage, ownerEmail });
                     }
                 } catch (error) {
-                    logger.error('Error syncing listing', { listingId: hostifyListing.id, error: error.message });
+                    logger.logError(error, { context: 'ListingService', action: 'syncListingsFromHostify', listingId: hostifyListing.id });
                     errors++;
                 }
             }
@@ -172,7 +172,7 @@ class ListingService {
             return { synced, created, errors };
 
         } catch (error) {
-            logger.error('Error syncing listings from Hostify', { error: error.message, stack: error.stack });
+            logger.logError(error, { context: 'ListingService', action: 'syncListingsFromHostify' });
             throw error;
         }
     }
@@ -185,7 +185,7 @@ class ListingService {
             const listing = await Listing.findByPk(listingId);
             return listing ? listing.toJSON() : null;
         } catch (error) {
-            logger.error('Error fetching listing', { listingId, error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'getListingWithPmFee', listingId });
             return null;
         }
     }
@@ -320,7 +320,7 @@ class ListingService {
                 return { ...l.toJSON(), group: null };
             });
         } catch (error) {
-            logger.error('Error fetching listings', { error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'getListingsWithPmFees' });
             return [];
         }
     }
@@ -358,7 +358,7 @@ class ListingService {
                 return json;
             });
         } catch (error) {
-            logger.error('Error fetching listing names', { error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'getListingNames' });
             return [];
         }
     }
@@ -379,7 +379,7 @@ class ListingService {
             
             return listing.toJSON();
         } catch (error) {
-            logger.error('Error updating PM fee', { listingId, error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'updatePmFee', listingId });
             throw error;
         }
     }
@@ -402,7 +402,7 @@ class ListingService {
 
             return results;
         } catch (error) {
-            logger.error('Error bulk updating PM fees', { error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'bulkUpdatePmFees' });
             throw error;
         }
     }
@@ -424,7 +424,7 @@ class ListingService {
 
             return listings.map(l => l.toJSON());
         } catch (error) {
-            logger.error('Error fetching listings with missing PM fees', { error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'getListingsWithMissingPmFees' });
             return [];
         }
     }
@@ -445,7 +445,7 @@ class ListingService {
             
             return listing.toJSON();
         } catch (error) {
-            logger.error('Error updating display name', { listingId, error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'updateDisplayName', listingId });
             throw error;
         }
     }
@@ -466,7 +466,7 @@ class ListingService {
             
             return listing.toJSON();
         } catch (error) {
-            logger.error('Error updating co-host status', { listingId, error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'updateCohostStatus', listingId });
             throw error;
         }
     }
@@ -529,7 +529,7 @@ class ListingService {
 
             return listing.toJSON();
         } catch (error) {
-            logger.error('Error updating listing configuration', { listingId, error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'updateListingConfig', listingId });
             throw error;
         }
     }
@@ -572,7 +572,7 @@ class ListingService {
                 displayName: l.displayName || l.nickname || l.name
             }));
         } catch (error) {
-            logger.error('Error fetching newly added listings', { error: error.message });
+            logger.logError(error, { context: 'ListingService', action: 'getNewlyAddedListings' });
             return [];
         }
     }
@@ -641,7 +641,7 @@ class ListingService {
                         skipped++;
                     }
                 } catch (error) {
-                    logger.error('Error syncing owner email for listing', { listingId: listing.id, error: error.message });
+                    logger.logError(error, { context: 'ListingService', action: 'syncOwnerEmails', listingId: listing.id });
                     errors++;
                 }
             }
@@ -649,7 +649,7 @@ class ListingService {
             logger.info('Owner email sync completed', { updated, skipped, errors });
             return { updated, skipped, errors };
         } catch (error) {
-            logger.error('Owner email sync failed', { error: error.message, stack: error.stack });
+            logger.logError(error, { context: 'ListingService', action: 'syncOwnerEmails' });
             throw error;
         }
     }

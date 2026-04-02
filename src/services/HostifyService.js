@@ -100,11 +100,20 @@ class HostifyService {
         const currencies = [...new Set(reservations.map(r => r.currency).filter(c => c && c !== 'USD'))];
         if (currencies.length === 0) return reservations;
 
-        // Fetch all needed rates in parallel
+        // Fetch all needed rates (throttled to avoid 429s)
         const rates = {};
-        await Promise.all(currencies.map(async (cur) => {
-            rates[cur] = await this.getExchangeRateToUSD(cur);
-        }));
+        const RATE_CONCURRENCY = 3;
+        for (let i = 0; i < currencies.length; i += RATE_CONCURRENCY) {
+            const batch = currencies.slice(i, i + RATE_CONCURRENCY);
+            await Promise.all(batch.map(async (cur) => {
+                try {
+                    rates[cur] = await this.getExchangeRateToUSD(cur);
+                } catch (err) {
+                    console.error(`[CURRENCY] Failed to get rate for ${cur}: ${err.message} — defaulting to 1.0`);
+                    rates[cur] = 1.0;
+                }
+            }));
+        }
 
         return reservations.map(r => {
             if (!r.currency || r.currency === 'USD') return r;
@@ -137,6 +146,7 @@ class HostifyService {
                 this._allListingsCacheTime = Date.now();
                 return allListings;
             } catch (error) {
+                console.error(`[LISTINGS-CACHE] Failed to fetch all listings for child lookup: ${error.message}`);
                 return [];
             } finally {
                 this._allListingsFetchPromise = null;
@@ -392,8 +402,13 @@ class HostifyService {
             const batch = listingIds.slice(i, i + CONCURRENCY);
             const batchResults = await Promise.all(
                 batch.map(async listingId => {
-                    const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
-                    return { listingId, reservations };
+                    try {
+                        const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
+                        return { listingId, reservations };
+                    } catch (err) {
+                        console.error(`[PARALLEL] Listing ${listingId} fetch failed after retries: ${err.message} — skipping (reservations may be missing)`);
+                        return { listingId, reservations: [] };
+                    }
                 })
             );
             results.push(...batchResults);
@@ -1226,17 +1241,30 @@ class HostifyService {
                 console.log(`[OVERLAP] Found ${baseListingIds.length} listings to fetch reservations for`);
             }
 
-            // Always expand listing IDs to include children (parallel fetch for performance)
+            // Always expand listing IDs to include children (throttled to avoid 429s)
             let expandedListingIds = [...baseListingIds];
             const childToParentMap = new Map();
 
-            // Fetch all children in parallel and build maps at once
-            const childResults = await Promise.all(
-                baseListingIds.map(async parentId => ({
-                    parentId: parseInt(parentId),
-                    childIds: await this.getChildListings(parentId)
-                }))
-            );
+            // Fetch children with concurrency limit and per-item error isolation
+            const OVERLAP_CHILD_CONCURRENCY = 3;
+            const childResults = [];
+            for (let i = 0; i < baseListingIds.length; i += OVERLAP_CHILD_CONCURRENCY) {
+                const batch = baseListingIds.slice(i, i + OVERLAP_CHILD_CONCURRENCY);
+                const batchResults = await Promise.all(
+                    batch.map(async parentId => {
+                        try {
+                            return {
+                                parentId: parseInt(parentId),
+                                childIds: await this.getChildListings(parentId)
+                            };
+                        } catch (err) {
+                            console.error(`[OVERLAP-EXPAND] Failed to get children for listing ${parentId}: ${err.message} — continuing without children`);
+                            return { parentId: parseInt(parentId), childIds: [] };
+                        }
+                    })
+                );
+                childResults.push(...batchResults);
+            }
 
             // Build expanded list and child->parent map in one pass
             childResults.forEach(({ parentId, childIds }) => {
@@ -1314,7 +1342,9 @@ class HostifyService {
                             if (response.success && response.listing) {
                                 return String(response.listing.parent_id || '');
                             }
-                        } catch (e) { }
+                        } catch (e) {
+                            console.error(`[OVERLAP-PARENT] Failed to fetch parent for archived listing ${listingId}: ${e.message}`);
+                        }
                         return '';
                     };
 
@@ -1331,16 +1361,24 @@ class HostifyService {
                             pageNumbers.push(p);
                         }
 
-                        // Collect all reservations first
-                        const allPageResults = await Promise.all([
-                            Promise.resolve(firstRes.reservations),
-                            ...pageNumbers.map(async (pageNum) => {
-                                try {
-                                    const res = await this.getReservations(startDateStr, endDateStr, pageNum, 100, null, 'checkIn');
-                                    return res.success && res.reservations?.length > 0 ? res.reservations : [];
-                                } catch (err) { return []; }
-                            })
-                        ]);
+                        // Collect all reservations first (throttled to avoid 429s)
+                        const OVERLAP_PAGE_CONCURRENCY = 3;
+                        const allPageResults = [firstRes.reservations];
+                        for (let i = 0; i < pageNumbers.length; i += OVERLAP_PAGE_CONCURRENCY) {
+                            const pageBatch = pageNumbers.slice(i, i + OVERLAP_PAGE_CONCURRENCY);
+                            const batchResults = await Promise.all(
+                                pageBatch.map(async (pageNum) => {
+                                    try {
+                                        const res = await this.getReservations(startDateStr, endDateStr, pageNum, 100, null, 'checkIn');
+                                        return res.success && res.reservations?.length > 0 ? res.reservations : [];
+                                    } catch (err) {
+                                        console.error(`[OVERLAP-CHILD] Page ${pageNum} fetch failed: ${err.message}`);
+                                        return [];
+                                    }
+                                })
+                            );
+                            allPageResults.push(...batchResults);
+                        }
                         const allReservationsRaw = allPageResults.flat();
 
                         // Find reservations on unknown listings (archived) and fetch their parent_id
@@ -1352,15 +1390,21 @@ class HostifyService {
                             }
                         });
 
-                        // Fetch parent_id for unknown (archived) listings
+                        // Fetch parent_id for unknown (archived) listings (throttled)
                         if (unknownListingIds.size > 0) {
                             const unknownList = Array.from(unknownListingIds);
-                            const unknownResults = await Promise.all(
-                                unknownList.map(async (listingId) => {
-                                    const parentId = await fetchListingParent(listingId);
-                                    return { listingId, parentId };
-                                })
-                            );
+                            const UNKNOWN_CONCURRENCY = 3;
+                            const unknownResults = [];
+                            for (let i = 0; i < unknownList.length; i += UNKNOWN_CONCURRENCY) {
+                                const batch = unknownList.slice(i, i + UNKNOWN_CONCURRENCY);
+                                const batchResults = await Promise.all(
+                                    batch.map(async (listingId) => {
+                                        const parentId = await fetchListingParent(listingId);
+                                        return { listingId, parentId };
+                                    })
+                                );
+                                unknownResults.push(...batchResults);
+                            }
                             unknownResults.forEach(({ listingId, parentId }) => {
                                 if (parentId) {
                                     listingParentMap.set(listingId, parentId);
@@ -1507,17 +1551,30 @@ class HostifyService {
             console.log(`[FINANCE] Found ${baseListingIds.length} listings to fetch reservations for`);
         }
 
-        // Always expand listing IDs to include children (parallel fetch for performance)
+        // Always expand listing IDs to include children (throttled to avoid 429s)
         let expandedListingIds = [...baseListingIds];
         const childToParentMap = new Map();
 
-        // Fetch all children in parallel and build maps at once
-        const childResults = await Promise.all(
-            baseListingIds.map(async parentId => ({
-                parentId: parseInt(parentId),
-                childIds: await this.getChildListings(parentId)
-            }))
-        );
+        // Fetch children with concurrency limit and per-item error isolation
+        const CHILD_EXPAND_CONCURRENCY = 3;
+        const childResults = [];
+        for (let i = 0; i < baseListingIds.length; i += CHILD_EXPAND_CONCURRENCY) {
+            const batch = baseListingIds.slice(i, i + CHILD_EXPAND_CONCURRENCY);
+            const batchResults = await Promise.all(
+                batch.map(async parentId => {
+                    try {
+                        return {
+                            parentId: parseInt(parentId),
+                            childIds: await this.getChildListings(parentId)
+                        };
+                    } catch (err) {
+                        console.error(`[FINANCE-EXPAND] Failed to get children for listing ${parentId}: ${err.message} — continuing without children`);
+                        return { parentId: parseInt(parentId), childIds: [] };
+                    }
+                })
+            );
+            childResults.push(...batchResults);
+        }
 
         // Build expanded list and child->parent map in one pass
         childResults.forEach(({ parentId, childIds }) => {
@@ -1575,7 +1632,9 @@ class HostifyService {
                                         return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
                                     });
                                 }
-                            } catch (err) { }
+                            } catch (err) {
+                                console.error(`[FINANCE-CHILD] Page ${pageNum} fetch failed: ${err.message}`);
+                            }
                             return [];
                         })
                         );

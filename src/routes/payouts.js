@@ -280,6 +280,7 @@ router.post('/statements/:id/mark-paid', async (req, res) => {
 router.post('/statements/:id/transfer', async (req, res) => {
     try {
         const statementId = parseInt(req.params.id);
+        logger.info(`[PAYOUT] Transfer requested for statement ${statementId}`, { context: 'Payouts', action: 'transfer' });
         const statement = await Statement.findByPk(statementId);
 
         if (!statement) return res.status(404).json({ error: 'Statement not found' });
@@ -347,11 +348,11 @@ router.post('/statements/:id/transfer', async (req, res) => {
             });
         }
 
-        // Execute payout — try RTP (instant) first, fall back to ACH
+        // Execute payout via ACH
         const ownerName = statement.ownerName || 'Owner';
         const reference = `Payout - ${ownerName} - Stmt #${statementId}`;
 
-        const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
+        const { transfer, wiseFee } = await IncreaseService.sendPayout({
             recipientId: wiseRecipientId,
             amount: payoutAmount,
             reference,
@@ -363,21 +364,20 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         await statement.update({
             payoutStatus: 'paid',
-            payoutTransferId: `${method}:${transfer.id}`,
+            payoutTransferId: transfer.id,
             paidAt: new Date(),
             wiseFee: wiseFee,
             totalTransferAmount: totalTransferAmount,
             payoutError: null,
         });
 
-        logger.info('Payout completed', { statementId, transferId: transfer.id, method, amount: payoutAmount });
+        logger.info('Payout completed', { statementId, transferId: transfer.id, amount: payoutAmount });
 
         res.json({
             success: true,
             queued: false,
-            method,
-            message: method === 'rtp' ? 'Payout sent instantly via Real-Time Payments' : 'Payout sent via ACH',
-            transferId: `${method}:${transfer.id}`,
+            message: 'Payout sent via ACH',
+            transferId: transfer.id,
             ownerPayout: payoutAmount,
             wiseFee,
             totalTransferAmount,
@@ -393,7 +393,9 @@ router.post('/statements/:id/transfer', async (req, res) => {
                     payoutError: error.response?.data?.detail || error.response?.data?.title || error.message || 'Increase transfer failed',
                 });
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            logger.warn('Failed to update statement status after payout error', { statementId: req.params.id, error: e.message });
+        }
 
         logger.logError(error, {
             context: 'Payouts', action: 'transfer', statementId: req.params.id,
@@ -673,7 +675,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     individualName: statement.ownerName || 'Owner',
                 }));
 
-                const { transfers } = await IncreaseService.sendBatchPayoutsPreferRtp(batchPayouts);
+                const { transfers } = await IncreaseService.sendBatchPayouts(batchPayouts);
 
                 // Update each statement with its transfer result
                 for (const t of transfers) {
@@ -681,14 +683,14 @@ router.post('/fund-and-queue', async (req, res) => {
                     if (match) {
                         await match.statement.update({
                             payoutStatus: 'paid',
-                            payoutTransferId: `${t.method}:${t.transfer.id}`,
+                            payoutTransferId: t.transfer.id,
                             paidAt: new Date(),
                             wiseFee: t.wiseFee,
                             totalTransferAmount: toCents(match.statement.ownerPayout) + t.wiseFee,
                             payoutError: null,
                         });
                         processed++;
-                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id, method: t.method });
+                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id });
                     }
                 }
 
@@ -704,7 +706,7 @@ router.post('/fund-and-queue', async (req, res) => {
                         const amount = parseFloat(statement.ownerPayout);
                         const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                        const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
+                        const { transfer, wiseFee } = await IncreaseService.sendPayout({
                             recipientId: wiseRecipientId,
                             amount,
                             reference,
@@ -714,14 +716,14 @@ router.post('/fund-and-queue', async (req, res) => {
 
                         await statement.update({
                             payoutStatus: 'paid',
-                            payoutTransferId: `${method}:${transfer.id}`,
+                            payoutTransferId: transfer.id,
                             paidAt: new Date(),
                             wiseFee,
                             totalTransferAmount: amount + wiseFee,
                             payoutError: null,
                         });
                         processed++;
-                        results.push({ id: statement.id, success: true, transferId: transfer.id, method });
+                        results.push({ id: statement.id, success: true, transferId: transfer.id });
                     } catch (err) {
                         failed++;
                         const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
@@ -747,7 +749,7 @@ router.post('/fund-and-queue', async (req, res) => {
                     const amount = parseFloat(statement.ownerPayout);
                     const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                    const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
+                    const { transfer, wiseFee } = await IncreaseService.sendPayout({
                         recipientId: wiseRecipientId,
                         amount,
                         reference,
@@ -757,7 +759,7 @@ router.post('/fund-and-queue', async (req, res) => {
 
                     await statement.update({
                         payoutStatus: 'paid',
-                        payoutTransferId: `${method}:${transfer.id}`,
+                        payoutTransferId: transfer.id,
                         paidAt: new Date(),
                         wiseFee,
                         totalTransferAmount: amount + wiseFee,
@@ -765,13 +767,13 @@ router.post('/fund-and-queue', async (req, res) => {
                     });
 
                     processed++;
-                    results.push({ id: statement.id, success: true, transferId: transfer.id, method });
+                    results.push({ id: statement.id, success: true, transferId: transfer.id });
                 } catch (err) {
                     failed++;
                     const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
                     await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
                     results.push({ id: statement.id, success: false, error: errorMsg });
-                    logger.error('Bulk payout failed for statement', { statementId: statement.id, error: errorMsg });
+                    logger.logError(err, { context: 'Payouts', action: 'bulkTransfer', statementId: statement.id });
                 }
             }
         }
@@ -832,6 +834,7 @@ router.get('/balance', async (req, res) => {
 // Check Increase transfer statuses and update statements accordingly (admin-only)
 router.get('/reconcile', async (req, res) => {
     try {
+        logger.info('[RECONCILE] Starting reconciliation cycle', { context: 'Payouts', action: 'reconcile' });
         if (!IncreaseService.isConfigured()) {
             return res.status(500).json({ error: 'Increase is not configured' });
         }
@@ -908,7 +911,7 @@ async function processQueuedPayouts() {
             }
 
             const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
-            const { transfer, wiseFee, method } = await IncreaseService.sendPayoutPreferRtp({
+            const { transfer, wiseFee } = await IncreaseService.sendPayout({
                 recipientId: wiseRecipientId,
                 amount: payoutAmount,
                 reference,
@@ -918,19 +921,19 @@ async function processQueuedPayouts() {
 
             await statement.update({
                 payoutStatus: 'paid',
-                payoutTransferId: `${method}:${transfer.id}`,
+                payoutTransferId: transfer.id,
                 paidAt: new Date(),
                 payoutError: null,
                 wiseFee,
                 totalTransferAmount: payoutAmount + wiseFee,
             });
             processed++;
-            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id, method });
+            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
         } catch (err) {
             failed++;
             const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
             await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
-            logger.error('Failed to process queued payout', { statementId: statement.id, error: errorMsg });
+            logger.logError(err, { context: 'Payouts', action: 'processQueued', statementId: statement.id });
         }
     }
 

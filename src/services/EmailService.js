@@ -876,7 +876,7 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // CRITICAL: PDF attachment is REQUIRED - no email without statement PDF
         if (!pdfAttachment) {
-            logger.error(`BLOCKED: No PDF attachment for statement ${statement?.id} - email cannot be sent without statement`, { context: 'EmailService', action: 'sendStatementEmail' });
+            logger.logError(new Error(`BLOCKED: No PDF attachment for statement ${statement?.id} - email cannot be sent without statement`), { context: 'EmailService', action: 'sendStatementEmail' });
             return {
                 success: false,
                 error: 'PDF_REQUIRED',
@@ -1340,7 +1340,7 @@ This is an auto-generated email. If you have any questions or need clarification
                 }
             } else {
                 // BLOCK: Do not send email without PDF statement attached
-                logger.error(`PDF generation failed for statement ${statement.id} - email blocked`, { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
+                logger.logError(new Error(`PDF generation failed for statement ${statement.id} - email blocked`), { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
                 return {
                     success: false,
                     error: 'PDF_GENERATION_FAILED',
@@ -1351,7 +1351,7 @@ This is an auto-generated email. If you have any questions or need clarification
 
         // Verify PDF is attached before sending
         if (attachPdf && !pdfAttachment) {
-            logger.error(`No PDF attachment for statement ${statement.id} - email blocked`, { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
+            logger.logError(new Error(`No PDF attachment for statement ${statement.id} - email blocked`), { context: 'EmailService', action: 'sendStatementEmailWithPdf' });
             return {
                 success: false,
                 error: 'NO_PDF_ATTACHMENT',

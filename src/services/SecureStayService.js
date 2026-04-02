@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 class SecureStayService {
     constructor() {
@@ -25,7 +26,7 @@ class SecureStayService {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             return response.data;
         } catch (error) {
             throw error;
@@ -33,12 +34,13 @@ class SecureStayService {
     }
 
     async getExpensesForPeriod(startDate, endDate, propertyIds = null, type = null) {
+        logger.info(`[SECURESTAY] Fetching expenses: ${startDate} to ${endDate}${type ? `, type=${type}` : ''}`, { context: 'SecureStay' });
         try {
             let allExpenses = [];
             let currentPage = 1;
             let hasMorePages = true;
             const limit = 100; // Increase limit per page for efficiency
-            
+
             while (hasMorePages) {
                 const params = {
                     fromDate: startDate,
@@ -55,13 +57,13 @@ class SecureStayService {
                 }
 
                 const response = await this.makeRequest('/accounting/getexpenses', params);
-                
+
                 if (response.data && Array.isArray(response.data)) {
                     // Debug: Log first expense to see all available fields including llCover variants
                     if (currentPage === 1 && response.data.length > 0) {
                         const sample = response.data[0];
-                        console.log('[SecureStay] Sample expense fields:', Object.keys(sample).join(', '));
-                        console.log('[SecureStay] llCover variants:', {
+                        logger.debug('[SECURESTAY] Sample expense fields: ' + Object.keys(sample).join(', '));
+                        logger.debug('[SECURESTAY] llCover variants:', {
                             llCover: sample.llCover,
                             ll_cover: sample.ll_cover,
                             LLCover: sample.LLCover,
@@ -87,9 +89,9 @@ class SecureStayService {
                         // Check multiple possible field names for LL Cover
                         llCover: expense.llCover ?? expense.ll_cover ?? expense.LLCover ?? 0
                     }));
-                    
+
                     allExpenses = allExpenses.concat(pageExpenses);
-                    
+
                     // Check if we have more pages
                     // If we got fewer results than the limit, we've reached the end
                     if (response.data.length < limit) {
@@ -102,9 +104,11 @@ class SecureStayService {
                 }
             }
 
+            logger.info(`[SECURESTAY] Fetched ${allExpenses.length} expenses (${currentPage} pages)${type ? `, type=${type}` : ''}`, { context: 'SecureStay' });
             return allExpenses;
 
         } catch (error) {
+            logger.logError(error, { context: 'SecureStayService', action: 'getExpensesForPeriod', startDate, endDate, type });
             return [];
         }
     }
@@ -138,6 +142,7 @@ class SecureStayService {
             const response = await this.makeRequest('/cleaning-fees', params);
             return response.fees || [];
         } catch (error) {
+            logger.logError(error, { context: 'SecureStayService', action: 'getCleaningFees', startDate, endDate });
             return [];
         }
     }
@@ -157,6 +162,7 @@ class SecureStayService {
             const response = await this.makeRequest('/maintenance', params);
             return response.invoices || [];
         } catch (error) {
+            logger.logError(error, { context: 'SecureStayService', action: 'getMaintenanceInvoices', startDate, endDate });
             return [];
         }
     }
@@ -176,6 +182,7 @@ class SecureStayService {
             const response = await this.makeRequest('/upsells', params);
             return response.upsells || [];
         } catch (error) {
+            logger.logError(error, { context: 'SecureStayService', action: 'getUpsells', startDate, endDate });
             return [];
         }
     }
