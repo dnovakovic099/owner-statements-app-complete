@@ -18,6 +18,9 @@ database/
 # Exports
 exports/
 
+# Database backups
+backups/
+
 # Documentation
 *.md
 

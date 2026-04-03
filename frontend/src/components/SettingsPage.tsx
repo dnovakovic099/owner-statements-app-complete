@@ -24,9 +24,13 @@ import {
   Pause,
   CalendarDays,
   Plus,
-  ChevronDown
+  ChevronDown,
+  Database,
+  CheckCircle,
+  XCircle,
+  HardDrive
 } from 'lucide-react';
-import { usersAPI, activityLogAPI, appLogsAPI, User, ActivityLogEntry } from '../services/api';
+import { usersAPI, activityLogAPI, appLogsAPI, backupAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
 import ConfirmDialog from './ui/confirm-dialog';
 
@@ -81,7 +85,7 @@ interface TagSchedule {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, currentUserEmail, hideSidebar = false }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'schedules' | 'appLogs'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'schedules' | 'appLogs' | 'backup'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +136,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const [appLogsLevel, setAppLogsLevel] = useState('');
   const [appLogsOffset, setAppLogsOffset] = useState(0);
 
+  // Backup state
+  const [backupStatus, setBackupStatus] = useState<any>(null);
+  const [backupFiles, setBackupFiles] = useState<any[]>([]);
+  const [backupHistory, setBackupHistory] = useState<any[]>([]);
+  const [backupNextScheduled, setBackupNextScheduled] = useState<any>(null);
+  const [backupDiskUsage, setBackupDiskUsage] = useState<any>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupTriggering, setBackupTriggering] = useState(false);
+  const [backupDownloading, setBackupDownloading] = useState<string | null>(null);
+
   // Invite modal state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -167,6 +181,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     if (activeTab === 'appLogs') {
       loadAppLogs();
     }
+    if (activeTab === 'backup') {
+      loadBackupStatus();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -183,6 +200,45 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
       showToast('Failed to load application logs', 'error');
     }
     setAppLogsLoading(false);
+  };
+
+  // Backup functions
+  const loadBackupStatus = async () => {
+    setBackupLoading(true);
+    try {
+      const data = await backupAPI.getStatus();
+      setBackupStatus(data.status);
+      setBackupFiles(data.localFiles || []);
+      setBackupHistory(data.history || []);
+      setBackupNextScheduled(data.nextScheduled);
+      setBackupDiskUsage(data.diskUsage);
+    } catch (err) {
+      showToast('Failed to load backup status', 'error');
+    }
+    setBackupLoading(false);
+  };
+
+  const triggerBackup = async () => {
+    setBackupTriggering(true);
+    try {
+      await backupAPI.trigger();
+      showToast('Backup triggered successfully', 'success');
+      loadBackupStatus();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Backup failed', 'error');
+    }
+    setBackupTriggering(false);
+  };
+
+  const downloadBackup = async (filename: string) => {
+    setBackupDownloading(filename);
+    try {
+      await backupAPI.download(filename);
+      showToast('Download started', 'success');
+    } catch (err) {
+      showToast('Download failed', 'error');
+    }
+    setBackupDownloading(null);
   };
 
   // Schedule management functions
@@ -683,6 +739,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             >
               <AlertCircle className="w-4 h-4 mr-2" />
               Application Logs
+            </button>
+            <button
+              onClick={() => setActiveTab('backup')}
+              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'backup'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Backup
             </button>
           </div>
 
@@ -1767,6 +1834,320 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
               )}
             </>
           )}
+        </div>
+      )}
+      {/* Backup Section */}
+      {activeTab === 'backup' && (
+        <div className="space-y-4">
+          {/* Header Card */}
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div className="flex items-center">
+                <Database className="w-5 h-5 text-gray-600 dark:text-gray-400 mr-2" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Database Backup</h2>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={loadBackupStatus}
+                  disabled={backupLoading}
+                  className="flex items-center px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${backupLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+                <button
+                  onClick={triggerBackup}
+                  disabled={backupTriggering}
+                  className="flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {backupTriggering ? (
+                    <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-1" />
+                  )}
+                  {backupTriggering ? 'Running...' : 'Backup Now'}
+                </button>
+              </div>
+            </div>
+
+            {backupLoading && !backupStatus ? (
+              <div className="text-center py-8 text-gray-500">Loading backup status...</div>
+            ) : backupStatus ? (
+              <div className="p-6">
+                {/* Status Cards Row */}
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                  {/* Last Success */}
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Last Success</span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {backupStatus.lastSuccessAt
+                        ? new Date(backupStatus.lastSuccessAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'Never'}
+                    </p>
+                    {backupStatus.lastSuccessMethod && (
+                      <p className="text-xs text-gray-500 mt-1">{backupStatus.lastSuccessMethod} / {backupStatus.lastSuccessSizeMB} MB</p>
+                    )}
+                  </div>
+
+                  {/* Last Failure */}
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      {backupStatus.lastFailAt ? (
+                        <XCircle className="w-4 h-4 text-red-500 mr-2" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                      )}
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Last Failure</span>
+                    </div>
+                    <p className={`text-sm font-semibold ${backupStatus.lastFailAt ? 'text-red-600' : 'text-green-600'}`}>
+                      {backupStatus.lastFailAt
+                        ? new Date(backupStatus.lastFailAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'None'}
+                    </p>
+                    {backupStatus.lastFailError && (
+                      <p className="text-xs text-red-500 mt-1 truncate" title={backupStatus.lastFailError}>{backupStatus.lastFailError}</p>
+                    )}
+                  </div>
+
+                  {/* Consecutive Failures */}
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <AlertCircle className={`w-4 h-4 mr-2 ${backupStatus.consecutiveFailures > 0 ? 'text-red-500' : 'text-green-500'}`} />
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Failures in a Row</span>
+                    </div>
+                    <p className={`text-2xl font-bold ${backupStatus.consecutiveFailures > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {backupStatus.consecutiveFailures}
+                    </p>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <HardDrive className="w-4 h-4 text-blue-500 mr-2" />
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Backups</span>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{backupStatus.totalBackups}</p>
+                    {backupStatus.totalFailures > 0 && (
+                      <p className="text-xs text-red-500 mt-1">{backupStatus.totalFailures} failed</p>
+                    )}
+                  </div>
+
+                  {/* Next Scheduled */}
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <Clock className="w-4 h-4 text-purple-500 mr-2" />
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Next Backup</span>
+                    </div>
+                    {backupNextScheduled ? (
+                      <>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {new Date(backupNextScheduled.time).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">in ~{backupNextScheduled.hoursFromNow}h ({backupNextScheduled.tiers?.join(', ')})</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500">--</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Disk Usage + Schedule Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                  {/* Disk Usage */}
+                  {backupDiskUsage && (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center">
+                        <HardDrive className="w-4 h-4 mr-2" />
+                        Disk Usage
+                      </h3>
+                      <div className="flex items-center justify-between">
+                        <span className="text-2xl font-bold text-gray-900 dark:text-white">{backupDiskUsage.totalMB} MB</span>
+                        <span className="text-sm text-gray-500">{backupDiskUsage.fileCount} files on disk</span>
+                      </div>
+                      <div className="mt-2 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (parseFloat(backupDiskUsage.totalMB) / 100) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">of ~100 MB typical capacity</p>
+                    </div>
+                  )}
+
+                  {/* Schedule Info */}
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Retention Policy
+                    </h3>
+                    <div className="grid grid-cols-2 gap-y-1 gap-x-4 text-xs">
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">3-Hourly</span><span className="text-blue-600 dark:text-blue-300 font-medium">24 hours</span></div>
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">6-Hourly</span><span className="text-blue-600 dark:text-blue-300 font-medium">7 days</span></div>
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Daily (2AM)</span><span className="text-blue-600 dark:text-blue-300 font-medium">30 days</span></div>
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Weekly (Sun)</span><span className="text-blue-600 dark:text-blue-300 font-medium">90 days</span></div>
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Bi-Weekly</span><span className="text-blue-600 dark:text-blue-300 font-medium">180 days</span></div>
+                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Monthly (1st)</span><span className="text-blue-600 dark:text-blue-300 font-medium">1 year</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">No backup data available. The backup service starts when the server boots.</div>
+            )}
+          </div>
+
+          {/* Backup History */}
+          {backupHistory.length > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Backup History ({backupHistory.length})
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Status</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Time</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Tiers</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Method</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Size</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Email</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backupHistory.slice(0, 25).map((entry: any, idx: number) => (
+                      <tr key={idx} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td className="py-2 px-4">
+                          {entry.success ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                              <CheckCircle className="w-3 h-3 mr-1" />OK
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
+                              <XCircle className="w-3 h-3 mr-1" />FAIL
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-4 text-gray-700 dark:text-gray-300 text-xs">
+                          {new Date(entry.timestamp).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </td>
+                        <td className="py-2 px-4">
+                          <div className="flex flex-wrap gap-1">
+                            {(entry.tiers || []).map((tier: string, i: number) => (
+                              <span key={i} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs">
+                                {tier}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2 px-4 text-gray-600 dark:text-gray-400 text-xs">{entry.backupMethod}</td>
+                        <td className="py-2 px-4 text-gray-600 dark:text-gray-400 text-xs">
+                          {entry.compressedSizeMB ? `${entry.compressedSizeMB} MB` : '--'}
+                        </td>
+                        <td className="py-2 px-4">
+                          {entry.emailed ? (
+                            <span className="inline-flex items-center text-xs text-green-600 dark:text-green-400"><Mail className="w-3 h-3 mr-1" />Sent</span>
+                          ) : entry.success ? (
+                            <span className="inline-flex items-center text-xs text-yellow-600 dark:text-yellow-400"><AlertCircle className="w-3 h-3 mr-1" />Local only</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">--</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-4 text-xs">
+                          {entry.success ? (
+                            <span className="text-gray-500">{entry.elapsed}s</span>
+                          ) : (
+                            <span className="text-red-500 truncate max-w-[200px] inline-block" title={entry.error}>{entry.error}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {backupHistory.length > 25 && (
+                <div className="px-6 py-3 bg-gray-50 dark:bg-gray-800 text-xs text-gray-500">
+                  Showing 25 of {backupHistory.length} entries
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Local Files */}
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center">
+                <FileText className="w-4 h-4 mr-2" />
+                Local Backup Files ({backupFiles.length})
+              </h3>
+            </div>
+            {backupFiles.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">File</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Size</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Created</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Tiers</th>
+                      <th className="text-left py-2 px-4 text-gray-600 dark:text-gray-400 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backupFiles.map((file: any, idx: number) => {
+                      const tierPart = file.name.split('_')[1] || '';
+                      const tiers = tierPart.split('+').map((t: string) => t.charAt(0).toUpperCase() + t.slice(1));
+                      return (
+                        <tr key={idx} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          <td className="py-2 px-4 text-gray-900 dark:text-gray-100 font-mono text-xs truncate max-w-[250px]" title={file.name}>
+                            {file.name}
+                          </td>
+                          <td className="py-2 px-4 text-gray-600 dark:text-gray-400 text-xs">{file.sizeMB} MB</td>
+                          <td className="py-2 px-4 text-gray-600 dark:text-gray-400 text-xs">
+                            {new Date(file.created).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="py-2 px-4">
+                            <div className="flex flex-wrap gap-1">
+                              {tiers.map((tier: string, i: number) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs">
+                                  {tier}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4">
+                            <button
+                              onClick={() => downloadBackup(file.name)}
+                              disabled={backupDownloading === file.name}
+                              className="flex items-center px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+                            >
+                              {backupDownloading === file.name ? (
+                                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                              ) : (
+                                <Download className="w-3 h-3 mr-1" />
+                              )}
+                              Download
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-6 text-sm text-gray-500 dark:text-gray-400">
+                No local backup files. Backups are emailed and cleaned up after successful delivery.
+              </div>
+            )}
+          </div>
         </div>
       )}
       </div>

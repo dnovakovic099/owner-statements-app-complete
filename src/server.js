@@ -14,6 +14,7 @@ const logger = require('./utils/logger');
 const { syncDatabase, sequelize, Statement, Listing, ListingGroup } = require('./models');
 const ListingService = require('./services/ListingService');
 const TagScheduleService = require('./services/TagScheduleService');
+const BackupService = require('./services/BackupService');
 
 // Authentication middleware
 const { authenticate, authorize, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
@@ -1135,6 +1136,9 @@ if (require.main === module) {
 // Tag Schedules - Editors/Admins
 app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
 
+// Database Backup - Status and manual trigger
+app.use('/api/backup', authenticate, require('./routes/backup'));
+
 // Activity Logs - Admin only
 app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));
 
@@ -1340,6 +1344,9 @@ async function startServer() {
         TagScheduleService.start();
         logger.info('TagScheduleService started - checking schedules every minute at 8:00 AM EST');
 
+        // Start BackupService for database backups (loads history from DB)
+        await BackupService.start();
+
         // Start server
         server = app.listen(PORT, () => {
             logger.info('Owner Statements Server started', {
@@ -1382,6 +1389,9 @@ async function gracefulShutdown(signal) {
 
     // Stop TagScheduleService cron
     TagScheduleService.stop();
+
+    // Stop BackupService
+    BackupService.stop();
 
     // Close database connections
     try {

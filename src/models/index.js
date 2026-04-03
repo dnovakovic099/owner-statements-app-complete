@@ -12,6 +12,7 @@ const EmailTemplate = require('./EmailTemplate');
 const User = require('./User');
 const ActivityLog = require('./ActivityLog');
 const AppLog = require('./AppLog');
+const BackupLog = require('./BackupLog');
 
 // Set up associations
 // ListingGroup has many Listings
@@ -41,6 +42,7 @@ const models = {
     User,
     ActivityLog,
     AppLog,
+    BackupLog,
     sequelize
 };
 
