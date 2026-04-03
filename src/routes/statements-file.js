@@ -161,19 +161,20 @@ router.get('/', async (req, res) => {
         }
 
         if (startDate && endDate) {
+            const filterStart = new Date(startDate);
+            const filterEnd = new Date(endDate);
             statements = statements.filter(s => {
                 const statementStart = new Date(s.weekStartDate);
                 const statementEnd = new Date(s.weekEndDate);
-                const filterStart = new Date(startDate);
-                const filterEnd = new Date(endDate);
-
                 // Check if statement period overlaps with filter period
                 return statementStart <= filterEnd && statementEnd >= filterStart;
             });
         } else if (startDate) {
-            statements = statements.filter(s => new Date(s.weekEndDate) >= new Date(startDate));
+            const filterStart = new Date(startDate);
+            statements = statements.filter(s => new Date(s.weekEndDate) >= filterStart);
         } else if (endDate) {
-            statements = statements.filter(s => new Date(s.weekStartDate) <= new Date(endDate));
+            const filterEnd = new Date(endDate);
+            statements = statements.filter(s => new Date(s.weekStartDate) <= filterEnd);
         }
 
         // Sort by creation date (newest first), then by ID (newest first) for same-time statements
@@ -997,6 +998,10 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const existingStatements = await FileDataService.getStatements();
         const newId = FileDataService.generateId(existingStatements);
 
+        // Pre-compute listing map for O(1) lookups instead of O(n) .find() per item
+        const targetListingMap = new Map();
+        targetListings.forEach(l => targetListingMap.set(parseInt(l.id), l));
+
         // Create property names string for display
         const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
         const shortPropertyNames = targetListings.length <= 3
@@ -1078,8 +1083,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             items: [
                 // Revenue items from reservations (grouped by property)
                 ...periodReservations.map(res => {
-                    // Use parseInt for proper type comparison
-                    const listing = targetListings.find(l => parseInt(l.id) === parseInt(res.propertyId));
+                    const listing = targetListingMap.get(parseInt(res.propertyId));
                     const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : `Property ${res.propertyId}`;
                     // Use clientRevenue (prorated) for calendar-based statements
                     const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
@@ -1095,8 +1099,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 // Expenses and upsells - use non-duplicate filtered expenses
                 ...nonDuplicateFilteredExpenses.map(exp => {
                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || (exp.expenseType === 'extras');
-                    // Use parseInt for proper type comparison
-                    const listing = exp.propertyId ? targetListings.find(l => parseInt(l.id) === parseInt(exp.propertyId)) : null;
+                    const listing = exp.propertyId ? targetListingMap.get(parseInt(exp.propertyId)) : null;
                     const propertyLabel = listing ? (listing.nickname || listing.displayName || listing.name) : (exp.listing || 'General');
 
                     return {
