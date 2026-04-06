@@ -1290,7 +1290,7 @@ class HostifyService {
             const childToParentMap = new Map();
 
             // Fetch children with concurrency limit and per-item error isolation
-            const OVERLAP_CHILD_CONCURRENCY = 3;
+            const OVERLAP_CHILD_CONCURRENCY = 5;
             const childResults = [];
             for (let i = 0; i < baseListingIds.length; i += OVERLAP_CHILD_CONCURRENCY) {
                 const batch = baseListingIds.slice(i, i + OVERLAP_CHILD_CONCURRENCY);
@@ -1406,7 +1406,7 @@ class HostifyService {
                         }
 
                         // Collect all reservations first (throttled to avoid 429s)
-                        const OVERLAP_PAGE_CONCURRENCY = 3;
+                        const OVERLAP_PAGE_CONCURRENCY = 5;
                         const allPageResults = [firstRes.reservations];
                         for (let i = 0; i < pageNumbers.length; i += OVERLAP_PAGE_CONCURRENCY) {
                             const pageBatch = pageNumbers.slice(i, i + OVERLAP_PAGE_CONCURRENCY);
@@ -1600,7 +1600,7 @@ class HostifyService {
         const childToParentMap = new Map();
 
         // Fetch children with concurrency limit and per-item error isolation
-        const CHILD_EXPAND_CONCURRENCY = 3;
+        const CHILD_EXPAND_CONCURRENCY = 5;
         const childResults = [];
         for (let i = 0; i < baseListingIds.length; i += CHILD_EXPAND_CONCURRENCY) {
             const batch = baseListingIds.slice(i, i + CHILD_EXPAND_CONCURRENCY);
@@ -1662,7 +1662,7 @@ class HostifyService {
                     });
 
                     // Fetch remaining pages with concurrency limit to avoid 429s
-                    const CHILD_CONCURRENCY = 3;
+                    const CHILD_CONCURRENCY = 5;
                     const otherResults = [];
                     for (let i = 0; i < pageNumbers.length; i += CHILD_CONCURRENCY) {
                         const pageBatch = pageNumbers.slice(i, i + CHILD_CONCURRENCY);

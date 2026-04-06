@@ -6717,6 +6717,29 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const uniquePropertyIds = [...new Set(allReservations.map(r => r.propertyId))];
         logger.debug('Unique propertyIds in reservation pool', { context: 'StatementsFile', count: uniquePropertyIds.length });
 
+        // Pre-group reservations and expenses by propertyId for O(1) lookup instead of O(n) filtering per property
+        const reservationsByPropertyId = new Map();
+        allReservations.forEach(res => {
+            const propId = parseInt(res.propertyId);
+            if (!reservationsByPropertyId.has(propId)) reservationsByPropertyId.set(propId, []);
+            reservationsByPropertyId.get(propId).push(res);
+        });
+        const expensesByPropertyId = new Map();
+        allExpenses.forEach(exp => {
+            const propId = parseInt(exp.propertyId);
+            if (!expensesByPropertyId.has(propId)) expensesByPropertyId.set(propId, []);
+            expensesByPropertyId.get(propId).push(exp);
+            // Also index by secureStayListingId if present
+            if (exp.secureStayListingId) {
+                const ssId = parseInt(exp.secureStayListingId);
+                if (ssId !== propId) {
+                    if (!expensesByPropertyId.has(ssId)) expensesByPropertyId.set(ssId, []);
+                    expensesByPropertyId.get(ssId).push(exp);
+                }
+            }
+        });
+        logger.debug('Pre-grouped data by propertyId', { context: 'StatementsFile', reservationGroups: reservationsByPropertyId.size, expenseGroups: expensesByPropertyId.size });
+
         // Pre-fetch all listing configs in parallel for speed
         logger.debug('Pre-fetching listing configurations', { context: 'StatementsFile' });
         const listingConfigs = new Map();
@@ -6754,42 +6777,29 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                 try {
                     const propertyName = property.nickname || property.displayName || property.name || 'Unknown';
 
-                    // Filter reservations for this property from the pre-fetched pool
-                    // Filter reservations based on calculation type
+                    // Filter reservations for this property from pre-grouped map (O(1) lookup)
                     const allowedStatuses = ['confirmed', 'accepted'];
+                    const propertyReservations = reservationsByPropertyId.get(parseInt(property.id)) || [];
 
-                    const periodReservations = allReservations.filter(res => {
-                        const propMatch = parseInt(res.propertyId) === parseInt(property.id);
-                        if (!propMatch) return false;
-
+                    const periodReservations = propertyReservations.filter(res => {
                         let dateMatch = true;
                         if (calculationType === 'calendar') {
-                            // Calendar: any reservation that overlaps with the period
                             const checkIn = new Date(res.checkInDate);
                             const checkOut = new Date(res.checkOutDate);
                             if (checkIn > periodEnd || checkOut <= periodStart) dateMatch = false;
                         } else {
-                            // Checkout: only reservations that check out within the period
                             const checkoutDate = new Date(res.checkOutDate);
                             if (checkoutDate < periodStart || checkoutDate > periodEnd) dateMatch = false;
                         }
-
-                        const statusMatch = allowedStatuses.includes(res.status);
-                        return dateMatch && statusMatch;
+                        return dateMatch && allowedStatuses.includes(res.status);
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
                     // Find ALL overlapping reservations (regardless of calculation type)
                     // This helps detect long stays that span beyond the statement period
-                    let overlappingReservations = allReservations.filter(res => {
-                        const propMatch = parseInt(res.propertyId) === parseInt(property.id);
-                        if (!propMatch) return false;
-
+                    let overlappingReservations = propertyReservations.filter(res => {
                         const checkIn = new Date(res.checkInDate);
                         const checkOut = new Date(res.checkOutDate);
-                        const statusMatch = allowedStatuses.includes(res.status);
-
-                        // Overlaps if: checkIn <= periodEnd AND checkOut > periodStart
-                        return checkIn <= periodEnd && checkOut > periodStart && statusMatch;
+                        return checkIn <= periodEnd && checkOut > periodStart && allowedStatuses.includes(res.status);
                     });
 
                     // Determine if statement should be converted to calendar mode
@@ -6816,11 +6826,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                     }
 
-                    // Filter expenses for this property (LL Cover handled separately for hidden items)
-                    const periodExpensesAll = allExpenses.filter(exp => {
-                        const matchesPropertyId = parseInt(exp.propertyId) === parseInt(property.id);
-                        const matchesSecureStayId = exp.secureStayListingId && parseInt(exp.secureStayListingId) === parseInt(property.id);
-                        if (!matchesPropertyId && !matchesSecureStayId) return false;
+                    // Filter expenses for this property from pre-grouped map (O(1) lookup)
+                    const propertyExpenses = expensesByPropertyId.get(parseInt(property.id)) || [];
+                    const periodExpensesAll = propertyExpenses.filter(exp => {
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
