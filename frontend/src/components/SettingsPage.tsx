@@ -28,7 +28,9 @@ import {
   Database,
   CheckCircle,
   XCircle,
-  HardDrive
+  HardDrive,
+  Save,
+  Power
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, appLogsAPI, backupAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
@@ -145,6 +147,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupTriggering, setBackupTriggering] = useState(false);
   const [backupDownloading, setBackupDownloading] = useState<string | null>(null);
+  const [backupConfig, setBackupConfig] = useState<any>(null);
+  const [backupConfigDraft, setBackupConfigDraft] = useState<any>(null);
+  const [backupConfigSaving, setBackupConfigSaving] = useState(false);
 
   // Invite modal state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -206,16 +211,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const loadBackupStatus = async () => {
     setBackupLoading(true);
     try {
-      const data = await backupAPI.getStatus();
-      setBackupStatus(data.status);
-      setBackupFiles(data.localFiles || []);
-      setBackupHistory(data.history || []);
-      setBackupNextScheduled(data.nextScheduled);
-      setBackupDiskUsage(data.diskUsage);
+      const [statusData, configData] = await Promise.all([
+        backupAPI.getStatus(),
+        backupAPI.getConfig()
+      ]);
+      setBackupStatus(statusData.status);
+      setBackupFiles(statusData.localFiles || []);
+      setBackupHistory(statusData.history || []);
+      setBackupNextScheduled(statusData.nextScheduled);
+      setBackupDiskUsage(statusData.diskUsage);
+      if (configData.config) {
+        setBackupConfig(configData.config);
+        setBackupConfigDraft(configData.config);
+      }
     } catch (err) {
       showToast('Failed to load backup status', 'error');
     }
     setBackupLoading(false);
+  };
+
+  const saveBackupConfig = async () => {
+    if (!backupConfigDraft) return;
+    setBackupConfigSaving(true);
+    try {
+      const result = await backupAPI.updateConfig(backupConfigDraft);
+      setBackupConfig(result.config);
+      setBackupConfigDraft(result.config);
+      showToast('Backup configuration saved', 'success');
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to save config', 'error');
+    }
+    setBackupConfigSaving(false);
   };
 
   const triggerBackup = async () => {
@@ -1954,50 +1980,151 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </div>
                 </div>
 
-                {/* Disk Usage + Schedule Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                  {/* Disk Usage */}
-                  {backupDiskUsage && (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center">
-                        <HardDrive className="w-4 h-4 mr-2" />
-                        Disk Usage
-                      </h3>
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl font-bold text-gray-900 dark:text-white">{backupDiskUsage.totalMB} MB</span>
-                        <span className="text-sm text-gray-500">{backupDiskUsage.fileCount} files on disk</span>
-                      </div>
-                      <div className="mt-2 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (parseFloat(backupDiskUsage.totalMB) / 100) * 100)}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">of ~100 MB typical capacity</p>
-                    </div>
-                  )}
-
-                  {/* Schedule Info */}
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      Retention Policy
+                {/* Disk Usage */}
+                {backupDiskUsage && (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-6">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center">
+                      <HardDrive className="w-4 h-4 mr-2" />
+                      Disk Usage
                     </h3>
-                    <div className="grid grid-cols-2 gap-y-1 gap-x-4 text-xs">
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">3-Hourly</span><span className="text-blue-600 dark:text-blue-300 font-medium">24 hours</span></div>
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">6-Hourly</span><span className="text-blue-600 dark:text-blue-300 font-medium">7 days</span></div>
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Daily (2AM)</span><span className="text-blue-600 dark:text-blue-300 font-medium">30 days</span></div>
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Weekly (Sun)</span><span className="text-blue-600 dark:text-blue-300 font-medium">90 days</span></div>
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Bi-Weekly</span><span className="text-blue-600 dark:text-blue-300 font-medium">180 days</span></div>
-                      <div className="flex justify-between"><span className="text-blue-700 dark:text-blue-400">Monthly (1st)</span><span className="text-blue-600 dark:text-blue-300 font-medium">1 year</span></div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold text-gray-900 dark:text-white">{backupDiskUsage.totalMB} MB</span>
+                      <span className="text-sm text-gray-500">{backupDiskUsage.fileCount} files on disk</span>
                     </div>
+                    <div className="mt-2 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, (parseFloat(backupDiskUsage.totalMB) / 100) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">of ~100 MB typical capacity</p>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">No backup data available. The backup service starts when the server boots.</div>
             )}
           </div>
+
+          {/* Configuration Card */}
+          {backupConfigDraft && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Backup Configuration
+                </h3>
+                <button
+                  onClick={saveBackupConfig}
+                  disabled={backupConfigSaving || JSON.stringify(backupConfigDraft) === JSON.stringify(backupConfig)}
+                  className="flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4 mr-1" />
+                  {backupConfigSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                {/* Enabled Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled Backups</label>
+                    <p className="text-xs text-gray-500 mt-0.5">When disabled, only manual backups work</p>
+                  </div>
+                  <button
+                    onClick={() => setBackupConfigDraft({ ...backupConfigDraft, enabled: !backupConfigDraft.enabled })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      backupConfigDraft.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      backupConfigDraft.enabled ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* Email Recipients */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Mail className="w-3.5 h-3.5 inline mr-1" />
+                      Email To
+                    </label>
+                    <input
+                      type="text"
+                      value={backupConfigDraft.emailTo || ''}
+                      onChange={(e) => setBackupConfigDraft({ ...backupConfigDraft, emailTo: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      placeholder="email@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Mail className="w-3.5 h-3.5 inline mr-1" />
+                      Email CC
+                    </label>
+                    <input
+                      type="text"
+                      value={backupConfigDraft.emailCc || ''}
+                      onChange={(e) => setBackupConfigDraft({ ...backupConfigDraft, emailCc: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      placeholder="cc1@example.com, cc2@example.com"
+                    />
+                  </div>
+                </div>
+
+                {/* Retention Policy */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <Calendar className="w-3.5 h-3.5 inline mr-1" />
+                    Retention Policy (days)
+                  </label>
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[
+                      { key: '3-hourly', label: '3-Hourly' },
+                      { key: '6-hourly', label: '6-Hourly' },
+                      { key: 'daily', label: 'Daily' },
+                      { key: 'weekly', label: 'Weekly' },
+                      { key: 'bi-weekly', label: 'Bi-Weekly' },
+                      { key: 'monthly', label: 'Monthly' },
+                    ].map(({ key, label }) => (
+                      <div key={key} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-md px-3 py-2">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={backupConfigDraft.retention?.[key] || ''}
+                          onChange={(e) => setBackupConfigDraft({
+                            ...backupConfigDraft,
+                            retention: { ...backupConfigDraft.retention, [key]: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-16 px-2 py-1 text-xs text-right border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Daily Backup Hour */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Clock className="w-3.5 h-3.5 inline mr-1" />
+                      Daily Backup Hour (EST, 0-23)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={backupConfigDraft.dailyHour ?? 2}
+                      onChange={(e) => setBackupConfigDraft({ ...backupConfigDraft, dailyHour: parseInt(e.target.value) || 0 })}
+                      className="w-24 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Daily, weekly, bi-weekly, and monthly backups run at this hour</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Backup History */}
           {backupHistory.length > 0 && (

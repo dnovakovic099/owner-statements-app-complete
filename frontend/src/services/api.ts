@@ -1387,6 +1387,14 @@ export const backupAPI = {
     link.remove();
     window.URL.revokeObjectURL(url);
   },
+  getConfig: async (): Promise<{ success: boolean; config: any }> => {
+    const response = await api.get('/backup/config');
+    return response.data;
+  },
+  updateConfig: async (config: any): Promise<{ success: boolean; config: any }> => {
+    const response = await api.put('/backup/config', config);
+    return response.data;
+  },
 };
 
 export default api;

@@ -42,22 +42,27 @@ const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 
 const BACKUP_DIR = path.join(__dirname, '../../backups');
+const CONFIG_FILE = path.join(BACKUP_DIR, 'config.json');
 const CHECK_INTERVAL_MS = 60 * 1000;
 const MAX_ATTACHMENT_MB = 20;
 const FAILURE_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_EMAIL_RETRIES = 5;
 
-const BACKUP_HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
-const DAILY_HOUR = 2;
-
-const RETENTION = {
-    '3-hourly': 1,
-    '6-hourly': 7,
-    'daily':    30,
-    'weekly':   90,
-    'bi-weekly': 180,
-    'monthly':  365,
-    'manual':   7
+const DEFAULT_CONFIG = {
+    enabled: true,
+    backupHours: [0, 3, 6, 9, 12, 15, 18, 21],
+    dailyHour: 2,
+    retention: {
+        '3-hourly': 1,
+        '6-hourly': 7,
+        'daily':    30,
+        'weekly':   90,
+        'bi-weekly': 180,
+        'monthly':  365,
+        'manual':   7
+    },
+    emailTo: 'devendravariya73@gmail.com',
+    emailCc: 'admin@luxurylodgingpm.com, ferdinand@luxurylodgingpm.com'
 };
 
 // Models for Sequelize fallback (excludes BackupLog to avoid backing up backup logs)
@@ -76,6 +81,9 @@ class BackupService {
         this._lastFailureAlertAt = null;
         this._consecutiveFailures = 0;
         this._initialized = false;
+
+        // Editable config (loaded from disk, falls back to defaults)
+        this.config = { ...DEFAULT_CONFIG };
 
         // In-memory status (rebuilt from DB on boot)
         this.status = {
@@ -101,13 +109,16 @@ class BackupService {
             fs.mkdirSync(BACKUP_DIR, { recursive: true });
         }
 
+        // Load config from disk (or create defaults)
+        this._loadConfig();
+
         // Ensure BackupLog table exists
         await this._ensureTable();
 
         // Rebuild status from DB
         await this._loadStatusFromDB();
 
-        logger.info('BackupService started - snapshots every 3h, 0-data-loss mode', { context: 'BackupService' });
+        logger.info(`BackupService started - enabled: ${this.config.enabled}, snapshots every 3h, 0-data-loss mode`, { context: 'BackupService' });
         this._interval = setInterval(() => this._checkSchedule(), CHECK_INTERVAL_MS);
     }
 
@@ -208,6 +219,74 @@ class BackupService {
         }
     }
 
+    // ==================== CONFIG ====================
+
+    _loadConfig() {
+        try {
+            if (fs.existsSync(CONFIG_FILE)) {
+                const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+                const saved = JSON.parse(raw);
+                // Merge with defaults so new keys are always present
+                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) } };
+                logger.info('Backup config loaded from disk', { context: 'BackupService' });
+            } else {
+                this.config = { ...DEFAULT_CONFIG };
+                this._saveConfig(); // Write defaults to disk
+                logger.info('Backup config initialized with defaults', { context: 'BackupService' });
+            }
+        } catch (err) {
+            logger.warn(`Failed to load backup config, using defaults: ${err.message}`, { context: 'BackupService' });
+            this.config = { ...DEFAULT_CONFIG };
+        }
+    }
+
+    _saveConfig() {
+        try {
+            if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(this.config, null, 2));
+        } catch (err) {
+            logger.logError(err, { context: 'BackupService', action: 'saveConfig' });
+        }
+    }
+
+    getConfig() {
+        return { ...this.config };
+    }
+
+    updateConfig(newConfig) {
+        // Validate and merge
+        if (typeof newConfig.enabled === 'boolean') this.config.enabled = newConfig.enabled;
+
+        if (Array.isArray(newConfig.backupHours)) {
+            const valid = newConfig.backupHours.filter(h => Number.isInteger(h) && h >= 0 && h <= 23);
+            if (valid.length > 0) this.config.backupHours = valid.sort((a, b) => a - b);
+        }
+
+        if (Number.isInteger(newConfig.dailyHour) && newConfig.dailyHour >= 0 && newConfig.dailyHour <= 23) {
+            this.config.dailyHour = newConfig.dailyHour;
+        }
+
+        if (newConfig.retention && typeof newConfig.retention === 'object') {
+            for (const [tier, days] of Object.entries(newConfig.retention)) {
+                if (this.config.retention.hasOwnProperty(tier) && Number.isInteger(days) && days >= 1) {
+                    this.config.retention[tier] = days;
+                }
+            }
+        }
+
+        if (typeof newConfig.emailTo === 'string' && newConfig.emailTo.trim()) {
+            this.config.emailTo = newConfig.emailTo.trim();
+        }
+
+        if (typeof newConfig.emailCc === 'string') {
+            this.config.emailCc = newConfig.emailCc.trim();
+        }
+
+        this._saveConfig();
+        logger.info('Backup config updated', { context: 'BackupService', config: this.config });
+        return this.config;
+    }
+
     // ==================== HELPERS ====================
 
     _maskUrl(url) {
@@ -271,7 +350,7 @@ class BackupService {
         const currentHour = est.getHours();
         const currentMinute = est.getMinutes();
 
-        for (const h of BACKUP_HOURS) {
+        for (const h of this.config.backupHours) {
             if (h > currentHour || (h === currentHour && currentMinute < 1)) {
                 const next = new Date(est);
                 next.setHours(h, 0, 0, 0);
@@ -281,7 +360,7 @@ class BackupService {
         }
         const next = new Date(est);
         next.setDate(next.getDate() + 1);
-        next.setHours(BACKUP_HOURS[0], 0, 0, 0);
+        next.setHours(this.config.backupHours[0], 0, 0, 0);
         const tiers = this._classifyTiers(next);
         return { time: next.toISOString(), tiers, hoursFromNow: +((next.getTime() - est.getTime()) / 3600000).toFixed(1) };
     }
@@ -331,7 +410,8 @@ class BackupService {
 
     _checkSchedule() {
         const { est, hour, minute } = this._getEST();
-        if (minute !== 0 || !BACKUP_HOURS.includes(hour)) return;
+        if (!this.config.enabled) return;
+        if (minute !== 0 || !this.config.backupHours.includes(hour)) return;
 
         const runKey = `${est.getFullYear()}-${String(est.getMonth() + 1).padStart(2, '0')}-${String(est.getDate()).padStart(2, '0')}-${String(hour).padStart(2, '0')}`;
         if (this._lastRunKey === runKey) return;
@@ -351,17 +431,18 @@ class BackupService {
         const hour = est.getHours();
         const dayOfWeek = est.getDay();
         const dayOfMonth = est.getDate();
+        const dailyHour = this.config.dailyHour;
         const tiers = ['3-hourly'];
 
         if (hour % 6 === 0) tiers.push('6-hourly');
-        if (hour === DAILY_HOUR) tiers.push('daily');
-        if (dayOfWeek === 0 && hour === DAILY_HOUR) {
+        if (hour === dailyHour) tiers.push('daily');
+        if (dayOfWeek === 0 && hour === dailyHour) {
             tiers.push('weekly');
             const msPerWeek = 7 * 24 * 60 * 60 * 1000;
             const weeksSinceAnchor = Math.floor((est.getTime() - this._biWeeklyAnchor.getTime()) / msPerWeek);
             if (weeksSinceAnchor % 2 === 0) tiers.push('bi-weekly');
         }
-        if (dayOfMonth === 1 && hour === DAILY_HOUR) tiers.push('monthly');
+        if (dayOfMonth === 1 && hour === dailyHour) tiers.push('monthly');
 
         return tiers;
     }
@@ -656,8 +737,8 @@ class BackupService {
 
         await transporter.sendMail({
             from: `"Luxury Lodging Backup" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
-            to: 'devendravariya73@gmail.com',
-            cc: 'admin@luxurylodgingpm.com, ferdinand@luxurylodgingpm.com',
+            to: this.config.emailTo,
+            cc: this.config.emailCc || undefined,
             subject: `Database Backup (${tierDisplay}) - ${dateDisplay}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -711,8 +792,8 @@ class BackupService {
 
         await transporter.sendMail({
             from: `"Luxury Lodging Backup" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
-            to: 'devendravariya73@gmail.com',
-            cc: 'admin@luxurylodgingpm.com, ferdinand@luxurylodgingpm.com',
+            to: this.config.emailTo,
+            cc: this.config.emailCc || undefined,
             subject: `BACKUP FAILED${this._consecutiveFailures > 1 ? ` (${this._consecutiveFailures}x in a row)` : ''} - ${dateDisplay}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -776,7 +857,7 @@ class BackupService {
                 const fileTiers = tierPart.split('+');
 
                 const shouldKeep = fileTiers.some(tier => {
-                    const retentionDays = RETENTION[tier];
+                    const retentionDays = this.config.retention[tier];
                     return retentionDays && fileAgeDays < retentionDays;
                 });
 

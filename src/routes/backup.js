@@ -108,4 +108,26 @@ router.get('/download/:filename', (req, res) => {
     }
 });
 
+// GET /api/backup/config — Get current backup configuration
+router.get('/config', (req, res) => {
+    try {
+        res.json({ success: true, config: BackupService.getConfig() });
+    } catch (error) {
+        logger.logError(error, { context: 'BackupRoute', action: 'getConfig' });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// PUT /api/backup/config — Update backup configuration
+router.put('/config', (req, res) => {
+    try {
+        const updated = BackupService.updateConfig(req.body);
+        logger.info('Backup config updated via API', { context: 'BackupRoute', user: req.user?.username });
+        res.json({ success: true, config: updated });
+    } catch (error) {
+        logger.logError(error, { context: 'BackupRoute', action: 'updateConfig' });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
