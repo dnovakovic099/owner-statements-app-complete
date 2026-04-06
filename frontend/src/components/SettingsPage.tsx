@@ -2167,7 +2167,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                         </td>
                         <td className="py-2 px-4">
                           <div className="flex flex-wrap gap-1">
-                            {(entry.tiers || []).map((tier: string, i: number) => (
+                            {(Array.isArray(entry.tiers) ? entry.tiers : (() => { try { return JSON.parse(entry.tiers); } catch { return []; } })()).map((tier: string, i: number) => (
                               <span key={i} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs">
                                 {tier}
                               </span>
