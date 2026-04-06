@@ -40,7 +40,7 @@ class HostifyService {
         // Global concurrency limiter — ensures the ENTIRE app never exceeds this
         // many concurrent Hostify API calls, regardless of how many statements
         // are generating simultaneously
-        this._maxConcurrent = 5;
+        this._maxConcurrent = 10;
         this._activeRequests = 0;
         this._requestQueue = [];
     }

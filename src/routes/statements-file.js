@@ -1222,6 +1222,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
 // POST /api/statements-file/generate - Generate statement and save to file
 router.post('/generate', async (req, res) => {
+    // Combined statement generation can take several minutes — extend socket timeout
+    req.setTimeout(10 * 60 * 1000);
+    res.setTimeout(10 * 60 * 1000);
     try {
         let { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
 
@@ -2096,6 +2099,9 @@ router.get('/:id/available-reservations', async (req, res) => {
 
 // PUT /api/statements-file/:id/reconfigure - Reconfigure statement dates and calculation type
 router.put('/:id/reconfigure', async (req, res) => {
+    // Reconfigure re-fetches all data — extend socket timeout for combined statements
+    req.setTimeout(10 * 60 * 1000);
+    res.setTimeout(10 * 60 * 1000);
     try {
         const { id } = req.params;
         const { startDate, endDate, calculationType = 'checkout' } = req.body;
@@ -2144,7 +2150,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             const owner = owners.find(o => o.id === ownerId || o.id === parseInt(ownerId)) || owners[0];
 
             // Fetch reservations and expenses for all properties (throttled to avoid 429s)
-            const REGEN_CONCURRENCY = 3;
+            const REGEN_CONCURRENCY = 5;
             const reservationsArrays = [];
             const expensesArrays = [];
             for (let i = 0; i < propertyIds.length; i += REGEN_CONCURRENCY) {

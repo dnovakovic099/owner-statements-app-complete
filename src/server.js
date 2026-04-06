@@ -1355,6 +1355,10 @@ async function startServer() {
                 dashboard: `http://localhost:${PORT}`
             });
         });
+
+        // Allow long-running requests (combined statement generation can take several minutes)
+        server.setTimeout(10 * 60 * 1000); // 10 minutes
+        server.keepAliveTimeout = 10 * 60 * 1000;
     } catch (error) {
         logger.logError(error, { context: 'Server', action: 'startServer' });
         process.exit(1);
