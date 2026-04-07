@@ -1,16 +1,15 @@
 /**
  * Database Backup Service — Multi-Tier Snapshot Policy (Production-Grade)
  *
- * Backup runs every 3 hours. Each backup is tagged with the tiers it belongs to.
+ * Backup runs on configured days/hours (default: Mondays at 6 PM EST).
+ * Each backup is tagged with the tiers it belongs to.
  * All backups are emailed. Retention policy per tier:
  *
  *   Tier        | Frequency       | Local Retention | Email
  *   ------------|-----------------|-----------------|------
- *   3-hourly    | Every 3 hours   | 24 hours        | Yes
- *   6-hourly    | Every 6 hours   | 7 days          | Yes
- *   daily       | Once/day 2AM    | 30 days         | Yes
- *   weekly      | Every Sunday    | 90 days         | Yes
- *   bi-weekly   | Every other Sun | 180 days        | Yes
+ *   scheduled   | Per schedule    | 7 days          | Yes
+ *   weekly      | Every week      | 90 days         | Yes
+ *   bi-weekly   | Every other wk  | 180 days        | Yes
  *   monthly     | 1st of month    | 365 days        | Yes
  *
  * Zero-data-loss guarantees:
@@ -50,12 +49,11 @@ const MAX_EMAIL_RETRIES = 5;
 
 const DEFAULT_CONFIG = {
     enabled: true,
-    backupHours: [0, 3, 6, 9, 12, 15, 18, 21],
-    dailyHour: 2,
+    backupHours: [18],
+    backupDays: [1],            // 0=Sun, 1=Mon, ... 6=Sat — default Monday only
+    dailyHour: 18,
     retention: {
-        '3-hourly': 1,
-        '6-hourly': 7,
-        'daily':    30,
+        'scheduled': 7,
         'weekly':   90,
         'bi-weekly': 180,
         'monthly':  365,
@@ -118,7 +116,10 @@ class BackupService {
         // Rebuild status from DB
         await this._loadStatusFromDB();
 
-        logger.info(`BackupService started - enabled: ${this.config.enabled}, snapshots every 3h, 0-data-loss mode`, { context: 'BackupService' });
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const days = (this.config.backupDays || []).map(d => dayNames[d]).join(', ') || 'every day';
+        const hours = (this.config.backupHours || []).map(h => `${h}:00`).join(', ');
+        logger.info(`BackupService started - enabled: ${this.config.enabled}, schedule: ${days} at ${hours} EST`, { context: 'BackupService' });
         this._interval = setInterval(() => this._checkSchedule(), CHECK_INTERVAL_MS);
     }
 
@@ -229,7 +230,7 @@ class BackupService {
             const row = await AppConfig.findOne({ where: { key: 'backup_config' } });
             if (row && row.value) {
                 const saved = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) } };
+                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) }, backupDays: saved.backupDays || DEFAULT_CONFIG.backupDays };
                 logger.info('Backup config loaded from database', { context: 'BackupService' });
                 return;
             }
@@ -242,7 +243,7 @@ class BackupService {
             if (fs.existsSync(CONFIG_FILE)) {
                 const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
                 const saved = JSON.parse(raw);
-                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) } };
+                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) }, backupDays: saved.backupDays || DEFAULT_CONFIG.backupDays };
                 logger.info('Backup config loaded from disk', { context: 'BackupService' });
                 // Migrate to DB
                 this._saveConfigToDB();
@@ -293,6 +294,11 @@ class BackupService {
         if (Array.isArray(newConfig.backupHours)) {
             const valid = newConfig.backupHours.filter(h => Number.isInteger(h) && h >= 0 && h <= 23);
             if (valid.length > 0) this.config.backupHours = valid.sort((a, b) => a - b);
+        }
+
+        if (Array.isArray(newConfig.backupDays)) {
+            const valid = newConfig.backupDays.filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+            this.config.backupDays = valid.sort((a, b) => a - b);
         }
 
         if (Number.isInteger(newConfig.dailyHour) && newConfig.dailyHour >= 0 && newConfig.dailyHour <= 23) {
@@ -382,15 +388,32 @@ class BackupService {
         const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
         const currentHour = est.getHours();
         const currentMinute = est.getMinutes();
+        const hasDayFilter = Array.isArray(this.config.backupDays) && this.config.backupDays.length > 0;
 
-        for (const h of this.config.backupHours) {
-            if (h > currentHour || (h === currentHour && currentMinute < 1)) {
-                const next = new Date(est);
-                next.setHours(h, 0, 0, 0);
-                const tiers = this._classifyTiers(next);
-                return { time: next.toISOString(), tiers, hoursFromNow: +((h * 60 - currentHour * 60 - currentMinute) / 60).toFixed(1) };
+        // Try today first (if today is an allowed day)
+        const todayAllowed = !hasDayFilter || this.config.backupDays.includes(est.getDay());
+        if (todayAllowed) {
+            for (const h of this.config.backupHours) {
+                if (h > currentHour || (h === currentHour && currentMinute < 1)) {
+                    const next = new Date(est);
+                    next.setHours(h, 0, 0, 0);
+                    const tiers = this._classifyTiers(next);
+                    return { time: next.toISOString(), tiers, hoursFromNow: +((next.getTime() - est.getTime()) / 3600000).toFixed(1) };
+                }
             }
         }
+
+        // Search upcoming days (up to 8 days ahead to cover a full week)
+        for (let d = 1; d <= 7; d++) {
+            const candidate = new Date(est);
+            candidate.setDate(candidate.getDate() + d);
+            if (hasDayFilter && !this.config.backupDays.includes(candidate.getDay())) continue;
+            candidate.setHours(this.config.backupHours[0], 0, 0, 0);
+            const tiers = this._classifyTiers(candidate);
+            return { time: candidate.toISOString(), tiers, hoursFromNow: +((candidate.getTime() - est.getTime()) / 3600000).toFixed(1) };
+        }
+
+        // Fallback (shouldn't happen if backupDays has at least one entry)
         const next = new Date(est);
         next.setDate(next.getDate() + 1);
         next.setHours(this.config.backupHours[0], 0, 0, 0);
@@ -446,6 +469,12 @@ class BackupService {
         if (!this.config.enabled) return;
         if (minute !== 0 || !this.config.backupHours.includes(hour)) return;
 
+        // Check day-of-week filter (if configured)
+        const dayOfWeek = est.getDay();
+        if (Array.isArray(this.config.backupDays) && this.config.backupDays.length > 0) {
+            if (!this.config.backupDays.includes(dayOfWeek)) return;
+        }
+
         const runKey = `${est.getFullYear()}-${String(est.getMonth() + 1).padStart(2, '0')}-${String(est.getDate()).padStart(2, '0')}-${String(hour).padStart(2, '0')}`;
         if (this._lastRunKey === runKey) return;
         this._lastRunKey = runKey;
@@ -461,21 +490,19 @@ class BackupService {
     }
 
     _classifyTiers(est) {
-        const hour = est.getHours();
-        const dayOfWeek = est.getDay();
         const dayOfMonth = est.getDate();
-        const dailyHour = this.config.dailyHour;
-        const tiers = ['3-hourly'];
+        const tiers = ['scheduled'];
 
-        if (hour % 6 === 0) tiers.push('6-hourly');
-        if (hour === dailyHour) tiers.push('daily');
-        if (dayOfWeek === 0 && hour === dailyHour) {
-            tiers.push('weekly');
-            const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-            const weeksSinceAnchor = Math.floor((est.getTime() - this._biWeeklyAnchor.getTime()) / msPerWeek);
-            if (weeksSinceAnchor % 2 === 0) tiers.push('bi-weekly');
-        }
-        if (dayOfMonth === 1 && hour === dailyHour) tiers.push('monthly');
+        // Weekly: every scheduled run counts as weekly
+        tiers.push('weekly');
+
+        // Bi-weekly: every other week based on anchor
+        const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+        const weeksSinceAnchor = Math.floor((est.getTime() - this._biWeeklyAnchor.getTime()) / msPerWeek);
+        if (weeksSinceAnchor % 2 === 0) tiers.push('bi-weekly');
+
+        // Monthly: first occurrence in the month (day 1-7)
+        if (dayOfMonth <= 7) tiers.push('monthly');
 
         return tiers;
     }
@@ -563,7 +590,7 @@ class BackupService {
 
     // ==================== BACKUP EXECUTION ====================
 
-    async runBackup(tiers = ['3-hourly']) {
+    async runBackup(tiers = ['scheduled']) {
         if (this._isRunning) {
             logger.warn('Backup already in progress, skipping', { context: 'BackupService' });
             return { success: false, reason: 'Already running' };

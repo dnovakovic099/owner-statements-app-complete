@@ -2072,17 +2072,65 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </div>
                 </div>
 
-                {/* Retention Policy */}
+                {/* Backup Days */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     <Calendar className="w-3.5 h-3.5 inline mr-1" />
+                    Backup Days
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                      const selected = (backupConfigDraft.backupDays || []).includes(idx);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const current = backupConfigDraft.backupDays || [];
+                            const updated = selected ? current.filter((d: number) => d !== idx) : [...current, idx].sort((a: number, b: number) => a - b);
+                            setBackupConfigDraft({ ...backupConfigDraft, backupDays: updated });
+                          }}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                            selected
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Select which days backups should run (empty = every day)</p>
+                </div>
+
+                {/* Backup Hour */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Clock className="w-3.5 h-3.5 inline mr-1" />
+                      Backup Hour (EST, 0-23)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={backupConfigDraft.backupHours?.[0] ?? 18}
+                      onChange={(e) => setBackupConfigDraft({ ...backupConfigDraft, backupHours: [parseInt(e.target.value) || 0] })}
+                      className="w-24 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Hour of the day (EST) when backup runs</p>
+                  </div>
+                </div>
+
+                {/* Retention Policy */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Retention Policy (days)
                   </label>
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                     {[
-                      { key: '3-hourly', label: '3-Hourly' },
-                      { key: '6-hourly', label: '6-Hourly' },
-                      { key: 'daily', label: 'Daily' },
+                      { key: 'scheduled', label: 'Scheduled' },
                       { key: 'weekly', label: 'Weekly' },
                       { key: 'bi-weekly', label: 'Bi-Weekly' },
                       { key: 'monthly', label: 'Monthly' },
@@ -2101,25 +2149,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                         />
                       </div>
                     ))}
-                  </div>
-                </div>
-
-                {/* Daily Backup Hour */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      <Clock className="w-3.5 h-3.5 inline mr-1" />
-                      Daily Backup Hour (EST, 0-23)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={backupConfigDraft.dailyHour ?? 2}
-                      onChange={(e) => setBackupConfigDraft({ ...backupConfigDraft, dailyHour: parseInt(e.target.value) || 0 })}
-                      className="w-24 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Daily, weekly, bi-weekly, and monthly backups run at this hour</p>
                   </div>
                 </div>
               </div>
