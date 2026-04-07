@@ -876,7 +876,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         updateToast(toastId, `Downloaded ${ids.length} statement(s) as ZIP`, 'success');
       } catch (err) {
         console.error('Failed to download statements:', err);
-        updateToast(toastId, 'Failed to download statements', 'error');
+        const detail = err instanceof Error ? err.message : 'Unknown error';
+        updateToast(toastId, `Failed to download statements: ${detail}`, 'error');
       }
       setBulkProcessing(false);
     } else if (action === 'delete') {

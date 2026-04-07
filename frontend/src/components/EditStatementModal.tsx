@@ -319,8 +319,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           });
           await loadStatement();
           onStatementUpdated();
-        } catch (err) {
-          setError('Failed to reconfigure statement');
+        } catch (err: any) {
+          const detail = err?.response?.data?.error || 'Failed to reconfigure statement';
+          setError(detail);
           console.error('Failed to reconfigure statement:', err);
         } finally {
           setIsReconfiguring(false);

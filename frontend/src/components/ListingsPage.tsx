@@ -1681,6 +1681,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 showToast('Increase account ID stored', 'success');
                               } catch (error) {
                                 console.error('Auto-save failed:', error);
+                                showToast('Failed to save account ID', 'error');
                               } finally {
                                 setSaving(false);
                               }
