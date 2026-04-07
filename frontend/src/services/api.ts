@@ -7,6 +7,7 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 10 * 60 * 1000, // 10 minutes — matches backend server timeout for long operations
   headers: {
     'Content-Type': 'application/json',
   },

@@ -119,9 +119,9 @@ router.get('/config', (req, res) => {
 });
 
 // PUT /api/backup/config — Update backup configuration
-router.put('/config', (req, res) => {
+router.put('/config', async (req, res) => {
     try {
-        const updated = BackupService.updateConfig(req.body);
+        const updated = await BackupService.updateConfig(req.body);
         logger.info('Backup config updated via API', { context: 'BackupRoute', user: req.user?.username });
         res.json({ success: true, config: updated });
     } catch (error) {

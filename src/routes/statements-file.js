@@ -1934,7 +1934,10 @@ router.post('/generate', async (req, res) => {
         });
     } catch (error) {
         logger.logError(error, { context: 'StatementsFile', action: 'generateStatement' });
-        res.status(500).json({ error: 'Failed to generate statement' });
+        const detail = error.message?.includes('timeout') ? 'Request timed out — try fewer properties or a shorter date range'
+            : error.message?.includes('429') ? 'Rate limited by Hostify API — please wait a moment and retry'
+            : error.message || 'Unknown error';
+        res.status(500).json({ error: `Failed to generate statement: ${detail}` });
     }
 });
 
@@ -2572,7 +2575,10 @@ router.put('/:id/reconfigure', async (req, res) => {
         });
     } catch (error) {
         logger.logError(error, { context: 'StatementsFile', action: 'reconfigureStatement' });
-        res.status(500).json({ error: 'Failed to reconfigure statement' });
+        const detail = error.message?.includes('timeout') ? 'Request timed out — try a shorter date range'
+            : error.message?.includes('429') ? 'Rate limited by Hostify API — please wait and retry'
+            : error.message || 'Unknown error';
+        res.status(500).json({ error: `Failed to reconfigure statement: ${detail}` });
     }
 });
 

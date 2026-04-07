@@ -13,6 +13,7 @@ const User = require('./User');
 const ActivityLog = require('./ActivityLog');
 const AppLog = require('./AppLog');
 const BackupLog = require('./BackupLog');
+const AppConfig = require('./AppConfig');
 
 // Set up associations
 // ListingGroup has many Listings
@@ -43,6 +44,7 @@ const models = {
     ActivityLog,
     AppLog,
     BackupLog,
+    AppConfig,
     sequelize
 };
 

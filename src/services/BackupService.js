@@ -109,8 +109,8 @@ class BackupService {
             fs.mkdirSync(BACKUP_DIR, { recursive: true });
         }
 
-        // Load config from disk (or create defaults)
-        this._loadConfig();
+        // Load config from DB/disk (or create defaults)
+        await this._loadConfig();
 
         // Ensure BackupLog table exists
         await this._ensureTable();
@@ -221,31 +221,64 @@ class BackupService {
 
     // ==================== CONFIG ====================
 
-    _loadConfig() {
+    async _loadConfig() {
+        // Try DB first (survives Railway deploys), then disk fallback
+        try {
+            const AppConfig = require('../models/AppConfig');
+            await AppConfig.sync({ alter: false });
+            const row = await AppConfig.findOne({ where: { key: 'backup_config' } });
+            if (row && row.value) {
+                const saved = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+                this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) } };
+                logger.info('Backup config loaded from database', { context: 'BackupService' });
+                return;
+            }
+        } catch (err) {
+            logger.warn(`DB config load failed, trying disk: ${err.message}`, { context: 'BackupService' });
+        }
+
+        // Disk fallback
         try {
             if (fs.existsSync(CONFIG_FILE)) {
                 const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
                 const saved = JSON.parse(raw);
-                // Merge with defaults so new keys are always present
                 this.config = { ...DEFAULT_CONFIG, ...saved, retention: { ...DEFAULT_CONFIG.retention, ...(saved.retention || {}) } };
                 logger.info('Backup config loaded from disk', { context: 'BackupService' });
-            } else {
-                this.config = { ...DEFAULT_CONFIG };
-                this._saveConfig(); // Write defaults to disk
-                logger.info('Backup config initialized with defaults', { context: 'BackupService' });
+                // Migrate to DB
+                this._saveConfigToDB();
+                return;
             }
         } catch (err) {
-            logger.warn(`Failed to load backup config, using defaults: ${err.message}`, { context: 'BackupService' });
-            this.config = { ...DEFAULT_CONFIG };
+            logger.warn(`Disk config load failed: ${err.message}`, { context: 'BackupService' });
+        }
+
+        // Defaults
+        this.config = { ...DEFAULT_CONFIG };
+        this._saveConfig();
+        logger.info('Backup config initialized with defaults', { context: 'BackupService' });
+    }
+
+    async _saveConfig() {
+        // Save to DB (primary) and disk (fallback)
+        await this._saveConfigToDB();
+        this._saveConfigToDisk();
+    }
+
+    async _saveConfigToDB() {
+        try {
+            const AppConfig = require('../models/AppConfig');
+            await AppConfig.upsert({ key: 'backup_config', value: this.config });
+        } catch (err) {
+            logger.warn(`Failed to save backup config to DB: ${err.message}`, { context: 'BackupService' });
         }
     }
 
-    _saveConfig() {
+    _saveConfigToDisk() {
         try {
             if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(this.config, null, 2));
         } catch (err) {
-            logger.logError(err, { context: 'BackupService', action: 'saveConfig' });
+            // Disk write failures are non-critical (Railway ephemeral fs)
         }
     }
 
@@ -253,7 +286,7 @@ class BackupService {
         return { ...this.config };
     }
 
-    updateConfig(newConfig) {
+    async updateConfig(newConfig) {
         // Validate and merge
         if (typeof newConfig.enabled === 'boolean') this.config.enabled = newConfig.enabled;
 
@@ -282,7 +315,7 @@ class BackupService {
             this.config.emailCc = newConfig.emailCc.trim();
         }
 
-        this._saveConfig();
+        await this._saveConfig();
         logger.info('Backup config updated', { context: 'BackupService', config: this.config });
         return this.config;
     }
