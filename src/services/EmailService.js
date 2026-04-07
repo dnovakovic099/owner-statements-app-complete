@@ -1255,7 +1255,13 @@ This is an auto-generated email. If you have any questions or need clarification
                 const req = http.get(downloadUrl, options, (response) => {
                     // Check if response is successful
                     if (response.statusCode !== 200) {
-                        reject(new Error(`Download failed with status ${response.statusCode}`));
+                        let body = '';
+                        response.on('data', chunk => body += chunk);
+                        response.on('end', () => {
+                            const detail = body ? body.substring(0, 200) : 'no response body';
+                            logger.warn(`PDF download failed for statement ${statementId}: HTTP ${response.statusCode} — ${detail}`, { context: 'EmailService', action: 'generateStatementPdf' });
+                            reject(new Error(`Download failed with status ${response.statusCode}: ${detail}`));
+                        });
                         return;
                     }
 

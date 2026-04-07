@@ -52,10 +52,18 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
 
   // Progress tracking for multi-property generation
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
+  const [generationElapsed, setGenerationElapsed] = useState(0);
 
   // Groups state
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+
+  // Elapsed time counter during generation
+  useEffect(() => {
+    if (!isGenerating) { setGenerationElapsed(0); return; }
+    const timer = setInterval(() => setGenerationElapsed(prev => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isGenerating]);
 
   // Offboarded section toggle - auto-expand when searching
   const [showOffboarded, setShowOffboarded] = useState(false);
@@ -348,8 +356,11 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setGenerationProgress({ current: 0, total: 0 });
       setIsGenerating(false);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating statement:', error);
+      const serverMsg = error?.response?.data?.error;
+      const detail = serverMsg || (error?.code === 'ECONNABORTED' ? 'Request timed out — try fewer properties or a shorter date range' : error?.message || 'Unknown error');
+      showToast(`Generation failed: ${detail}`, 'error');
       setGenerationProgress({ current: 0, total: 0 });
       setIsGenerating(false);
     }
@@ -1137,6 +1148,16 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
               </>
             ) : (
               <p className="text-sm text-gray-600">This may take a few moments</p>
+            )}
+            {generationElapsed > 0 && (
+              <p className="text-xs text-gray-400 mt-3">
+                {Math.floor(generationElapsed / 60)}:{String(generationElapsed % 60).padStart(2, '0')} elapsed
+              </p>
+            )}
+            {generationElapsed > 120 && (
+              <p className="text-xs text-orange-500 mt-1">
+                Taking longer than usual — combined statements with many properties can take several minutes
+              </p>
             )}
           </div>
         )}
