@@ -1194,8 +1194,8 @@ app.set('sseManager', sseManager);
 // Analytics - Any authenticated user can view
 app.use('/api/analytics', authenticate, require('./routes/analytics'));
 
-// Analytics Events - Frontend usage tracking (POST: any user, GET /summary: admin-only via router)
-app.use('/api/analytics-events', authenticate, require('./routes/analytics-events'));
+// Analytics Events - Frontend usage tracking (no auth on POST since sendBeacon can't set headers; GET /summary is admin-only via router)
+app.use('/api/analytics-events', require('./routes/analytics-events'));
 
 // Application Metrics - Admin only
 app.get('/api/metrics', authenticate, requireAdmin, (req, res) => {

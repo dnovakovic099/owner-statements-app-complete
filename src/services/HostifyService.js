@@ -40,23 +40,44 @@ class HostifyService {
         // Global concurrency limiter — ensures the ENTIRE app never exceeds this
         // many concurrent Hostify API calls, regardless of how many statements
         // are generating simultaneously
-        this._maxConcurrent = 10;
+        this._maxConcurrent = 5;
+        this._defaultMaxConcurrent = 5;
         this._activeRequests = 0;
         this._requestQueue = [];
+        this._lastRequestTime = 0;
+        this._minRequestSpacing = 100; // ms between requests to smooth traffic
+        this._rateLimitCooldownUntil = 0; // timestamp: global pause after 429
     }
 
     /**
      * Acquire a slot from the global concurrency limiter.
      * If all slots are in use, waits until one frees up.
+     * Also enforces minimum spacing between requests and rate-limit cooldowns.
      */
-    _acquireSlot() {
-        if (this._activeRequests < this._maxConcurrent) {
-            this._activeRequests++;
-            return Promise.resolve();
+    async _acquireSlot() {
+        // If we're in a rate-limit cooldown, wait it out
+        const now = Date.now();
+        if (now < this._rateLimitCooldownUntil) {
+            const cooldownMs = this._rateLimitCooldownUntil - now;
+            console.log(`[HOSTIFY] Rate-limit cooldown: waiting ${(cooldownMs / 1000).toFixed(1)}s before next request`);
+            await new Promise(resolve => setTimeout(resolve, cooldownMs));
         }
-        return new Promise(resolve => {
-            this._requestQueue.push(resolve);
-        });
+
+        // Wait for a free slot
+        if (this._activeRequests >= this._maxConcurrent) {
+            await new Promise(resolve => {
+                this._requestQueue.push(resolve);
+            });
+        } else {
+            this._activeRequests++;
+        }
+
+        // Enforce minimum spacing between requests to smooth traffic
+        const elapsed = Date.now() - this._lastRequestTime;
+        if (elapsed < this._minRequestSpacing) {
+            await new Promise(resolve => setTimeout(resolve, this._minRequestSpacing - elapsed));
+        }
+        this._lastRequestTime = Date.now();
     }
 
     /**
@@ -297,6 +318,10 @@ class HostifyService {
                     response = await axios.post(`${this.baseURL}${endpoint}`, params, config);
                 }
 
+                // Successful request — gradually restore concurrency if it was reduced
+                if (this._maxConcurrent < this._defaultMaxConcurrent) {
+                    this._maxConcurrent = Math.min(this._maxConcurrent + 1, this._defaultMaxConcurrent);
+                }
                 return response.data;
             } catch (error) {
                 lastError = error;
@@ -323,9 +348,20 @@ class HostifyService {
 
                 // If we have more retries left, wait and retry
                 if (attempt < maxRetries) {
-                    // Use longer backoff for rate limits (3s, 6s, 9s) vs normal errors (1s, 2s, 3s)
-                    const delay = isRateLimit ? 3000 * attempt : 1000 * attempt;
+                    // Use longer backoff for rate limits (5s, 15s, 30s) vs normal errors (1s, 2s, 3s)
+                    const delay = isRateLimit ? 5000 * attempt * attempt : 1000 * attempt;
                     console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${isRateLimit ? '429 RATE LIMITED' : error.message} (waiting ${delay}ms)`);
+
+                    if (isRateLimit) {
+                        // Adaptive throttling: set a global cooldown so other requests also pause
+                        this._rateLimitCooldownUntil = Math.max(this._rateLimitCooldownUntil, Date.now() + delay);
+                        // Temporarily reduce concurrency on first 429
+                        if (this._maxConcurrent > 2) {
+                            this._maxConcurrent = 2;
+                            console.log(`[HOSTIFY] Reduced concurrency to ${this._maxConcurrent} due to rate limiting`);
+                        }
+                    }
+
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -542,7 +578,7 @@ class HostifyService {
         const reservations = response.result || [];
 
         // Fetch detailed financial data for each reservation (in parallel batches)
-        const batchSize = 20; // Reduced to avoid API rate limits
+        const batchSize = 5; // Conservative to avoid API rate limits
         const enrichedReservations = [];
 
         for (let i = 0; i < reservations.length; i += batchSize) {
@@ -550,7 +586,7 @@ class HostifyService {
             const detailedBatch = await Promise.all(
                 batch.map(async (res) => {
                     try {
-                        const details = await this.getReservationDetails(res.hostifyId);
+                        const details = await this.getReservationDetails(res.hostifyId, { skipGuestLookup: true });
                         if (details.success && details.reservation) {
                             // Re-transform with full financial details
                             return this.transformReservation(details.reservation);
@@ -605,7 +641,7 @@ class HostifyService {
         // Step 1: Fetch ALL reservations with PARALLEL pagination (much faster!)
         let allRawReservations = [];
         const perPage = 100;
-        const parallelBatchSize = 20; // Fetch 20 pages at a time (2x faster than 10)
+        const parallelBatchSize = 5; // Fetch 5 pages at a time (conservative to avoid 429s)
 
         console.log('[BULK-FETCH] Step 1: Fetching all reservations with PARALLEL pagination...');
 
@@ -681,7 +717,7 @@ class HostifyService {
         const parentListingIds = allListings.map(l => parseInt(l.id));
 
         // Fetch children for all listings in parallel batches
-        const batchSize = 40;
+        const batchSize = 5;
         for (let i = 0; i < parentListingIds.length; i += batchSize) {
             const batch = parentListingIds.slice(i, i + batchSize);
             const childResults = await Promise.all(
@@ -1002,7 +1038,9 @@ class HostifyService {
     }
 
     // Get individual reservation details with fees breakdown (with caching)
-    async getReservationDetails(reservationId) {
+    // skipGuestLookup: when true, skips the extra /guests/{id} API call (used during
+    // fee enrichment where guest name is already available from the list API)
+    async getReservationDetails(reservationId, { skipGuestLookup = false } = {}) {
         // Check cache first
         const cached = this._feeDetailsCache.get(reservationId);
         if (cached && (Date.now() - cached.time) < this._feeDetailsCacheTTL) {
@@ -1012,7 +1050,8 @@ class HostifyService {
         const result = await this.makeRequest(`/reservations/${reservationId}`, { fees: 1 });
 
         // Individual reservation endpoint doesn't include guest name - fetch from /guests/{id}
-        if (result.success && result.reservation && result.reservation.guest_id) {
+        // Skip this during fee enrichment since guest name is already known from list API
+        if (!skipGuestLookup && result.success && result.reservation && result.reservation.guest_id) {
             const res = result.reservation;
             const hasGuestName = res.guestName || res.guest_name || res.guest?.name ||
                 res.guest?.first_name || res.guestFirstName;
@@ -1195,6 +1234,7 @@ class HostifyService {
         let cleaningAndOtherFees = 0;
         let resortFee = 0;
 
+        let hasFeeArrayData = false; // true if fees came from detailed array (no re-fetch needed)
         const feesArray = hostifyReservation.fees?.fees || hostifyReservation.fees;
         if (Array.isArray(feesArray) && feesArray.length > 0) {
             // Use calculateFeesFromArray to extract fees from detailed array
@@ -1202,6 +1242,7 @@ class HostifyService {
             cleaningFee = feeCalc.cleaningFee;
             cleaningAndOtherFees = feeCalc.totalFees;
             resortFee = feeCalc.resortFee || 0;
+            hasFeeArrayData = true;
 
             if (feeCalc.otherFees > 0) {
                 console.log(`[FEE-ARRAY] ${guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${cleaningAndOtherFees}`);
@@ -1238,7 +1279,8 @@ class HostifyService {
             // Legacy fields for compatibility
             grossAmount: clientRevenue,
             hostPayoutAmount: clientPayout,
-            hasDetailedFinance: true
+            hasDetailedFinance: true,
+            hasFeeArrayData: hasFeeArrayData // true = fees came from detailed array, no re-fetch needed
         };
     }
 
@@ -1505,32 +1547,59 @@ class HostifyService {
                 }
             });
 
-            // Enrich with detailed financial data (pets_fee, extras, etc.)
+            // Only enrich reservations that did NOT get fee data from the list API (fees=1).
+            // Reservations with hasFeeArrayData=true already have accurate fees from transformReservation().
             const filteredReservations = Array.from(allReservations.values());
-            console.log(`[OVERLAP] Enriching ${filteredReservations.length} reservations with detailed financial data...`);
+            const needsEnrichment = filteredReservations.filter(r => !r.hasFeeArrayData);
+            const alreadyComplete = filteredReservations.filter(r => r.hasFeeArrayData);
 
-            const batchSize = 100; // Increased for better performance with caching
-            const enrichedReservations = [];
+            console.log(`[OVERLAP] ${alreadyComplete.length}/${filteredReservations.length} reservations already have fee data from list API — skipping enrichment for those`);
 
-            for (let i = 0; i < filteredReservations.length; i += batchSize) {
-                const batch = filteredReservations.slice(i, i + batchSize);
-                const detailedBatch = await Promise.all(
-                    batch.map(async (res) => {
-                        try {
-                            const details = await this.getReservationDetails(res.hostifyId);
+            const batchSize = 10;
+            const enrichedFromApi = [];
 
-                            if (details.success && details.reservation) {
-                                const detailData = details.reservation;
+            if (needsEnrichment.length > 0) {
+                console.log(`[OVERLAP] Enriching ${needsEnrichment.length} reservations that need detailed fee data...`);
 
-                                // Use fees array if available (from ?fees=1 parameter)
-                                if (details.fees && Array.isArray(details.fees)) {
-                                    const feeCalc = this.calculateFeesFromArray(details.fees);
-                                    const cleaningFee = feeCalc.cleaningFee;
-                                    const newCleaningAndOtherFees = feeCalc.totalFees;
+                for (let i = 0; i < needsEnrichment.length; i += batchSize) {
+                    const batch = needsEnrichment.slice(i, i + batchSize);
+                    const detailedBatch = await Promise.all(
+                        batch.map(async (res) => {
+                            try {
+                                const details = await this.getReservationDetails(res.hostifyId, { skipGuestLookup: true });
 
-                                    // Log fees from API
-                                    if (feeCalc.otherFees > 0) {
-                                        console.log(`[FEE-API] ${res.guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${newCleaningAndOtherFees}`);
+                                if (details.success && details.reservation) {
+                                    const detailData = details.reservation;
+
+                                    if (details.fees && Array.isArray(details.fees)) {
+                                        const feeCalc = this.calculateFeesFromArray(details.fees);
+                                        const cleaningFee = feeCalc.cleaningFee;
+                                        const newCleaningAndOtherFees = feeCalc.totalFees;
+
+                                        if (feeCalc.otherFees > 0) {
+                                            console.log(`[FEE-API] ${res.guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${newCleaningAndOtherFees}`);
+                                        }
+
+                                        return {
+                                            ...res,
+                                            cleaningFee: cleaningFee,
+                                            cleaningAndOtherFees: newCleaningAndOtherFees,
+                                            clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                            resortFee: feeCalc.resortFee || 0
+                                        };
+                                    }
+
+                                    const resPetFee = parseFloat(detailData.pets_fee || 0);
+                                    const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
+                                    const petsFee = resPetFee || listingPetFee;
+                                    const extrasPrice = parseFloat(detailData.extras_price || 0);
+                                    const addonsPrice = parseFloat(detailData.addons_price || 0);
+                                    const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
+                                    const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
+                                    const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
+
+                                    if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                        console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                                     }
 
                                     return {
@@ -1538,43 +1607,22 @@ class HostifyService {
                                         cleaningFee: cleaningFee,
                                         cleaningAndOtherFees: newCleaningAndOtherFees,
                                         clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
-                                        resortFee: feeCalc.resortFee || 0
+                                        resortFee: 0
                                     };
                                 }
-
-                                // Fallback to old method if fees array not available
-                                const resPetFee = parseFloat(detailData.pets_fee || 0);
-                                const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
-                                const petsFee = resPetFee || listingPetFee;
-                                const extrasPrice = parseFloat(detailData.extras_price || 0);
-                                const addonsPrice = parseFloat(detailData.addons_price || 0);
-                                const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
-                                const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
-
-                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
-                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
-                                }
-
-                                return {
-                                    ...res,
-                                    cleaningFee: cleaningFee,
-                                    cleaningAndOtherFees: newCleaningAndOtherFees,
-                                    clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
-                                    resortFee: 0
-                                };
+                                return res;
+                            } catch (error) {
+                                console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
+                                return res;
                             }
-                            return res;
-                        } catch (error) {
-                            console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
-                            return res;
-                        }
-                    })
-                );
-                enrichedReservations.push(...detailedBatch);
+                        })
+                    );
+                    enrichedFromApi.push(...detailedBatch);
+                }
             }
 
-            console.log(`[OVERLAP] Enriched ${enrichedReservations.length} reservations`);
+            const enrichedReservations = [...alreadyComplete, ...enrichedFromApi];
+            console.log(`[OVERLAP] Total: ${enrichedReservations.length} reservations (${alreadyComplete.length} from list API + ${enrichedFromApi.length} enriched)`);
             // Convert any non-USD reservations to USD
             return await this.convertReservationsBatchToUSD(enrichedReservations);
         } catch (error) {
@@ -1721,31 +1769,60 @@ class HostifyService {
             return res;
         });
 
-        // Fetch detailed financial data for filtered reservations only (pets_fee, extras, etc.)
-        const batchSize = 20; // Reduced to avoid API rate limits
-        const enrichedReservations = [];
+        // Only enrich reservations that did NOT get fee data from the list API (fees=1).
+        // Reservations with hasFeeArrayData=true already have accurate fees from transformReservation().
+        const needsEnrichment = allReservations.filter(r => !r.hasFeeArrayData);
+        const alreadyComplete = allReservations.filter(r => r.hasFeeArrayData);
 
-        console.log(`[FINANCE] Enriching ${allReservations.length} reservations with detailed financial data...`);
+        console.log(`[FINANCE] ${alreadyComplete.length}/${allReservations.length} reservations already have fee data from list API — skipping enrichment for those`);
 
-        for (let i = 0; i < allReservations.length; i += batchSize) {
-            const batch = allReservations.slice(i, i + batchSize);
-            const detailedBatch = await Promise.all(
-                batch.map(async (res) => {
-                    try {
-                        const details = await this.getReservationDetails(res.hostifyId);
+        const batchSize = 10;
+        const enrichedFromApi = [];
 
-                        if (details.success && details.reservation) {
-                            const detailData = details.reservation;
+        if (needsEnrichment.length > 0) {
+            console.log(`[FINANCE] Enriching ${needsEnrichment.length} reservations that need detailed fee data...`);
 
-                            // Use fees array if available (from ?fees=1 parameter)
-                            if (details.fees && Array.isArray(details.fees)) {
-                                const feeCalc = this.calculateFeesFromArray(details.fees);
-                                const cleaningFee = feeCalc.cleaningFee;
-                                const newCleaningAndOtherFees = feeCalc.totalFees;
+            for (let i = 0; i < needsEnrichment.length; i += batchSize) {
+                const batch = needsEnrichment.slice(i, i + batchSize);
+                const detailedBatch = await Promise.all(
+                    batch.map(async (res) => {
+                        try {
+                            const details = await this.getReservationDetails(res.hostifyId, { skipGuestLookup: true });
 
-                                // Log fees from API
-                                if (feeCalc.otherFees > 0) {
-                                    console.log(`[FEE-API] ${res.guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${newCleaningAndOtherFees}`);
+                            if (details.success && details.reservation) {
+                                const detailData = details.reservation;
+
+                                // Use fees array if available (from ?fees=1 parameter)
+                                if (details.fees && Array.isArray(details.fees)) {
+                                    const feeCalc = this.calculateFeesFromArray(details.fees);
+                                    const cleaningFee = feeCalc.cleaningFee;
+                                    const newCleaningAndOtherFees = feeCalc.totalFees;
+
+                                    if (feeCalc.otherFees > 0) {
+                                        console.log(`[FEE-API] ${res.guestName}: cleaning=${cleaningFee}, otherFees=${feeCalc.otherFees} => TOTAL=${newCleaningAndOtherFees}`);
+                                    }
+
+                                    return {
+                                        ...res,
+                                        cleaningFee: cleaningFee,
+                                        cleaningAndOtherFees: newCleaningAndOtherFees,
+                                        clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
+                                        resortFee: feeCalc.resortFee || 0
+                                    };
+                                }
+
+                                // Fallback to old method if fees array not available
+                                const resPetFee = parseFloat(detailData.pets_fee || 0);
+                                const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
+                                const petsFee = resPetFee || listingPetFee;
+                                const extrasPrice = parseFloat(detailData.extras_price || 0);
+                                const addonsPrice = parseFloat(detailData.addons_price || 0);
+                                const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
+                                const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
+                                const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
+
+                                if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
+                                    console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
                                 }
 
                                 return {
@@ -1753,43 +1830,22 @@ class HostifyService {
                                     cleaningFee: cleaningFee,
                                     cleaningAndOtherFees: newCleaningAndOtherFees,
                                     clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
-                                    resortFee: feeCalc.resortFee || 0
+                                    resortFee: 0
                                 };
                             }
-
-                            // Fallback to old method if fees array not available
-                            const resPetFee = parseFloat(detailData.pets_fee || 0);
-                            const listingPetFee = resPetFee === 0 ? await this.getListingPetFee(res.propertyId) : 0;
-                            const petsFee = resPetFee || listingPetFee;
-                            const extrasPrice = parseFloat(detailData.extras_price || 0);
-                            const addonsPrice = parseFloat(detailData.addons_price || 0);
-                            const extraGuestFee = parseFloat(detailData.extra_guest_price || detailData.extra_person || 0);
-                            const cleaningFee = parseFloat(detailData.cleaning_fee || res.cleaningFee || 0);
-                            const newCleaningAndOtherFees = cleaningFee + petsFee + extrasPrice + addonsPrice + extraGuestFee;
-
-                            if (petsFee > 0 || extrasPrice > 0 || addonsPrice > 0 || extraGuestFee > 0) {
-                                console.log(`[FEE-FALLBACK] ${res.guestName}: cleaning=${cleaningFee}, pets=${petsFee}, extras=${extrasPrice}, addons=${addonsPrice}, extraGuest=${extraGuestFee} => TOTAL=${newCleaningAndOtherFees}`);
-                            }
-
-                            return {
-                                ...res,
-                                cleaningFee: cleaningFee,
-                                cleaningAndOtherFees: newCleaningAndOtherFees,
-                                clientRevenue: res.baseRate + newCleaningAndOtherFees - res.platformFees,
-                                resortFee: 0
-                            };
+                            return res;
+                        } catch (error) {
+                            console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
+                            return res;
                         }
-                        return res;
-                    } catch (error) {
-                        console.log(`[WARN] Failed to fetch details for ${res.hostifyId}: ${error.message}`);
-                        return res;
-                    }
-                })
-            );
-            enrichedReservations.push(...detailedBatch);
+                    })
+                );
+                enrichedFromApi.push(...detailedBatch);
+            }
         }
 
-        console.log(`[FINANCE] Enriched ${enrichedReservations.length} reservations`);
+        const enrichedReservations = [...alreadyComplete, ...enrichedFromApi];
+        console.log(`[FINANCE] Total: ${enrichedReservations.length} reservations (${alreadyComplete.length} from list API + ${enrichedFromApi.length} enriched)`);
         // Convert any non-USD reservations to USD
         return await this.convertReservationsBatchToUSD(enrichedReservations);
     }
