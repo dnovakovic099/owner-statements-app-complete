@@ -5,28 +5,29 @@ class HostifyService {
         this.baseURL = process.env.HOSTIFY_API_URL || 'https://api-rms.hostify.com';
         this.apiKey = process.env.HOSTIFY_API_KEY || 'aOGSVrcPGOvvSsGD4idPKvxKaD0HGaAW';
 
-        // AGGRESSIVE CACHING
+        // AGGRESSIVE CACHING — longer TTLs reduce redundant API calls across
+        // back-to-back statement generations
         this._reservationsCache = new Map(); // key: "startDate|endDate|listingId|dateType"
-        this._reservationsCacheTTL = 2 * 60 * 1000; // 2 minutes
+        this._reservationsCacheTTL = 5 * 60 * 1000; // 5 minutes (up from 2)
         this._propertiesCache = null;
         this._propertiesCacheTime = null;
-        this._propertiesCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._propertiesCacheTTL = 30 * 60 * 1000; // 30 minutes (up from 10) — listings rarely change
         this._usersCache = null;
         this._usersCacheTime = null;
-        this._usersCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._usersCacheTTL = 30 * 60 * 1000; // 30 minutes (up from 10)
 
         // Fee details cache - stores fee details for individual reservations
         this._feeDetailsCache = new Map(); // key: reservationId, value: { fees, time }
-        this._feeDetailsCacheTTL = 5 * 60 * 1000; // 5 minutes
+        this._feeDetailsCacheTTL = 15 * 60 * 1000; // 15 minutes (up from 5) — fees don't change mid-session
 
         // Child listings cache - stores child listing IDs for parent listings
         this._childListingsCache = new Map(); // key: parentId, value: { childIds, time }
-        this._childListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._childListingsCacheTTL = 30 * 60 * 1000; // 30 minutes (up from 10) — parent-child rarely changes
 
         // All listings cache (without service_pms filter) - for child lookup by parent_id
         this._allListingsCache = null;
         this._allListingsCacheTime = null;
-        this._allListingsCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._allListingsCacheTTL = 30 * 60 * 1000; // 30 minutes (up from 10)
         this._allListingsFetchPromise = null; // Lock for concurrent fetches
 
         // Exchange rate cache (for converting non-USD currencies)
@@ -35,7 +36,7 @@ class HostifyService {
 
         // Offboarded listing cache - stores service_pms status for listings
         this._offboardedCache = new Map(); // key: listingId, value: { isOffboarded, time }
-        this._offboardedCacheTTL = 10 * 60 * 1000; // 10 minutes
+        this._offboardedCacheTTL = 30 * 60 * 1000; // 30 minutes (up from 10)
 
         // Global concurrency limiter — ensures the ENTIRE app never exceeds this
         // many concurrent Hostify API calls, regardless of how many statements
@@ -476,7 +477,7 @@ class HostifyService {
         console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings (max 3 concurrent)...`);
 
         // Limit concurrency to 3 to avoid Hostify 429 rate limits
-        const CONCURRENCY = 3;
+        const CONCURRENCY = 2; // Reduced from 3 — each listing may need multiple pages
         const results = [];
         for (let i = 0; i < listingIds.length; i += CONCURRENCY) {
             const batch = listingIds.slice(i, i + CONCURRENCY);
@@ -1439,7 +1440,7 @@ class HostifyService {
 
                     if (firstRes.success && firstRes.reservations?.length > 0) {
                         const total = firstRes.total || firstRes.reservations.length;
-                        const totalPages = Math.ceil(total / 100); // Fetch all pages dynamically
+                        const totalPages = Math.min(Math.ceil(total / 100), 15); // Capped at 15 — child hunting doesn't need all pages
 
                         // Fetch all pages in parallel
                         const pageNumbers = [];
@@ -1695,9 +1696,9 @@ class HostifyService {
                 const firstRes = await this.getReservations(fromDate, toDate, 1, 100, null, dateType);
                 if (firstRes.success && firstRes.reservations?.length > 0) {
                     const total = firstRes.total || firstRes.reservations.length;
-                    const totalPages = Math.min(Math.ceil(total / 100), 50);
+                    const totalPages = Math.min(Math.ceil(total / 100), 15); // Capped at 15 (down from 50) — child hunting doesn't need all pages
 
-                    // Fetch all pages in parallel (skip page 1 since we already have it)
+                    // Fetch remaining pages (skip page 1 since we already have it)
                     const pageNumbers = [];
                     for (let p = 2; p <= totalPages; p++) {
                         pageNumbers.push(p);
