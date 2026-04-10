@@ -1386,133 +1386,127 @@ class HostifyService {
             const lookforwardDate = new Date(toDate);
             lookforwardDate.setDate(lookforwardDate.getDate() + 365);
 
-            // Fetch reservations for all expanded listings (parents + children)
-            // Note: Hostify listing_id filter returns direct matches only, so we need both
-            let reservationsList = await this.getReservationsForListings(
-                expandedListingIds,
-                lookbackDate.toISOString().split('T')[0],
-                lookforwardDate.toISOString().split('T')[0],
-                'checkIn'
-            );
+            // Fetch reservations — strategy depends on property count
+            const startDateStr = lookbackDate.toISOString().split('T')[0];
+            const endDateStr = lookforwardDate.toISOString().split('T')[0];
+            let reservationsList;
 
-            // Also fetch ALL reservations to catch child reservations on inactive/old listings
             if (baseListingIds.length > 0 && baseListingIds.length <= 10) {
-                try {
-                    const baseIdSet = new Set(baseListingIds.map(id => String(id)));
-                    const existingIds = new Set(reservationsList.map(r => r.hostifyId));
-                    const startDateStr = lookbackDate.toISOString().split('T')[0];
-                    const endDateStr = lookforwardDate.toISOString().split('T')[0];
+                // OPTIMIZED: Single bulk fetch for small property counts.
+                // Instead of per-listing fetch + child hunting (35+ calls), do one paginated
+                // fetch of ALL reservations with per_page=500 and filter client-side (1-5 calls).
+                const expandedIdSet = new Set(expandedListingIds.map(id => String(id)));
+                const baseIdSet = new Set(baseListingIds.map(id => String(id)));
 
-                    // Build a map of listing_id -> parent_id from all listings (including inactive)
-                    const allListings = await this._getAllListingsForChildLookup();
-                    const listingParentMap = new Map();
-                    allListings.forEach(l => {
-                        if (l.parent_id) {
-                            listingParentMap.set(String(l.id), String(l.parent_id));
-                        }
-                    });
+                // Build listing->parent map for matching archived/inactive children
+                const listingParentMap = new Map();
+                const allListingsData = await this._getAllListingsForChildLookup();
+                allListingsData.forEach(l => {
+                    if (l.parent_id) {
+                        listingParentMap.set(String(l.id), String(l.parent_id));
+                    }
+                });
 
-                    // Helper to check if reservation belongs to our listings
-                    const belongsToOurListings = (r) => {
-                        const listingId = String(r.listing_id || '');
+                const BULK_PER_PAGE = 500;
+                const BULK_MAX_PAGES = 30; // Safety net: 30 × 500 = 15K (or 30 × 100 = 3K if API caps); covers ±365 day window
+                let allRawReservations = [];
+                let bulkPage = 1;
+                let bulkHasMore = true;
+
+                while (bulkHasMore && bulkPage <= BULK_MAX_PAGES) {
+                    const response = await this.getReservations(startDateStr, endDateStr, bulkPage, BULK_PER_PAGE, null, 'checkIn');
+                    if (response.success && response.reservations?.length > 0) {
+                        allRawReservations = allRawReservations.concat(response.reservations);
+                        // Use API-reported total as source of truth — works whether or not per_page=500 is honored
+                        const totalAvailable = response.total || 0;
+                        bulkHasMore = totalAvailable > 0
+                            ? totalAvailable > allRawReservations.length
+                            : response.reservations.length > 0; // fallback: continue until empty
+                        bulkPage++;
+                    } else {
+                        bulkHasMore = false;
+                    }
+                }
+
+                console.log(`[OVERLAP-BULK] Fetched ${allRawReservations.length} total reservations in ${bulkPage - 1} page(s)`);
+
+                // Resolve unknown/archived listing parent IDs (rare edge case)
+                const unknownListingIds = new Set();
+                allRawReservations.forEach(r => {
+                    const listingId = String(r.listing_id || '');
+                    if (listingId && !listingParentMap.has(listingId) && !expandedIdSet.has(listingId) && !baseIdSet.has(listingId)) {
+                        // Only fetch parent for listings that LOOK like potential matches
+                        // (parent_listing_id matches our base set)
                         const parentListingId = String(r.parent_listing_id || '');
-                        // Also check if the listing's parent_id matches our base IDs
-                        const listingsParent = listingParentMap.get(listingId) || '';
-                        // Match if listing_id, parent_listing_id, or listing's parent_id is one of our base parents
-                        return (baseIdSet.has(listingId) || baseIdSet.has(parentListingId) || baseIdSet.has(listingsParent)) && !existingIds.has(String(r.id));
-                    };
-
-                    // For archived listings not in allListings, fetch their parent_id directly
-                    const fetchListingParent = async (listingId) => {
-                        try {
-                            const response = await this.makeRequest(`/listings/${listingId}`);
-                            if (response.success && response.listing) {
-                                return String(response.listing.parent_id || '');
-                            }
-                        } catch (e) {
-                            console.error(`[OVERLAP-PARENT] Failed to fetch parent for archived listing ${listingId}: ${e.message}`);
+                        if (baseIdSet.has(parentListingId)) {
+                            // Already has parent_listing_id match — no fetch needed
+                            return;
                         }
-                        return '';
-                    };
+                        unknownListingIds.add(listingId);
+                    }
+                });
 
-                    // First call to get total count
-                    const firstRes = await this.getReservations(startDateStr, endDateStr, 1, 100, null, 'checkIn');
-
-                    if (firstRes.success && firstRes.reservations?.length > 0) {
-                        const total = firstRes.total || firstRes.reservations.length;
-                        const totalPages = Math.min(Math.ceil(total / 100), 15); // Capped at 15 — child hunting doesn't need all pages
-
-                        // Fetch all pages in parallel
-                        const pageNumbers = [];
-                        for (let p = 2; p <= totalPages; p++) {
-                            pageNumbers.push(p);
-                        }
-
-                        // Collect all reservations first (throttled to avoid 429s)
-                        const OVERLAP_PAGE_CONCURRENCY = 5;
-                        const allPageResults = [firstRes.reservations];
-                        for (let i = 0; i < pageNumbers.length; i += OVERLAP_PAGE_CONCURRENCY) {
-                            const pageBatch = pageNumbers.slice(i, i + OVERLAP_PAGE_CONCURRENCY);
-                            const batchResults = await Promise.all(
-                                pageBatch.map(async (pageNum) => {
-                                    try {
-                                        const res = await this.getReservations(startDateStr, endDateStr, pageNum, 100, null, 'checkIn');
-                                        return res.success && res.reservations?.length > 0 ? res.reservations : [];
-                                    } catch (err) {
-                                        console.error(`[OVERLAP-CHILD] Page ${pageNum} fetch failed: ${err.message}`);
-                                        return [];
+                if (unknownListingIds.size > 0 && unknownListingIds.size <= 20) {
+                    const unknownList = Array.from(unknownListingIds);
+                    const UNKNOWN_CONCURRENCY = 3;
+                    for (let i = 0; i < unknownList.length; i += UNKNOWN_CONCURRENCY) {
+                        const batch = unknownList.slice(i, i + UNKNOWN_CONCURRENCY);
+                        const batchResults = await Promise.all(
+                            batch.map(async (listingId) => {
+                                try {
+                                    const response = await this.makeRequest(`/listings/${listingId}`);
+                                    if (response.success && response.listing) {
+                                        return { listingId, parentId: String(response.listing.parent_id || '') };
                                     }
-                                })
-                            );
-                            allPageResults.push(...batchResults);
-                        }
-                        const allReservationsRaw = allPageResults.flat();
-
-                        // Find reservations on unknown listings (archived) and fetch their parent_id
-                        const unknownListingIds = new Set();
-                        allReservationsRaw.forEach(r => {
-                            const listingId = String(r.listing_id || '');
-                            if (listingId && !listingParentMap.has(listingId) && !baseIdSet.has(listingId)) {
-                                unknownListingIds.add(listingId);
+                                } catch (e) {
+                                    console.error(`[OVERLAP-PARENT] Failed to fetch parent for archived listing ${listingId}: ${e.message}`);
+                                }
+                                return { listingId, parentId: '' };
+                            })
+                        );
+                        batchResults.forEach(({ listingId, parentId }) => {
+                            if (parentId) {
+                                listingParentMap.set(listingId, parentId);
+                                if (baseIdSet.has(parentId)) {
+                                    childToParentMap.set(parseInt(listingId), parseInt(parentId));
+                                }
                             }
                         });
+                    }
+                }
 
-                        // Fetch parent_id for unknown (archived) listings (throttled)
-                        if (unknownListingIds.size > 0) {
-                            const unknownList = Array.from(unknownListingIds);
-                            const UNKNOWN_CONCURRENCY = 3;
-                            const unknownResults = [];
-                            for (let i = 0; i < unknownList.length; i += UNKNOWN_CONCURRENCY) {
-                                const batch = unknownList.slice(i, i + UNKNOWN_CONCURRENCY);
-                                const batchResults = await Promise.all(
-                                    batch.map(async (listingId) => {
-                                        const parentId = await fetchListingParent(listingId);
-                                        return { listingId, parentId };
-                                    })
-                                );
-                                unknownResults.push(...batchResults);
-                            }
-                            unknownResults.forEach(({ listingId, parentId }) => {
-                                if (parentId) {
-                                    listingParentMap.set(listingId, parentId);
-                                    // Also add to childToParentMap so reservations get attributed correctly
-                                    if (baseIdSet.has(parentId)) {
-                                        childToParentMap.set(parseInt(listingId), parseInt(parentId));
-                                    }
-                                }
-                            });
-                        }
+                // Filter for our listings (direct, parent, or listing's parent match)
+                const matched = allRawReservations.filter(r => {
+                    const listingId = String(r.listing_id || '');
+                    const parentListingId = String(r.parent_listing_id || '');
+                    const listingsParent = listingParentMap.get(listingId) || '';
+                    return expandedIdSet.has(listingId) ||
+                           baseIdSet.has(listingId) ||
+                           baseIdSet.has(parentListingId) ||
+                           baseIdSet.has(listingsParent);
+                });
 
-                        // Now filter using updated listingParentMap
-                        const allChildRes = allReservationsRaw.filter(belongsToOurListings);
-                        if (allChildRes.length > 0) {
-                            const childReservations = allChildRes.map(r => this.transformReservation(r));
-                            reservationsList = reservationsList.concat(childReservations);
+                // Track newly-discovered children for attribution
+                matched.forEach(r => {
+                    const listingId = parseInt(r.listing_id || 0);
+                    if (listingId && !expandedIdSet.has(String(listingId)) && !baseIdSet.has(String(listingId))) {
+                        const parentListingId = String(r.parent_listing_id || '');
+                        const listingsParent = listingParentMap.get(String(listingId)) || '';
+                        const parentId = baseIdSet.has(parentListingId) ? parseInt(parentListingId) :
+                                       baseIdSet.has(listingsParent) ? parseInt(listingsParent) : null;
+                        if (parentId) {
+                            childToParentMap.set(listingId, parentId);
                         }
                     }
-                } catch (err) {
-                    console.log(`[OVERLAP-CHILD] Failed to fetch additional reservations: ${err.message}`);
-                }
+                });
+
+                reservationsList = matched.map(r => this.transformReservation(r));
+                console.log(`[OVERLAP-BULK] Matched ${reservationsList.length}/${allRawReservations.length} reservations for ${expandedListingIds.length} listing IDs`);
+            } else {
+                // For larger listing counts, use per-listing fetch (API does server-side filtering)
+                reservationsList = await this.getReservationsForListings(
+                    expandedListingIds, startDateStr, endDateStr, 'checkIn'
+                );
             }
 
             const periodStart = new Date(fromDate);
@@ -1681,69 +1675,79 @@ class HostifyService {
             console.log(`[FINANCE-EXPAND] Expanded ${baseListingIds.length} listing(s) to ${expandedListingIds.length} (including ${childToParentMap.size} children)`);
         }
 
-        // Fetch reservations for each listing in PARALLEL (much faster than fetching all and filtering)
+        // Fetch reservations — strategy depends on property count
         let allReservations = [];
-        allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
 
-        // Also fetch ALL reservations (no listing filter) to catch child reservations on inactive listings
-        // Then filter to include those with parent_id matching our base listings
         if (baseListingIds.length > 0 && baseListingIds.length <= 10) {
-            try {
-                const baseIdSet = new Set(baseListingIds.map(id => String(id)));
-                const existingIds = new Set(allReservations.map(r => r.hostifyId));
+            // OPTIMIZED: Single bulk fetch for small property counts.
+            // Instead of per-listing fetch (N calls) THEN child hunting (15+ pages),
+            // fetch ALL reservations in one paginated pass with per_page=500 and filter
+            // client-side. Reduces ~30-40 API calls down to 1-3 for typical statements.
+            const expandedIdSet = new Set(expandedListingIds.map(id => String(id)));
+            const baseIdSet = new Set(baseListingIds.map(id => String(id)));
 
-                // First call to get total count
-                const firstRes = await this.getReservations(fromDate, toDate, 1, 100, null, dateType);
-                if (firstRes.success && firstRes.reservations?.length > 0) {
-                    const total = firstRes.total || firstRes.reservations.length;
-                    const totalPages = Math.min(Math.ceil(total / 100), 15); // Capped at 15 (down from 50) — child hunting doesn't need all pages
+            // Build listing->parent map for matching archived/inactive children
+            const listingParentMap = new Map();
+            const allListingsData = await this._getAllListingsForChildLookup();
+            allListingsData.forEach(l => {
+                if (l.parent_id) {
+                    listingParentMap.set(String(l.id), String(l.parent_id));
+                }
+            });
 
-                    // Fetch remaining pages (skip page 1 since we already have it)
-                    const pageNumbers = [];
-                    for (let p = 2; p <= totalPages; p++) {
-                        pageNumbers.push(p);
-                    }
+            const BULK_PER_PAGE = 500;
+            const BULK_MAX_PAGES = 20; // Safety net: 20 × 500 = 10K reservations max (or 20 × 100 if API caps)
+            let allRawReservations = [];
+            let bulkPage = 1;
+            let bulkHasMore = true;
 
-                    // Process first page immediately
-                    const firstPageChildren = firstRes.reservations.filter(r => {
-                        const parentListingId = String(r.parent_listing_id || '');
-                        return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
-                    });
+            while (bulkHasMore && bulkPage <= BULK_MAX_PAGES) {
+                const response = await this.getReservations(fromDate, toDate, bulkPage, BULK_PER_PAGE, null, dateType);
+                if (response.success && response.reservations?.length > 0) {
+                    allRawReservations = allRawReservations.concat(response.reservations);
+                    // Use API-reported total as source of truth — works whether or not per_page=500 is honored
+                    const totalAvailable = response.total || 0;
+                    bulkHasMore = totalAvailable > 0
+                        ? totalAvailable > allRawReservations.length
+                        : response.reservations.length > 0; // fallback: continue until empty
+                    bulkPage++;
+                } else {
+                    bulkHasMore = false;
+                }
+            }
 
-                    // Fetch remaining pages with concurrency limit to avoid 429s
-                    const CHILD_CONCURRENCY = 5;
-                    const otherResults = [];
-                    for (let i = 0; i < pageNumbers.length; i += CHILD_CONCURRENCY) {
-                        const pageBatch = pageNumbers.slice(i, i + CHILD_CONCURRENCY);
-                        const batchResults = await Promise.all(
-                            pageBatch.map(async (pageNum) => {
-                            try {
-                                const res = await this.getReservations(fromDate, toDate, pageNum, 100, null, dateType);
-                                if (res.success && res.reservations?.length > 0) {
-                                    return res.reservations.filter(r => {
-                                        const parentListingId = String(r.parent_listing_id || '');
-                                        return baseIdSet.has(parentListingId) && !existingIds.has(String(r.id));
-                                    });
-                                }
-                            } catch (err) {
-                                console.error(`[FINANCE-CHILD] Page ${pageNum} fetch failed: ${err.message}`);
-                            }
-                            return [];
-                        })
-                        );
-                        otherResults.push(...batchResults);
-                    }
+            console.log(`[FINANCE-BULK] Fetched ${allRawReservations.length} total reservations in ${bulkPage - 1} page(s)`);
 
-                    // Combine all child reservations
-                    const allChildRes = [firstPageChildren, ...otherResults].flat();
-                    if (allChildRes.length > 0) {
-                        const childReservations = allChildRes.map(r => this.transformReservation(r));
-                        allReservations = allReservations.concat(childReservations);
+            // Filter for our listings: match by expanded ID, parent_listing_id, or listing's parent
+            const matched = allRawReservations.filter(r => {
+                const listingId = String(r.listing_id || '');
+                const parentListingId = String(r.parent_listing_id || '');
+                const listingsParent = listingParentMap.get(listingId) || '';
+                return expandedIdSet.has(listingId) ||
+                       baseIdSet.has(listingId) ||
+                       baseIdSet.has(parentListingId) ||
+                       baseIdSet.has(listingsParent);
+            });
+
+            // Track newly-discovered children (archived listings) for attribution
+            matched.forEach(r => {
+                const listingId = parseInt(r.listing_id || 0);
+                if (listingId && !expandedIdSet.has(String(listingId)) && !baseIdSet.has(String(listingId))) {
+                    const parentListingId = String(r.parent_listing_id || '');
+                    const listingsParent = listingParentMap.get(String(listingId)) || '';
+                    const parentId = baseIdSet.has(parentListingId) ? parseInt(parentListingId) :
+                                   baseIdSet.has(listingsParent) ? parseInt(listingsParent) : null;
+                    if (parentId) {
+                        childToParentMap.set(listingId, parentId);
                     }
                 }
-            } catch (err) {
-                console.log(`[FINANCE-CHILD] Failed to fetch additional reservations: ${err.message}`);
-            }
+            });
+
+            allReservations = matched.map(r => this.transformReservation(r));
+            console.log(`[FINANCE-BULK] Matched ${allReservations.length}/${allRawReservations.length} reservations for ${expandedListingIds.length} listing IDs`);
+        } else {
+            // For larger listing counts, use per-listing fetch (API does server-side filtering)
+            allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
         }
 
         // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
