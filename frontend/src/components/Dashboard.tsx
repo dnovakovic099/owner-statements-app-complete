@@ -1061,26 +1061,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
       return; // Don't setBulkProcessing(false) here - wait for dialog action
     } else if (action === 'export-csv') {
-      // Export selected statements to CSV
+      // Export selected statements to CSV (admin only)
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
-      // Debug: Log listings to check if internalNotes are present
-      console.log('Listings with internalNotes:', listings.filter(l => l.internalNotes).map(l => ({ id: l.id, nickname: l.nickname, internalNotes: l.internalNotes })));
-      console.log('Selected statements propertyIds:', selectedStatements.map(s => ({ id: s.id, propertyId: s.propertyId, propertyIds: s.propertyIds, propertyName: s.propertyName })));
-
-      // Build CSV content
+      // Build CSV content with comprehensive financial data
       const csvRows: string[] = [];
-      csvRows.push(['Property Name', 'Period', 'Type', 'Net Payout', 'Internal Note'].join(','));
+      csvRows.push([
+        'Property Name', 'Owner', 'Period Start', 'Period End',
+        'Calculation Type', 'Status', 'Total Revenue', 'Total Expenses',
+        'PM %', 'PM Commission', 'Tech Fees', 'Insurance Fees',
+        'Adjustments', 'Owner Payout', 'Payout Status',
+        'Reservations', 'Created', 'Internal Note'
+      ].join(','));
 
       // Helper to escape CSV values
-      const escapeCSV = (value: string | null | undefined): string => {
+      const escapeCSV = (value: string | number | null | undefined): string => {
         if (value === null || value === undefined) return '';
         const stringValue = String(value);
-        // If contains comma, quotes, or newlines, wrap in quotes and escape internal quotes
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
           return `"${stringValue.replace(/"/g, '""')}"`;
         }
         return stringValue;
+      };
+
+      const fmtMoney = (v: number | string | null | undefined): string => {
+        const n = typeof v === 'string' ? parseFloat(v) : (v || 0);
+        return n.toFixed(2);
       };
 
       // Helper to get display name for a property
@@ -1098,58 +1104,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         return listing?.internalNotes || '';
       };
 
-      // Format date
-      const formatDate = (dateStr: string): string => {
-        const [year, month, day] = dateStr.split('-').map(Number);
-        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      };
-
-      for (const statement of selectedStatements) {
-        // Get property names (all if multiple)
+      for (const s of selectedStatements) {
+        // Property names
         let propertyNames: string[] = [];
-        if (statement.propertyIds && statement.propertyIds.length > 0) {
-          propertyNames = statement.propertyIds.map(id => getPropertyDisplayName(id));
-        } else if (statement.propertyId) {
-          propertyNames = [getPropertyDisplayName(statement.propertyId)];
+        if (s.propertyIds && s.propertyIds.length > 0) {
+          propertyNames = s.propertyIds.map(id => getPropertyDisplayName(id));
+        } else if (s.propertyId) {
+          propertyNames = [getPropertyDisplayName(s.propertyId)];
         } else {
-          propertyNames = [statement.propertyName];
+          propertyNames = [s.propertyName];
         }
 
-        // Get period
-        const period = `${formatDate(statement.weekStartDate)} - ${formatDate(statement.weekEndDate)}`;
-
-        // Get type
-        const type = statement.calculationType === 'calendar' ? 'Calendar' : 'Checkout';
-
-        // Get net payout - format as currency (ensure it's a number)
-        const payoutValue = typeof statement.ownerPayout === 'string'
-          ? parseFloat(statement.ownerPayout)
-          : statement.ownerPayout;
-        const netPayout = `$${(payoutValue || 0).toFixed(2)}`;
-
-        // Get internal notes (all if multiple properties)
+        // Internal notes
         let internalNotes: string[] = [];
-        if (statement.propertyIds && statement.propertyIds.length > 0) {
-          for (const propId of statement.propertyIds) {
+        if (s.propertyIds && s.propertyIds.length > 0) {
+          for (const propId of s.propertyIds) {
             const note = getPropertyInternalNote(propId);
             if (note) {
-              const displayName = getPropertyDisplayName(propId);
-              internalNotes.push(`[${displayName}]: ${note}`);
+              internalNotes.push(`[${getPropertyDisplayName(propId)}]: ${note}`);
             }
           }
-        } else if (statement.propertyId) {
-          const note = getPropertyInternalNote(statement.propertyId);
-          if (note) {
-            internalNotes = [note];
-          }
+        } else if (s.propertyId) {
+          const note = getPropertyInternalNote(s.propertyId);
+          if (note) internalNotes = [note];
         }
 
-        // Add row
+        const reservationCount = s.reservations ? s.reservations.length : '';
+
         csvRows.push([
           escapeCSV(propertyNames.join('; ')),
-          escapeCSV(period),
-          escapeCSV(type),
-          escapeCSV(netPayout),
+          escapeCSV(s.ownerName),
+          escapeCSV(s.weekStartDate),
+          escapeCSV(s.weekEndDate),
+          escapeCSV(s.calculationType === 'calendar' ? 'Calendar' : 'Checkout'),
+          escapeCSV(s.status),
+          fmtMoney(s.totalRevenue),
+          fmtMoney(s.totalExpenses),
+          escapeCSV(s.pmPercentage != null ? `${s.pmPercentage}%` : ''),
+          fmtMoney(s.pmCommission),
+          fmtMoney(s.techFees),
+          fmtMoney(s.insuranceFees),
+          fmtMoney(s.adjustments),
+          fmtMoney(s.ownerPayout),
+          escapeCSV(s.payoutStatus || ''),
+          escapeCSV(String(reservationCount)),
+          escapeCSV(s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''),
           escapeCSV(internalNotes.join(' | '))
         ].join(','));
       }
@@ -1742,6 +1741,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               setPagination(prev => ({ ...prev, pageIndex: 0 })); // Reset to first page on search
             }}
             initialSearch={filters.search}
+            userRole={user?.role}
           />
         </div>
       </div>

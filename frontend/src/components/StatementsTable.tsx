@@ -63,6 +63,7 @@ interface StatementsTableProps {
   onPaginationChange: (pageIndex: number, pageSize: number) => void;
   onSearchChange?: (search: string) => void; // Callback for server-side search
   initialSearch?: string; // Initial search value from parent
+  userRole?: string; // User role for feature gating
 }
 
 const formatCurrency = (amount: number) => {
@@ -172,6 +173,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   onPaginationChange,
   onSearchChange,
   initialSearch = '',
+  userRole,
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
   const COLUMN_ORDER_KEY = 'statements-table-column-order';
@@ -886,6 +888,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 Delete
               </Button>
+              {userRole === 'admin' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -896,6 +899,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export CSV
               </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
