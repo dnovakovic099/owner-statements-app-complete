@@ -116,6 +116,7 @@ export interface Statement {
   payoutError?: string | null;
   wiseFee?: number | null;
   totalTransferAmount?: number | null;
+  reservationCount?: number;
   hasPriorStatementDuplicates?: boolean;
   priorStatementDuplicateCount?: number;
 }

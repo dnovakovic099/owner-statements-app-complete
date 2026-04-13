@@ -413,6 +413,7 @@ router.get('/', async (req, res) => {
                     expenseCount: expenseItems.length,
                     additionalPayoutCount: additionalPayouts.length
                 } : null,
+                reservationCount: (s.reservations || []).length,
                 hasPriorStatementDuplicates: (s.duplicateWarnings || []).some(w => w.type === 'prior_statement'),
                 priorStatementDuplicateCount: (s.duplicateWarnings || []).filter(w => w.type === 'prior_statement').length
             };

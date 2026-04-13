@@ -1129,7 +1129,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           if (note) internalNotes = [note];
         }
 
-        const reservationCount = s.reservations ? s.reservations.length : '';
+        const reservationCount = s.reservationCount ?? (s.reservations ? s.reservations.length : '');
 
         csvRows.push([
           escapeCSV(propertyNames.join('; ')),
