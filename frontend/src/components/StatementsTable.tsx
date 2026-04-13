@@ -888,7 +888,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 Delete
               </Button>
-              {userRole === 'admin' && (
+              {(userRole === 'admin' || userRole === 'system') && (
               <Button
                 variant="outline"
                 size="sm"
