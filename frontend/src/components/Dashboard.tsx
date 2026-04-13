@@ -1146,7 +1146,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           fmtMoney(s.insuranceFees),
           fmtMoney(s.adjustments),
           fmtMoney(s.ownerPayout),
-          escapeCSV(s.payoutStatus || ''),
+          escapeCSV(s.payoutStatus || (s.status === 'draft' ? 'draft' : s.status === 'sent' ? 'sent' : 'pending')),
           escapeCSV(String(reservationCount)),
           escapeCSV(s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''),
           escapeCSV(internalNotes.join(' | '))
