@@ -454,9 +454,22 @@ class FileDataService {
                         prorationNote: `${proration.daysInPeriod}/${proration.totalDays} days in period`
                     };
 
-                    if (reservationsByProperty[proratedRes.propertyId]) {
+                    if (reservationsByProperty[proratedRes.propertyId] !== undefined) {
                         reservationsByProperty[proratedRes.propertyId].push(proratedRes);
+                    } else {
+                        logger.warn(`[BATCH-FETCH] Calendar reservation ${proratedRes.hostifyId} has propertyId ${proratedRes.propertyId} not in expected set [${propertyIds.join(', ')}] — skipping`);
                     }
+                });
+
+                // Log per-property breakdown for calendar mode
+                const totalCalendar = reservations.length;
+                const totalMatched = Object.values(reservationsByProperty).reduce((sum, arr) => sum + arr.length, 0);
+                if (totalMatched === 0 && totalCalendar > 0) {
+                    logger.warn(`[BATCH-FETCH] WARNING: ${totalCalendar} overlapping reservations found but 0 matched property IDs [${propertyIds.join(', ')}]`);
+                }
+                propertyIds.forEach(id => {
+                    const count = reservationsByProperty[id]?.length || 0;
+                    if (count === 0) logger.warn(`[BATCH-FETCH] WARNING: Property ${id} has 0 calendar reservations`);
                 });
 
                 return reservationsByProperty;
