@@ -715,13 +715,24 @@ class FileDataService {
                         }
                     } else {
                         // If expense doesn't have propertyId, try to match by listing name
-                        // If listing name doesn't match or is missing, exclude it
                         if (!expense.listing) {
                             return false; // No propertyId and no listing name - exclude
                         }
-                        // TODO: Implement property name mapping for uploaded expenses
-                        // For now, exclude expenses without propertyId when filtering for specific property
-                        return false;
+                        // Match expense listing name against known listing names/nicknames
+                        const expListing = expense.listing.toLowerCase().trim();
+                        const hostifyService = require('./HostifyService');
+                        const allListings = hostifyService._allListingsCache || [];
+                        const matched = allListings.some(l => {
+                            const pid = parseInt(propertyId);
+                            if (parseInt(l.id) !== pid) return false;
+                            const name = (l.name || '').toLowerCase().trim();
+                            const nickname = (l.nickname || '').toLowerCase().trim();
+                            return (name && expListing.includes(name)) ||
+                                   (nickname && expListing.includes(nickname)) ||
+                                   (name && name.includes(expListing)) ||
+                                   (nickname && nickname.includes(expListing));
+                        });
+                        if (!matched) return false;
                     }
                 }
                 

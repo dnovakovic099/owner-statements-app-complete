@@ -480,7 +480,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             // If polling fails, stop and refresh anyway
             clearInterval(pollInterval);
             updateToast(toastId, 'Generation completed', 'success');
-            await loadStatements();
+            try { await loadStatements(); } catch (_) { /* ignore refresh error */ }
           }
         }, 2000); // Poll every 2 seconds
       }

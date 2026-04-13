@@ -424,7 +424,10 @@ class HostifyService {
                     allReservations = allReservations.concat(response.reservations);
                     hasMore = response.reservations.length === perPage && response.total > allReservations.length;
                     page++;
-                    if (page > 50) break; // Safety limit
+                    if (page > 50) { // Safety limit
+                        console.warn(`[LISTING-FETCH] Listing ${listingId}: hit 50-page safety limit with ${allReservations.length} reservations`);
+                        break;
+                    }
                 } else {
                     if (!response.success) {
                         console.log(`[LISTING-FETCH-ERR] Listing ${listingId}: API returned success=false`);
@@ -1634,10 +1637,11 @@ class HostifyService {
             allReservations = matched.map(r => this.transformReservation(r));
             console.log(`[FINANCE-BULK] Matched ${allReservations.length}/${allRawReservations.length} reservations for ${expandedListingIds.length} listing IDs`);
 
-            // Safety fallback: if bulk fetch matched 0 reservations but pagination was truncated,
-            // the target reservations may be in unfetched pages. Fall back to per-listing fetch.
-            if (allReservations.length === 0 && bulkPage > BULK_MAX_PAGES) {
-                console.warn(`[FINANCE-BULK] WARNING: 0 matches but pagination was capped at ${BULK_MAX_PAGES} pages — falling back to per-listing fetch`);
+            // Safety fallback: if pagination was truncated (hit page limit), some reservations
+            // may be in unfetched pages. Fall back to per-listing fetch for reliability.
+            const paginationTruncated = bulkPage > BULK_MAX_PAGES;
+            if (paginationTruncated) {
+                console.warn(`[FINANCE-BULK] WARNING: Pagination capped at ${BULK_MAX_PAGES} pages (${allReservations.length} matches) — falling back to per-listing fetch`);
                 allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
             }
         } else {

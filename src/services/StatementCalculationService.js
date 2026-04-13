@@ -347,7 +347,7 @@ class StatementCalculationService {
             const checkoutInPeriod = calculationType !== 'calendar' || this._isCheckoutInPeriod(res.checkOutDate, endDate);
             const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
             const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
+                ? Math.round((guestPaidCleaningFee / (1 + resPmPercentage / 100)) * 100) / 100
                 : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);

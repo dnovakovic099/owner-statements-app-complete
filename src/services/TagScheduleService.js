@@ -77,6 +77,10 @@ class TagScheduleService {
      * Parse a YYYY-MM-DD date string as a local date (avoiding UTC midnight interpretation).
      */
     _parseLocalDate(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            logger.warn(`[TagScheduleService] Invalid date format: "${dateStr}", expected YYYY-MM-DD`);
+            return new Date(NaN);
+        }
         const [year, month, day] = dateStr.split('-').map(Number);
         return new Date(year, month - 1, day);
     }
@@ -207,7 +211,17 @@ class TagScheduleService {
             this._runningSchedules.delete(tagName);
         }, this.SCHEDULE_TIMEOUT_MS);
 
-        this.triggerNotification(schedule, now)
+        let promise;
+        try {
+            promise = this.triggerNotification(schedule, now);
+        } catch (err) {
+            clearTimeout(timeoutId);
+            this._runningSchedules.delete(tagName);
+            logger.logError(err, { context: 'TagScheduleService', action: 'runScheduleWithTimeout', tagName });
+            return;
+        }
+
+        promise
             .then(() => {
                 clearTimeout(timeoutId);
                 this._runningSchedules.delete(tagName);
