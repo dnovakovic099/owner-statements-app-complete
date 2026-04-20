@@ -13,6 +13,27 @@ const isLlCoverExpense = (expense) => Boolean(expense && expense.llCover && expe
 const isHiddenItem = (item) => Boolean(item && item.hidden);
 
 /**
+ * Build Chrome launch args for html-pdf-node/Puppeteer.
+ * On Linux (Railway/Docker) we need the sandbox/zygote flags to launch inside a
+ * restricted container. On macOS those same flags (especially --single-process
+ * and --no-zygote) cause the browser to hang at startup, so we drop them.
+ */
+function getPuppeteerArgs() {
+    const common = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--disable-extensions'
+    ];
+    if (process.platform === 'linux') {
+        return [...common, '--no-zygote', '--single-process'];
+    }
+    return common;
+}
+
+/**
  * Compute the pass-through cleaning fee amount stored on the statement for a single reservation.
  * Matches the generation-time formula: guestPaidCleaningFee / (1 + PM%).
  * Returns a positive number; callers negate it.
@@ -4655,6 +4676,33 @@ router.get('/:id/view', async (req, res) => {
             margin-top: 4px;
         }
 
+        /* Reservation status badge — rendered under the channel badge for internal review.
+           Hidden in PDF (body.pdf-mode) so owners don't see it on emailed/downloaded statements. */
+        .status-badge {
+            display: inline-block;
+            margin-top: 3px;
+            margin-left: 4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            border: 1px solid transparent;
+        }
+        .status-badge.status-confirmed,
+        .status-badge.status-accepted { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .status-badge.status-cancelled,
+        .status-badge.status-canceled { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .status-badge.status-modified { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .status-badge.status-pending,
+        .status-badge.status-new,
+        .status-badge.status-inquiry,
+        .status-badge.status-awaiting_payment { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+        .status-badge.status-blocked { background: #e5e7eb; color: #374151; border-color: #d1d5db; }
+
+        body.pdf-mode .status-badge { display: none !important; }
+
         .proration-info {
             font-size: 8px !important;
             color: #007bff !important;
@@ -5281,7 +5329,7 @@ router.get('/:id/view', async (req, res) => {
                             const checkOut = new Date(yearOut, monthOut - 1, dayOut).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
                             return `${checkIn} - ${checkOut} (${reservation.nights || 0}n)`;
                         })()}</div>
-                                        <div class="channel-badge">${reservation.source}</div>
+                                        <div class="channel-badge">${reservation.source}</div>${reservation.status ? `<span class="status-badge status-${(reservation.status || '').toLowerCase().replace(/[^a-z0-9_]/g, '_')}" title="Internal status — hidden from PDF and email">${reservation.status}</span>` : ''}
                                         ${reservation.prorationNote ?
                             `<div class="proration-info" style="font-size: 10px; color: #007bff; margin-top: 2px;">
                                                 ${reservation.prorationNote}
@@ -6450,16 +6498,7 @@ router.post('/bulk-download', async (req, res) => {
             printBackground: true,
             preferCSSPageSize: false,
             displayHeaderFooter: false,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-extensions'
-            ],
+            args: getPuppeteerArgs(),
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
         };
 
@@ -6566,16 +6605,7 @@ router.get('/:id/download', async (req, res) => {
                 printBackground: true, // Ensure backgrounds are printed
                 preferCSSPageSize: false,
                 displayHeaderFooter: false,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-extensions'
-                ],
+                args: getPuppeteerArgs(),
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
             };
 
