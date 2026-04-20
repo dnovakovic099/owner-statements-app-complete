@@ -190,8 +190,9 @@ class EmailService {
 
             // Apply variable replacements
             const subject = EmailTemplate.replaceVariables(template.subject, data);
-            const html = EmailTemplate.replaceVariables(template.htmlBody, data);
+            const rawHtml = EmailTemplate.replaceVariables(template.htmlBody, data);
             const text = template.textBody ? EmailTemplate.replaceVariables(template.textBody, data) : '';
+            const html = this.normalizeTemplateHtml(rawHtml);
 
             return {
                 subject,
@@ -203,6 +204,23 @@ class EmailService {
             logger.logError(error, { context: 'EmailService', action: 'getTemplateFromDatabase' });
             return null;
         }
+    }
+
+    /**
+     * Safeguard: if a database email template's htmlBody was saved as plain text
+     * (no HTML structure), convert newlines to <br> so clients like Gmail don't
+     * collapse everything into a single paragraph. Leaves real HTML untouched.
+     */
+    normalizeTemplateHtml(html) {
+        if (!html || typeof html !== 'string') return html;
+        const hasBlockTags = /<\s*(p|div|br|table|ul|ol|li|h[1-6]|body|html|section|article)\b/i.test(html);
+        if (hasBlockTags) return html; // already HTML — leave as-is
+        const escaped = html
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        const withBreaks = escaped.replace(/\r\n|\r|\n/g, '<br>');
+        return `<div style="font-family: Arial, sans-serif; line-height: 1.5; color: #333;">${withBreaks}</div>`;
     }
 
     /**
