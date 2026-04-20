@@ -61,6 +61,13 @@ function matchExpenseToPrior(exp, signatureMap) {
     return null;
 }
 
+// Reservation-side prior-statement dedupe helpers live on StatementCalculationService so
+// both the routes and the auto-gen service share one implementation.
+const buildPriorReservationSignatures = (priorStatements) =>
+    StatementCalculationService.buildPriorReservationSignatures(priorStatements);
+const matchReservationToPrior = (res, signatureMap) =>
+    StatementCalculationService.matchReservationToPrior(res, signatureMap);
+
 // GET /api/statements/jobs/:jobId - Get background job status
 router.get('/jobs/:jobId', async (req, res) => {
     try {
@@ -209,9 +216,9 @@ router.get('/', async (req, res) => {
                 });
 
                 if (propertiesWithPassThrough.length > 0) {
-                    // Get reservations for properties with passthrough
+                    // Get reservations for properties with passthrough (exclude manual blocks — no cleaning expected)
                     const passThroughReservations = s.reservations.filter(res =>
-                        propertiesWithPassThrough.includes(parseInt(res.propertyId))
+                        res.status !== 'blocked' && propertiesWithPassThrough.includes(parseInt(res.propertyId))
                     );
 
                     // Count reservations that have their OWN cleaning fee (not using listing default)
@@ -413,7 +420,7 @@ router.get('/', async (req, res) => {
                     expenseCount: expenseItems.length,
                     additionalPayoutCount: additionalPayouts.length
                 } : null,
-                reservationCount: (s.reservations || []).length,
+                reservationCount: (s.reservations || []).filter(r => r.status !== 'blocked').length,
                 hasPriorStatementDuplicates: (s.duplicateWarnings || []).some(w => w.type === 'prior_statement'),
                 priorStatementDuplicateCount: (s.duplicateWarnings || []).filter(w => w.type === 'prior_statement').length
             };
@@ -739,7 +746,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         }
 
         // Filter reservations by date and status
-        const periodReservations = allReservations.filter(res => {
+        const periodReservationsRaw = allReservations.filter(res => {
             // Check property ID is in our list (use parseInt to ensure proper type comparison)
             if (!parsedPropertyIds.includes(parseInt(res.propertyId))) {
                 return false;
@@ -757,10 +764,37 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 if (!dateMatch) return false;
             }
 
-            // Only include confirmed and accepted status reservations (exclude expired, cancelled, etc.)
-            const allowedStatuses = ['confirmed', 'accepted'];
+            // Include confirmed/accepted plus blocked entries (owner stays, off-boarding, unavailable blocks)
+            const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+        // Drop any reservation already billed on a prior finalized/sent/paid statement.
+        // Mirrors the expense-side cross-statement duplicate detection so a checkout that
+        // falls on the shared boundary of two adjacent periods does not get paid twice.
+        const priorReservationSignatures = buildPriorReservationSignatures(priorStatements);
+        const priorStatementDuplicateReservationWarnings = [];
+        const periodReservations = [];
+        for (const res of periodReservationsRaw) {
+            const match = matchReservationToPrior(res, priorReservationSignatures);
+            if (match) {
+                priorStatementDuplicateReservationWarnings.push({
+                    type: 'prior_statement_reservation',
+                    reservationId: res.hostifyId ?? res.id ?? null,
+                    guestName: res.guestName || null,
+                    checkInDate: res.checkInDate || null,
+                    checkOutDate: res.checkOutDate || null,
+                    propertyId: res.propertyId ?? null,
+                    priorStatementId: match.statementId,
+                    priorPeriod: match.period
+                });
+            } else {
+                periodReservations.push(res);
+            }
+        }
+        if (priorStatementDuplicateReservationWarnings.length > 0) {
+            logger.info(`Excluded ${priorStatementDuplicateReservationWarnings.length} reservation(s) already present on prior statements`, { context: 'StatementsFile', action: 'generateCombinedStatement' });
+        }
 
         // Filter expenses by date (LL Cover handled separately for hidden items)
         const periodExpensesAll = allExpenses.filter(exp => {
@@ -787,9 +821,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         let cleaningMismatchWarning = null;
         const propertiesWithPassThrough = parsedPropertyIds.filter(propId => listingInfoMap[propId]?.cleaningFeePassThrough);
         if (propertiesWithPassThrough.length > 0) {
-            // Count reservations for properties with passthrough
+            // Count reservations for properties with passthrough (exclude manual blocks — no cleaning expected)
             const passThroughReservations = periodReservations.filter(res =>
-                propertiesWithPassThrough.includes(parseInt(res.propertyId))
+                res.status !== 'blocked' && propertiesWithPassThrough.includes(parseInt(res.propertyId))
             );
             // Count cleaning expenses for properties with passthrough
             const passThroughCleaningExpenses = cleaningExpenses.filter(exp =>
@@ -1079,7 +1113,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             })(),
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
-            duplicateWarnings: [...allDuplicateWarnings, ...priorStatementDuplicateWarnings],
+            duplicateWarnings: [...allDuplicateWarnings, ...priorStatementDuplicateWarnings, ...priorStatementDuplicateReservationWarnings],
             cleaningMismatchWarning,
             items: [
                 // Revenue items from reservations (grouped by property)
@@ -1412,9 +1446,18 @@ router.post('/generate', async (req, res) => {
             targetListings = listings; // All properties for now
         }
 
+        // Load prior statements so we can skip reservations already billed elsewhere.
+        // Uses the result fetched in parallel above when propertyId was known, otherwise
+        // loads for the full targetListings set (tag / all-properties modes).
+        const priorStatementsForDedupe = priorStatementsEarly
+            || await FileDataService.getPriorStatementExpenses(targetListings.map(l => parseInt(l.id)));
+        const priorReservationSignatures = buildPriorReservationSignatures(priorStatementsForDedupe);
+
         // Filter reservations - optimized with reduced logging
-        const allowedStatuses = ['confirmed', 'accepted'];
-        const periodReservations = reservations.filter(res => {
+        // Include 'blocked' for manual calendar blocks; exclude from overlap (those are booking-only signals)
+        const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
+        const bookingStatuses = ['confirmed', 'accepted'];
+        const periodReservationsRaw = reservations.filter(res => {
             // Use parseInt on both sides to ensure proper type comparison
             if (propertyId && parseInt(res.propertyId) !== parseInt(propertyId)) {
                 return false;
@@ -1431,6 +1474,31 @@ router.post('/generate', async (req, res) => {
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
+        // Drop reservations already present on a prior finalized/sent/paid statement so the
+        // same booking isn't paid twice when checkout dates fall on shared period boundaries.
+        const priorStatementDuplicateReservationWarnings = [];
+        const periodReservations = [];
+        for (const res of periodReservationsRaw) {
+            const match = matchReservationToPrior(res, priorReservationSignatures);
+            if (match) {
+                priorStatementDuplicateReservationWarnings.push({
+                    type: 'prior_statement_reservation',
+                    reservationId: res.hostifyId ?? res.id ?? null,
+                    guestName: res.guestName || null,
+                    checkInDate: res.checkInDate || null,
+                    checkOutDate: res.checkOutDate || null,
+                    propertyId: res.propertyId ?? null,
+                    priorStatementId: match.statementId,
+                    priorPeriod: match.period
+                });
+            } else {
+                periodReservations.push(res);
+            }
+        }
+        if (priorStatementDuplicateReservationWarnings.length > 0) {
+            logger.info(`Excluded ${priorStatementDuplicateReservationWarnings.length} reservation(s) already present on prior statements`, { context: 'StatementsFile', action: 'generateStatement' });
+        }
+
         // Find ALL overlapping reservations (regardless of calculation type) for calendar conversion detection
         // Use calendar-based reservations if available (for checkout mode), otherwise filter from current reservations
         const reservationsToCheckForOverlap = calendarReservations || reservations;
@@ -1441,7 +1509,7 @@ router.post('/generate', async (req, res) => {
             const checkIn = new Date(res.checkInDate);
             const checkOut = new Date(res.checkOutDate);
             // Overlaps if: checkIn <= periodEnd AND checkOut > periodStart
-            return checkIn <= periodEnd && checkOut > periodStart && allowedStatuses.includes(res.status);
+            return checkIn <= periodEnd && checkOut > periodStart && bookingStatuses.includes(res.status);
         });
 
         // Determine if statement should be flagged for calendar conversion
@@ -1694,8 +1762,8 @@ router.post('/generate', async (req, res) => {
 
         const ownerPayout = grossPayoutSum + totalUpsells - totalExpenses;
 
-        // Cross-statement duplicate expense detection (priorStatementsEarly fetched in parallel when propertyId known)
-        const priorStatements = priorStatementsEarly || await FileDataService.getPriorStatementExpenses(targetListings.map(l => parseInt(l.id)));
+        // Cross-statement duplicate expense detection (reuses priorStatementsForDedupe already loaded above)
+        const priorStatements = priorStatementsForDedupe;
         const priorSignatures = buildPriorExpenseSignatures(priorStatements);
         const priorStatementFlaggedExpenses = [];
         const nonDuplicateFilteredExpenses = [];
@@ -1823,7 +1891,7 @@ router.post('/generate', async (req, res) => {
             internalNotes: listingInfo?.internalNotes || null,
             reservations: periodReservations,
             expenses: allExpenses, // Use all expenses including auto-generated cleaning fees
-            duplicateWarnings: [...duplicateWarnings, ...priorStatementDuplicateWarnings],
+            duplicateWarnings: [...duplicateWarnings, ...priorStatementDuplicateWarnings, ...priorStatementDuplicateReservationWarnings],
             items: [
                 // Revenue items from reservations
                 ...periodReservations.map(res => {
@@ -6785,7 +6853,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const propertyName = property.nickname || property.displayName || property.name || 'Unknown';
 
                     // Filter reservations for this property from pre-grouped map (O(1) lookup)
-                    const allowedStatuses = ['confirmed', 'accepted'];
+                    // Include 'blocked' for manual calendar blocks; exclude from overlap (those are booking-only signals)
+                    const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
+                    const bookingStatuses = ['confirmed', 'accepted'];
                     const propertyReservations = reservationsByPropertyId.get(parseInt(property.id)) || [];
 
                     const periodReservations = propertyReservations.filter(res => {
@@ -6806,7 +6876,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     let overlappingReservations = propertyReservations.filter(res => {
                         const checkIn = new Date(res.checkInDate);
                         const checkOut = new Date(res.checkOutDate);
-                        return checkIn <= periodEnd && checkOut > periodStart && allowedStatuses.includes(res.status);
+                        return checkIn <= periodEnd && checkOut > periodStart && bookingStatuses.includes(res.status);
                     });
 
                     // Determine if statement should be converted to calendar mode
@@ -7293,7 +7363,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                             dateMatch = checkoutDate >= periodStart && checkoutDate <= periodEnd;
                         }
 
-                        const allowedStatuses = ['confirmed', 'accepted'];
+                        const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
                         const statusMatch = allowedStatuses.includes(res.status);
 
                         return dateMatch && statusMatch;

@@ -220,11 +220,11 @@ class DatabaseService {
     }
 
     /**
-     * Get expenses from prior finalized/sent/paid statements for duplicate detection.
+     * Get expenses and reservations from prior finalized/sent/paid statements for duplicate detection.
      * Checks both single-property and group statements that share any of the given property IDs.
      * @param {number[]} propertyIds - Array of property IDs to check
      * @param {number|null} excludeStatementId - Statement ID to exclude (the one being generated)
-     * @returns {Array<{id, expenses, weekStartDate, weekEndDate, propertyName}>}
+     * @returns {Array<{id, expenses, reservations, weekStartDate, weekEndDate, propertyName}>}
      */
     async getPriorStatementExpenses(propertyIds, excludeStatementId = null) {
         try {
@@ -243,7 +243,7 @@ class DatabaseService {
             // Query 1: Statements that match by single propertyId (fast, indexed)
             const singlePropertyStmts = await Statement.findAll({
                 where,
-                attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName'],
+                attributes: ['id', 'expenses', 'reservations', 'weekStartDate', 'weekEndDate', 'propertyName'],
                 order: [['created_at', 'DESC']],
                 limit: 20
             });
@@ -262,7 +262,7 @@ class DatabaseService {
             try {
                 const candidateGroupStmts = await Statement.findAll({
                     where: groupWhere,
-                    attributes: ['id', 'expenses', 'weekStartDate', 'weekEndDate', 'propertyName', 'propertyIds'],
+                    attributes: ['id', 'expenses', 'reservations', 'weekStartDate', 'weekEndDate', 'propertyName', 'propertyIds'],
                     order: [['created_at', 'DESC']],
                     limit: 20
                 });
@@ -286,6 +286,7 @@ class DatabaseService {
                 results.push({
                     id: json.id,
                     expenses: json.expenses || [],
+                    reservations: json.reservations || [],
                     weekStartDate: json.weekStartDate,
                     weekEndDate: json.weekEndDate,
                     propertyName: json.propertyName

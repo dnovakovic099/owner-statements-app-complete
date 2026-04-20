@@ -20,7 +20,7 @@ class StatementCalculationService {
      * @returns {Object} Calculated financials
      */
     calculateStatementFinancials(options) {
-        const { reservations, expenses, listingInfoMap, propertyIds, startDate, endDate, calculationType } = options;
+        const { reservations, expenses, listingInfoMap, propertyIds, startDate, endDate, calculationType, priorStatements } = options;
 
         // Input validation
         if (!propertyIds || propertyIds.length === 0) {
@@ -38,7 +38,20 @@ class StatementCalculationService {
         const periodEnd = new Date(endDate);
 
         // Filter reservations by date and status
-        const periodReservations = this.filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType, endDate);
+        let periodReservations = this.filterReservations(reservations, propertyIds, periodStart, periodEnd, calculationType, endDate);
+
+        // Drop reservations already billed on a prior finalized/sent/paid statement so the
+        // same booking is not paid twice when its checkout falls on a shared period boundary.
+        let priorReservationDuplicateWarnings = [];
+        if (priorStatements && priorStatements.length > 0) {
+            const signatureMap = this.buildPriorReservationSignatures(priorStatements);
+            const { kept, duplicateWarnings } = this.excludePriorStatementReservations(periodReservations, signatureMap);
+            periodReservations = kept;
+            priorReservationDuplicateWarnings = duplicateWarnings;
+            if (duplicateWarnings.length > 0) {
+                logger.info(`[CALC] Excluded ${duplicateWarnings.length} reservation(s) already present on prior statements`);
+            }
+        }
 
         // Process expenses - separate LL Cover, upsells, and regular expenses
         const { filteredExpenses, llCoverExpenses, totalExpenses, totalUpsells, duplicateWarnings } =
@@ -67,7 +80,7 @@ class StatementCalculationService {
             periodReservations,
             filteredExpenses,
             llCoverExpenses,
-            duplicateWarnings,
+            duplicateWarnings: [...(duplicateWarnings || []), ...priorReservationDuplicateWarnings],
             cleaningMismatchWarning,
             totalRevenue: Math.round(totalRevenue * 100) / 100,
             totalExpenses: Math.round(totalExpenses * 100) / 100,
@@ -95,19 +108,18 @@ class StatementCalculationService {
             }
 
             // Check date match based on calculation type
-            if (calculationType === 'calendar') {
-                // For calendar-based, reservations are already filtered and prorated
-                return true;
-            } else {
+            if (calculationType !== 'calendar') {
                 // For checkout-based, filter by checkout date
                 const checkoutDate = new Date(res.checkOutDate);
                 if (checkoutDate < periodStart || !this._isCheckoutInPeriod(res.checkOutDate, endDate)) {
                     return false;
                 }
             }
+            // Calendar-based reservations are already date-filtered and prorated upstream,
+            // but still check status as defense in depth
 
-            // Only include confirmed/accepted status reservations
-            const allowedStatuses = ['confirmed', 'accepted'];
+            // Include confirmed/accepted plus blocked entries (owner stays, off-boarding, unavailable blocks)
+            const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
             return allowedStatuses.includes(res.status);
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
     }
@@ -212,9 +224,9 @@ class StatementCalculationService {
             return null;
         }
 
-        // Count reservations for properties with passthrough
+        // Count reservations for properties with passthrough (exclude manual blocks — no cleaning expected)
         const passThroughReservations = periodReservations.filter(res =>
-            propertiesWithPassThrough.includes(parseInt(res.propertyId))
+            res.status !== 'blocked' && propertiesWithPassThrough.includes(parseInt(res.propertyId))
         );
 
         // Identify cleaning expenses
@@ -393,6 +405,89 @@ class StatementCalculationService {
             }
         }
         return notesArray.length > 0 ? notesArray.join('\n\n') : null;
+    }
+
+    /**
+     * Build a signature map of reservations from prior statements. Used to skip any
+     * reservation (matched by hostifyId/id, with a property+dates+guest fallback) that
+     * was already billed on a previously finalized/sent/paid statement.
+     */
+    buildPriorReservationSignatures(priorStatements) {
+        const signatureMap = new Map();
+        for (const stmt of priorStatements || []) {
+            const period = `${stmt.weekStartDate} to ${stmt.weekEndDate}`;
+            const reservations = stmt.reservations || [];
+            for (const res of reservations) {
+                const entry = { statementId: stmt.id, period, propertyName: stmt.propertyName };
+                const primaryId = res.hostifyId ?? res.id;
+                if (primaryId !== undefined && primaryId !== null && primaryId !== '') {
+                    const key = `id:${primaryId}`;
+                    if (!signatureMap.has(key)) signatureMap.set(key, entry);
+                }
+                const propertyId = res.propertyId ?? '';
+                const checkIn = res.checkInDate || '';
+                const checkOut = res.checkOutDate || '';
+                const guest = (res.guestName || '').trim().toLowerCase();
+                if (propertyId && checkIn && checkOut) {
+                    const fallbackKey = `fallback:${propertyId}|${checkIn}|${checkOut}|${guest}`;
+                    if (!signatureMap.has(fallbackKey)) signatureMap.set(fallbackKey, entry);
+                }
+            }
+        }
+        return signatureMap;
+    }
+
+    /**
+     * Match a reservation against the prior-statement signature map.
+     * Returns match info ({ statementId, period, propertyName }) or null.
+     */
+    matchReservationToPrior(res, signatureMap) {
+        if (!signatureMap || signatureMap.size === 0) return null;
+        const primaryId = res.hostifyId ?? res.id;
+        if (primaryId !== undefined && primaryId !== null && primaryId !== '') {
+            const key = `id:${primaryId}`;
+            if (signatureMap.has(key)) return signatureMap.get(key);
+        }
+        const propertyId = res.propertyId ?? '';
+        const checkIn = res.checkInDate || '';
+        const checkOut = res.checkOutDate || '';
+        const guest = (res.guestName || '').trim().toLowerCase();
+        if (propertyId && checkIn && checkOut) {
+            const fallbackKey = `fallback:${propertyId}|${checkIn}|${checkOut}|${guest}`;
+            if (signatureMap.has(fallbackKey)) return signatureMap.get(fallbackKey);
+        }
+        return null;
+    }
+
+    /**
+     * Split a list of reservations into kept vs. prior-statement duplicates.
+     * Returns { kept, duplicateWarnings } where duplicateWarnings is shaped to match
+     * the expense-side cross-statement duplicate warnings.
+     */
+    excludePriorStatementReservations(reservations, signatureMap) {
+        const kept = [];
+        const duplicateWarnings = [];
+        if (!reservations || reservations.length === 0) {
+            return { kept, duplicateWarnings };
+        }
+        for (const res of reservations) {
+            const match = this.matchReservationToPrior(res, signatureMap);
+            if (match) {
+                duplicateWarnings.push({
+                    type: 'prior_statement_reservation',
+                    reservationId: res.hostifyId ?? res.id ?? null,
+                    guestName: res.guestName || null,
+                    checkInDate: res.checkInDate || null,
+                    checkOutDate: res.checkOutDate || null,
+                    propertyId: res.propertyId ?? null,
+                    priorStatementId: match.statementId,
+                    priorPeriod: match.period
+                });
+            } else {
+                kept.push(res);
+            }
+        }
+        return { kept, duplicateWarnings };
     }
 }
 

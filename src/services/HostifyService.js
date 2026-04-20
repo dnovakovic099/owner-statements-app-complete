@@ -283,7 +283,7 @@ class HostifyService {
         this._offboardedCache.clear();
     }
 
-    async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 3) {
+    async makeRequest(endpoint, params = {}, method = 'GET', maxRetries = 5) {
         if (!this.apiKey) {
             throw new Error('Hostify API Key is required.');
         }
@@ -321,7 +321,14 @@ class HostifyService {
 
                 // Successful request — gradually restore concurrency if it was reduced
                 if (this._maxConcurrent < this._defaultMaxConcurrent) {
-                    this._maxConcurrent = Math.min(this._maxConcurrent + 1, this._defaultMaxConcurrent);
+                    this._successesSinceRateLimit = (this._successesSinceRateLimit || 0) + 1;
+                    // Only increase concurrency after 20 consecutive successes
+                    if (this._successesSinceRateLimit >= 20) {
+                        this._maxConcurrent = Math.min(this._maxConcurrent + 1, this._defaultMaxConcurrent);
+                        this._minRequestSpacing = Math.max(100, this._minRequestSpacing - 100);
+                        this._successesSinceRateLimit = 0;
+                        console.log(`[HOSTIFY] Restored concurrency to ${this._maxConcurrent}, spacing=${this._minRequestSpacing}ms`);
+                    }
                 }
                 return response.data;
             } catch (error) {
@@ -349,18 +356,19 @@ class HostifyService {
 
                 // If we have more retries left, wait and retry
                 if (attempt < maxRetries) {
-                    // Use longer backoff for rate limits (5s, 15s, 30s) vs normal errors (1s, 2s, 3s)
-                    const delay = isRateLimit ? 5000 * attempt * attempt : 1000 * attempt;
-                    console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${isRateLimit ? '429 RATE LIMITED' : error.message} (waiting ${delay}ms)`);
-
+                    let delay;
                     if (isRateLimit) {
-                        // Adaptive throttling: set a global cooldown so other requests also pause
+                        // Aggressive backoff for 429s: 10s, 20s, 40s
+                        delay = 10000 * Math.pow(2, attempt - 1);
+                        // Drop to single concurrency and set global cooldown
+                        this._maxConcurrent = 1;
+                        this._minRequestSpacing = 500; // 500ms between requests after rate limit
+                        this._successesSinceRateLimit = 0;
                         this._rateLimitCooldownUntil = Math.max(this._rateLimitCooldownUntil, Date.now() + delay);
-                        // Temporarily reduce concurrency on first 429
-                        if (this._maxConcurrent > 2) {
-                            this._maxConcurrent = 2;
-                            console.log(`[HOSTIFY] Reduced concurrency to ${this._maxConcurrent} due to rate limiting`);
-                        }
+                        console.log(`[HOSTIFY] 429 on ${endpoint} — concurrency=1, spacing=500ms, cooldown=${(delay / 1000).toFixed(0)}s (retry ${attempt}/${maxRetries})`);
+                    } else {
+                        delay = 1000 * attempt;
+                        console.log(`[HOSTIFY] Retry ${attempt}/${maxRetries} for ${endpoint}: ${error.message} (waiting ${delay}ms)`);
                     }
 
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -477,21 +485,23 @@ class HostifyService {
 
     // Fetch reservations for multiple listings in parallel
     async getReservationsForListings(listingIds, startDate, endDate, dateType = 'checkIn') {
-        console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings (max 3 concurrent)...`);
+        console.log(`[PARALLEL] Fetching reservations for ${listingIds.length} listings (max 2 concurrent)...`);
 
-        // Limit concurrency to 3 to avoid Hostify 429 rate limits
-        const CONCURRENCY = 2; // Reduced from 3 — each listing may need multiple pages
+        // Limit concurrency to avoid Hostify 429 rate limits
+        const CONCURRENCY = 2;
         const results = [];
+        const failedListingIds = [];
         for (let i = 0; i < listingIds.length; i += CONCURRENCY) {
             const batch = listingIds.slice(i, i + CONCURRENCY);
             const batchResults = await Promise.all(
                 batch.map(async listingId => {
                     try {
                         const reservations = await this.getReservationsForListing(listingId, startDate, endDate, dateType);
-                        return { listingId, reservations };
+                        return { listingId, reservations, failed: false };
                     } catch (err) {
                         console.error(`[PARALLEL] Listing ${listingId} fetch failed after retries: ${err.message} — skipping (reservations may be missing)`);
-                        return { listingId, reservations: [] };
+                        failedListingIds.push(listingId);
+                        return { listingId, reservations: [], failed: true };
                     }
                 })
             );
@@ -507,7 +517,13 @@ class HostifyService {
             allReservations = allReservations.concat(reservations);
         });
 
-        console.log(`[PARALLEL] Total: ${allReservations.length} reservations from ${listingIds.length} listings`);
+        if (failedListingIds.length > 0) {
+            console.error(`[PARALLEL] WARNING: ${failedListingIds.length}/${listingIds.length} listing fetches FAILED — reservations may be incomplete. Failed IDs: ${failedListingIds.join(', ')}`);
+        }
+
+        console.log(`[PARALLEL] Total: ${allReservations.length} reservations from ${listingIds.length} listings (${failedListingIds.length} failed)`);
+        // Attach metadata so callers can detect data loss
+        allReservations._fetchFailures = failedListingIds;
         return allReservations;
     }
 
@@ -1199,6 +1215,9 @@ class HostifyService {
             guestName = `${hostifyReservation.guest.first_name || ''} ${hostifyReservation.guest.last_name || ''}`.trim();
         } else if (hostifyReservation.guestFirstName || hostifyReservation.guestLastName) {
             guestName = `${hostifyReservation.guestFirstName || ''} ${hostifyReservation.guestLastName || ''}`.trim();
+        } else if (hostifyReservation.note || hostifyReservation.title) {
+            // Block entries (unavailable/owner_stay) carry their label in note/title instead of guest
+            guestName = hostifyReservation.note || hostifyReservation.title;
         }
         
         // Debug logging for parent_id field
@@ -1308,7 +1327,19 @@ class HostifyService {
             'declined_inq': 'inquiry',
             'offer': 'new',
             'withdrawn': 'cancelled',
-            'not_possible': 'cancelled'
+            'not_possible': 'cancelled',
+            'voided': 'cancelled',
+            'timedout': 'expired',
+            'timed_out': 'expired',
+            'preapproved': 'inquiry',
+            'pre_approved': 'inquiry',
+            'payment_failed': 'cancelled',
+            'unavailable': 'blocked',
+            'blocked': 'blocked',
+            'block': 'blocked',
+            'owner_stay': 'blocked',
+            'owner_block': 'blocked',
+            'not_available': 'blocked'
         };
         const mapped = statusMap[hostifyStatus] || 'unknown';
         if (mapped === 'unknown') {
@@ -1400,11 +1431,17 @@ class HostifyService {
                 expandedListingIds, startDateStr, endDateStr, 'checkIn'
             );
 
+            // Check for fetch failures and warn loudly
+            const fetchFailures = reservationsList._fetchFailures || [];
+            if (fetchFailures.length > 0) {
+                console.error(`[OVERLAP] WARNING: ${fetchFailures.length} listing(s) failed to fetch reservations — results may be incomplete. Failed: ${fetchFailures.join(', ')}`);
+            }
+
             const periodStart = new Date(fromDate);
             const periodEnd = new Date(toDate);
 
-            // Only include confirmed/accepted reservations - filter out expired, cancelled, new, etc.
-            const allowedStatuses = ['confirmed', 'accepted'];
+            // Include confirmed/accepted reservations and blocked entries (owner stays, off-boarding, unavailable blocks)
+            const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
 
             reservationsList.forEach(res => {
                 // Skip reservations with non-allowed statuses (expired, cancelled, inquiry, etc.)
@@ -1509,11 +1546,134 @@ class HostifyService {
 
             const enrichedReservations = [...alreadyComplete, ...enrichedFromApi];
             console.log(`[OVERLAP] Total: ${enrichedReservations.length} reservations (${alreadyComplete.length} from list API + ${enrichedFromApi.length} enriched)`);
+
+            // Fetch manual calendar blocks (unavailable/off-boarding) and merge as pseudo-reservations
+            const blocks = await this.fetchCalendarBlocks(expandedListingIds, fromDate, toDate, childToParentMap);
+            if (blocks.length > 0) {
+                console.log(`[OVERLAP] Merging ${blocks.length} manual block pseudo-reservation(s)`);
+            }
+
             // Convert any non-USD reservations to USD
-            return await this.convertReservationsBatchToUSD(enrichedReservations);
+            return await this.convertReservationsBatchToUSD([...enrichedReservations, ...blocks]);
         } catch (error) {
             throw error;
         }
+    }
+
+    /**
+     * Fetch Hostify calendar for each listing and group contiguous "manual-blockage"
+     * days into pseudo-reservations with status='blocked' and $0 financials.
+     * These flow through the statement pipeline like real reservations, but contribute
+     * nothing to revenue/payout — they just make the block visible to owners.
+     */
+    async fetchCalendarBlocks(listingIds, fromDate, toDate, childToParentMap = new Map()) {
+        // Dedup by (parent listing, start, end, note): children share their parent's
+        // calendar in Hostify so the same block surfaces once per child + the parent.
+        const byKey = new Map();
+        const CAL_CONCURRENCY = 3;
+
+        for (let i = 0; i < listingIds.length; i += CAL_CONCURRENCY) {
+            const batch = listingIds.slice(i, i + CAL_CONCURRENCY);
+            const results = await Promise.all(batch.map(async (listingId) => {
+                try {
+                    const data = await this.makeRequest('/calendar', {
+                        listing_id: listingId,
+                        start_date: fromDate,
+                        end_date: toDate,
+                    });
+                    return { listingId: parseInt(listingId), calendar: data.calendar || [] };
+                } catch (err) {
+                    console.error(`[CAL-BLOCKS] Failed for listing ${listingId}: ${err.message}`);
+                    return { listingId: parseInt(listingId), calendar: [] };
+                }
+            }));
+
+            for (const { listingId, calendar } of results) {
+                const groups = this._groupBlockDays(calendar);
+                if (groups.length === 0) continue;
+
+                const isChild = childToParentMap.has(listingId);
+                const attributedId = isChild ? childToParentMap.get(listingId) : listingId;
+
+                for (const g of groups) {
+                    const key = `${attributedId}|${g.startDate}|${g.checkoutDate}|${g.note || ''}`;
+                    if (byKey.has(key)) continue;
+                    const hostifyId = `block_${attributedId}_${g.startDate}`;
+                    // Informational base rate from Hostify's calendar (price × nights).
+                    // Revenue/payout stay $0 — blocks generated no actual income, so they
+                    // must not inflate PM commission or gross payout.
+                    const baseRate = Math.round(g.totalPrice * 100) / 100;
+                    byKey.set(key, {
+                        hostifyId,
+                        id: hostifyId,
+                        propertyId: attributedId,
+                        childListingId: isChild ? listingId : undefined,
+                        guestName: g.note || 'Blocked',
+                        guestEmail: '',
+                        checkInDate: g.startDate,
+                        checkOutDate: g.checkoutDate,
+                        arrivalDate: g.startDate,
+                        departureDate: g.checkoutDate,
+                        nights: g.nights,
+                        status: 'blocked',
+                        source: 'Manual Block',
+                        isProrated: false,
+                        currency: 'USD',
+                        createdAt: null,
+                        baseRate,
+                        cleaningAndOtherFees: 0,
+                        cleaningFee: 0,
+                        platformFees: 0,
+                        clientRevenue: 0,
+                        clientPayout: 0,
+                        grossAmount: 0,
+                        luxuryLodgingFee: 0,
+                        clientTaxResponsibility: 0,
+                        resortFee: 0,
+                        hasDetailedFinance: true,
+                        hasFeeArrayData: true,
+                    });
+                }
+            }
+        }
+        return Array.from(byKey.values());
+    }
+
+    _groupBlockDays(calendar) {
+        const blockDays = (calendar || [])
+            .filter(d => d.status === 'unavailable' && d.statusNote === 'manual-blockage')
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+        const groups = [];
+        let current = null;
+        for (const day of blockDays) {
+            const prevDay = current?.days[current.days.length - 1];
+            const contiguous = prevDay && this._nextDay(prevDay.date) === day.date && (prevDay.note || '') === (day.note || '');
+            if (!current || !contiguous) {
+                current = { days: [], note: day.note };
+                groups.push(current);
+            }
+            current.days.push(day);
+        }
+
+        return groups.map(g => {
+            const firstDate = g.days[0].date;
+            const lastDate = g.days[g.days.length - 1].date;
+            const totalPrice = g.days.reduce((sum, d) => sum + (parseFloat(d.price) || 0), 0);
+            return {
+                startDate: firstDate,
+                checkoutDate: this._nextDay(lastDate),
+                nights: g.days.length,
+                note: g.note,
+                totalPrice,
+            };
+        });
+    }
+
+    _nextDay(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d.toISOString().split('T')[0];
     }
 
     async getConsolidatedFinanceReport(params = {}) {
@@ -1649,9 +1809,9 @@ class HostifyService {
             allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
         }
 
-        // Filter out expired, cancelled, inquiry reservations - only keep confirmed/accepted
+        // Filter out expired, cancelled, inquiry reservations - keep confirmed/accepted plus blocks
         const preFilterCount = allReservations.length;
-        const allowedStatuses = ['confirmed', 'accepted'];
+        const allowedStatuses = ['confirmed', 'accepted', 'blocked'];
         allReservations = allReservations.filter(res => {
             if (!allowedStatuses.includes(res.status)) {
                 console.log(`[FINANCE-SKIP] Reservation ${res.hostifyId} (${res.guestName}): status "${res.status}" not allowed`);

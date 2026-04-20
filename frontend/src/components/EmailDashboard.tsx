@@ -63,6 +63,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
   const [testSendAll, setTestSendAll] = useState(false); // false = send just one, true = send all
 
   // Email history state
+  const EMAIL_HISTORY_PAGE_SIZE = 50;
   const [showHistory, setShowHistory] = useState(false);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [emailStats, setEmailStats] = useState<EmailStats | null>(null);
@@ -71,6 +72,8 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
   const [historySearch, setHistorySearch] = useState('');
   const [historyDateStart, setHistoryDateStart] = useState('');
   const [historyDateEnd, setHistoryDateEnd] = useState('');
+  const [emailHistoryTotal, setEmailHistoryTotal] = useState(0);
+  const [emailHistoryOffset, setEmailHistoryOffset] = useState(0);
 
   // Email templates state
   const [showTemplates, setShowTemplates] = useState(false);
@@ -113,18 +116,23 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
     setAnnouncementCursorPos(target.selectionStart || 0);
   };
 
-  // Fetch email history
-  const fetchEmailHistory = async () => {
+  // Fetch email history (server-side pagination + date filtering)
+  const fetchEmailHistory = async (offset: number = emailHistoryOffset) => {
     setHistoryLoading(true);
     try {
       const [logsRes, statsRes] = await Promise.all([
         emailAPI.getEmailLogs({
-          limit: 100,
-          status: historyFilter === 'all' ? undefined : historyFilter
+          limit: EMAIL_HISTORY_PAGE_SIZE,
+          offset,
+          status: historyFilter === 'all' ? undefined : historyFilter,
+          startDate: historyDateStart || undefined,
+          endDate: historyDateEnd || undefined
         }),
         emailAPI.getEmailStats()
       ]);
       setEmailLogs(logsRes.logs || []);
+      setEmailHistoryTotal(logsRes.total || 0);
+      setEmailHistoryOffset(offset);
       setEmailStats(statsRes);
     } catch (error) {
       console.error('Failed to fetch email history:', error);
@@ -133,13 +141,13 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
     }
   };
 
-  // Fetch history when filter changes or when opened
+  // Reset to first page + refetch when filters or open-state change
   useEffect(() => {
     if (showHistory) {
-      fetchEmailHistory();
+      fetchEmailHistory(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showHistory, historyFilter]);
+  }, [showHistory, historyFilter, historyDateStart, historyDateEnd]);
 
   // Fetch email templates
   const fetchTemplates = async () => {
@@ -481,42 +489,18 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
     return { start, end, calculationType, days };
   }, [selectedTags]);
 
-  // Filter email logs based on search and date
+  // Text search runs client-side within the currently-loaded page.
+  // Status and date filters are pushed to the server and participate in pagination.
   const filteredEmailLogs = useMemo(() => {
-    let filtered = emailLogs;
-
-    // Filter by search term
-    if (historySearch) {
-      const searchLower = historySearch.toLowerCase();
-      filtered = filtered.filter(log =>
-        log.propertyName?.toLowerCase().includes(searchLower) ||
-        log.recipientEmail?.toLowerCase().includes(searchLower) ||
-        log.recipientName?.toLowerCase().includes(searchLower) ||
-        log.frequencyTag?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Filter by date range
-    if (historyDateStart) {
-      const startDate = new Date(historyDateStart);
-      startDate.setHours(0, 0, 0, 0);
-      filtered = filtered.filter(log => {
-        const logDate = new Date(log.createdAt || log.sentAt || '');
-        return logDate >= startDate;
-      });
-    }
-
-    if (historyDateEnd) {
-      const endDate = new Date(historyDateEnd);
-      endDate.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(log => {
-        const logDate = new Date(log.createdAt || log.sentAt || '');
-        return logDate <= endDate;
-      });
-    }
-
-    return filtered;
-  }, [emailLogs, historySearch, historyDateStart, historyDateEnd]);
+    if (!historySearch) return emailLogs;
+    const searchLower = historySearch.toLowerCase();
+    return emailLogs.filter(log =>
+      log.propertyName?.toLowerCase().includes(searchLower) ||
+      log.recipientEmail?.toLowerCase().includes(searchLower) ||
+      log.recipientName?.toLowerCase().includes(searchLower) ||
+      log.frequencyTag?.toLowerCase().includes(searchLower)
+    );
+  }, [emailLogs, historySearch]);
 
   // Handle schedule emails - adds to pending queue
   const handleScheduleEmails = () => {
@@ -1258,7 +1242,7 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
 
                 {/* Refresh */}
                 <button
-                  onClick={fetchEmailHistory}
+                  onClick={() => fetchEmailHistory(emailHistoryOffset)}
                   disabled={historyLoading}
                   className="h-9 flex items-center gap-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
@@ -1337,6 +1321,31 @@ const EmailDashboard: React.FC<EmailDashboardProps> = ({ onBack, hideSidebar = f
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {/* Pagination */}
+              {emailHistoryTotal > EMAIL_HISTORY_PAGE_SIZE && (
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    Showing {emailHistoryTotal === 0 ? 0 : emailHistoryOffset + 1}–{Math.min(emailHistoryOffset + EMAIL_HISTORY_PAGE_SIZE, emailHistoryTotal)} of {emailHistoryTotal.toLocaleString()}
+                    {historySearch && ' (search narrows this page)'}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={emailHistoryOffset === 0 || historyLoading}
+                      onClick={() => fetchEmailHistory(Math.max(0, emailHistoryOffset - EMAIL_HISTORY_PAGE_SIZE))}
+                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      disabled={emailHistoryOffset + EMAIL_HISTORY_PAGE_SIZE >= emailHistoryTotal || historyLoading}
+                      onClick={() => fetchEmailHistory(emailHistoryOffset + EMAIL_HISTORY_PAGE_SIZE)}
+                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

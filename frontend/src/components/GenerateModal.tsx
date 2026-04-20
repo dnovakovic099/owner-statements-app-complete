@@ -78,7 +78,8 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   const getCalculationTypeForTag = (tag: string): string => {
     const upper = tag.toUpperCase();
     if (upper.includes('MONTHLY')) return 'calendar';
-    return 'checkout'; // WEEKLY, BI-WEEKLY
+    if (upper.includes('WEEKLY') && !upper.includes('BI')) return 'calendar';
+    return 'checkout'; // BI-WEEKLY
   };
 
   // Helper function to calculate date range based on tag and calculation type

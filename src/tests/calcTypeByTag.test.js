@@ -2,8 +2,8 @@
  * Tests for: Auto-set Calculation Method & Date Ranges by Schedule Tag
  *
  * Verifies that:
- * 1. WEEKLY/BI-WEEKLY tags default to "checkout" calculation method
- * 2. MONTHLY tags default to "calendar" calculation method
+ * 1. WEEKLY/MONTHLY tags default to "calendar" calculation method
+ * 2. BI-WEEKLY tags default to "checkout" calculation method
  * 3. Checkout date ranges: Monday to Monday
  * 4. Calendar date ranges: Monday to Sunday
  * 5. Switching calculation method recalculates dates accordingly
@@ -31,6 +31,7 @@ jest.mock('../config/database', () => ({
 const getCalculationTypeForTag = (tag) => {
     const upper = (tag || '').toUpperCase();
     if (upper.includes('MONTHLY')) return 'calendar';
+    if (upper.includes('WEEKLY') && !upper.includes('BI')) return 'calendar';
     return 'checkout';
 };
 
@@ -104,12 +105,12 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
     // ========================================================================
     describe('getCalculationTypeForTag (frontend logic)', () => {
 
-        test('WEEKLY tag defaults to checkout', () => {
-            expect(getCalculationTypeForTag('WEEKLY')).toBe('checkout');
+        test('WEEKLY tag defaults to calendar', () => {
+            expect(getCalculationTypeForTag('WEEKLY')).toBe('calendar');
         });
 
-        test('Weekly tag (lowercase) defaults to checkout', () => {
-            expect(getCalculationTypeForTag('Weekly')).toBe('checkout');
+        test('Weekly tag (lowercase) defaults to calendar', () => {
+            expect(getCalculationTypeForTag('Weekly')).toBe('calendar');
         });
 
         test('BI-WEEKLY tag defaults to checkout', () => {
@@ -149,8 +150,8 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
             service = require('../services/TagScheduleService');
         });
 
-        test('WEEKLY returns checkout', () => {
-            expect(service.getDefaultCalculationTypeForTag('WEEKLY')).toBe('checkout');
+        test('WEEKLY returns calendar', () => {
+            expect(service.getDefaultCalculationTypeForTag('WEEKLY')).toBe('calendar');
         });
 
         test('BI-WEEKLY returns checkout', () => {
@@ -201,7 +202,7 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
             expect(range.end).toBe('2026-02-22');    // prev Sunday
         });
 
-        test('WEEKLY default (no calcType) → Monday to Monday (checkout)', () => {
+        test('WEEKLY default (no calcType) → Monday to Monday (checkout fallback)', () => {
             const range = getDateRangeForTag('WEEKLY', undefined, wednesday);
             expect(range.start).toBe('2026-02-16');
             expect(range.end).toBe('2026-02-23');
@@ -307,14 +308,14 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
             service = require('../services/TagScheduleService');
         });
 
-        test('WEEKLY with no calculationType uses tag default (checkout) → Mon-to-Mon', () => {
+        test('WEEKLY with no calculationType uses tag default (calendar) → Mon-to-Sun', () => {
             // Mock getESTTime to return a known Wednesday
             const origGetESTTime = service.getESTTime.bind(service);
             service.getESTTime = () => new Date(2026, 1, 25); // Wed Feb 25
 
             const range = service.calculateDateRangeForTag('WEEKLY');
             expect(range.start).toBe('2026-02-16');
-            expect(range.end).toBe('2026-02-23');
+            expect(range.end).toBe('2026-02-22');
 
             service.getESTTime = origGetESTTime;
         });
@@ -382,21 +383,21 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
 
         test('Group fallback: group.calculationType > schedule.calculationType > tag default', () => {
             const tagDefault = getCalculationTypeForTag('WEEKLY');
-            expect(tagDefault).toBe('checkout');
+            expect(tagDefault).toBe('calendar');
 
-            // If group has a calculationType, use it
-            const groupCalcType = 'calendar';
-            const scheduleCalcType = 'checkout';
+            // If group has a calculationType, use it (overrides tag default)
+            const groupCalcType = 'checkout';
+            const scheduleCalcType = 'calendar';
             const resolved = groupCalcType || scheduleCalcType || tagDefault;
-            expect(resolved).toBe('calendar');
+            expect(resolved).toBe('checkout');
         });
 
         test('Group fallback: no group type → schedule type', () => {
             const tagDefault = getCalculationTypeForTag('WEEKLY');
             const groupCalcType = null;
-            const scheduleCalcType = 'calendar';
+            const scheduleCalcType = 'checkout';
             const resolved = groupCalcType || scheduleCalcType || tagDefault;
-            expect(resolved).toBe('calendar');
+            expect(resolved).toBe('checkout');
         });
 
         test('Group fallback: no group or schedule type → tag default', () => {
@@ -404,7 +405,7 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
             const groupCalcType = null;
             const scheduleCalcType = null;
             const resolved = groupCalcType || scheduleCalcType || tagDefault;
-            expect(resolved).toBe('checkout');
+            expect(resolved).toBe('calendar');
         });
 
         test('Group fallback: MONTHLY tag with no overrides → calendar', () => {
@@ -422,6 +423,12 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
 
         test('Individual fallback: no schedule type → tag default (MONTHLY → calendar)', () => {
             const tagDefault = getCalculationTypeForTag('MONTHLY');
+            const resolved = null || tagDefault;
+            expect(resolved).toBe('calendar');
+        });
+
+        test('Individual fallback: WEEKLY tag with no schedule type → calendar', () => {
+            const tagDefault = getCalculationTypeForTag('WEEKLY');
             const resolved = null || tagDefault;
             expect(resolved).toBe('calendar');
         });
@@ -510,11 +517,11 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
     // ========================================================================
     describe('Group selection derives calc type from tag', () => {
 
-        test('Group with WEEKLY tag and no calculationType → checkout', () => {
+        test('Group with WEEKLY tag and no calculationType → calendar', () => {
             const group = { id: 1, name: 'Beach Props', tags: ['WEEKLY'], calculationType: null };
             const tagCalcType = group.tags.length > 0 ? getCalculationTypeForTag(group.tags[0]) : 'checkout';
             const calcType = group.calculationType || tagCalcType;
-            expect(calcType).toBe('checkout');
+            expect(calcType).toBe('calendar');
         });
 
         test('Group with MONTHLY tag and no calculationType → calendar', () => {
@@ -524,11 +531,11 @@ describe('Auto-set Calculation Method & Date Ranges by Tag', () => {
             expect(calcType).toBe('calendar');
         });
 
-        test('Group with WEEKLY tag but calculationType override → uses override', () => {
-            const group = { id: 3, name: 'Special Props', tags: ['WEEKLY'], calculationType: 'calendar' };
+        test('Group with WEEKLY tag but calculationType override to checkout → uses override', () => {
+            const group = { id: 3, name: 'Special Props', tags: ['WEEKLY'], calculationType: 'checkout' };
             const tagCalcType = group.tags.length > 0 ? getCalculationTypeForTag(group.tags[0]) : 'checkout';
             const calcType = group.calculationType || tagCalcType;
-            expect(calcType).toBe('calendar');
+            expect(calcType).toBe('checkout');
         });
 
         test('Group with no tags → falls back to checkout', () => {

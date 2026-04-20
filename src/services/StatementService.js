@@ -106,10 +106,11 @@ class StatementService {
                 }
             });
 
-            // Fetch reservations and expenses using batch methods (same as manual generation)
-            const [reservationsByProperty, expensesByProperty] = await Promise.all([
+            // Fetch reservations, expenses, and prior statements in parallel (same as manual generation)
+            const [reservationsByProperty, expensesByProperty, priorStatements] = await Promise.all([
                 FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap),
-                FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds)
+                FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds),
+                FileDataService.getPriorStatementExpenses(parsedPropertyIds)
             ]);
 
             // Combine all reservations and expenses
@@ -139,7 +140,8 @@ class StatementService {
                 propertyIds: parsedPropertyIds,
                 startDate,
                 endDate,
-                calculationType
+                calculationType,
+                priorStatements
             });
 
             // Build internal notes
@@ -291,10 +293,11 @@ class StatementService {
                 listingInfoMap[parsedPropertyId] = targetListing;
             }
 
-            // Fetch reservations and expenses
-            const [reservations, expenseData] = await Promise.all([
+            // Fetch reservations, expenses, and prior statements in parallel
+            const [reservations, expenseData, priorStatements] = await Promise.all([
                 FileDataService.getReservations(startDate, endDate, parsedPropertyId, calculationType),
-                FileDataService.getExpenses(startDate, endDate, parsedPropertyId)
+                FileDataService.getExpenses(startDate, endDate, parsedPropertyId),
+                FileDataService.getPriorStatementExpenses([parsedPropertyId])
             ]);
 
             const expenses = expenseData.expenses || expenseData;
@@ -308,7 +311,8 @@ class StatementService {
                 propertyIds: [parsedPropertyId],
                 startDate,
                 endDate,
-                calculationType
+                calculationType,
+                priorStatements
             });
 
             // Get owners for owner info

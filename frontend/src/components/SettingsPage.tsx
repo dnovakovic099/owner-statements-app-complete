@@ -111,9 +111,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   // Activity log state
+  const ACTIVITY_PAGE_SIZE = 50;
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityTotal, setActivityTotal] = useState(0);
+  const [activityOffset, setActivityOffset] = useState(0);
   const [filterUsers, setFilterUsers] = useState<string[]>([]);
   const [filterActions, setFilterActions] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState('');
@@ -139,9 +141,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const [appLogsOffset, setAppLogsOffset] = useState(0);
 
   // Backup state
+  const BACKUP_HISTORY_PAGE_SIZE = 25;
   const [backupStatus, setBackupStatus] = useState<any>(null);
   const [backupFiles, setBackupFiles] = useState<any[]>([]);
   const [backupHistory, setBackupHistory] = useState<any[]>([]);
+  const [backupHistoryPage, setBackupHistoryPage] = useState(0);
   const [backupNextScheduled, setBackupNextScheduled] = useState<any>(null);
   const [backupDiskUsage, setBackupDiskUsage] = useState<any>(null);
   const [backupLoading, setBackupLoading] = useState(false);
@@ -420,7 +424,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
 
   useEffect(() => {
     if (activeTab === 'activity') {
-      loadActivityLogs();
+      loadActivityLogs(0);
       loadFilterOptions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -428,7 +432,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
 
   useEffect(() => {
     if (activeTab === 'activity') {
-      loadActivityLogs();
+      // Reset to first page when filters change
+      loadActivityLogs(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser, selectedAction, selectedStartDate, selectedEndDate]);
@@ -452,10 +457,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
     }
   };
 
-  const loadActivityLogs = async () => {
+  const loadActivityLogs = async (offset: number = activityOffset) => {
     try {
       setActivityLoading(true);
-      const params: any = { limit: 100 };
+      const params: any = { limit: ACTIVITY_PAGE_SIZE, offset };
       if (selectedUser) params.username = selectedUser;
       if (selectedAction) params.action = selectedAction;
       if (selectedStartDate) params.startDate = selectedStartDate;
@@ -465,6 +470,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
       if (response.success) {
         setActivityLogs(response.logs);
         setActivityTotal(response.total);
+        setActivityOffset(offset);
       }
     } catch (err) {
       console.error('Failed to load activity logs:', err);
@@ -966,9 +972,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </button>
                 )}
                 <div className="ml-auto flex items-center gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{activityTotal} activities</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">{activityTotal.toLocaleString()} activities</span>
                   <button
-                    onClick={loadActivityLogs}
+                    onClick={() => loadActivityLogs(activityOffset)}
                     disabled={activityLoading}
                     className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
                   >
@@ -1118,6 +1124,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* Pagination */}
+              {activityTotal > ACTIVITY_PAGE_SIZE && (
+                <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    Showing {activityTotal === 0 ? 0 : activityOffset + 1}–{Math.min(activityOffset + ACTIVITY_PAGE_SIZE, activityTotal)} of {activityTotal}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={activityOffset === 0 || activityLoading}
+                      onClick={() => loadActivityLogs(Math.max(0, activityOffset - ACTIVITY_PAGE_SIZE))}
+                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      disabled={activityOffset + ACTIVITY_PAGE_SIZE >= activityTotal || activityLoading}
+                      onClick={() => loadActivityLogs(activityOffset + ACTIVITY_PAGE_SIZE)}
+                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2178,7 +2208,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                     </tr>
                   </thead>
                   <tbody>
-                    {backupHistory.slice(0, 25).map((entry: any, idx: number) => (
+                    {backupHistory.slice(backupHistoryPage * BACKUP_HISTORY_PAGE_SIZE, backupHistoryPage * BACKUP_HISTORY_PAGE_SIZE + BACKUP_HISTORY_PAGE_SIZE).map((entry: any, idx: number) => (
                       <tr key={idx} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className="py-2 px-4">
                           {entry.success ? (
@@ -2228,9 +2258,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                   </tbody>
                 </table>
               </div>
-              {backupHistory.length > 25 && (
-                <div className="px-6 py-3 bg-gray-50 dark:bg-gray-800 text-xs text-gray-500">
-                  Showing 25 of {backupHistory.length} entries
+              {backupHistory.length > BACKUP_HISTORY_PAGE_SIZE && (
+                <div className="px-6 py-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Showing {backupHistoryPage * BACKUP_HISTORY_PAGE_SIZE + 1}–{Math.min((backupHistoryPage + 1) * BACKUP_HISTORY_PAGE_SIZE, backupHistory.length)} of {backupHistory.length} entries
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={backupHistoryPage === 0}
+                      onClick={() => setBackupHistoryPage(p => Math.max(0, p - 1))}
+                      className="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-white dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      disabled={(backupHistoryPage + 1) * BACKUP_HISTORY_PAGE_SIZE >= backupHistory.length}
+                      onClick={() => setBackupHistoryPage(p => p + 1)}
+                      className="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 hover:bg-white dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

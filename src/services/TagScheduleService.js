@@ -1193,11 +1193,12 @@ class TagScheduleService {
 
     /**
      * Get default calculation type based on tag name.
-     * Monthly → calendar, Weekly/Bi-weekly → checkout.
+     * Weekly/Monthly → calendar (prorate overlapping stays), Bi-weekly → checkout.
      */
     getDefaultCalculationTypeForTag(tagName) {
         const upper = (tagName || '').toUpperCase();
         if (upper.includes('MONTHLY')) return 'calendar';
+        if (upper.includes('WEEKLY') && !upper.includes('BI')) return 'calendar';
         return 'checkout';
     }
 }

@@ -226,7 +226,7 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
         let reservationCount = 0;
 
         for (const stmt of statementsWithReservations) {
-            const reservations = stmt.reservations || [];
+            const reservations = (stmt.reservations || []).filter(r => r.status !== 'blocked');
             reservationCount += reservations.length;
             for (const res of reservations) {
                 // baseRate is the accommodation base rate
@@ -337,7 +337,7 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
                 let prevBaseRate = 0, prevGuestFees = 0, prevPlatformFees = 0, prevTaxes = 0, prevGrossPayout = 0;
                 let prevReservationCount = 0;
                 for (const stmt of prevStatementsWithReservations) {
-                    const reservations = stmt.reservations || [];
+                    const reservations = (stmt.reservations || []).filter(r => r.status !== 'blocked');
                     prevReservationCount += reservations.length;
                     for (const res of reservations) {
                         prevBaseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
@@ -1104,6 +1104,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 : (stmt.reservations || []);
 
             for (const r of reservations) {
+                if (r.status === 'blocked') continue; // manual calendar blocks have no revenue/payout
                 const resId = r.hostifyId || r.id;
                 if (resId && entry._seenReservationIds.has(resId)) continue;
                 if (resId) entry._seenReservationIds.add(resId);
