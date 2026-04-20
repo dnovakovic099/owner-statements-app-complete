@@ -252,7 +252,10 @@ describe('calculateStatementFinancials integration', () => {
         expect(result.periodReservations).toHaveLength(1);
     });
 
-    test('calendar-based calculation also dedupes via checkout boundary overlap', () => {
+    test('calendar-based calculation SKIPS dedupe (pro-rating across periods is legitimate)', () => {
+        // A long stay prorated across a prior weekly statement should still appear
+        // on a new monthly calendar statement — the reservation gets different night
+        // slices per period, not double-billed.
         const reservations = [
             makeReservation({ hostifyId: 99001, hasDetailedFinance: true, clientRevenue: 1432.51 })
         ];
@@ -267,9 +270,9 @@ describe('calculateStatementFinancials integration', () => {
             calculationType: 'calendar',
             priorStatements
         });
-        expect(result.periodReservations).toHaveLength(0);
+        expect(result.periodReservations).toHaveLength(1);
         const warnings = result.duplicateWarnings.filter(w => w.type === 'prior_statement_reservation');
-        expect(warnings).toHaveLength(1);
+        expect(warnings).toHaveLength(0);
     });
 
     test('group/combined statement: dedupes across multiple properties', () => {

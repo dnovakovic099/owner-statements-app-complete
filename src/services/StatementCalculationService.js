@@ -42,8 +42,10 @@ class StatementCalculationService {
 
         // Drop reservations already billed on a prior finalized/sent/paid statement so the
         // same booking is not paid twice when its checkout falls on a shared period boundary.
+        // Only applies to checkout-based statements: in calendar mode a reservation is
+        // prorated by nights and legitimately appears across multiple overlapping periods.
         let priorReservationDuplicateWarnings = [];
-        if (priorStatements && priorStatements.length > 0) {
+        if (calculationType !== 'calendar' && priorStatements && priorStatements.length > 0) {
             const signatureMap = this.buildPriorReservationSignatures(priorStatements);
             const { kept, duplicateWarnings } = this.excludePriorStatementReservations(periodReservations, signatureMap);
             periodReservations = kept;
