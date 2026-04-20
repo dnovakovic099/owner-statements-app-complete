@@ -19,6 +19,48 @@ const payoutReceiptTemplate = require('../templates/emails/payoutReceipt');
 const collectionInvoiceTemplate = require('../templates/emails/collectionInvoice');
 
 /**
+ * Detect Increase's "no such external_account" error so we can auto-clear the
+ * stale id rather than letting the same payout fail repeatedly. Returns the
+ * dangling external_account id when matched, otherwise null.
+ */
+function extractMissingExternalAccountId(error) {
+    const data = error?.response?.data;
+    if (!data || data.status !== 400) return null;
+    const errors = Array.isArray(data.errors) ? data.errors : [];
+    const match = errors.find((e) => e?.field === 'external_account' && /No resource of type external_account was found/i.test(e?.message || ''));
+    if (!match) return null;
+    const idMatch = /ID `([^`]+)`/i.exec(match.message);
+    return idMatch ? idMatch[1] : 'unknown';
+}
+
+/**
+ * Clear a stale wiseRecipientId from the listing or group it lives on so the
+ * next attempt doesn't re-send the same dangling id to Increase.
+ */
+async function clearStaleRecipient(statement) {
+    try {
+        if (statement.groupId) {
+            const group = await ListingGroup.findByPk(statement.groupId);
+            if (group && group.wiseRecipientId) {
+                await group.update({ wiseRecipientId: null, wiseStatus: 'missing' });
+                return { entity: 'group', id: group.id };
+            }
+        }
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        if (listingId) {
+            const listing = await Listing.findByPk(listingId);
+            if (listing && listing.wiseRecipientId) {
+                await listing.update({ wiseRecipientId: null, wiseStatus: 'missing', payoutStatus: 'missing' });
+                return { entity: 'listing', id: listing.id };
+            }
+        }
+    } catch (e) {
+        logger.warn('Failed to clear stale Increase recipient', { statementId: statement.id, error: e.message });
+    }
+    return null;
+}
+
+/**
  * Resolve the Increase external account ID for a statement.
  * Priority: group recipient > individual listing recipient
  */
@@ -224,6 +266,48 @@ router.post('/refresh-status', async (req, res) => {
 });
 
 // ─── GET /listings/:id/status ───────────────────────────────
+// ─── GET /recipients/:externalAccountId/check ────────────────
+// Admin diagnostic: ask Increase whether a given external_account ID still exists.
+// Useful when a transfer fails with "no resource of type external_account" and you
+// want to confirm the account was archived/deleted on Increase's side.
+router.get('/recipients/:externalAccountId/check', async (req, res) => {
+    const externalAccountId = req.params.externalAccountId;
+    if (!IncreaseService.isConfigured()) {
+        return res.status(500).json({ error: 'Increase is not configured' });
+    }
+    try {
+        const account = await IncreaseService.getRecipient(externalAccountId);
+        return res.json({
+            success: true,
+            exists: true,
+            externalAccountId,
+            account: {
+                id: account?.id,
+                status: account?.status,
+                description: account?.description,
+                accountHolder: account?.account_holder,
+                routingNumber: account?.routing_number,
+                createdAt: account?.created_at,
+                idempotencyKey: account?.idempotency_key,
+            },
+        });
+    } catch (error) {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        if (status === 404 || status === 400) {
+            return res.json({
+                success: true,
+                exists: false,
+                externalAccountId,
+                increaseStatus: status,
+                detail: data?.detail || data?.title || error.message,
+            });
+        }
+        logger.logError(error, { context: 'Payouts', action: 'checkRecipient', externalAccountId, increaseResponse: data });
+        return res.status(500).json({ success: false, error: 'Failed to check recipient', detail: data?.detail || error.message });
+    }
+});
+
 router.get('/listings/:id/status', async (req, res) => {
     try {
         const listing = await Listing.findByPk(parseInt(req.params.id));
@@ -384,14 +468,26 @@ router.post('/statements/:id/transfer', async (req, res) => {
             paidAt: new Date().toISOString(),
         });
     } catch (error) {
-        // Update statement with error
+        const staleId = extractMissingExternalAccountId(error);
+
+        // Update statement with error + auto-clear dangling recipient if Increase
+        // says the external_account doesn't exist anymore.
+        let cleared = null;
         try {
             const statement = await Statement.findByPk(parseInt(req.params.id));
-            if (statement && statement.payoutStatus === 'pending') {
-                await statement.update({
-                    payoutStatus: 'failed',
-                    payoutError: error.response?.data?.detail || error.response?.data?.title || error.message || 'Increase transfer failed',
-                });
+            if (statement) {
+                if (staleId) {
+                    cleared = await clearStaleRecipient(statement);
+                    await statement.update({
+                        payoutStatus: 'failed',
+                        payoutError: `Increase external_account ${staleId} no longer exists. Cleared the stored recipient — re-register a payout account before retrying.`,
+                    });
+                } else if (statement.payoutStatus === 'pending') {
+                    await statement.update({
+                        payoutStatus: 'failed',
+                        payoutError: error.response?.data?.detail || error.response?.data?.title || error.message || 'Increase transfer failed',
+                    });
+                }
             }
         } catch (e) {
             logger.warn('Failed to update statement status after payout error', { statementId: req.params.id, error: e.message });
@@ -401,7 +497,20 @@ router.post('/statements/:id/transfer', async (req, res) => {
             context: 'Payouts', action: 'transfer', statementId: req.params.id,
             wiseResponse: error.response?.data,
             wiseStatus: error.response?.status,
+            staleExternalAccountId: staleId,
+            clearedRecipient: cleared,
         });
+
+        if (staleId) {
+            return res.status(400).json({
+                success: false,
+                error: `Increase external_account ${staleId} no longer exists`,
+                detail: cleared
+                    ? `Cleared stale recipient from ${cleared.entity} #${cleared.id}. Re-register a payout account before retrying this statement.`
+                    : 'Stored recipient ID was already absent. Re-register a payout account before retrying.',
+                staleExternalAccountId: staleId,
+            });
+        }
         const msg = error.response?.data?.errors?.[0]?.message || error.response?.data?.message || error.message || 'Transfer failed';
         res.status(500).json({ error: msg });
     }
