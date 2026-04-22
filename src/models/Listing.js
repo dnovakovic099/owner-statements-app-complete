@@ -74,6 +74,13 @@ const Listing = sequelize.define('Listing', {
         field: 'cleaning_fee_pass_through',
         comment: 'If true, owner pays guest cleaning fee instead of actual cleaning expense'
     },
+    excludeCleaningFromCommission: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'exclude_cleaning_from_commission',
+        comment: 'If true, guest-paid cleaning fee is subtracted from revenue before computing PM commission'
+    },
     cleaningFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,

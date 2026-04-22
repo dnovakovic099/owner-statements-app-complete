@@ -120,6 +120,13 @@ const Statement = sequelize.define('Statement', {
         defaultValue: false,
         field: 'cleaning_fee_pass_through'
     },
+    excludeCleaningFromCommission: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'exclude_cleaning_from_commission',
+        comment: 'Snapshot of excludeCleaningFromCommission at statement generation time'
+    },
     totalCleaningFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,

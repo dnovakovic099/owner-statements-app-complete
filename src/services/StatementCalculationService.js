@@ -278,14 +278,32 @@ class StatementCalculationService {
             const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
             totalRevenue += revenue;
 
-            // Calculate PM commission
+            // Commission base excludes guest-paid cleaning fee when the listing is flagged
             const resPmFee = this._getEffectivePmFee(listing, res.createdAt);
-            pmCommission += revenue * (resPmFee / 100);
+            const commissionBase = this._getCommissionBase(res, listing, revenue);
+            pmCommission += commissionBase * (resPmFee / 100);
         }
 
         const avgPmPercentage = totalRevenue > 0 ? (pmCommission / totalRevenue) * 100 : 15;
 
         return { totalRevenue, pmCommission, avgPmPercentage };
+    }
+
+    /**
+     * Compute the revenue base that the PM commission percentage is applied to.
+     * When the listing has excludeCleaningFromCommission set, subtract the guest-paid
+     * cleaning fee (already included in revenue via Guest Fees) from the base.
+     */
+    _getCommissionBase(res, listing, revenue) {
+        if (!listing || !listing.excludeCleaningFromCommission) {
+            return revenue;
+        }
+        const cleaningFee = parseFloat(res.cleaningFee) || 0;
+        if (cleaningFee <= 0) {
+            return revenue;
+        }
+        // Never let the base go negative (degenerate case)
+        return Math.max(0, revenue - cleaningFee);
     }
 
     /**
@@ -350,7 +368,9 @@ class StatementCalculationService {
             })();
 
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-            const luxuryFee = clientRevenue * (resPmPercentage / 100);
+            // Commission base optionally excludes the guest-paid cleaning fee
+            const commissionBase = this._getCommissionBase(res, resListingInfo, clientRevenue);
+            const luxuryFee = commissionBase * (resPmPercentage / 100);
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;

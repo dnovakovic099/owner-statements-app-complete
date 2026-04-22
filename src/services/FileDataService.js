@@ -177,6 +177,7 @@ class FileDataService {
                         pmFeePercentage: db.pmFeePercentage || 15.00,
                         isCohostOnAirbnb: Boolean(db.isCohostOnAirbnb),
                         cleaningFeePassThrough: Boolean(db.cleaningFeePassThrough),
+                        excludeCleaningFromCommission: Boolean(db.excludeCleaningFromCommission),
                         disregardTax: Boolean(db.disregardTax),
                         airbnbPassThroughTax: Boolean(db.airbnbPassThroughTax),
                         guestPaidDamageCoverage: Boolean(db.guestPaidDamageCoverage),

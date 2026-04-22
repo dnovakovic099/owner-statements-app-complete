@@ -22,6 +22,7 @@ router.get('/', asyncHandler(async (req, res) => {
         passThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        excludeCleaningFromCommission,
         guestPaidDamageCoverage,
         waiveCommission,
         payoutStatus
@@ -43,6 +44,7 @@ router.get('/', asyncHandler(async (req, res) => {
         passThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        excludeCleaningFromCommission,
         guestPaidDamageCoverage,
         waiveCommission,
         payoutStatus
@@ -220,7 +222,7 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
+        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -228,6 +230,7 @@ router.put('/:id/config', async (req, res) => {
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
+        if (excludeCleaningFromCommission !== undefined) config.excludeCleaningFromCommission = excludeCleaningFromCommission;
         if (guestPaidDamageCoverage !== undefined) config.guestPaidDamageCoverage = guestPaidDamageCoverage;
         if (includeChildListings !== undefined) config.includeChildListings = includeChildListings;
         if (waiveCommission !== undefined) config.waiveCommission = waiveCommission;
@@ -314,6 +317,7 @@ router.put('/:id/config', async (req, res) => {
             airbnbPassThroughTax: 'Pass-through Tax',
             disregardTax: 'Disregard Tax',
             cleaningFeePassThrough: 'Cleaning Fee Pass-through',
+            excludeCleaningFromCommission: 'Exclude Cleaning from PM Commission',
             guestPaidDamageCoverage: 'Guest Damage Coverage',
             includeChildListings: 'Include Child Listings',
             waiveCommission: 'Waive Commission',

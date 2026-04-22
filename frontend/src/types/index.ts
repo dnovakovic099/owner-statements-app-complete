@@ -182,6 +182,7 @@ export interface Listing {
   airbnbPassThroughTax?: boolean;
   disregardTax?: boolean;
   cleaningFeePassThrough?: boolean;
+  excludeCleaningFromCommission?: boolean;
   guestPaidDamageCoverage?: boolean;
   includeChildListings?: boolean;
   waiveCommission?: boolean;

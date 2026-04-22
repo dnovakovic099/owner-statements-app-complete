@@ -95,6 +95,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
+  const [excludeCleaningFromCommission, setExcludeCleaningFromCommission] = useState(false);
   const [guestPaidDamageCoverage, setGuestPaidDamageCoverage] = useState(false);
   const [waiveCommission, setWaiveCommission] = useState(false);
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
@@ -333,6 +334,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
+        setExcludeCleaningFromCommission(listing.excludeCleaningFromCommission || false);
         setGuestPaidDamageCoverage(listing.guestPaidDamageCoverage || false);
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
@@ -465,6 +467,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         airbnbPassThroughTax,
         disregardTax,
         cleaningFeePassThrough,
+        excludeCleaningFromCommission,
         guestPaidDamageCoverage,
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
@@ -1436,8 +1439,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           type="checkbox"
                           id="cleaningFeePassThrough"
                           checked={cleaningFeePassThrough}
+                          disabled={excludeCleaningFromCommission}
                           onChange={(e) => setCleaningFeePassThrough(e.target.checked)}
-                          className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                          className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
                         />
                         <div className="ml-3">
                           <label
@@ -1450,6 +1454,43 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             When enabled, the <strong>guest-paid cleaning fee</strong> from each reservation is charged to the owner
                             instead of actual cleaning expenses. Any expenses categorized as "Cleaning" will be hidden from statements.
                           </p>
+                          {excludeCleaningFromCommission && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              Disabled because "Exclude Cleaning Fee from PM Commission" is on.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Exclude Cleaning Fee from PM Commission */}
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="excludeCleaningFromCommission"
+                          checked={excludeCleaningFromCommission}
+                          disabled={cleaningFeePassThrough}
+                          onChange={(e) => setExcludeCleaningFromCommission(e.target.checked)}
+                          className="mt-1 h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded disabled:opacity-50"
+                        />
+                        <div className="ml-3">
+                          <label
+                            htmlFor="excludeCleaningFromCommission"
+                            className="text-sm font-medium text-emerald-900 cursor-pointer"
+                          >
+                            Exclude Cleaning Fee from PM Commission
+                          </label>
+                          <p className="text-xs text-emerald-700 mt-1">
+                            When enabled, PM commission is computed on
+                            <strong> (Revenue − Guest-Paid Cleaning Fee)</strong> instead of the full Revenue.
+                            Revenue, Tax, and Gross Payout are unchanged; only the commission base is reduced.
+                          </p>
+                          {cleaningFeePassThrough && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              Disabled because "Cleaning Fee Pass-Through" is on — pass-through already reduces the commission base via reverse calculation.
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

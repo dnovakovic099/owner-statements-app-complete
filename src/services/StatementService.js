@@ -181,6 +181,7 @@ class StatementService {
                 propertyCount: financials.propertyCount,
                 totalCleaningFee: financials.totalCleaningFee,
                 cleaningFeePassThrough: targetListings.some(l => listingInfoMap[l.id]?.cleaningFeePassThrough),
+                excludeCleaningFromCommission: targetListings.some(l => listingInfoMap[l.id]?.excludeCleaningFromCommission),
                 // Snapshot per-property listing settings at generation time
                 listingSettingsSnapshot: (() => {
                     const snapshot = {};
@@ -191,6 +192,7 @@ class StatementService {
                             disregardTax: Boolean(info.disregardTax),
                             airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
                             cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
+                            excludeCleaningFromCommission: Boolean(info.excludeCleaningFromCommission),
                             guestPaidDamageCoverage: Boolean(info.guestPaidDamageCoverage),
                             waiveCommission: Boolean(info.waiveCommission),
                             waiveCommissionUntil: info.waiveCommissionUntil || null,
@@ -345,6 +347,7 @@ class StatementService {
                 propertyCount: 1,
                 totalCleaningFee: financials.totalCleaningFee,
                 cleaningFeePassThrough: listingInfoMap[parsedPropertyId]?.cleaningFeePassThrough || false,
+                excludeCleaningFromCommission: listingInfoMap[parsedPropertyId]?.excludeCleaningFromCommission || false,
                 isCohostOnAirbnb: listingInfoMap[parsedPropertyId]?.isCohostOnAirbnb || false,
                 // Snapshot listing settings at generation time
                 waiveCommission: Boolean(listingInfoMap[parsedPropertyId]?.waiveCommission),
@@ -358,6 +361,7 @@ class StatementService {
                         disregardTax: Boolean(listingInfoMap[parsedPropertyId].disregardTax),
                         airbnbPassThroughTax: Boolean(listingInfoMap[parsedPropertyId].airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(listingInfoMap[parsedPropertyId].cleaningFeePassThrough),
+                        excludeCleaningFromCommission: Boolean(listingInfoMap[parsedPropertyId].excludeCleaningFromCommission),
                         guestPaidDamageCoverage: Boolean(listingInfoMap[parsedPropertyId].guestPaidDamageCoverage),
                         waiveCommission: Boolean(listingInfoMap[parsedPropertyId].waiveCommission),
                         waiveCommissionUntil: listingInfoMap[parsedPropertyId].waiveCommissionUntil || null,

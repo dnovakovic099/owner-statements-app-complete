@@ -274,6 +274,7 @@ class ListingService {
             addBoolFilter('airbnbPassThroughTax', filters.passThroughTax);
             addBoolFilter('disregardTax', filters.disregardTax);
             addBoolFilter('cleaningFeePassThrough', filters.cleaningFeePassThrough);
+            addBoolFilter('excludeCleaningFromCommission', filters.excludeCleaningFromCommission);
             addBoolFilter('guestPaidDamageCoverage', filters.guestPaidDamageCoverage);
             addBoolFilter('waiveCommission', filters.waiveCommission);
 
@@ -490,6 +491,7 @@ class ListingService {
             if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
             if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;
             if (config.cleaningFeePassThrough !== undefined) updates.cleaningFeePassThrough = config.cleaningFeePassThrough;
+            if (config.excludeCleaningFromCommission !== undefined) updates.excludeCleaningFromCommission = config.excludeCleaningFromCommission;
             if (config.guestPaidDamageCoverage !== undefined) updates.guestPaidDamageCoverage = config.guestPaidDamageCoverage;
             if (config.includeChildListings !== undefined) updates.includeChildListings = config.includeChildListings;
             if (config.waiveCommission !== undefined) updates.waiveCommission = config.waiveCommission;
