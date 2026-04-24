@@ -35,7 +35,7 @@ function getPuppeteerArgs() {
 
 /**
  * Compute the pass-through cleaning fee amount stored on the statement for a single reservation.
- * Matches the generation-time formula: guestPaidCleaningFee / (1 + PM%).
+ * Matches the generation-time formula: CEIL( guestPaidCleaningFee / (1 + PM%), $5 ).
  * Returns a positive number; callers negate it.
  */
 function computePassThroughCleaningFee(statement, reservation) {
@@ -43,7 +43,7 @@ function computePassThroughCleaningFee(statement, reservation) {
     if (guestPaid <= 0) return 0;
     const snapshot = statement.listingSettingsSnapshot?.[reservation.propertyId] || statement.listingSettingsSnapshot?.[statement.propertyId];
     const pmPct = snapshot?.pmFeePercentage ?? statement.pmPercentage ?? 15;
-    return Math.round((guestPaid / (1 + pmPct / 100)) * 100) / 100;
+    return Math.ceil((guestPaid / (1 + pmPct / 100)) / 5) * 5;
 }
 
 /**
@@ -352,7 +352,7 @@ router.get('/', async (req, res) => {
                         // In calendar mode, only charge cleaning fee if checkout is within the period
                         const checkoutInPeriod = s.calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(s.weekEndDate);
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                            ? Math.round((guestPaidCleaningFee / (1 + pmPercentage / 100)) * 100) / 100
+                            ? Math.ceil((guestPaidCleaningFee / (1 + pmPercentage / 100)) / 5) * 5
                             : 0;
 
                         // Check if PM commission waiver is active
@@ -1008,7 +1008,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             // In calendar mode, only charge cleaning fee if checkout is within the period
             const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
             const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.round((guestPaidCleaningFee / (1 + resPmPercentage / 100)) * 100) / 100
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
@@ -1657,7 +1657,7 @@ router.post('/generate', async (req, res) => {
             totalCleaningFeeFromReservations = periodReservations.reduce((sum, res) => {
                 const guestPaidCleaningFee = res.cleaningFee || 0;
                 const calculatedFee = guestPaidCleaningFee > 0
-                    ? Math.round((guestPaidCleaningFee / (1 + pmPct / 100)) * 100) / 100
+                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPct / 100)) / 5) * 5
                     : 0;
                 return sum + calculatedFee;
             }, 0);
@@ -1682,7 +1682,7 @@ router.post('/generate', async (req, res) => {
             for (const res of periodReservations) {
                 const guestPaidCleaningFee = res.cleaningFee ?? listingInfo?.cleaningFee ?? 0;
                 const calculatedCleaningFee = guestPaidCleaningFee > 0
-                    ? Math.round((guestPaidCleaningFee / (1 + pmPctForExpenses / 100)) * 100) / 100
+                    ? Math.ceil((guestPaidCleaningFee / (1 + pmPctForExpenses / 100)) / 5) * 5
                     : 0;
                 if (calculatedCleaningFee > 0) {
                     cleaningFeeExpenses.push({
@@ -1808,7 +1808,7 @@ router.post('/generate', async (req, res) => {
             // In calendar mode, only charge cleaning fee if checkout is within the period
             const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
             const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.round((guestPaidCleaningFee / (1 + resPmPercentage / 100)) * 100) / 100
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
@@ -2500,7 +2500,7 @@ router.put('/:id/reconfigure', async (req, res) => {
                 const resPmPercentage = StatementCalculationService.getEffectivePmFee(listing, res.createdAt);
                 const guestPaidCleaningFee = res.cleaningFee ?? listing.cleaningFee ?? 0;
                 const calculatedFee = guestPaidCleaningFee > 0
-                    ? Math.round((guestPaidCleaningFee / (1 + resPmPercentage / 100)) * 100) / 100
+                    ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                     : 0;
                 totalCleaningFeeFromReservations += calculatedFee;
             }
@@ -2592,7 +2592,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             // In calendar mode, only charge cleaning fee if checkout is within the period
             const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
             const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
             const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
 
@@ -3494,7 +3494,7 @@ router.get('/:id/view', async (req, res) => {
             // In calendar mode, only charge cleaning fee if checkout is within the period
             const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                 : 0;
 
             const shouldAddTax = !propSettings.disregardTax && (!isAirbnb || propSettings.airbnbPassThroughTax);
@@ -5323,7 +5323,7 @@ router.get('/:id/view', async (req, res) => {
                     // In calendar mode, only charge cleaning fee if checkout is within the period
                     const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                        ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                        ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
                     // Check if PM commission waiver is active for this property
@@ -5434,7 +5434,7 @@ router.get('/:id/view', async (req, res) => {
                             // In calendar mode, only charge cleaning fee if checkout is within the period
                             const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
                             const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                                ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                                 : 0;
 
                             // Check if PM commission waiver is active for this property
@@ -5728,7 +5728,7 @@ router.get('/:id/view', async (req, res) => {
                     // In calendar mode, only charge cleaning fee if checkout is within the period
                     const checkoutInPeriod = statement.calculationType !== 'calendar' || !reservation.checkOutDate || new Date(reservation.checkOutDate) <= new Date(statement.weekEndDate);
                     const cleaningFeeForPassThrough = propSettings.cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                        ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                        ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                         : 0;
 
                     // Check if PM commission waiver is active for this property
@@ -7112,7 +7112,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         // In calendar mode, only charge cleaning fee if checkout is within the period
                         const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                            ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                            ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
@@ -7558,7 +7558,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         // In calendar mode, only charge cleaning fee if checkout is within the period
                         const checkoutInPeriod = calculationType !== 'calendar' || !res.checkOutDate || new Date(res.checkOutDate) <= new Date(endDate);
                         const cleaningFeeForPassThrough = cleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                            ? Math.round((guestPaidCleaningFee / (1 + resPmPct / 100)) * 100) / 100
+                            ? Math.ceil((guestPaidCleaningFee / (1 + resPmPct / 100)) / 5) * 5
                             : 0;
 
                         const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);

@@ -380,8 +380,10 @@ class StatementCalculationService {
             // In calendar mode, only charge cleaning if checkout is within the period
             const checkoutInPeriod = calculationType !== 'calendar' || this._isCheckoutInPeriod(res.checkOutDate, endDate);
             const guestPaidCleaningFee = res.cleaningFee ?? resListingInfo.cleaningFee ?? 0;
+            // Reverse-engineered cleaning fee is ceiled UP to the nearest $5 to match
+            // the forward pricing formula (guestPaid = CEIL((actual+50) * (1+PM%), $5)).
             const cleaningFeeForPassThrough = resCleaningFeePassThrough && guestPaidCleaningFee > 0 && checkoutInPeriod
-                ? Math.round((guestPaidCleaningFee / (1 + resPmPercentage / 100)) * 100) / 100
+                ? Math.ceil((guestPaidCleaningFee / (1 + resPmPercentage / 100)) / 5) * 5
                 : 0;
 
             const shouldAddTax = !resDisregardTax && (!isAirbnb || resAirbnbPassThroughTax);
