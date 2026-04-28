@@ -335,12 +335,7 @@ router.get('/', async (req, res) => {
                         const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
 
                         const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-                        // Commission base optionally excludes guest-paid cleaning fee
-                        const excludeCleaningFromCommission = listing?.excludeCleaningFromCommission || false;
-                        const resGuestCleaningForCommission = parseFloat(res.cleaningFee) || 0;
-                        const commissionBase = excludeCleaningFromCommission && resGuestCleaningForCommission > 0
-                            ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                            : clientRevenue;
+                        const commissionBase = StatementCalculationService.getCommissionBase(res, listing, clientRevenue);
                         // Use stored value for custom reservations, otherwise calculate
                         const luxuryFee = (res.isCustom && res.luxuryLodgingFee !== undefined)
                             ? res.luxuryLodgingFee
@@ -955,10 +950,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const resPmFee = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : 15;
             // Use clientRevenue (prorated) for calendar-based statements
             const resRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-            const resCleaningForCommission = parseFloat(res.cleaningFee) || 0;
-            const resCommissionBase = listing?.excludeCleaningFromCommission && resCleaningForCommission > 0
-                ? Math.max(0, resRevenue - resCleaningForCommission)
-                : resRevenue;
+            const resCommissionBase = StatementCalculationService.getCommissionBase(res, listing, resRevenue);
             const resCommission = resCommissionBase * (resPmFee / 100);
             pmCommission += resCommission;
         }
@@ -998,10 +990,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             })();
 
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-            const resGuestCleaningForCommission = parseFloat(res.cleaningFee) || 0;
-            const commissionBase = resExcludeCleaningFromCommission && resGuestCleaningForCommission > 0
-                ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                : clientRevenue;
+            const commissionBase = StatementCalculationService.getCommissionBase(res, resListingInfo, clientRevenue);
             const luxuryFee = commissionBase * (resPmPercentage / 100);
             // If waiver is active, don't deduct PM fee
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
@@ -2583,10 +2572,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             const isAirbnb = res.source && res.source.toLowerCase().includes('airbnb');
             const isCohostAirbnb = isAirbnb && isCohostOnAirbnb;
             const clientRevenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
-            const resGuestCleaningForCommission = parseFloat(res.cleaningFee) || 0;
-            const commissionBase = (listing?.excludeCleaningFromCommission && resGuestCleaningForCommission > 0)
-                ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                : clientRevenue;
+            const commissionBase = StatementCalculationService.getCommissionBase(res, listing, clientRevenue);
             const luxuryFee = commissionBase * (resPmPct / 100);
             const luxuryFeeToDeduct = isWaiverActive ? 0 : luxuryFee;
             const taxResponsibility = res.hasDetailedFinance ? res.clientTaxResponsibility : 0;
@@ -3482,11 +3468,7 @@ router.get('/:id/view', async (req, res) => {
 
             const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
-            // Commission base optionally excludes guest-paid cleaning fee
-            const resGuestCleaningForCommission = parseFloat(reservation.cleaningFee) || 0;
-            const commissionBase = (propSettings.excludeCleaningFromCommission && resGuestCleaningForCommission > 0)
-                ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                : clientRevenue;
+            const commissionBase = StatementCalculationService.getCommissionBase(reservation, propSettings, clientRevenue);
             // PM Commission: use stored value for custom reservations, otherwise calculate
             const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                 ? reservation.luxuryLodgingFee
@@ -5308,11 +5290,7 @@ router.get('/:id/view', async (req, res) => {
                     // PM Commission: use stored value for custom reservations, otherwise calculate
                     // Use per-property PM fee percentage for regular reservations (with transition support)
                     const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
-                    // When the listing flag is set, exclude the guest-paid cleaning fee from the commission base
-                    const resGuestCleaningForCommission = parseFloat(reservation.cleaningFee) || 0;
-                    const commissionBase = propSettings.excludeCleaningFromCommission && resGuestCleaningForCommission > 0
-                        ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                        : clientRevenue;
+                    const commissionBase = StatementCalculationService.getCommissionBase(reservation, propSettings, clientRevenue);
                     const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                         ? reservation.luxuryLodgingFee
                         : commissionBase * (resPmPct / 100);
@@ -5430,11 +5408,7 @@ router.get('/:id/view', async (req, res) => {
                             const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
                             // PM Commission: use stored value for custom reservations, otherwise calculate
                             const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
-                            // When the listing flag is set, exclude the guest-paid cleaning fee from the commission base
-                            const resGuestCleaningForCommission = parseFloat(reservation.cleaningFee) || 0;
-                            const commissionBase = propSettings.excludeCleaningFromCommission && resGuestCleaningForCommission > 0
-                                ? Math.max(0, clientRevenue - resGuestCleaningForCommission)
-                                : clientRevenue;
+                            const commissionBase = StatementCalculationService.getCommissionBase(reservation, propSettings, clientRevenue);
                             const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                                 ? reservation.luxuryLodgingFee
                                 : commissionBase * (resPmPct / 100);

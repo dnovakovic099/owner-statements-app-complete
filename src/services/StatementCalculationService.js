@@ -517,7 +517,8 @@ class StatementCalculationService {
 
 const instance = new StatementCalculationService();
 
-// Export the helper as a standalone function so routes can use it directly
+// Export helpers as standalone functions so routes can use them directly
 instance.getEffectivePmFee = instance._getEffectivePmFee.bind(instance);
+instance.getCommissionBase = instance._getCommissionBase.bind(instance);
 
 module.exports = instance;
