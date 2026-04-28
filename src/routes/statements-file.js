@@ -973,7 +973,6 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
             const resCleaningFeePassThrough = resListingInfo.cleaningFeePassThrough || false;
-            const resExcludeCleaningFromCommission = resListingInfo.excludeCleaningFromCommission || false;
             const resWaiveCommission = resListingInfo.waiveCommission || false;
             const resWaiveCommissionUntil = resListingInfo.waiveCommissionUntil || null;
 
