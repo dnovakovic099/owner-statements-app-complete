@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Clock, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-import { listingsAPI, tagScheduleAPI, groupsAPI } from '../services/api';
+import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { listingsAPI, groupsAPI } from '../services/api';
 import { Listing, ListingGroup } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
-import TagScheduleModal from './TagScheduleModal';
 import GroupModal from './GroupModal';
 
 interface NewListing {
@@ -74,12 +73,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [syncing, setSyncing] = useState(false);
   const { showToast } = useToast();
 
-  // Tag schedule modal states
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [scheduleTagName, setScheduleTagName] = useState<string>('');
-  const [existingSchedule, setExistingSchedule] = useState<any>(null);
-  const [tagSchedules, setTagSchedules] = useState<Record<string, any>>({});
-
   // Groups states
   const [groups, setGroups] = useState<ListingGroup[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -131,7 +124,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   useEffect(() => {
     loadListings(false, undefined, true);
-    loadTagSchedules();
     loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -184,50 +176,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     waiveCommissionFilter,
     payoutFilter
   ]);
-
-  // Load all tag schedules
-  const loadTagSchedules = async () => {
-    try {
-      const response = await tagScheduleAPI.getSchedules();
-      if (response.success && response.schedules) {
-        const scheduleMap: Record<string, any> = {};
-        response.schedules.forEach((s: any) => {
-          scheduleMap[s.tagName] = s;
-        });
-        setTagSchedules(scheduleMap);
-      }
-    } catch (error) {
-      console.error('Failed to load tag schedules:', error);
-    }
-  };
-
-  // Open schedule modal for a tag
-  const openScheduleModal = async (tagName: string) => {
-    setScheduleTagName(tagName);
-    try {
-      const response = await tagScheduleAPI.getScheduleByTag(tagName);
-      setExistingSchedule(response.schedule || null);
-    } catch (error) {
-      setExistingSchedule(null);
-    }
-    setIsScheduleModalOpen(true);
-  };
-
-  // Save tag schedule
-  const handleSaveSchedule = async (schedule: any) => {
-    await tagScheduleAPI.saveSchedule(schedule);
-    await loadTagSchedules();
-    showToast('Schedule saved', 'success');
-  };
-
-  // Delete tag schedule
-  const handleDeleteSchedule = async () => {
-    if (scheduleTagName) {
-      await tagScheduleAPI.deleteSchedule(scheduleTagName);
-      await loadTagSchedules();
-      showToast('Schedule removed', 'success');
-    }
-  };
 
   // Load all groups
   const loadGroups = async () => {
@@ -1787,7 +1735,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         </label>
                       </div>
                       <p className="text-xs text-blue-700 mb-3">
-                        Add tags to group and filter listings. Click <Clock className="w-3 h-3 inline" /> to set a reminder schedule for a tag.
+                        Add tags to group and filter listings.
                       </p>
 
                       {/* Existing Tags */}
@@ -1799,15 +1747,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                               className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
                             >
                               {tag}
-                              <button
-                                onClick={() => openScheduleModal(tag)}
-                                className={`ml-1.5 p-0.5 rounded hover:bg-blue-200 transition-colors ${tagSchedules[tag] ? 'text-green-600' : 'text-blue-500'
-                                  }`}
-                                type="button"
-                                title={tagSchedules[tag] ? 'Edit schedule' : 'Set reminder'}
-                              >
-                                <Clock className="w-3.5 h-3.5" />
-                              </button>
                               <button
                                 onClick={() => setTags(tags.filter((_, i) => i !== idx))}
                                 className="ml-1 text-blue-600 hover:text-blue-800"
@@ -2075,16 +2014,6 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Tag Schedule Modal */}
-      <TagScheduleModal
-        isOpen={isScheduleModalOpen}
-        onClose={() => setIsScheduleModalOpen(false)}
-        tagName={scheduleTagName}
-        existingSchedule={existingSchedule}
-        onSave={handleSaveSchedule}
-        onDelete={existingSchedule ? handleDeleteSchedule : undefined}
-      />
 
       {/* Group Modal */}
       <GroupModal

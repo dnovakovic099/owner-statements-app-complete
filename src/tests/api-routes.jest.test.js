@@ -78,12 +78,6 @@ describe('API Routes - Unauthenticated Access', () => {
             expect(res.body).toHaveProperty('error');
         });
 
-        test('GET /api/tag-schedules returns 401', async () => {
-            const res = await request(app).get('/api/tag-schedules');
-            expect(res.status).toBe(401);
-            expect(res.body).toHaveProperty('error');
-        });
-
         test('GET /api/activity-logs returns 401', async () => {
             const res = await request(app).get('/api/activity-logs');
             expect(res.status).toBe(401);

@@ -66,7 +66,7 @@ const DEFAULT_CONFIG = {
 // Models for Sequelize fallback (excludes BackupLog to avoid backing up backup logs)
 const MODEL_NAMES = [
     'Statement', 'UploadedExpense', 'Listing', 'ListingGroup',
-    'EmailLog', 'TagSchedule', 'TagNotification', 'ScheduledEmail',
+    'EmailLog', 'ScheduledEmail',
     'EmailTemplate', 'User', 'ActivityLog', 'AppLog'
 ];
 

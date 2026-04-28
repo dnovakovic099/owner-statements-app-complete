@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
-import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI, tagScheduleAPI } from '../services/api';
+import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
 import { analytics } from '../services/analytics';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
@@ -266,48 +266,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
-
-  // Check for unread tag schedule notifications with skipped reports on login
-  useEffect(() => {
-    const checkScheduleReports = async () => {
-      try {
-        const response = await tagScheduleAPI.getNotifications('unread', 10);
-        const notifications = response.notifications || [];
-        // Find first notification with a skipped report that hasn't been shown
-        const shownReportIds = JSON.parse(localStorage.getItem('shownScheduleReportIds') || '[]');
-        const reportNotification = notifications.find(
-          (n: any) => n.skippedReport && n.skippedReport.length > 0 && !shownReportIds.includes(n.id)
-        );
-        if (reportNotification) {
-          // Build generation report from the notification's skippedReport
-          const skippedItems = (reportNotification.skippedReport || []).map((item: any) => ({
-            name: item.name || item.propertyName || 'Unknown',
-            listingId: item.listingId,
-            type: item.type as 'group' | 'listing' | undefined,
-            reason: item.reason,
-            isOffboarded: item.isOffboarded,
-            statementGenerated: item.statementGenerated,
-          }));
-          setGenerationReport({
-            generated: 0, // We don't have this from the notification
-            skipped: skippedItems.length,
-            errors: 0,
-            skippedItems,
-            tag: reportNotification.tagName,
-          });
-          // Mark as shown so it doesn't auto-popup again
-          const updatedShownIds = [...shownReportIds, reportNotification.id];
-          localStorage.setItem('shownScheduleReportIds', JSON.stringify(updatedShownIds));
-          // Mark notification as read
-          await tagScheduleAPI.markNotificationRead(reportNotification.id);
-        }
-      } catch (err) {
-        // Silent fail - scheduled report popup is non-critical
-        console.error('Failed to check schedule reports:', err);
-      }
-    };
-    checkScheduleReports();
   }, []);
 
   useEffect(() => {

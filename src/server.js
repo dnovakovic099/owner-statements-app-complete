@@ -13,7 +13,6 @@ const logger = require('./utils/logger');
 // Database initialization
 const { syncDatabase, sequelize, Statement, Listing, ListingGroup } = require('./models');
 const ListingService = require('./services/ListingService');
-const TagScheduleService = require('./services/TagScheduleService');
 const BackupService = require('./services/BackupService');
 
 // Authentication middleware
@@ -1133,9 +1132,6 @@ if (require.main === module) {
     startQueuedPayoutChecker();
 }
 
-// Tag Schedules - Editors/Admins
-app.use('/api/tag-schedules', authenticate, require('./routes/tag-schedules'));
-
 // Database Backup - Status and manual trigger
 app.use('/api/backup', authenticate, require('./routes/backup'));
 
@@ -1339,11 +1335,6 @@ async function startServer() {
                 logger.warn('Listing sync failed (will retry later)', { error: err.message });
             });
 
-        // Start TagScheduleService for auto-generating statements
-        logger.info('Starting TagScheduleService for automatic statement generation...');
-        TagScheduleService.start();
-        logger.info('TagScheduleService started - checking schedules every minute at 8:00 AM EST');
-
         // Start BackupService for database backups (loads history from DB)
         await BackupService.start();
 
@@ -1390,9 +1381,6 @@ async function gracefulShutdown(signal) {
             logger.info('HTTP server closed');
         });
     }
-
-    // Stop TagScheduleService cron
-    TagScheduleService.stop();
 
     // Stop BackupService
     BackupService.stop();

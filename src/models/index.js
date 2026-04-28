@@ -5,8 +5,6 @@ const UploadedExpense = require('./UploadedExpense');
 const Listing = require('./Listing');
 const ListingGroup = require('./ListingGroup');
 const EmailLog = require('./EmailLog');
-const TagSchedule = require('./TagSchedule');
-const TagNotification = require('./TagNotification');
 const ScheduledEmail = require('./ScheduledEmail');
 const EmailTemplate = require('./EmailTemplate');
 const User = require('./User');
@@ -36,8 +34,6 @@ const models = {
     Listing,
     ListingGroup,
     EmailLog,
-    TagSchedule,
-    TagNotification,
     ScheduledEmail,
     EmailTemplate,
     User,

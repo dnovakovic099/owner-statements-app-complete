@@ -96,7 +96,7 @@ ActivityLog.logSystem = async function(action, resource, resourceId = null, deta
             resourceId: resourceId ? String(resourceId) : null,
             details: details ? JSON.stringify(details) : null,
             ipAddress: null,
-            userAgent: 'TagScheduleService/AutoGeneration'
+            userAgent: 'System/AutoGeneration'
         });
     } catch (error) {
         logger.logError(error, { context: 'ActivityLog', action: 'logSystem' });
