@@ -21,16 +21,11 @@ import {
   Settings,
   Calendar,
   Play,
-  Pause,
-  CalendarDays,
-  Plus,
-  ChevronDown,
   Database,
   CheckCircle,
   XCircle,
   HardDrive,
-  Save,
-  Power
+  Save
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, appLogsAPI, backupAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
@@ -56,9 +51,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Custom dropdown states
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   // Activity log state
   const ACTIVITY_PAGE_SIZE = 50;
@@ -216,16 +208,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
       showToast('Download failed', 'error');
     }
     setBackupDownloading(null);
-  };
-
-  // Schedule management functions
-  const getAuthHeaders = (): Record<string, string> => {
-    const authData = localStorage.getItem('luxury-lodging-auth');
-    if (authData) {
-      const { token } = JSON.parse(authData);
-      return { 'Authorization': `Bearer ${token}` };
-    }
-    return {};
   };
 
   useEffect(() => {
@@ -948,6 +930,113 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             </div>
           </div>
           )}
+
+      {/* Invite User Modal */}
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Invite New User</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={inviteForm.username}
+                  onChange={(e) => setInviteForm({ ...inviteForm, username: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="johndoe"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setIsInviteModalOpen(false);
+                  setInviteForm({ email: '', username: '' });
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInviteUser}
+                disabled={inviting}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center"
+              >
+                {inviting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4 mr-2" />
+                    Send Invite
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Edit User</h2>
+              <p className="text-sm text-gray-500">{editingUser.username} ({editingUser.email})</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isActive}
+                    onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Account Active</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6 mt-1">
+                  Inactive users cannot log in
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => setEditingUser(null)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateUser}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Application Logs Tab */}
       {activeTab === 'appLogs' && (

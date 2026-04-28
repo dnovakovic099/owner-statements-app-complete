@@ -7,7 +7,7 @@
  * 2. disregardTax - When true, tax is NEVER added to gross payout
  *    (for clients where company remits tax on their behalf)
  *
- * Core Formula (from statements-file.js and statement-html-template.js):
+ * Core Formula (from statements-file.js):
  * shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax)
  */
 
