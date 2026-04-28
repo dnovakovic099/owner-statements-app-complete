@@ -6,6 +6,7 @@ import { analytics } from '../services/analytics';
 import { Owner, Property, Statement } from '../types';
 import StatementsTable from './StatementsTable';
 import LoadingSpinner from './LoadingSpinner';
+import { retryWithLoader, RetryCancelledError, RetryStatus } from '../utils/retryWithLoader';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
 import { Layout } from './Layout';
@@ -85,6 +86,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [listings, setListings] = useState<ListingName[]>([]);
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retryStatus, setRetryStatus] = useState<RetryStatus | null>(null);
+  const initialLoadAbortRef = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -306,22 +309,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, []);
 
   const loadInitialData = async () => {
+    initialLoadAbortRef.current?.abort();
+    const abort = new AbortController();
+    initialLoadAbortRef.current = abort;
+
     try {
       setLoading(true);
       setError(null);
+      setRetryStatus(null);
 
-      const [ownersResponse, propertiesResponse, listingsResponse] = await Promise.all([
-        dashboardAPI.getOwners(),
-        dashboardAPI.getProperties(),
-        listingsAPI.getListingNames(),
-      ]);
+      const [ownersResponse, propertiesResponse, listingsResponse] = await retryWithLoader(
+        () => Promise.all([
+          dashboardAPI.getOwners(),
+          dashboardAPI.getProperties(),
+          listingsAPI.getListingNames(),
+        ]),
+        {
+          signal: abort.signal,
+          onStatus: setRetryStatus,
+          label: 'Dashboard'
+        }
+      );
       setOwners(ownersResponse);
       setProperties(propertiesResponse);
       setListings(listingsResponse.listings || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      if (err instanceof RetryCancelledError) {
+        setError('Loading cancelled. Click Retry to try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      }
     } finally {
       setLoading(false);
+      setRetryStatus(null);
+      if (initialLoadAbortRef.current === abort) initialLoadAbortRef.current = null;
     }
   };
 
@@ -598,25 +619,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             setRegeneratingStatementId(id);
             const toastId = showToast('Regenerating statement...', 'loading');
             try {
-              await statementsAPI.deleteStatement(id);
-              // Check if this is a combined statement (has propertyIds array)
-              if (statement.propertyIds && statement.propertyIds.length > 0) {
-                await statementsAPI.generateStatement({
-                  ownerId: statement.ownerId.toString(),
-                  propertyIds: statement.propertyIds.map(id => id.toString()),
-                  startDate: statement.weekStartDate,
-                  endDate: statement.weekEndDate,
-                  calculationType: statement.calculationType || 'checkout'
-                });
-              } else {
-                await statementsAPI.generateStatement({
-                  ownerId: statement.ownerId.toString(),
-                  propertyId: statement.propertyId?.toString() || '',
-                  startDate: statement.weekStartDate,
-                  endDate: statement.weekEndDate,
-                  calculationType: statement.calculationType || 'checkout'
-                });
-              }
+              // Delete is idempotent (api.ts handles 404 as already-deleted),
+              // so it's safe to include inside the retry block.
+              await retryWithLoader(
+                async () => {
+                  await statementsAPI.deleteStatement(id);
+                  if (statement.propertyIds && statement.propertyIds.length > 0) {
+                    await statementsAPI.generateStatement({
+                      ownerId: statement.ownerId.toString(),
+                      propertyIds: statement.propertyIds.map(id => id.toString()),
+                      startDate: statement.weekStartDate,
+                      endDate: statement.weekEndDate,
+                      calculationType: statement.calculationType || 'checkout'
+                    });
+                  } else {
+                    await statementsAPI.generateStatement({
+                      ownerId: statement.ownerId.toString(),
+                      propertyId: statement.propertyId?.toString() || '',
+                      startDate: statement.weekStartDate,
+                      endDate: statement.weekEndDate,
+                      calculationType: statement.calculationType || 'checkout'
+                    });
+                  }
+                },
+                {
+                  onStatus: (status) => {
+                    if (status.isRetrying && status.message) {
+                      updateToast(toastId, status.message, 'loading');
+                    }
+                  }
+                }
+              );
               updateToast(toastId, 'Statement regenerated successfully', 'success');
               await loadStatements();
             } catch (err) {
@@ -1319,7 +1352,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   if (loading) {
-    return <LoadingSpinner />;
+    return (
+      <LoadingSpinner
+        message={retryStatus?.isRetrying ? 'Waiting on Hostify' : undefined}
+        subMessage={retryStatus?.message}
+        onCancel={retryStatus?.isRetrying ? () => initialLoadAbortRef.current?.abort() : undefined}
+      />
+    );
   }
 
   if (error) {
