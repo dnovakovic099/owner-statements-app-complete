@@ -17,6 +17,27 @@ const SAFE_PAYOUT_STATUSES = [null, 'failed', 'cancelled', 'awaiting_funding'];
 const toCents = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
 const payoutReceiptTemplate = require('../templates/emails/payoutReceipt');
 const collectionInvoiceTemplate = require('../templates/emails/collectionInvoice');
+const EmailService = require('../services/EmailService');
+
+/**
+ * Fire-and-forget: send the payout receipt email to the owner after a
+ * successful Increase ACH transfer. Never throws or blocks the caller.
+ */
+function sendPayoutReceiptAsync(statement, transferId, payoutAmount, wiseFee, totalTransferAmount, paidAt) {
+    (async () => {
+        try {
+            const listingId = statement.propertyId || (Array.isArray(statement.propertyIds) ? statement.propertyIds[0] : null);
+            const listing = listingId ? await Listing.findByPk(listingId) : null;
+            const recipientEmail = listing?.ownerEmail || null;
+            await EmailService.sendPayoutReceiptEmail({
+                statement, recipientEmail, transferId,
+                payoutAmount, wiseFee, totalTransferAmount, paidAt,
+            });
+        } catch (e) {
+            logger.warn(`Failed to send payout receipt for statement ${statement?.id}: ${e.message}`, { context: 'Payouts', action: 'receiptEmail' });
+        }
+    })();
+}
 
 /**
  * Detect Increase's "no such external_account" error so we can auto-clear the
@@ -446,16 +467,19 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         const totalTransferAmount = payoutAmount + wiseFee;
 
+        const paidAt = new Date();
         await statement.update({
             payoutStatus: 'paid',
             payoutTransferId: transfer.id,
-            paidAt: new Date(),
+            paidAt,
             wiseFee: wiseFee,
             totalTransferAmount: totalTransferAmount,
             payoutError: null,
         });
 
         logger.info('Payout completed', { statementId, transferId: transfer.id, amount: payoutAmount });
+
+        sendPayoutReceiptAsync(statement, transfer.id, payoutAmount, wiseFee, totalTransferAmount, paidAt);
 
         res.json({
             success: true,
@@ -465,7 +489,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
             ownerPayout: payoutAmount,
             wiseFee,
             totalTransferAmount,
-            paidAt: new Date().toISOString(),
+            paidAt: paidAt.toISOString(),
         });
     } catch (error) {
         const staleId = extractMissingExternalAccountId(error);
@@ -790,14 +814,18 @@ router.post('/fund-and-queue', async (req, res) => {
                 for (const t of transfers) {
                     const match = claimed.find(v => v.statement.id === t.statementId);
                     if (match) {
+                        const paidAt = new Date();
+                        const amount = toCents(match.statement.ownerPayout);
+                        const totalTransferAmount = amount + t.wiseFee;
                         await match.statement.update({
                             payoutStatus: 'paid',
                             payoutTransferId: t.transfer.id,
-                            paidAt: new Date(),
+                            paidAt,
                             wiseFee: t.wiseFee,
-                            totalTransferAmount: toCents(match.statement.ownerPayout) + t.wiseFee,
+                            totalTransferAmount,
                             payoutError: null,
                         });
+                        sendPayoutReceiptAsync(match.statement, t.transfer.id, amount, t.wiseFee, totalTransferAmount, paidAt);
                         processed++;
                         results.push({ id: match.statement.id, success: true, transferId: t.transfer.id });
                     }
@@ -823,14 +851,17 @@ router.post('/fund-and-queue', async (req, res) => {
                             individualName: statement.ownerName || 'Owner',
                         });
 
+                        const paidAt = new Date();
+                        const totalTransferAmount = amount + wiseFee;
                         await statement.update({
                             payoutStatus: 'paid',
                             payoutTransferId: transfer.id,
-                            paidAt: new Date(),
+                            paidAt,
                             wiseFee,
-                            totalTransferAmount: amount + wiseFee,
+                            totalTransferAmount,
                             payoutError: null,
                         });
+                        sendPayoutReceiptAsync(statement, transfer.id, amount, wiseFee, totalTransferAmount, paidAt);
                         processed++;
                         results.push({ id: statement.id, success: true, transferId: transfer.id });
                     } catch (err) {
@@ -866,14 +897,17 @@ router.post('/fund-and-queue', async (req, res) => {
                         individualName: statement.ownerName || 'Owner',
                     });
 
+                    const paidAt = new Date();
+                    const totalTransferAmount = amount + wiseFee;
                     await statement.update({
                         payoutStatus: 'paid',
                         payoutTransferId: transfer.id,
-                        paidAt: new Date(),
+                        paidAt,
                         wiseFee,
-                        totalTransferAmount: amount + wiseFee,
+                        totalTransferAmount,
                         payoutError: null,
                     });
+                    sendPayoutReceiptAsync(statement, transfer.id, amount, wiseFee, totalTransferAmount, paidAt);
 
                     processed++;
                     results.push({ id: statement.id, success: true, transferId: transfer.id });
@@ -1028,14 +1062,17 @@ async function processQueuedPayouts() {
                 individualName: statement.ownerName || 'Owner',
             });
 
+            const paidAt = new Date();
+            const totalTransferAmount = payoutAmount + wiseFee;
             await statement.update({
                 payoutStatus: 'paid',
                 payoutTransferId: transfer.id,
-                paidAt: new Date(),
+                paidAt,
                 payoutError: null,
                 wiseFee,
-                totalTransferAmount: payoutAmount + wiseFee,
+                totalTransferAmount,
             });
+            sendPayoutReceiptAsync(statement, transfer.id, payoutAmount, wiseFee, totalTransferAmount, paidAt);
             processed++;
             logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
         } catch (err) {

@@ -1090,6 +1090,87 @@ This is an auto-generated email. If you have any questions or need clarification
     }
 
     /**
+     * Send a payout receipt email to the owner after a successful Increase ACH transfer.
+     * Caller should fire-and-forget — do not await in a way that blocks the API response.
+     */
+    async sendPayoutReceiptEmail({ statement, recipientEmail, transferId, payoutAmount, wiseFee, totalTransferAmount, paidAt }) {
+        if (!recipientEmail) {
+            logger.warn(`No owner email for statement ${statement?.id}; skipping payout receipt`, { context: 'EmailService', action: 'sendPayoutReceiptEmail' });
+            return { success: false, error: 'NO_RECIPIENT' };
+        }
+        if (!this.isConfigured) {
+            logger.warn('SMTP not configured; cannot send payout receipt', { context: 'EmailService', action: 'sendPayoutReceiptEmail' });
+            return { success: false, error: 'SMTP_NOT_CONFIGURED' };
+        }
+
+        const payoutReceiptTemplate = require('../templates/emails/payoutReceipt');
+        const paidAtDate = paidAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const paidAtFull = paidAt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+
+        const propertyName = statement.propertyNames || statement.propertyName || 'Property';
+        const html = payoutReceiptTemplate({
+            statementId: statement.id,
+            payoutStatus: 'paid',
+            propertyName,
+            ownerName: statement.ownerName || 'Owner',
+            periodStart: fmtDate(statement.weekStartDate),
+            periodEnd: fmtDate(statement.weekEndDate),
+            totalRevenue: parseFloat(statement.totalRevenue) || 0,
+            pmCommission: parseFloat(statement.pmCommission) || 0,
+            totalExpenses: parseFloat(statement.totalExpenses) || 0,
+            payoutAmount: parseFloat(payoutAmount) || 0,
+            wiseFee: parseFloat(wiseFee) || 0,
+            totalTransferAmount: parseFloat(totalTransferAmount) || 0,
+            transferId: transferId || '',
+            paidAtDate,
+            paidAtFull,
+        });
+
+        const subject = `Payout sent — $${this.formatCurrency(payoutAmount)} for ${propertyName}`;
+        const mailOptions = {
+            from: `"Luxury Lodging" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
+            to: recipientEmail,
+            subject,
+            html,
+        };
+
+        try {
+            const result = await this.transporter.sendMail(mailOptions);
+            logger.info(`Payout receipt sent to ${recipientEmail} for statement ${statement.id}`, { context: 'EmailService', action: 'sendPayoutReceiptEmail' });
+            await this.logEmailAttempt({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                recipientEmail,
+                recipientName: statement.ownerName,
+                propertyName,
+                subject,
+                status: 'sent',
+                messageId: result.messageId,
+                sentAt: new Date(),
+                metadata: { kind: 'payout_receipt', transferId, payoutAmount }
+            });
+            return { success: true, messageId: result.messageId };
+        } catch (error) {
+            logger.logError(error, { context: 'EmailService', action: 'sendPayoutReceiptEmail', recipientEmail, statementId: statement.id });
+            await this.logEmailAttempt({
+                statementId: statement.id,
+                propertyId: statement.propertyId,
+                recipientEmail,
+                recipientName: statement.ownerName,
+                propertyName,
+                subject,
+                status: 'failed',
+                errorMessage: error.message,
+                errorCode: error.code || 'SEND_FAILED',
+                attemptedAt: new Date(),
+                metadata: { kind: 'payout_receipt', transferId, payoutAmount }
+            });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
      * Log email attempt to database
      * @param {Object} data - Email log data
      */
