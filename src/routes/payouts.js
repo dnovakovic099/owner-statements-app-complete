@@ -203,6 +203,7 @@ router.get('/config', async (req, res) => {
     res.json({
         wiseConfigured: IncreaseService.isConfigured(),
         increaseConfigured: IncreaseService.isConfigured(),
+        fundingConfigured: IncreaseService.isFundingConfigured(),
     });
 });
 
