@@ -809,13 +809,19 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
 
         // Drop any reservation already billed on a prior finalized/sent/paid statement.
-        // Only runs for checkout-based statements: in calendar mode, a long stay is
-        // legitimately prorated across multiple overlapping periods by nights, so a
-        // reservation-id match is NOT a duplicate there.
+        // Only runs for checkout-based statements with a period <= 31 days:
+        //  - Calendar mode: long stays are legitimately prorated across overlapping periods.
+        //  - Multi-month checkout (>31 days): treated as a summary view; show every
+        //    reservation in the range even if billed on prior monthly statements.
         const priorStatementDuplicateReservationWarnings = [];
         let periodReservations;
-        if (calculationType === 'calendar') {
+        const periodDays = Math.round((periodEnd - periodStart) / (1000 * 60 * 60 * 24));
+        const isSummaryRange = periodDays > 31;
+        if (calculationType === 'calendar' || isSummaryRange) {
             periodReservations = periodReservationsRaw;
+            if (isSummaryRange && calculationType !== 'calendar') {
+                logger.info(`Summary range (${periodDays} days > 31) — skipping prior-statement dedupe`, { context: 'StatementsFile', action: 'generateCombinedStatement' });
+            }
         } else {
             const priorReservationSignatures = buildPriorReservationSignatures(priorStatements);
             periodReservations = [];
@@ -1525,12 +1531,17 @@ router.post('/generate', async (req, res) => {
 
         // Drop reservations already present on a prior finalized/sent/paid statement so the
         // same booking isn't paid twice when checkout dates fall on shared period boundaries.
-        // Skipped in calendar mode because a long stay is legitimately prorated across
-        // multiple overlapping statements by nights.
+        // Skipped in calendar mode (long stay prorated across overlaps) and for summary
+        // ranges (>31 days), where every reservation in the period should be visible.
         const priorStatementDuplicateReservationWarnings = [];
         let periodReservations;
-        if (calculationType === 'calendar') {
+        const periodDays = Math.round((periodEnd - periodStart) / (1000 * 60 * 60 * 24));
+        const isSummaryRange = periodDays > 31;
+        if (calculationType === 'calendar' || isSummaryRange) {
             periodReservations = periodReservationsRaw;
+            if (isSummaryRange && calculationType !== 'calendar') {
+                logger.info(`Summary range (${periodDays} days > 31) — skipping prior-statement dedupe`, { context: 'StatementsFile', action: 'generateStatement' });
+            }
         } else {
             periodReservations = [];
             for (const res of periodReservationsRaw) {
