@@ -675,14 +675,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
                       !hasWiseRecipient ? 'No Increase account connected' :
                         isRestricted ? 'Increase account not yet verified' :
-                          statement.status !== 'final' ? 'Statement must be finalized first' :
+                          (statement.status !== 'final' && statement.status !== 'sent') ? 'Statement must be sent or finalized first' :
                             statement.ownerPayout === 0 ? 'No payout amount' :
                               statement.ownerPayout < 0 ? `Collect $${Math.abs(statement.ownerPayout).toFixed(2)} from Owner` :
                                 'Pay Owner via Increase'
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={statement.status !== 'final' || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
+                  disabled={(statement.status !== 'final' && statement.status !== 'sent') || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
                 />
               );
             })()}
