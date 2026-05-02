@@ -6941,6 +6941,29 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         }
         logger.debug('Pre-fetched listing configurations', { context: 'StatementsFile', count: listingConfigs.size });
 
+        // Pre-fetch prior statements per property so the inline loop can apply
+        // cross-statement expense dedupe — same logic the manual route uses to keep
+        // an expense from being billed on two consecutive statements.
+        // Fetched per-property because getPriorStatementExpenses caps results at 20
+        // total; calling it once with all listings would only return the 20 newest
+        // statements globally, missing most listings.
+        const priorStatementsByPropertyId = new Map();
+        const priorBatchSize = 25;
+        for (let i = 0; i < activeListings.length; i += priorBatchSize) {
+            const batch = activeListings.slice(i, i + priorBatchSize);
+            const results = await Promise.all(batch.map(async (property) => {
+                try {
+                    const stmts = await FileDataService.getPriorStatementExpenses([property.id]);
+                    return { id: property.id, stmts: stmts || [] };
+                } catch (err) {
+                    logger.warn(`[BULK] Failed to fetch prior statements for property ${property.id}`, { context: 'StatementsFile', error: err.message });
+                    return { id: property.id, stmts: [] };
+                }
+            }));
+            results.forEach(({ id, stmts }) => priorStatementsByPropertyId.set(id, stmts));
+        }
+        logger.debug('Pre-fetched prior statements', { context: 'StatementsFile', count: priorStatementsByPropertyId.size });
+
         // STEP 4: Generate statements in PARALLEL batches
         const BATCH_SIZE = 100; // Process 100 properties at a time
         const allStatements = []; // Collect all statements to save
@@ -7102,6 +7125,20 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Combine filtered expenses with cleaning fee expenses
                     const combinedExpenses = [...filteredExpenses, ...cleaningFeeExpenses];
 
+                    // Cross-statement duplicate detection — drop any expense that was
+                    // already billed on a finalized/sent/paid prior statement so it
+                    // does not appear (and bill) twice across consecutive periods.
+                    const priorStatementsForProp = priorStatementsByPropertyId.get(property.id) || [];
+                    const priorSignatures = StatementCalculationService.buildPriorExpenseSignatures(priorStatementsForProp);
+                    const filteredSplit = StatementCalculationService.splitPriorStatementExpenses(filteredExpenses, priorSignatures);
+                    const cleaningFeeSplit = StatementCalculationService.splitPriorStatementExpenses(cleaningFeeExpenses, priorSignatures);
+                    const llCoverSplit = StatementCalculationService.splitPriorStatementExpenses(llCoverExpenses, priorSignatures);
+                    const priorStatementDuplicateWarnings = [
+                        ...filteredSplit.duplicateWarnings,
+                        ...cleaningFeeSplit.duplicateWarnings,
+                        ...llCoverSplit.duplicateWarnings
+                    ];
+
                     // Calculate totals with per-reservation PM fee (accounts for PM fee transitions)
                     let totalRevenue = 0;
                     let totalGrossPayout = 0;
@@ -7143,12 +7180,15 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     }
                     const pmPercentage = totalRevenue > 0 ? (totalPmCommission / totalRevenue) * 100 : (listing?.pmFeePercentage ?? 15);
 
-                    const totalExpenses = filteredExpenses.reduce((sum, exp) => {
+                    // Totals are computed from the non-duplicate subset so any expense
+                    // that was already billed on a prior finalized/sent/paid statement
+                    // does not get charged a second time.
+                    const totalExpenses = filteredSplit.nonDuplicates.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum : sum + Math.abs(exp.amount);
                     }, 0);
 
-                    const totalUpsells = filteredExpenses.reduce((sum, exp) => {
+                    const totalUpsells = filteredSplit.nonDuplicates.reduce((sum, exp) => {
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum + exp.amount : sum;
                     }, 0);
@@ -7228,7 +7268,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             createdAt: new Date().toISOString(),
                             reservations: periodReservations,
                             expenses: combinedExpenses,
-                            duplicateWarnings: [],
+                            duplicateWarnings: priorStatementDuplicateWarnings,
                             cleaningMismatchWarning,
                             items: [
                                 ...periodReservations.map(res => ({
@@ -7238,7 +7278,8 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                     date: res.checkOutDate,
                                     category: 'booking'
                                 })),
-                                ...combinedExpenses.map(exp => {
+                                // Visible (non-duplicate) expenses + upsells: filtered + auto-cleaning
+                                ...[...filteredSplit.nonDuplicates, ...cleaningFeeSplit.nonDuplicates].map(exp => {
                                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                     return {
                                         type: isUpsell ? 'upsell' : 'expense',
@@ -7250,7 +7291,24 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                         listing: exp.listing
                                     };
                                 }),
-                                ...llCoverExpenses.map(exp => {
+                                // Hidden: prior-statement duplicates of visible expenses
+                                ...[...filteredSplit.flagged, ...cleaningFeeSplit.flagged].map(({ expense: exp, match }) => {
+                                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                    return {
+                                        type: isUpsell ? 'upsell' : 'expense',
+                                        description: exp.description,
+                                        amount: Math.abs(exp.amount),
+                                        date: exp.date,
+                                        category: exp.type || exp.category || 'expense',
+                                        vendor: exp.vendor,
+                                        listing: exp.listing,
+                                        hidden: true,
+                                        hiddenReason: 'prior_statement',
+                                        priorStatementId: match.statementId,
+                                        priorPeriod: match.period
+                                    };
+                                }),
+                                ...llCoverSplit.nonDuplicates.map(exp => {
                                     const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                                     return {
                                         type: isUpsell ? 'upsell' : 'expense',
@@ -7262,6 +7320,23 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                         listing: exp.listing,
                                         hidden: true,
                                         hiddenReason: 'll_cover'
+                                    };
+                                }),
+                                // Hidden: LL Cover expenses that are also prior-statement duplicates
+                                ...llCoverSplit.flagged.map(({ expense: exp, match }) => {
+                                    const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                                    return {
+                                        type: isUpsell ? 'upsell' : 'expense',
+                                        description: exp.description,
+                                        amount: Math.abs(exp.amount),
+                                        date: exp.date,
+                                        category: exp.type || exp.category || 'expense',
+                                        vendor: exp.vendor,
+                                        listing: exp.listing,
+                                        hidden: true,
+                                        hiddenReason: 'prior_statement',
+                                        priorStatementId: match.statementId,
+                                        priorPeriod: match.period
                                     };
                                 })
                             ]
