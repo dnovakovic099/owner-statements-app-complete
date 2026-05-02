@@ -6986,7 +6986,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     const bookingStatuses = ['confirmed', 'accepted'];
                     const propertyReservations = reservationsByPropertyId.get(parseInt(property.id)) || [];
 
-                    const periodReservations = propertyReservations.filter(res => {
+                    const filteredPeriodReservations = propertyReservations.filter(res => {
                         let dateMatch = true;
                         if (calculationType === 'calendar') {
                             const checkIn = new Date(res.checkInDate);
@@ -6998,6 +6998,41 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         }
                         return dateMatch && allowedStatuses.includes(res.status);
                     }).sort((a, b) => new Date(a.checkInDate) - new Date(b.checkInDate));
+
+                    // Calendar mode: prorate revenue/fees by the share of nights inside
+                    // the period — same shape getReservationsBatch produces for the
+                    // manual route. Without this, a long stay spanning two periods
+                    // would charge full revenue on every period that overlaps it.
+                    // Originals are preserved so downstream code can still see the
+                    // un-prorated finance fields if it needs them.
+                    const periodReservations = calculationType === 'calendar'
+                        ? filteredPeriodReservations.map(res => {
+                            const proration = FileDataService.calculateProration(res, startDate, endDate);
+                            return {
+                                ...res,
+                                originalBaseRate: res.baseRate,
+                                originalCleaningAndOtherFees: res.cleaningAndOtherFees,
+                                originalPlatformFees: res.platformFees,
+                                originalClientRevenue: res.clientRevenue,
+                                originalLuxuryLodgingFee: res.luxuryLodgingFee,
+                                originalClientTaxResponsibility: res.clientTaxResponsibility,
+                                originalClientPayout: res.clientPayout,
+                                originalResortFee: res.resortFee || 0,
+                                baseRate: (res.baseRate || 0) * proration.factor,
+                                cleaningAndOtherFees: (res.cleaningAndOtherFees || 0) * proration.factor,
+                                platformFees: (res.platformFees || 0) * proration.factor,
+                                clientRevenue: (res.clientRevenue || 0) * proration.factor,
+                                luxuryLodgingFee: (res.luxuryLodgingFee || 0) * proration.factor,
+                                clientTaxResponsibility: (res.clientTaxResponsibility || 0) * proration.factor,
+                                clientPayout: (res.clientPayout || 0) * proration.factor,
+                                resortFee: (res.resortFee || 0) * proration.factor,
+                                prorationFactor: proration.factor,
+                                prorationDays: proration.daysInPeriod,
+                                totalDays: proration.totalDays,
+                                prorationNote: `${proration.daysInPeriod}/${proration.totalDays} days in period`
+                            };
+                        })
+                        : filteredPeriodReservations;
 
                     // Find ALL overlapping reservations (regardless of calculation type)
                     // This helps detect long stays that span beyond the statement period
@@ -7274,7 +7309,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                 ...periodReservations.map(res => ({
                                     type: 'revenue',
                                     description: `${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
-                                    amount: res.grossAmount,
+                                    // Use prorated clientRevenue in calendar mode so line items
+                                    // match totals; fall back to grossAmount for legacy reservations.
+                                    amount: res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0),
                                     date: res.checkOutDate,
                                     category: 'booking'
                                 })),
