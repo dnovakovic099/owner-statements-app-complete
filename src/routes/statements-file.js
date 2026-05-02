@@ -6761,6 +6761,31 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
         logger.debug('Loaded expenses', { context: 'StatementsFile', count: allExpenses.length });
 
+        // Pre-group reservations and expenses by propertyId for O(1) lookup. Built up
+        // here (before the group loop) so StatementService.generateGroupStatement can
+        // reuse this data via the `prefetched` option instead of refetching per group.
+        const reservationsByPropertyId = new Map();
+        allReservations.forEach(res => {
+            const propId = parseInt(res.propertyId);
+            if (!reservationsByPropertyId.has(propId)) reservationsByPropertyId.set(propId, []);
+            reservationsByPropertyId.get(propId).push(res);
+        });
+        const expensesByPropertyId = new Map();
+        allExpenses.forEach(exp => {
+            const propId = parseInt(exp.propertyId);
+            if (!expensesByPropertyId.has(propId)) expensesByPropertyId.set(propId, []);
+            expensesByPropertyId.get(propId).push(exp);
+            // Also index by secureStayListingId if present
+            if (exp.secureStayListingId) {
+                const ssId = parseInt(exp.secureStayListingId);
+                if (ssId !== propId) {
+                    if (!expensesByPropertyId.has(ssId)) expensesByPropertyId.set(ssId, []);
+                    expensesByPropertyId.get(ssId).push(exp);
+                }
+            }
+        });
+        logger.debug('Pre-grouped data by propertyId', { context: 'StatementsFile', reservationGroups: reservationsByPropertyId.size, expenseGroups: expensesByPropertyId.size });
+
         // Include all listings (active + offboarded) - offboarded properties can still have statements generated manually
         let activeListings = listings;
         logger.debug('Properties available for generation', { context: 'StatementsFile', totalListings: listings.length, active: listings.filter(l => l.isActive).length, offboarded: listings.filter(l => !l.isActive).length });
@@ -6817,7 +6842,16 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                                 listingIds: memberIds,
                                 startDate,
                                 endDate,
-                                calculationType: group.calculationType || calculationType
+                                calculationType: group.calculationType || calculationType,
+                                // Reuse the bulk-fetched data instead of refetching per group.
+                                // The service guards against using reservation data with a
+                                // mismatched calc type (e.g. calendar groups will fall back
+                                // to the original fetch path internally).
+                                prefetched: {
+                                    reservationsByPropertyId,
+                                    expensesByPropertyId,
+                                    calculationType
+                                }
                             });
 
                             // Check if statement was skipped (duplicate)
@@ -6885,29 +6919,6 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         // Log all unique propertyIds in the reservation pool for debugging
         const uniquePropertyIds = [...new Set(allReservations.map(r => r.propertyId))];
         logger.debug('Unique propertyIds in reservation pool', { context: 'StatementsFile', count: uniquePropertyIds.length });
-
-        // Pre-group reservations and expenses by propertyId for O(1) lookup instead of O(n) filtering per property
-        const reservationsByPropertyId = new Map();
-        allReservations.forEach(res => {
-            const propId = parseInt(res.propertyId);
-            if (!reservationsByPropertyId.has(propId)) reservationsByPropertyId.set(propId, []);
-            reservationsByPropertyId.get(propId).push(res);
-        });
-        const expensesByPropertyId = new Map();
-        allExpenses.forEach(exp => {
-            const propId = parseInt(exp.propertyId);
-            if (!expensesByPropertyId.has(propId)) expensesByPropertyId.set(propId, []);
-            expensesByPropertyId.get(propId).push(exp);
-            // Also index by secureStayListingId if present
-            if (exp.secureStayListingId) {
-                const ssId = parseInt(exp.secureStayListingId);
-                if (ssId !== propId) {
-                    if (!expensesByPropertyId.has(ssId)) expensesByPropertyId.set(ssId, []);
-                    expensesByPropertyId.get(ssId).push(exp);
-                }
-            }
-        });
-        logger.debug('Pre-grouped data by propertyId', { context: 'StatementsFile', reservationGroups: reservationsByPropertyId.size, expenseGroups: expensesByPropertyId.size });
 
         // Pre-fetch all listing configs in parallel for speed
         logger.debug('Pre-fetching listing configurations', { context: 'StatementsFile' });

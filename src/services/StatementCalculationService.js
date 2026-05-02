@@ -513,6 +513,220 @@ class StatementCalculationService {
         }
         return { kept, duplicateWarnings };
     }
+
+    /**
+     * Build a Map of signatures from prior-statement expenses for cross-statement
+     * duplicate detection. Mirrors the helper used by the manual generation route so
+     * the auto/bulk generator gets identical dedupe behavior.
+     */
+    buildPriorExpenseSignatures(priorStatements) {
+        const signatureMap = new Map();
+        for (const stmt of priorStatements || []) {
+            const period = `${stmt.weekStartDate} to ${stmt.weekEndDate}`;
+            const expenses = stmt.expenses || [];
+            for (const exp of expenses) {
+                if (exp.source && exp.sourceId) {
+                    const key = `${exp.source}:${exp.sourceId}`;
+                    if (!signatureMap.has(key)) {
+                        signatureMap.set(key, { statementId: stmt.id, period, propertyName: stmt.propertyName });
+                    }
+                }
+                const amount = Math.round(Math.abs(parseFloat(exp.amount) || 0) * 100);
+                const desc = (exp.description || '').trim().toLowerCase();
+                const date = exp.date || '';
+                const fallbackKey = `${amount}|${date}|${desc}`;
+                if (!signatureMap.has(fallbackKey)) {
+                    signatureMap.set(fallbackKey, { statementId: stmt.id, period, propertyName: stmt.propertyName });
+                }
+            }
+        }
+        return signatureMap;
+    }
+
+    /**
+     * Match an expense against the prior-statement signature map.
+     * Returns match info ({ statementId, period, propertyName }) or null.
+     */
+    matchExpenseToPrior(exp, signatureMap) {
+        if (!signatureMap || signatureMap.size === 0) return null;
+        if (exp.source && exp.sourceId) {
+            const key = `${exp.source}:${exp.sourceId}`;
+            if (signatureMap.has(key)) return signatureMap.get(key);
+        }
+        const amount = Math.round(Math.abs(parseFloat(exp.amount) || 0) * 100);
+        const desc = (exp.description || '').trim().toLowerCase();
+        const date = exp.date || '';
+        const fallbackKey = `${amount}|${date}|${desc}`;
+        if (signatureMap.has(fallbackKey)) return signatureMap.get(fallbackKey);
+        return null;
+    }
+
+    /**
+     * Split expenses into non-duplicate vs prior-statement-flagged groups and produce
+     * the duplicate warnings shape consumed by the UI.
+     */
+    splitPriorStatementExpenses(expenses, signatureMap) {
+        const nonDuplicates = [];
+        const flagged = [];
+        const duplicateWarnings = [];
+        for (const exp of expenses || []) {
+            const match = this.matchExpenseToPrior(exp, signatureMap);
+            if (match) {
+                flagged.push({ expense: exp, match });
+                duplicateWarnings.push({
+                    type: 'prior_statement',
+                    description: exp.description,
+                    amount: exp.amount,
+                    date: exp.date,
+                    priorStatementId: match.statementId,
+                    priorPeriod: match.period
+                });
+            } else {
+                nonDuplicates.push(exp);
+            }
+        }
+        return { nonDuplicates, flagged, duplicateWarnings };
+    }
+
+    /**
+     * Build the `items[]` array stored on a statement.
+     * Mirrors the structure produced by routes/statements-file.js#generateCombinedStatement
+     * so the frontend (which renders expenses/upsells from `items`) sees the same data
+     * for auto-generated statements as for manually generated ones.
+     *
+     * @returns {{ items: Array, adjustedTotalExpenses: number, adjustedTotalUpsells: number, priorStatementDuplicateWarnings: Array }}
+     */
+    buildStatementItems({ periodReservations, filteredExpenses, llCoverExpenses, targetListings, priorStatements }) {
+        const targetListingMap = new Map();
+        (targetListings || []).forEach(l => targetListingMap.set(parseInt(l.id), l));
+
+        const labelFor = (propertyId) => {
+            if (!propertyId) return null;
+            const listing = targetListingMap.get(parseInt(propertyId));
+            return listing ? (listing.nickname || listing.displayName || listing.name) : null;
+        };
+
+        const isUpsellExpense = (exp) => {
+            const amount = parseFloat(exp.amount) || 0;
+            const type = (exp.type || '').toLowerCase();
+            const category = (exp.category || '').toLowerCase();
+            return amount > 0 || type === 'upsell' || category === 'upsell' || exp.expenseType === 'extras';
+        };
+
+        // Cross-statement duplicate detection on both visible and LL Cover expenses
+        const priorSignatures = this.buildPriorExpenseSignatures(priorStatements);
+        const visibleSplit = this.splitPriorStatementExpenses(filteredExpenses || [], priorSignatures);
+        const llCoverSplit = this.splitPriorStatementExpenses(llCoverExpenses || [], priorSignatures);
+
+        // Recompute totals excluding prior-statement duplicates so the saved totals
+        // match what the manual route stores.
+        let adjustedTotalExpenses = 0;
+        let adjustedTotalUpsells = 0;
+        for (const exp of visibleSplit.nonDuplicates) {
+            const amount = parseFloat(exp.amount) || 0;
+            if (isUpsellExpense(exp)) {
+                adjustedTotalUpsells += amount;
+            } else {
+                adjustedTotalExpenses += Math.abs(amount);
+            }
+        }
+
+        const items = [];
+
+        // Revenue items from reservations
+        for (const res of periodReservations || []) {
+            const propertyLabel = labelFor(res.propertyId) || `Property ${res.propertyId}`;
+            const revenue = res.hasDetailedFinance ? res.clientRevenue : (res.grossAmount || 0);
+            items.push({
+                type: 'revenue',
+                description: `[${propertyLabel}] ${res.guestName} - ${res.checkInDate} to ${res.checkOutDate}`,
+                amount: revenue,
+                date: res.checkOutDate,
+                category: 'booking',
+                propertyId: res.propertyId
+            });
+        }
+
+        // Visible expenses + upsells
+        for (const exp of visibleSplit.nonDuplicates) {
+            const propertyLabel = labelFor(exp.propertyId) || exp.listing || 'General';
+            items.push({
+                type: isUpsellExpense(exp) ? 'upsell' : 'expense',
+                description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                amount: Math.abs(parseFloat(exp.amount) || 0),
+                date: exp.date,
+                category: exp.type || exp.category || 'expense',
+                vendor: exp.vendor,
+                listing: exp.listing,
+                propertyId: exp.propertyId
+            });
+        }
+
+        // Hidden: prior-statement flagged visible expenses
+        for (const { expense: exp, match } of visibleSplit.flagged) {
+            const propertyLabel = labelFor(exp.propertyId) || exp.listing || 'General';
+            items.push({
+                type: isUpsellExpense(exp) ? 'upsell' : 'expense',
+                description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                amount: Math.abs(parseFloat(exp.amount) || 0),
+                date: exp.date,
+                category: exp.type || exp.category || 'expense',
+                vendor: exp.vendor,
+                listing: exp.listing,
+                propertyId: exp.propertyId,
+                hidden: true,
+                hiddenReason: 'prior_statement',
+                priorStatementId: match.statementId,
+                priorPeriod: match.period
+            });
+        }
+
+        // Hidden: LL Cover expenses (non-duplicate)
+        for (const exp of llCoverSplit.nonDuplicates) {
+            const propertyLabel = labelFor(exp.propertyId) || exp.listing || 'General';
+            items.push({
+                type: isUpsellExpense(exp) ? 'upsell' : 'expense',
+                description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                amount: Math.abs(parseFloat(exp.amount) || 0),
+                date: exp.date,
+                category: exp.type || exp.category || 'expense',
+                vendor: exp.vendor,
+                listing: exp.listing,
+                propertyId: exp.propertyId,
+                hidden: true,
+                hiddenReason: 'll_cover'
+            });
+        }
+
+        // Hidden: LL Cover expenses that are also prior-statement duplicates
+        for (const { expense: exp, match } of llCoverSplit.flagged) {
+            const propertyLabel = labelFor(exp.propertyId) || exp.listing || 'General';
+            items.push({
+                type: isUpsellExpense(exp) ? 'upsell' : 'expense',
+                description: exp.propertyId ? `[${propertyLabel}] ${exp.description}` : exp.description,
+                amount: Math.abs(parseFloat(exp.amount) || 0),
+                date: exp.date,
+                category: exp.type || exp.category || 'expense',
+                vendor: exp.vendor,
+                listing: exp.listing,
+                propertyId: exp.propertyId,
+                hidden: true,
+                hiddenReason: 'prior_statement',
+                priorStatementId: match.statementId,
+                priorPeriod: match.period
+            });
+        }
+
+        return {
+            items,
+            adjustedTotalExpenses: Math.round(adjustedTotalExpenses * 100) / 100,
+            adjustedTotalUpsells: Math.round(adjustedTotalUpsells * 100) / 100,
+            priorStatementDuplicateWarnings: [
+                ...visibleSplit.duplicateWarnings,
+                ...llCoverSplit.duplicateWarnings
+            ]
+        };
+    }
 }
 
 const instance = new StatementCalculationService();

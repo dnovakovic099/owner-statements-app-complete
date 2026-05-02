@@ -15,6 +15,42 @@ const logger = require('../utils/logger');
 
 class StatementService {
     /**
+     * Slice a Map<propertyId, Reservation[]> down to the given property ids and
+     * return it in the `{ propertyId: Reservation[] }` shape that
+     * `getReservationsBatch` produces.
+     */
+    _sliceMapByProperty(map, propertyIds) {
+        const out = {};
+        for (const propId of propertyIds) {
+            out[propId] = (map.get(parseInt(propId)) || []).slice();
+        }
+        return out;
+    }
+
+    /**
+     * Slice a Map<propertyId, Expense[]> down to the given property ids, scoped
+     * to the requested date range, and wrap each entry in the
+     * `{ expenses, duplicateWarnings }` shape that `getExpensesBatch` produces.
+     * Bulk pre-grouping does not perform per-property duplicate detection between
+     * SecureStay + uploaded expenses, so duplicateWarnings is empty here — that is
+     * a UI nicety, not load-bearing for financial calculations.
+     */
+    _sliceExpenseMapByProperty(map, propertyIds, startDate, endDate) {
+        const out = {};
+        const periodStart = startDate ? new Date(startDate) : null;
+        const periodEnd = endDate ? new Date(endDate) : null;
+        for (const propId of propertyIds) {
+            const propExpenses = (map.get(parseInt(propId)) || []).filter(exp => {
+                if (!periodStart || !periodEnd) return true;
+                const expenseDate = new Date(exp.date);
+                return expenseDate >= periodStart && expenseDate <= periodEnd;
+            });
+            out[propId] = { expenses: propExpenses, duplicateWarnings: [] };
+        }
+        return out;
+    }
+
+    /**
      * Check if a statement already exists for the given criteria
      * Prevents duplicate auto-generation
      */
@@ -68,7 +104,7 @@ class StatementService {
      * Uses same logic as manual generation
      */
     async generateGroupStatement(options) {
-        const { groupId, groupName, listingIds, startDate, endDate, calculationType = 'checkout' } = options;
+        const { groupId, groupName, listingIds, startDate, endDate, calculationType = 'checkout', prefetched } = options;
 
         logger.info(`Generating statement for group "${groupName}" (${listingIds.length} listings)`, { context: 'StatementService', action: 'generateGroupStatement', groupName, listingCount: listingIds.length });
         logger.info(`Period: ${startDate} to ${endDate}, Type: ${calculationType}`, { context: 'StatementService', startDate, endDate, calculationType });
@@ -106,23 +142,57 @@ class StatementService {
                 }
             });
 
-            // Fetch reservations, expenses, and prior statements in parallel (same as manual generation)
+            // Reuse pre-fetched data from the bulk caller when available so each group
+            // does not retrigger the same Hostify/SecureStay calls. Only the reservation
+            // map can be reused when the calc type matches (calendar mode requires
+            // proration that the bulk fetch does not apply); the expense map can always
+            // be reused.
+            const canReuseReservations = Boolean(
+                prefetched && prefetched.reservationsByPropertyId &&
+                prefetched.calculationType === calculationType &&
+                calculationType === 'checkout'
+            );
+            const canReuseExpenses = Boolean(prefetched && prefetched.expensesByPropertyId);
+
+            const reservationsPromise = canReuseReservations
+                ? Promise.resolve(this._sliceMapByProperty(prefetched.reservationsByPropertyId, parsedPropertyIds))
+                : FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap);
+
+            const expensesPromise = canReuseExpenses
+                ? Promise.resolve(this._sliceExpenseMapByProperty(prefetched.expensesByPropertyId, parsedPropertyIds, startDate, endDate))
+                : FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds);
+
             const [reservationsByProperty, expensesByProperty, priorStatements] = await Promise.all([
-                FileDataService.getReservationsBatch(startDate, endDate, parsedPropertyIds, calculationType, listingInfoMap),
-                FileDataService.getExpensesBatch(startDate, endDate, parsedPropertyIds),
+                reservationsPromise,
+                expensesPromise,
                 FileDataService.getPriorStatementExpenses(parsedPropertyIds)
             ]);
+
+            if (canReuseReservations || canReuseExpenses) {
+                logger.debug('Reusing prefetched bulk data for group statement', {
+                    context: 'StatementService', groupName, canReuseReservations, canReuseExpenses
+                });
+            }
 
             // Combine all reservations and expenses
             let allReservations = [];
             let allExpenses = [];
+            const seenExpenseKeys = new Set();
 
             for (const propId of parsedPropertyIds) {
                 const propReservations = reservationsByProperty[propId] || [];
                 const propExpenseData = expensesByProperty[propId] || { expenses: [], duplicateWarnings: [] };
 
                 allReservations.push(...propReservations);
-                allExpenses.push(...propExpenseData.expenses);
+
+                // Dedupe expenses across properties (same physical expense can be indexed
+                // under both propertyId and secureStayListingId in the bulk maps).
+                for (const exp of propExpenseData.expenses || []) {
+                    const key = exp.id ?? `${exp.source || ''}:${exp.sourceId || ''}|${exp.propertyId ?? ''}|${exp.date ?? ''}|${exp.amount ?? ''}|${exp.description ?? ''}`;
+                    if (seenExpenseKeys.has(key)) continue;
+                    seenExpenseKeys.add(key);
+                    allExpenses.push(exp);
+                }
             }
 
             // Add duplicate warnings
@@ -143,6 +213,22 @@ class StatementService {
                 calculationType,
                 priorStatements
             });
+
+            // Build the statement items array + cross-statement duplicate adjustments
+            // so the saved statement matches the manual generation structure (frontend
+            // renders expenses + additional payouts from `items`).
+            const itemsResult = StatementCalculationService.buildStatementItems({
+                periodReservations: financials.periodReservations,
+                filteredExpenses: financials.filteredExpenses,
+                llCoverExpenses: financials.llCoverExpenses,
+                targetListings,
+                priorStatements
+            });
+
+            // Recompute owner payout excluding prior-statement-duplicate expenses to
+            // match what the manual generateCombinedStatement stores.
+            const grossPayoutSum = financials.ownerPayout - financials.totalUpsells + financials.totalExpenses;
+            const adjustedOwnerPayout = grossPayoutSum + itemsResult.adjustedTotalUpsells - itemsResult.adjustedTotalExpenses;
 
             // Build internal notes
             const internalNotes = StatementCalculationService.buildInternalNotes(targetListings);
@@ -170,13 +256,13 @@ class StatementService {
                 weekEndDate: endDate,
                 calculationType,
                 totalRevenue: financials.totalRevenue,
-                totalExpenses: financials.totalExpenses,
+                totalExpenses: itemsResult.adjustedTotalExpenses,
                 pmCommission: financials.pmCommission,
                 pmPercentage: financials.pmPercentage,
                 techFees: financials.techFees,
                 insuranceFees: financials.insuranceFees,
                 adjustments: 0,
-                ownerPayout: financials.ownerPayout,
+                ownerPayout: Math.round(adjustedOwnerPayout * 100) / 100,
                 isCombinedStatement: true,
                 propertyCount: financials.propertyCount,
                 totalCleaningFee: financials.totalCleaningFee,
@@ -212,9 +298,12 @@ class StatementService {
                 internalNotes,
                 reservations: financials.periodReservations,
                 expenses: allExpenses,
-                duplicateWarnings: financials.duplicateWarnings,
+                duplicateWarnings: [
+                    ...(financials.duplicateWarnings || []),
+                    ...itemsResult.priorStatementDuplicateWarnings
+                ],
                 cleaningMismatchWarning: financials.cleaningMismatchWarning,
-                items: []
+                items: itemsResult.items
             };
 
             // Save to database (same storage as manual generation)
@@ -317,6 +406,22 @@ class StatementService {
                 priorStatements
             });
 
+            // Build the statement items array + cross-statement duplicate adjustments
+            // so the saved statement matches the manual generation structure (frontend
+            // renders expenses + additional payouts from `items`).
+            const itemsResult = StatementCalculationService.buildStatementItems({
+                periodReservations: financials.periodReservations,
+                filteredExpenses: financials.filteredExpenses,
+                llCoverExpenses: financials.llCoverExpenses,
+                targetListings: [targetListing],
+                priorStatements
+            });
+
+            // Recompute owner payout excluding prior-statement-duplicate expenses to
+            // match what the manual generateCombinedStatement stores.
+            const grossPayoutSum = financials.ownerPayout - financials.totalUpsells + financials.totalExpenses;
+            const adjustedOwnerPayout = grossPayoutSum + itemsResult.adjustedTotalUpsells - itemsResult.adjustedTotalExpenses;
+
             // Get owners for owner info
             const owners = await FileDataService.getOwners();
             const owner = owners[0] || { id: 1, name: listingName };
@@ -336,13 +441,13 @@ class StatementService {
                 weekEndDate: endDate,
                 calculationType,
                 totalRevenue: financials.totalRevenue,
-                totalExpenses: financials.totalExpenses,
+                totalExpenses: itemsResult.adjustedTotalExpenses,
                 pmCommission: financials.pmCommission,
                 pmPercentage: financials.pmPercentage,
                 techFees: financials.techFees,
                 insuranceFees: financials.insuranceFees,
                 adjustments: 0,
-                ownerPayout: financials.ownerPayout,
+                ownerPayout: Math.round(adjustedOwnerPayout * 100) / 100,
                 isCombinedStatement: false,
                 propertyCount: 1,
                 totalCleaningFee: financials.totalCleaningFee,
@@ -378,9 +483,12 @@ class StatementService {
                 internalNotes: targetListing.internalNotes || null,
                 reservations: financials.periodReservations,
                 expenses: expenses,
-                duplicateWarnings: financials.duplicateWarnings,
+                duplicateWarnings: [
+                    ...(financials.duplicateWarnings || []),
+                    ...itemsResult.priorStatementDuplicateWarnings
+                ],
                 cleaningMismatchWarning: financials.cleaningMismatchWarning,
-                items: []
+                items: itemsResult.items
             };
 
             // Save to database (same as group statements)
