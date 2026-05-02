@@ -2353,16 +2353,32 @@ router.put('/:id/reconfigure', async (req, res) => {
 
             const techFees = targetListings.length * 50;
             const insuranceFees = targetListings.length * 25;
-            const ownerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
+
+            // Use the same per-reservation gross-payout formula as
+            // calculateStatementFinancials so regenerate-combined matches the
+            // original generation. The naive `revenue - pmCommission` formula
+            // missed taxResponsibility, cleaningFeePassThrough deductions, and
+            // cohost-on-Airbnb handling.
+            const regularGrossPayout = StatementCalculationService.calculateGrossPayoutSum(
+                allReservations,
+                propertyListingMap,
+                endDate,
+                calculationType
+            );
 
             // Merge custom reservations back
             const mergedReservations = [...allReservations, ...customReservations];
 
-            // Recalculate with custom reservations
+            // Custom reservations carry their own user-entered finance fields.
+            let customGrossPayout = 0;
             for (const cr of customReservations) {
-                totalRevenue += cr.amount || 0;
+                const clientRev = parseFloat(cr.clientRevenue) || parseFloat(cr.amount) || 0;
+                const luxFee = parseFloat(cr.luxuryLodgingFee) || 0;
+                const tax = parseFloat(cr.clientTaxResponsibility) || 0;
+                customGrossPayout += clientRev - luxFee + tax;
+                totalRevenue += parseFloat(cr.amount) || 0;
             }
-            const finalOwnerPayout = totalRevenue - pmCommission + totalUpsells - totalExpenses;
+            const finalOwnerPayout = regularGrossPayout + customGrossPayout + totalUpsells - totalExpenses;
 
             // Update the statement
             const updatedStatement = {
@@ -3140,10 +3156,33 @@ router.put('/:id', async (req, res) => {
             // Calculate total upsells from items
             const totalUpsells = statement.items?.filter(item => item.type === 'upsell' && !isHiddenItem(item)).reduce((sum, item) => sum + item.amount, 0) || 0;
 
-            // Recalculate owner payout (GROSS PAYOUT + ADDITIONAL PAYOUTS - EXPENSES)
-            // Note: techFees and insuranceFees are stored but not included in payout calculation
+            // Recalculate owner payout using the SAME per-reservation gross-payout
+            // formula that calculateStatementFinancials uses at generation time.
+            // The previous naive `totalRevenue - pmCommission - totalExpenses` formula
+            // silently missed taxResponsibility (for non-Airbnb/pass-through Airbnb),
+            // cleaningFeePassThrough deductions, and cohost-on-Airbnb handling — so
+            // editing a statement (even with no changes) shifted the stored payout
+            // away from its original value.
+            const reservations = statement.reservations || [];
+            const customReservations = reservations.filter(r => r.isCustom);
+            const regularReservations = reservations.filter(r => !r.isCustom);
+            let grossPayoutSum = StatementCalculationService.calculateGrossPayoutSum(
+                regularReservations,
+                editListingMap,
+                statement.weekEndDate,
+                statement.calculationType || 'checkout'
+            );
+            // Custom reservations carry user-entered finance fields directly.
+            for (const res of customReservations) {
+                const clientRev = parseFloat(res.clientRevenue) || 0;
+                const luxFee = parseFloat(res.luxuryLodgingFee) || 0;
+                const tax = parseFloat(res.clientTaxResponsibility) || 0;
+                grossPayoutSum += clientRev - luxFee + tax;
+            }
             const adjustments = parseFloat(statement.adjustments || 0);
-            statement.ownerPayout = Math.round((statement.totalRevenue - statement.pmCommission + totalUpsells - statement.totalExpenses - adjustments) * 100) / 100;
+            statement.ownerPayout = Math.round(
+                (grossPayoutSum + totalUpsells - statement.totalExpenses - adjustments) * 100
+            ) / 100;
 
             // Keep statement as draft when edited (unless already sent/final)
             if (statement.status !== 'sent' && statement.status !== 'final') {
