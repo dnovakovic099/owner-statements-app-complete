@@ -5754,10 +5754,11 @@ router.get('/:id/view', async (req, res) => {
 
                     const resPmPct = StatementCalculationService.getEffectivePmFee(propSettings, reservation.createdAt);
                     const clientRevenue = reservation.hasDetailedFinance ? reservation.clientRevenue : reservation.grossAmount;
+                    const commissionBase = StatementCalculationService.getCommissionBase(reservation, propSettings, clientRevenue);
                     // PM Commission: use stored value for custom reservations, otherwise calculate
                     const luxuryFee = (reservation.isCustom && reservation.luxuryLodgingFee !== undefined)
                         ? reservation.luxuryLodgingFee
-                        : clientRevenue * (resPmPct / 100);
+                        : commissionBase * (resPmPct / 100);
                     const taxResponsibility = reservation.hasDetailedFinance ? reservation.clientTaxResponsibility : 0;
 
                     // Reverse-engineer actual cleaning fee from guest-paid amount (only when pass-through enabled)
