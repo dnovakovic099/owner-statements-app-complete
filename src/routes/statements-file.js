@@ -5270,8 +5270,9 @@ router.get('/:id/view', async (req, res) => {
     <div class="internal-notes-banner">
         <div class="internal-notes-header">
             <span class="internal-notes-title">PM Fee: ${(() => {
-                const basePm = statement.pmPercentage || listingSettingsMap[statement.propertyId]?.pmFeePercentage || 15;
                 const props = statement.propertyIds || (statement.propertyId ? [statement.propertyId] : []);
+                const configured = [...new Set(props.map(pid => listingSettingsMap[pid]?.pmFeePercentage).filter(v => v != null))];
+                const basePm = configured.length > 0 ? configured.join(' / ') : 15;
                 const transitionListings = props.map(pid => listingSettingsMap[pid]).filter(s => s && s.newPmFeeEnabled && s.newPmFeeStartDate && s.newPmFeePercentage != null);
                 if (transitionListings.length > 0) {
                     const t = transitionListings[0];
