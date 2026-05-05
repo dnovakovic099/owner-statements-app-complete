@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -262,6 +262,27 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isRowsDropdownOpen, setIsRowsDropdownOpen] = useState(false);
   const [markerFilter, setMarkerFilter] = useState<string[]>([]);
+
+  // Increase transfer-verify dialog state (opened from row action)
+  const [verifyDialog, setVerifyDialog] = useState<{
+    statementId: number;
+    ownerName?: string;
+    loading: boolean;
+    error: string | null;
+    data: any;
+  } | null>(null);
+
+  const handleVerifyTransfer = useCallback(async (statement: Statement) => {
+    setVerifyDialog({ statementId: statement.id, ownerName: (statement as any).ownerName, loading: true, error: null, data: null });
+    try {
+      const { payoutsAPI } = await import('../services/api');
+      const data = await payoutsAPI.verifyTransfer(statement.id);
+      setVerifyDialog((prev) => prev && prev.statementId === statement.id ? { ...prev, loading: false, data } : prev);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Failed to verify transfer';
+      setVerifyDialog((prev) => prev && prev.statementId === statement.id ? { ...prev, loading: false, error: msg } : prev);
+    }
+  }, []);
 
   // Debounce search to avoid too many API calls
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -708,6 +729,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               icon={<Receipt className="w-[18px] h-[18px]" />}
               color={statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' ? 'text-teal-600' : 'text-gray-400'}
               disabled={statement.payoutStatus !== 'paid' && statement.payoutStatus !== 'collected'}
+            />
+
+            <ActionButton
+              onClick={() => handleVerifyTransfer(statement)}
+              tooltip={statement.payoutStatus === 'paid' && (statement as any).payoutTransferId ? 'Verify on Increase' : 'Available after payout'}
+              icon={<BadgeCheck className="w-[18px] h-[18px]" />}
+              color={statement.payoutStatus === 'paid' && (statement as any).payoutTransferId ? 'text-cyan-600' : 'text-gray-400'}
+              disabled={statement.payoutStatus !== 'paid' || !(statement as any).payoutTransferId}
             />
 
             <ActionButton
@@ -1434,8 +1463,109 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
           </div>
         </div>
       </div>
+
+      {verifyDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setVerifyDialog(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Verify on Increase</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Statement #{verifyDialog.statementId}{verifyDialog.ownerName ? ` — ${verifyDialog.ownerName}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setVerifyDialog(null)}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 text-sm">
+              {verifyDialog.loading && (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Fetching latest status from Increase…</span>
+                </div>
+              )}
+              {!verifyDialog.loading && verifyDialog.error && (
+                <div className="rounded border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-900 p-3 text-red-700 dark:text-red-300">
+                  {verifyDialog.error}
+                </div>
+              )}
+              {!verifyDialog.loading && verifyDialog.data?.transfer && (
+                <div className="space-y-1.5 text-gray-700 dark:text-gray-300">
+                  <Row label="Status" value={<span className="font-medium">{verifyDialog.data.transfer.status}</span>} />
+                  <Row label="Amount" value={<span className="font-medium">${(Math.abs(verifyDialog.data.transfer.amount) / 100).toFixed(2)}{verifyDialog.data.transfer.amount < 0 ? ' (debit)' : ''}</span>} />
+                  {verifyDialog.data.transfer.individualName && (
+                    <Row label="Recipient" value={verifyDialog.data.transfer.individualName} />
+                  )}
+                  {verifyDialog.data.transfer.accountNumberLast4 && (
+                    <Row label="Account" value={`••••${verifyDialog.data.transfer.accountNumberLast4}`} />
+                  )}
+                  {verifyDialog.data.transfer.routingNumber && (
+                    <Row label="Routing" value={verifyDialog.data.transfer.routingNumber} />
+                  )}
+                  {verifyDialog.data.transfer.submission?.submitted_at && (
+                    <Row label="Submitted" value={new Date(verifyDialog.data.transfer.submission.submitted_at).toLocaleString()} />
+                  )}
+                  {verifyDialog.data.transfer.acknowledgement?.acknowledged_at && (
+                    <Row label="Acknowledged" value={new Date(verifyDialog.data.transfer.acknowledgement.acknowledged_at).toLocaleString()} />
+                  )}
+                  {verifyDialog.data.transfer.effectiveDate && (
+                    <Row label="Effective" value={verifyDialog.data.transfer.effectiveDate} />
+                  )}
+                  {verifyDialog.data.transfer.network && (
+                    <Row label="Network" value={verifyDialog.data.transfer.network} />
+                  )}
+                  {verifyDialog.data.transfer.return && (
+                    <Row label="Returned" value={<span className="text-red-600">{verifyDialog.data.transfer.return.return_reason_code}</span>} />
+                  )}
+                  <Row label="Transfer ID" value={<span className="font-mono text-[11px] break-all">{verifyDialog.data.transfer.id}</span>} />
+                  {verifyDialog.data.isFundingTransfer && (
+                    <p className="mt-2 text-xs text-amber-700 italic">This is the funding ACH debit. The owner payout will run automatically once funds settle.</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+              <button
+                onClick={() => {
+                  const id = verifyDialog.statementId;
+                  const target = statements.find(s => s.id === id);
+                  if (target) handleVerifyTransfer(target);
+                }}
+                disabled={verifyDialog.loading}
+                className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                {verifyDialog.loading ? 'Refreshing…' : 'Refresh from Increase'}
+              </button>
+              <button
+                onClick={() => setVerifyDialog(null)}
+                className="px-3 py-1.5 text-xs font-medium rounded bg-gray-900 text-white hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const Row: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="flex justify-between gap-4">
+    <span className="text-gray-500 dark:text-gray-400">{label}</span>
+    <span className="text-right">{value}</span>
+  </div>
+);
 
 export default StatementsTable;
