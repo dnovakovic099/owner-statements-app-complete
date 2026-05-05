@@ -1,24 +1,25 @@
 /**
- * Payout receipt — rendered as an HTML page (served directly, not emailed).
- * Uses its own self-contained styles (not the email base layout) because
- * this is displayed in-browser and printed, not sent via email.
+ * Payout receipt rendered as HTML. Used both as an in-browser receipt and as
+ * the body of the payout-sent email. Gmail and most email clients ignore
+ * flexbox/grid, so the layout is built with `<table>` rows and explicit
+ * column widths to guarantee alignment everywhere.
  *
  * @param {object} params
- * @param {number} params.statementId       - Statement ID
- * @param {string} params.payoutStatus      - 'paid' | 'collected'
- * @param {string} params.propertyName      - Property display name
- * @param {string} params.ownerName         - Owner display name
- * @param {string} params.periodStart       - Formatted start date string
- * @param {string} params.periodEnd         - Formatted end date string
- * @param {number} params.totalRevenue      - Total revenue amount
- * @param {number} params.pmCommission      - PM commission amount
- * @param {number} params.totalExpenses     - Total expenses amount
- * @param {number} params.payoutAmount      - Net owner payout
- * @param {number} params.wiseFee           - Transfer fee
- * @param {number} params.totalTransferAmount - Total transferred (payout + fee)
- * @param {string} params.transferId        - Increase transfer ID
- * @param {string} params.paidAtDate        - Formatted date (e.g. "Mar 19, 2026")
- * @param {string} params.paidAtFull        - Formatted date+time (e.g. "Wed, Mar 19, 2026 10:30 AM")
+ * @param {number} params.statementId
+ * @param {string} params.payoutStatus           - 'paid' | 'collected'
+ * @param {string} params.propertyName
+ * @param {string} params.ownerName
+ * @param {string} params.periodStart
+ * @param {string} params.periodEnd
+ * @param {number} params.totalRevenue
+ * @param {number} params.pmCommission
+ * @param {number} params.totalExpenses
+ * @param {number} params.payoutAmount
+ * @param {number} params.wiseFee
+ * @param {number} params.totalTransferAmount
+ * @param {string} params.transferId
+ * @param {string} params.paidAtDate
+ * @param {string} params.paidAtFull
  * @returns {string} Full HTML document string
  */
 module.exports = function payoutReceipt({
@@ -39,77 +40,89 @@ module.exports = function payoutReceipt({
   paidAtFull,
 }) {
   const statusLabel = payoutStatus === 'collected' ? 'Collected' : 'Payment Sent';
+  const fmt = (n) => `$${Number(n || 0).toFixed(2)}`;
+
+  // Each row is a 2-col table with fixed widths. Inline styles only.
+  const row = (label, value, valueStyle = '') => `
+        <tr>
+          <td style="padding:10px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;font-size:13px;">${label}</td>
+          <td style="padding:10px 0;border-bottom:1px solid #f3f4f6;font-size:13px;font-weight:500;text-align:right;${valueStyle}">${value}</td>
+        </tr>`;
+
+  const section = (title, rowsHtml) => `
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">${title}</div>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;width:100%;">
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
 
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8">
 <title>Payout Receipt #${statementId}</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', system-ui, sans-serif; background: #fff; color: #111827; padding: 40px; max-width: 600px; margin: 0 auto; }
-  .receipt { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
-  .receipt-header { background: #111827; color: white; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; }
-  .receipt-header h1 { font-size: 16px; font-weight: 600; }
-  .receipt-header .id { font-size: 12px; color: rgba(255,255,255,0.6); }
-  .receipt-body { padding: 28px; }
-  .badge { display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 20px; }
-  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #059669; }
-  .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
-  .row:last-child { border-bottom: none; }
-  .row .label { color: #6b7280; }
-  .row .value { font-weight: 500; text-align: right; }
-  .total-row { display: flex; justify-content: space-between; padding: 14px 0; margin-top: 8px; border-top: 2px solid #111827; font-size: 15px; font-weight: 700; }
-  .section { margin-bottom: 20px; }
-  .section-title { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-  .footer { text-align: center; padding: 16px 28px; background: #f9fafb; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
-  @media print { body { padding: 0; } .receipt { border: none; } }
-</style>
 </head>
-<body>
-<div class="receipt">
-  <div class="receipt-header">
-    <div>
-      <h1>Payout Receipt</h1>
-      <div class="id">Luxury Lodging PM</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:13px;font-weight:600">#${statementId}</div>
-      <div class="id">${paidAtDate}</div>
-    </div>
-  </div>
-  <div class="receipt-body">
-    <div class="badge"><span class="dot"></span> ${statusLabel}</div>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Inter',Arial,sans-serif;color:#111827;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f9fafb;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+      <tr>
+        <td style="background:#111827;color:#ffffff;padding:24px 28px;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+            <tr>
+              <td style="vertical-align:top;">
+                <div style="font-size:16px;font-weight:600;color:#ffffff;">Payout Receipt</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px;">Luxury Lodging PM</div>
+              </td>
+              <td style="vertical-align:top;text-align:right;">
+                <div style="font-size:13px;font-weight:600;color:#ffffff;">#${statementId}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px;">${paidAtDate}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:28px;">
+          <div style="display:inline-block;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;margin-bottom:20px;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#059669;vertical-align:middle;margin-right:6px;"></span>${statusLabel}
+          </div>
 
-    <div class="section">
-      <div class="section-title">Property Details</div>
-      <div class="row"><span class="label">Property</span><span class="value">${propertyName}</span></div>
-      <div class="row"><span class="label">Owner</span><span class="value">${ownerName}</span></div>
-      <div class="row"><span class="label">Statement Period</span><span class="value">${periodStart} - ${periodEnd}</span></div>
-    </div>
+          ${section('Property Details', [
+            row('Property', propertyName),
+            row('Owner', ownerName),
+            row('Statement Period', `${periodStart} to ${periodEnd}`),
+          ].join(''))}
 
-    <div class="section">
-      <div class="section-title">Payment Details</div>
-      <div class="row"><span class="label">Revenue</span><span class="value">$${totalRevenue.toFixed(2)}</span></div>
-      <div class="row"><span class="label">PM Commission</span><span class="value">-$${pmCommission.toFixed(2)}</span></div>
-      <div class="row"><span class="label">Expenses</span><span class="value">-$${totalExpenses.toFixed(2)}</span></div>
-      <div class="row"><span class="label">Owner Payout</span><span class="value" style="color:#059669;font-weight:700">$${payoutAmount.toFixed(2)}</span></div>
-    </div>
+          ${section('Payment Details', [
+            row('Revenue', fmt(totalRevenue)),
+            row('PM Commission', `-${fmt(pmCommission)}`),
+            row('Expenses', `-${fmt(totalExpenses)}`),
+            row('Owner Payout', fmt(payoutAmount), 'color:#059669;font-weight:700;'),
+          ].join(''))}
 
-    <div class="section">
-      <div class="section-title">Transfer Details</div>
-      <div class="row"><span class="label">Method</span><span class="value">Increase (ACH)</span></div>
-      <div class="row"><span class="label">Transfer ID</span><span class="value" style="font-family:monospace;font-size:12px">${transferId}</span></div>
-      <div class="row"><span class="label">Fee</span><span class="value">$${wiseFee.toFixed(2)}</span></div>
-      <div class="row"><span class="label">Date Sent</span><span class="value">${paidAtFull}</span></div>
-    </div>
+          ${section('Transfer Details', [
+            row('Method', 'Increase (ACH)'),
+            row('Transfer ID', `<span style="font-family:monospace;font-size:12px;word-break:break-all;">${transferId}</span>`),
+            row('Fee', fmt(wiseFee)),
+            row('Date Sent', paidAtFull),
+          ].join(''))}
 
-    <div class="total-row">
-      <span>Total Transferred</span>
-      <span>$${totalTransferAmount.toFixed(2)}</span>
-    </div>
-  </div>
-  <div class="footer">This is an internal record. Generated by Luxury Lodging PM.</div>
-</div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;width:100%;margin-top:8px;border-top:2px solid #111827;">
+            <tr>
+              <td style="padding:14px 0;font-size:15px;font-weight:700;">Total Transferred</td>
+              <td style="padding:14px 0;font-size:15px;font-weight:700;text-align:right;">${fmt(totalTransferAmount)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align:center;padding:16px 28px;background:#f9fafb;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;">
+          This is an internal record. Generated by Luxury Lodging PM.
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
 </body></html>`;
 };
