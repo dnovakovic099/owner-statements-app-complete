@@ -84,6 +84,9 @@ const PayoutAccountsPage: React.FC = () => {
   // Refresh debounce
   const [refreshingRowKey, setRefreshingRowKey] = useState<string | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<PayoutConnectionRow | null>(null);
+  const [testReceiptOpen, setTestReceiptOpen] = useState(false);
+  const [testReceiptEmail, setTestReceiptEmail] = useState('');
+  const [testReceiptSending, setTestReceiptSending] = useState(false);
 
   // Filter state — persist to localStorage
   const FILTER_STATUS_KEY = 'payout_filter_status';
@@ -850,6 +853,17 @@ const PayoutAccountsPage: React.FC = () => {
               {csvExporting ? 'Exporting...' : 'Export CSV'}
             </Button>
 
+            {/* Test payout receipt template */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 border-gray-200 bg-white"
+              onClick={() => setTestReceiptOpen(true)}
+            >
+              <Send className="mr-2 h-4 w-4 text-gray-400" />
+              Test Receipt
+            </Button>
+
           </div>
         </div>
       </div>
@@ -1189,6 +1203,73 @@ const PayoutAccountsPage: React.FC = () => {
         cancelText="Cancel"
         type="danger"
       />
+
+      <Dialog open={testReceiptOpen} onOpenChange={(open) => { if (!open) { setTestReceiptOpen(false); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4" /> Test Payout Receipt
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Renders the payout-receipt template with sample data. No real statement is touched and no owner is notified.
+            </p>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-center"
+              onClick={async () => {
+                try {
+                  const html = await payoutsAPI.fetchReceiptPreviewHtml();
+                  const blob = new Blob([html], { type: 'text/html' });
+                  const url = URL.createObjectURL(blob);
+                  const w = window.open(url, '_blank');
+                  if (!w) showToast('Please allow pop-ups to preview the receipt', 'error');
+                } catch (err: any) {
+                  showToast(err?.response?.data?.error || 'Failed to load preview', 'error');
+                }
+              }}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" /> Preview in browser
+            </Button>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Send sample to email</label>
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={testReceiptEmail}
+                  onChange={(e) => setTestReceiptEmail(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  disabled={!testReceiptEmail || testReceiptSending}
+                  onClick={async () => {
+                    setTestReceiptSending(true);
+                    try {
+                      await payoutsAPI.sendTestReceipt(testReceiptEmail.trim());
+                      showToast(`Test receipt sent to ${testReceiptEmail}`, 'success');
+                      setTestReceiptOpen(false);
+                    } catch (err: any) {
+                      const msg = err?.response?.data?.detail || err?.response?.data?.error || 'Failed to send';
+                      showToast(msg, 'error');
+                    } finally {
+                      setTestReceiptSending(false);
+                    }
+                  }}
+                >
+                  {testReceiptSending ? 'Sending...' : 'Send'}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">Uses the same SMTP and From address as real payout receipts so the test reflects real-world rendering.</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

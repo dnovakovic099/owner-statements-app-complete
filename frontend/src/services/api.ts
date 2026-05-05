@@ -678,6 +678,16 @@ export const payoutsAPI = {
     return response.data;
   },
 
+  sendTestReceipt: async (to: string): Promise<{ success: boolean; to: string; messageId?: string }> => {
+    const response = await api.post('/payouts/receipt/test-email', { to });
+    return response.data;
+  },
+
+  fetchReceiptPreviewHtml: async (): Promise<string> => {
+    const response = await api.get('/payouts/receipt/preview', { responseType: 'text' });
+    return response.data as string;
+  },
+
   verifyTransfer: async (statementId: number): Promise<{
     success: boolean;
     statementId: number;

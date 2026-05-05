@@ -20,6 +20,36 @@ const collectionInvoiceTemplate = require('../templates/emails/collectionInvoice
 const EmailService = require('../services/EmailService');
 
 /**
+ * Sample data for the receipt preview / test-email endpoints. Numbers are
+ * recognizable as fake (round dollar amounts, "Sample Owner") so a misrouted
+ * test cannot be confused with a real payout.
+ */
+function buildSampleReceiptParams() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const fmtFull = (d) => d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return {
+        statementId: 'TEST-0001',
+        payoutStatus: 'paid',
+        propertyName: 'Sample Beach House',
+        ownerName: 'Sample Owner',
+        periodStart: fmtDate(monthStart),
+        periodEnd: fmtDate(monthEnd),
+        totalRevenue: 4500.00,
+        pmCommission: 675.00,
+        totalExpenses: 350.00,
+        payoutAmount: 3475.00,
+        wiseFee: 0.00,
+        totalTransferAmount: 3475.00,
+        transferId: 'ach_transfer_sample_preview_only',
+        paidAtDate: fmtDate(now),
+        paidAtFull: fmtFull(now),
+    };
+}
+
+/**
  * Fire-and-forget: send the payout receipt email to the owner after a
  * successful Increase ACH transfer. Never throws or blocks the caller.
  */
@@ -327,6 +357,54 @@ router.get('/recipients/:externalAccountId/check', async (req, res) => {
         }
         logger.logError(error, { context: 'Payouts', action: 'checkRecipient', externalAccountId, increaseResponse: data });
         return res.status(500).json({ success: false, error: 'Failed to check recipient', detail: data?.detail || error.message });
+    }
+});
+
+// ─── GET /receipt/preview ────────────────────────────────────
+// Render the payout-receipt HTML with sample data and serve it directly so
+// the team can review the in-browser layout. Does NOT send an email.
+router.get('/receipt/preview', (req, res) => {
+    try {
+        const html = payoutReceiptTemplate(buildSampleReceiptParams());
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(html);
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'receiptPreview' });
+        return res.status(500).json({ error: 'Failed to render preview', detail: error.message });
+    }
+});
+
+// ─── POST /receipt/test-email ────────────────────────────────
+// Send the payout-receipt template to the requested address using sample
+// data, so the team can verify how it renders in real email clients (Gmail,
+// Outlook, etc.) without paying anyone.
+router.post('/receipt/test-email', async (req, res) => {
+    try {
+        const { to } = req.body || {};
+        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to))) {
+            return res.status(400).json({ error: 'A valid `to` email is required' });
+        }
+
+        const params = buildSampleReceiptParams();
+        const html = payoutReceiptTemplate(params);
+        const subject = `[TEST] Payout sent — $${params.payoutAmount.toFixed(2)} for ${params.propertyName}`;
+
+        if (!EmailService.isConfigured) {
+            return res.status(500).json({ error: 'SMTP is not configured on the server' });
+        }
+
+        const result = await EmailService.transporter.sendMail({
+            from: `"Luxury Lodging" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
+            to,
+            subject,
+            html,
+        });
+
+        logger.info('Test payout receipt sent', { to, messageId: result.messageId });
+        return res.json({ success: true, to, messageId: result.messageId });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'receiptTestEmail' });
+        return res.status(500).json({ error: 'Failed to send test email', detail: error.message });
     }
 });
 
