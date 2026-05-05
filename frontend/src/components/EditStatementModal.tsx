@@ -127,6 +127,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Increase transfer-verify panel state
+  const [verifyData, setVerifyData] = useState<any>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
   // Pagination state for large lists
   const ITEMS_PER_PAGE = 50;
   const [reservationsDisplayCount, setReservationsDisplayCount] = useState(ITEMS_PER_PAGE);
@@ -229,6 +234,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     if (isOpen && statementId) {
       loadStatement();
     }
+    // Reset Increase verify panel when switching statements
+    setVerifyData(null);
+    setVerifyError(null);
   }, [isOpen, statementId, loadStatement]);
 
   const loadAvailableReservations = async () => {
@@ -1066,7 +1074,53 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                               <div>Total transferred: <span className="font-medium text-gray-700">${(statement as any).totalTransferAmount.toFixed(2)}</span></div>
                             )}
                             {(statement as any).payoutTransferId && (
-                              <div className="font-mono text-[10px] text-gray-400">{(statement as any).payoutTransferId}</div>
+                              <div className="space-y-1">
+                                <div className="font-mono text-[10px] text-gray-400">{(statement as any).payoutTransferId}</div>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setVerifyError(null);
+                                    setVerifying(true);
+                                    try {
+                                      const { payoutsAPI } = await import('../services/api');
+                                      const data = await payoutsAPI.verifyTransfer(statement.id);
+                                      setVerifyData(data);
+                                    } catch (err: any) {
+                                      setVerifyError(err?.response?.data?.detail || err?.response?.data?.error || err.message || 'Failed to verify transfer');
+                                      setVerifyData(null);
+                                    } finally {
+                                      setVerifying(false);
+                                    }
+                                  }}
+                                  disabled={verifying}
+                                  className="text-[11px] text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
+                                >
+                                  {verifying ? 'Checking…' : verifyData ? 'Refresh from Increase' : 'Verify on Increase'}
+                                </button>
+                                {verifyError && (
+                                  <div className="text-[11px] text-red-600 max-w-[280px]">{verifyError}</div>
+                                )}
+                                {verifyData?.transfer && (
+                                  <div className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-700 space-y-0.5 max-w-[300px] text-left">
+                                    <div><span className="text-gray-500">Status:</span> <span className="font-medium">{verifyData.transfer.status}</span></div>
+                                    <div><span className="text-gray-500">Amount:</span> <span className="font-medium">${(Math.abs(verifyData.transfer.amount) / 100).toFixed(2)}</span>{verifyData.transfer.amount < 0 ? ' (debit)' : ''}</div>
+                                    {verifyData.transfer.individualName && <div><span className="text-gray-500">To:</span> {verifyData.transfer.individualName}</div>}
+                                    {verifyData.transfer.accountNumberLast4 && <div><span className="text-gray-500">Account:</span> ••••{verifyData.transfer.accountNumberLast4}</div>}
+                                    {verifyData.transfer.routingNumber && <div><span className="text-gray-500">Routing:</span> {verifyData.transfer.routingNumber}</div>}
+                                    {verifyData.transfer.submission?.submitted_at && <div><span className="text-gray-500">Submitted:</span> {new Date(verifyData.transfer.submission.submitted_at).toLocaleString()}</div>}
+                                    {verifyData.transfer.acknowledgement?.acknowledged_at && <div><span className="text-gray-500">Acknowledged:</span> {new Date(verifyData.transfer.acknowledgement.acknowledged_at).toLocaleString()}</div>}
+                                    {verifyData.transfer.effectiveDate && <div><span className="text-gray-500">Effective:</span> {verifyData.transfer.effectiveDate}</div>}
+                                    {verifyData.transfer.return && (
+                                      <div className="text-red-600">
+                                        <span className="text-gray-500">Returned:</span> {verifyData.transfer.return.return_reason_code}
+                                      </div>
+                                    )}
+                                    {verifyData.isFundingTransfer && (
+                                      <div className="text-amber-700 italic">Funding ACH debit (queued payout — not the owner transfer yet)</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

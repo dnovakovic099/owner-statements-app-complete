@@ -677,6 +677,37 @@ export const payoutsAPI = {
     const response = await api.post('/payouts/generate-invite', data);
     return response.data;
   },
+
+  verifyTransfer: async (statementId: number): Promise<{
+    success: boolean;
+    statementId: number;
+    payoutStatus: string | null;
+    paidAt: string | null;
+    isFundingTransfer: boolean;
+    transfer: {
+      id: string;
+      status: string;
+      amount: number;
+      currency: string;
+      statementDescriptor: string | null;
+      companyEntryDescription: string | null;
+      individualName: string | null;
+      externalAccountId: string | null;
+      routingNumber: string | null;
+      accountNumberLast4: string | null;
+      effectiveDate: string | null;
+      network: string | null;
+      createdAt: string | null;
+      submission: { submitted_at?: string; trace_number?: string } | null;
+      acknowledgement: { acknowledged_at?: string } | null;
+      pendingTransactionId: string | null;
+      transactionId: string | null;
+      return: { return_reason_code?: string; created_at?: string } | null;
+    };
+  }> => {
+    const response = await api.get(`/payouts/statements/${statementId}/verify-transfer`);
+    return response.data;
+  },
 };
 
 // Groups API

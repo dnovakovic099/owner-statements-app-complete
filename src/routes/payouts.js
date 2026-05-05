@@ -330,6 +330,70 @@ router.get('/recipients/:externalAccountId/check', async (req, res) => {
     }
 });
 
+// ─── GET /statements/:id/verify-transfer ─────────────────────
+// Fetches the live transfer status from Increase for a paid statement so
+// the team can verify the payout actually happened without logging into
+// the Increase dashboard.
+router.get('/statements/:id/verify-transfer', async (req, res) => {
+    try {
+        const statementId = parseInt(req.params.id);
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
+        }
+
+        const storedId = statement.payoutTransferId;
+        if (!storedId) {
+            return res.status(400).json({ error: 'Statement has no payout transfer to verify' });
+        }
+
+        // Statements queued awaiting funding store the funding ACH debit ID as `funding:<id>`
+        const isFundingTransfer = storedId.startsWith('funding:');
+        const transferId = isFundingTransfer ? storedId.slice('funding:'.length) : storedId;
+
+        const transfer = await IncreaseService.getTransfer(transferId);
+
+        // Surface only the fields the UI needs — keep the response stable as
+        // Increase adds new fields.
+        res.json({
+            success: true,
+            statementId,
+            payoutStatus: statement.payoutStatus,
+            paidAt: statement.paidAt,
+            isFundingTransfer,
+            transfer: {
+                id: transfer.id,
+                status: transfer.status,
+                amount: transfer.amount,
+                currency: transfer.currency,
+                statementDescriptor: transfer.statement_descriptor,
+                companyEntryDescription: transfer.company_entry_description,
+                individualName: transfer.individual_name,
+                externalAccountId: transfer.external_account_id,
+                routingNumber: transfer.routing_number,
+                accountNumberLast4: transfer.account_number ? String(transfer.account_number).slice(-4) : null,
+                effectiveDate: transfer.effective_date,
+                network: transfer.network,
+                createdAt: transfer.created_at,
+                submission: transfer.submission || null,
+                acknowledgement: transfer.acknowledgement || null,
+                pendingTransactionId: transfer.pending_transaction_id || null,
+                transactionId: transfer.transaction_id || null,
+                return: transfer.return || null,
+            },
+        });
+    } catch (error) {
+        const data = error?.response?.data;
+        logger.logError(error, { context: 'Payouts', action: 'verifyTransfer', increaseResponse: data });
+        res.status(error?.response?.status === 404 ? 404 : 500).json({
+            error: 'Failed to fetch transfer from Increase',
+            detail: data?.detail || data?.title || error.message,
+        });
+    }
+});
+
 router.get('/listings/:id/status', async (req, res) => {
     try {
         const listing = await Listing.findByPk(parseInt(req.params.id));
