@@ -472,6 +472,126 @@ router.get('/statements/:id/verify-transfer', async (req, res) => {
     }
 });
 
+// ─── GET /statements/:id/recipient-preview ───────────────────
+// Resolve the recipient that a payout would actually be sent to. Used by the
+// pay-owner confirmation modal so the operator sees the bank account holder
+// and last4 before triggering money movement, instead of a bare owner name
+// that can read as "Default".
+router.get('/statements/:id/recipient-preview', async (req, res) => {
+    try {
+        const statementId = parseInt(req.params.id);
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
+        const { wiseRecipientId, source, error: resolveError } = await resolveWiseRecipientId(statement);
+
+        let sourceEntity = null;
+        let sourceLabel = null;
+        let bankFallback = { holder: null, last4: null, routing: null };
+
+        if (source === 'group') {
+            sourceEntity = await ListingGroup.findByPk(statement.groupId);
+            if (sourceEntity) {
+                sourceLabel = `Group: ${sourceEntity.name}`;
+                bankFallback = {
+                    holder: sourceEntity.bankAccountHolder || null,
+                    last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
+                    routing: sourceEntity.bankRoutingNumber || null,
+                };
+            }
+        } else if (source === 'listing') {
+            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+            sourceEntity = await Listing.findByPk(listingId);
+            if (sourceEntity) {
+                const label = sourceEntity.nickname || sourceEntity.displayName || sourceEntity.name;
+                sourceLabel = `Listing: ${label}`;
+                bankFallback = {
+                    holder: sourceEntity.bankAccountHolder || null,
+                    last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
+                    routing: sourceEntity.bankRoutingNumber || null,
+                };
+            }
+        }
+
+        // Property/group label for context (separate from the source — useful when
+        // the statement spans multiple listings inside a group).
+        let propertyName = null;
+        if (statement.groupId) {
+            const grp = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'ListingGroup'
+                ? sourceEntity
+                : await ListingGroup.findByPk(statement.groupId);
+            if (grp) propertyName = grp.name;
+        } else {
+            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+            if (listingId) {
+                const l = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'Listing'
+                    ? sourceEntity
+                    : await Listing.findByPk(listingId);
+                if (l) propertyName = l.nickname || l.displayName || l.name;
+            }
+        }
+
+        // If no recipient is configured we still return what we know so the UI
+        // can show an actionable error instead of a generic 400.
+        if (!wiseRecipientId) {
+            return res.json({
+                success: true,
+                statementId,
+                payoutAmount,
+                ownerName: statement.ownerName || null,
+                propertyName,
+                source,
+                sourceLabel,
+                externalAccountId: null,
+                holderName: bankFallback.holder,
+                routingNumber: bankFallback.routing,
+                accountNumberLast4: bankFallback.last4,
+                increaseStatus: null,
+                error: resolveError || 'No Increase external account configured',
+            });
+        }
+
+        // Pull live account details from Increase so the holder name shown in the
+        // modal matches whatever is actually registered with the bank.
+        let increaseAccount = null;
+        if (IncreaseService.isConfigured()) {
+            try {
+                increaseAccount = await IncreaseService.getRecipient(wiseRecipientId);
+            } catch (e) {
+                logger.warn('Failed to fetch Increase external_account for recipient preview', {
+                    statementId, externalAccountId: wiseRecipientId, error: e.message,
+                });
+            }
+        }
+
+        const holderName = increaseAccount?.description || bankFallback.holder;
+        const routingNumber = increaseAccount?.routing_number || bankFallback.routing;
+        const last4 = increaseAccount?.account_number
+            ? String(increaseAccount.account_number).slice(-4)
+            : bankFallback.last4;
+
+        return res.json({
+            success: true,
+            statementId,
+            payoutAmount,
+            ownerName: statement.ownerName || null,
+            propertyName,
+            source,
+            sourceLabel,
+            externalAccountId: wiseRecipientId,
+            holderName,
+            routingNumber,
+            accountNumberLast4: last4,
+            increaseStatus: increaseAccount?.status || null,
+            funding: increaseAccount?.funding || null,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'recipientPreview', statementId: req.params.id });
+        res.status(500).json({ error: 'Failed to load recipient preview', detail: error.message });
+    }
+});
+
 router.get('/listings/:id/status', async (req, res) => {
     try {
         const listing = await Listing.findByPk(parseInt(req.params.id));

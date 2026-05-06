@@ -688,6 +688,26 @@ export const payoutsAPI = {
     return response.data as string;
   },
 
+  previewRecipient: async (statementId: number): Promise<{
+    success: boolean;
+    statementId: number;
+    payoutAmount: number;
+    ownerName: string | null;
+    propertyName: string | null;
+    source: 'group' | 'listing' | null;
+    sourceLabel: string | null;
+    externalAccountId: string | null;
+    holderName: string | null;
+    routingNumber: string | null;
+    accountNumberLast4: string | null;
+    increaseStatus: string | null;
+    funding?: string | null;
+    error?: string;
+  }> => {
+    const response = await api.get(`/payouts/statements/${statementId}/recipient-preview`);
+    return response.data;
+  },
+
   verifyTransfer: async (statementId: number): Promise<{
     success: boolean;
     statementId: number;
