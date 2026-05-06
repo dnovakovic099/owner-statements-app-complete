@@ -119,6 +119,8 @@ export interface Statement {
   reservationCount?: number;
   hasPriorStatementDuplicates?: boolean;
   priorStatementDuplicateCount?: number;
+  groupId?: number | null;
+  groupName?: string | null;
 }
 
 export interface DashboardSummary {

@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X, Users } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -333,8 +333,13 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     return map;
   }, [listings]);
 
-  // Helper to get display name for a property
+  // Helper to get display name for a property. Group statements always show
+  // the group's name so the row clearly reflects the payout entity, not one
+  // of the constituent listings.
   const getPropertyDisplayName = (statement: Statement) => {
+    if (statement.groupId && statement.groupName) {
+      return statement.groupName;
+    }
     if (statement.propertyId && listingNameMap.has(statement.propertyId)) {
       return listingNameMap.get(statement.propertyId)!;
     }
@@ -419,8 +424,25 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const cancelledCount = row.original.cancelledReservationCount || 0;
         const hasPriorDuplicates = row.original.hasPriorStatementDuplicates;
         const priorDuplicateCount = row.original.priorStatementDuplicateCount || 0;
+        const isGroup = !!(row.original.groupId && row.original.groupName);
+        const groupMemberNames = isGroup && row.original.propertyIds
+          ? row.original.propertyIds
+              .map((id) => listingNameMap.get(id))
+              .filter((v): v is string => !!v)
+          : [];
         return (
           <span className="cursor-default inline-flex items-center justify-center gap-1.5 group/cell relative w-full">
+            {isGroup && (
+              <span className="relative group/grp flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                <Users className="w-3 h-3" />
+                Group
+                {groupMemberNames.length > 0 && (
+                  <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/grp:block bg-gray-900 text-white px-2 py-1 rounded text-[11px] whitespace-pre max-w-[260px] shadow-lg dark:shadow-gray-950/50 text-left pointer-events-none">
+                    {`${groupMemberNames.length} listing${groupMemberNames.length > 1 ? 's' : ''}:\n${groupMemberNames.join('\n')}`}
+                  </span>
+                )}
+              </span>
+            )}
             <span className="text-gray-700 dark:text-gray-300 truncate">
               {displayName}
             </span>
