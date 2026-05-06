@@ -166,16 +166,19 @@ router.post('/disconnect', async (req, res) => {
         }
         if (!entity) return res.status(404).json({ error: `${entityType} not found` });
 
-        // Block disconnect if there are pending/queued payouts referencing this entity
+        // Block disconnect if there are in-flight payouts referencing this entity.
+        // Includes `awaiting_funding`: those statements are mid-funding-cycle and
+        // will be promoted to `queued` once the ACH debit settles — disconnecting
+        // the recipient now would strand them when reconciliation runs.
         const pendingFilter = entityType === 'group'
             ? { groupId: parseInt(entityId) }
             : { propertyId: parseInt(entityId) };
         const pendingCount = await Statement.count({
-            where: { ...pendingFilter, payoutStatus: { [Op.in]: ['pending', 'queued'] } },
+            where: { ...pendingFilter, payoutStatus: { [Op.in]: ['pending', 'queued', 'awaiting_funding'] } },
         });
         if (pendingCount > 0) {
             return res.status(409).json({
-                error: `Cannot disconnect — ${pendingCount} payout(s) are currently pending or queued. Wait for them to complete first.`,
+                error: `Cannot disconnect — ${pendingCount} payout(s) are currently in flight (pending, queued, or awaiting funding). Wait for them to complete first.`,
             });
         }
 
@@ -696,7 +699,15 @@ router.post('/statements/:id/transfer', async (req, res) => {
             return res.status(400).json({ error: 'Statement has no positive payout amount' });
         }
 
-        if (statement.payoutStatus === 'paid' || statement.payoutStatus === 'pending') {
+        // Block any in-flight or settled state. `awaiting_funding` is the
+        // critical addition — without it, a retry would pass through the atomic
+        // claim (awaiting_funding is in SAFE_PAYOUT_STATUSES so concurrent
+        // failures can be retried by reconciliation), then re-invoke
+        // checkAndAutoFund, potentially creating a duplicate ACH funding debit
+        // and overwriting the prior funding:<id> payoutTransferId. The right
+        // path for a stuck awaiting_funding row is reconciliation, not retry.
+        const blockingStatuses = ['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent'];
+        if (blockingStatuses.includes(statement.payoutStatus)) {
             return res.status(400).json({ error: `Statement already ${statement.payoutStatus}` });
         }
 
@@ -1012,7 +1023,7 @@ router.post('/fund-and-queue', async (req, res) => {
         // `awaiting_funding`. `collected` and `invoice_sent` are negative-payout
         // states that shouldn't reach this loop (amount <= 0 catches them) but
         // we list them here for safety.
-        const IN_FLIGHT_STATUSES = new Set(['paid', 'pending', 'awaiting_funding', 'collected', 'invoice_sent']);
+        const IN_FLIGHT_STATUSES = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
 
         for (const stmt of statements) {
             const amount = parseFloat(stmt.ownerPayout) || 0;
@@ -1226,8 +1237,12 @@ async function processQueuedPayouts() {
         return { success: false, error: 'Increase not configured' };
     }
 
+    // Only fetch rows that the per-row atomic claim below will actually match.
+    // `awaiting_funding` rows must first be promoted to `queued` by
+    // ReconciliationService.processAwaitingFunding once the funding ACH
+    // settles — including them here would silently skip them at claim time.
     const queued = await Statement.findAll({
-        where: { payoutStatus: { [Op.in]: ['queued', 'awaiting_funding'] } },
+        where: { payoutStatus: 'queued' },
         order: [['created_at', 'ASC']],
     });
 

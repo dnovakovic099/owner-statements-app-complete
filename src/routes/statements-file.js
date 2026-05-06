@@ -2096,7 +2096,19 @@ router.put('/:id/status', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
+        // Reverting a settled statement to draft would let the next request
+        // hit the DELETE endpoint (which only checks status), wiping out the
+        // payoutTransferId, paidAt, and receipt history for a transfer that
+        // already moved real money. Block reverts to draft when any payout
+        // record exists on the statement.
         const oldStatus = statement.status;
+        const settledStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        if (status === 'draft' && settledStatuses.has(statement.payoutStatus)) {
+            return res.status(409).json({
+                error: `Cannot revert to draft — statement has payoutStatus '${statement.payoutStatus}'. The transfer record would be lost.`,
+                payoutStatus: statement.payoutStatus,
+            });
+        }
 
         // Update status
         statement.status = status;
@@ -3239,6 +3251,19 @@ router.delete('/:id', async (req, res) => {
             return res.status(403).json({
                 error: 'Cannot delete finalized statement. Please return to draft status first.',
                 status: statement.status
+            });
+        }
+
+        // Defense in depth: even if status is somehow 'draft', refuse to delete
+        // a row that carries a payout record. The status revert endpoint blocks
+        // reverts when payoutStatus is set, but a stray script or older row
+        // could still slip through. Losing the transfer record for a real ACH
+        // transfer is irreversible.
+        const settledPayoutStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        if (settledPayoutStatuses.has(statement.payoutStatus)) {
+            return res.status(409).json({
+                error: `Cannot delete — statement has payoutStatus '${statement.payoutStatus}'. The transfer record would be lost.`,
+                payoutStatus: statement.payoutStatus,
             });
         }
 
