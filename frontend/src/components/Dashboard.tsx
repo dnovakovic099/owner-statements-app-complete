@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'rea
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
 import PayOwnerConfirmDialog from './PayOwnerConfirmDialog';
+import BulkPayConfirmDialog from './BulkPayConfirmDialog';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
 import { analytics } from '../services/analytics';
 import { Owner, Property, Statement } from '../types';
@@ -216,6 +217,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     isOpen: false,
     statementId: null,
     payoutAmount: 0,
+  });
+
+  // Bulk pay-owner confirmation modal — fetches recipients for every selected
+  // statement so the operator can scan the list before sending.
+  const [bulkPay, setBulkPay] = useState<{
+    isOpen: boolean;
+    statementIds: number[];
+    skippedCount: number;
+    submitting: boolean;
+  }>({
+    isOpen: false,
+    statementIds: [],
+    skippedCount: 0,
+    submitting: false,
   });
 
   // Filter states
@@ -1191,42 +1206,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         return;
       }
 
-      const totalAmount = validPayouts.reduce((sum, s) => sum + s.ownerPayout, 0);
-
-      const message = `Are you sure you want to pay ${validPayouts.length} owners via Increase?\n\n` +
-        `Total Payout: $${totalAmount.toFixed(2)}\n\n` +
-        (skippedCount > 0 ? `(${skippedCount} skipped` + (noWiseCount > 0 ? `, ${noWiseCount} without Increase` : '') + ` - $0, already paid, or no Increase account)` : '');
-
-      setConfirmDialog({
+      // Open the bulk-pay review modal so the operator sees every recipient
+      // (holder name, last4, group-vs-listing) before triggering the transfers.
+      setBulkPay({
         isOpen: true,
-        title: 'Bulk Pay Owners',
-        message: message,
-        type: 'info',
-        onConfirm: async () => {
-          const toastId = showToast(`Processing ${validPayouts.length} payments...`, 'loading');
-          try {
-            const response = await payoutsAPI.fundAndQueue(validPayouts.map(s => s.id));
-            if (response.mode === 'none') {
-              updateToast(toastId, response.message || 'No valid statements to process', 'info');
-            } else if (response.mode === 'queued') {
-              updateToast(toastId, response.message || `Funds requested from bank. ${response.queuedCount} payouts queued — will process automatically when funds arrive.`, 'info');
-            } else {
-              const processed = response.processed || 0;
-              const failed = response.failed || 0;
-              if (failed === 0) {
-                updateToast(toastId, `Successfully paid ${processed} owners`, 'success');
-              } else {
-                updateToast(toastId, `Paid ${processed} owners, failed ${failed}`, 'error');
-              }
-            }
-          } catch (err: any) {
-            const errorMessage = err?.response?.data?.error || err?.message || 'Bulk payout failed';
-            updateToast(toastId, errorMessage, 'error');
-          }
-
-          await loadStatements();
-          setBulkProcessing(false);
-        },
+        statementIds: validPayouts.map(s => s.id),
+        skippedCount,
+        submitting: false,
       });
       return; // Wait for dialog
     } else if (action === 'send-email') {
@@ -1827,6 +1813,45 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           loadInitialData();
         }}
         onError={(msg) => showToast(msg, 'error')}
+      />
+
+      <BulkPayConfirmDialog
+        isOpen={bulkPay.isOpen}
+        statementIds={bulkPay.statementIds}
+        skippedCount={bulkPay.skippedCount}
+        submitting={bulkPay.submitting}
+        onClose={() => {
+          if (bulkPay.submitting) return;
+          setBulkPay({ isOpen: false, statementIds: [], skippedCount: 0, submitting: false });
+          setBulkProcessing(false);
+        }}
+        onConfirm={async () => {
+          const ids = bulkPay.statementIds;
+          setBulkPay((prev) => ({ ...prev, submitting: true }));
+          const toastId = showToast(`Processing ${ids.length} payments...`, 'loading');
+          try {
+            const response = await payoutsAPI.fundAndQueue(ids);
+            if (response.mode === 'none') {
+              updateToast(toastId, response.message || 'No valid statements to process', 'info');
+            } else if (response.mode === 'queued' || (response as any).mode === 'awaiting_funding') {
+              updateToast(toastId, response.message || `Funds requested from bank. ${(response as any).queuedCount || ids.length} payouts queued — will process automatically when funds arrive.`, 'info');
+            } else {
+              const processed = response.processed || 0;
+              const failed = response.failed || 0;
+              if (failed === 0) {
+                updateToast(toastId, `Successfully paid ${processed} owners`, 'success');
+              } else {
+                updateToast(toastId, `Paid ${processed} owners, failed ${failed}`, 'error');
+              }
+            }
+          } catch (err: any) {
+            updateToast(toastId, err?.response?.data?.error || err?.message || 'Bulk payout failed', 'error');
+          } finally {
+            await loadStatements();
+            setBulkPay({ isOpen: false, statementIds: [], skippedCount: 0, submitting: false });
+            setBulkProcessing(false);
+          }
+        }}
       />
     </Layout>
   );

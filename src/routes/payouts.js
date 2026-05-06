@@ -477,118 +477,156 @@ router.get('/statements/:id/verify-transfer', async (req, res) => {
 // pay-owner confirmation modal so the operator sees the bank account holder
 // and last4 before triggering money movement, instead of a bare owner name
 // that can read as "Default".
-router.get('/statements/:id/recipient-preview', async (req, res) => {
-    try {
-        const statementId = parseInt(req.params.id);
-        const statement = await Statement.findByPk(statementId);
-        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+/**
+ * Build the recipient-preview payload for a single statement. Handles both
+ * group and listing recipients, falls back to encrypted bank fields if the
+ * Increase API call fails, and surfaces a structured `error` when no
+ * recipient is configured. Returned shape matches the single GET endpoint.
+ */
+async function buildRecipientPreview(statement) {
+    const statementId = statement.id;
+    const payoutAmount = parseFloat(statement.ownerPayout) || 0;
+    const { wiseRecipientId, source, error: resolveError } = await resolveWiseRecipientId(statement);
 
-        const payoutAmount = parseFloat(statement.ownerPayout) || 0;
-        const { wiseRecipientId, source, error: resolveError } = await resolveWiseRecipientId(statement);
+    let sourceEntity = null;
+    let sourceLabel = null;
+    let bankFallback = { holder: null, last4: null, routing: null };
 
-        let sourceEntity = null;
-        let sourceLabel = null;
-        let bankFallback = { holder: null, last4: null, routing: null };
-
-        if (source === 'group') {
-            sourceEntity = await ListingGroup.findByPk(statement.groupId);
-            if (sourceEntity) {
-                sourceLabel = `Group: ${sourceEntity.name}`;
-                bankFallback = {
-                    holder: sourceEntity.bankAccountHolder || null,
-                    last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
-                    routing: sourceEntity.bankRoutingNumber || null,
-                };
-            }
-        } else if (source === 'listing') {
-            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-            sourceEntity = await Listing.findByPk(listingId);
-            if (sourceEntity) {
-                const label = sourceEntity.nickname || sourceEntity.displayName || sourceEntity.name;
-                sourceLabel = `Listing: ${label}`;
-                bankFallback = {
-                    holder: sourceEntity.bankAccountHolder || null,
-                    last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
-                    routing: sourceEntity.bankRoutingNumber || null,
-                };
-            }
+    if (source === 'group') {
+        sourceEntity = await ListingGroup.findByPk(statement.groupId);
+        if (sourceEntity) {
+            sourceLabel = `Group: ${sourceEntity.name}`;
+            bankFallback = {
+                holder: sourceEntity.bankAccountHolder || null,
+                last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
+                routing: sourceEntity.bankRoutingNumber || null,
+            };
         }
+    } else if (source === 'listing') {
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        sourceEntity = await Listing.findByPk(listingId);
+        if (sourceEntity) {
+            const label = sourceEntity.nickname || sourceEntity.displayName || sourceEntity.name;
+            sourceLabel = `Listing: ${label}`;
+            bankFallback = {
+                holder: sourceEntity.bankAccountHolder || null,
+                last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
+                routing: sourceEntity.bankRoutingNumber || null,
+            };
+        }
+    }
 
-        // Property/group label for context (separate from the source — useful when
-        // the statement spans multiple listings inside a group).
-        let propertyName = null;
-        if (statement.groupId) {
-            const grp = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'ListingGroup'
+    let propertyName = null;
+    if (statement.groupId) {
+        const grp = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'ListingGroup'
+            ? sourceEntity
+            : await ListingGroup.findByPk(statement.groupId);
+        if (grp) propertyName = grp.name;
+    } else {
+        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        if (listingId) {
+            const l = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'Listing'
                 ? sourceEntity
-                : await ListingGroup.findByPk(statement.groupId);
-            if (grp) propertyName = grp.name;
-        } else {
-            const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-            if (listingId) {
-                const l = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'Listing'
-                    ? sourceEntity
-                    : await Listing.findByPk(listingId);
-                if (l) propertyName = l.nickname || l.displayName || l.name;
-            }
+                : await Listing.findByPk(listingId);
+            if (l) propertyName = l.nickname || l.displayName || l.name;
         }
+    }
 
-        // If no recipient is configured we still return what we know so the UI
-        // can show an actionable error instead of a generic 400.
-        if (!wiseRecipientId) {
-            return res.json({
-                success: true,
-                statementId,
-                payoutAmount,
-                ownerName: statement.ownerName || null,
-                propertyName,
-                source,
-                sourceLabel,
-                externalAccountId: null,
-                holderName: bankFallback.holder,
-                routingNumber: bankFallback.routing,
-                accountNumberLast4: bankFallback.last4,
-                increaseStatus: null,
-                error: resolveError || 'No Increase external account configured',
-            });
-        }
-
-        // Pull live account details from Increase so the holder name shown in the
-        // modal matches whatever is actually registered with the bank.
-        let increaseAccount = null;
-        if (IncreaseService.isConfigured()) {
-            try {
-                increaseAccount = await IncreaseService.getRecipient(wiseRecipientId);
-            } catch (e) {
-                logger.warn('Failed to fetch Increase external_account for recipient preview', {
-                    statementId, externalAccountId: wiseRecipientId, error: e.message,
-                });
-            }
-        }
-
-        const holderName = increaseAccount?.description || bankFallback.holder;
-        const routingNumber = increaseAccount?.routing_number || bankFallback.routing;
-        const last4 = increaseAccount?.account_number
-            ? String(increaseAccount.account_number).slice(-4)
-            : bankFallback.last4;
-
-        return res.json({
-            success: true,
+    if (!wiseRecipientId) {
+        return {
             statementId,
             payoutAmount,
             ownerName: statement.ownerName || null,
             propertyName,
             source,
             sourceLabel,
-            externalAccountId: wiseRecipientId,
-            holderName,
-            routingNumber,
-            accountNumberLast4: last4,
-            increaseStatus: increaseAccount?.status || null,
-            funding: increaseAccount?.funding || null,
-        });
+            externalAccountId: null,
+            holderName: bankFallback.holder,
+            routingNumber: bankFallback.routing,
+            accountNumberLast4: bankFallback.last4,
+            increaseStatus: null,
+            error: resolveError || 'No Increase external account configured',
+        };
+    }
+
+    let increaseAccount = null;
+    if (IncreaseService.isConfigured()) {
+        try {
+            increaseAccount = await IncreaseService.getRecipient(wiseRecipientId);
+        } catch (e) {
+            logger.warn('Failed to fetch Increase external_account for recipient preview', {
+                statementId, externalAccountId: wiseRecipientId, error: e.message,
+            });
+        }
+    }
+
+    return {
+        statementId,
+        payoutAmount,
+        ownerName: statement.ownerName || null,
+        propertyName,
+        source,
+        sourceLabel,
+        externalAccountId: wiseRecipientId,
+        holderName: increaseAccount?.description || bankFallback.holder,
+        routingNumber: increaseAccount?.routing_number || bankFallback.routing,
+        accountNumberLast4: increaseAccount?.account_number
+            ? String(increaseAccount.account_number).slice(-4)
+            : bankFallback.last4,
+        increaseStatus: increaseAccount?.status || null,
+        funding: increaseAccount?.funding || null,
+    };
+}
+
+router.get('/statements/:id/recipient-preview', async (req, res) => {
+    try {
+        const statementId = parseInt(req.params.id);
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+        const preview = await buildRecipientPreview(statement);
+        res.json({ success: true, ...preview });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'recipientPreview', statementId: req.params.id });
         res.status(500).json({ error: 'Failed to load recipient preview', detail: error.message });
+    }
+});
+
+// ─── POST /statements/recipient-preview-bulk ──────────────────
+// Resolve recipients for many statements at once. Used by the bulk-pay
+// confirmation modal so the operator can scan every recipient (and catch
+// e.g. a misrouted group) before pushing N transfers at once. Increase
+// calls are issued in parallel — the response order matches the input.
+router.post('/statements/recipient-preview-bulk', async (req, res) => {
+    try {
+        const { statementIds } = req.body;
+        if (!Array.isArray(statementIds) || statementIds.length === 0) {
+            return res.status(400).json({ error: 'statementIds array is required' });
+        }
+        const statements = await Statement.findAll({ where: { id: statementIds } });
+        const byId = new Map(statements.map(s => [s.id, s]));
+
+        const results = await Promise.all(statementIds.map(async (id) => {
+            const stmt = byId.get(Number(id));
+            if (!stmt) {
+                return { statementId: Number(id), error: 'Statement not found' };
+            }
+            try {
+                return await buildRecipientPreview(stmt);
+            } catch (err) {
+                logger.warn('buildRecipientPreview failed', { statementId: id, error: err.message });
+                return {
+                    statementId: stmt.id,
+                    payoutAmount: parseFloat(stmt.ownerPayout) || 0,
+                    ownerName: stmt.ownerName || null,
+                    error: err.message || 'Failed to resolve recipient',
+                };
+            }
+        }));
+
+        res.json({ success: true, previews: results });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'recipientPreviewBulk' });
+        res.status(500).json({ error: 'Failed to load bulk recipient preview', detail: error.message });
     }
 });
 
@@ -968,14 +1006,22 @@ router.post('/fund-and-queue', async (req, res) => {
         const valid = [];
         const skipped = [];
 
+        // Statuses that mean a transfer or funding is already in motion. Including
+        // these in the skip set prevents (a) double-pay of a `pending` row and
+        // (b) requesting a duplicate funding ACH debit for rows that are already
+        // `awaiting_funding`. `collected` and `invoice_sent` are negative-payout
+        // states that shouldn't reach this loop (amount <= 0 catches them) but
+        // we list them here for safety.
+        const IN_FLIGHT_STATUSES = new Set(['paid', 'pending', 'awaiting_funding', 'collected', 'invoice_sent']);
+
         for (const stmt of statements) {
             const amount = parseFloat(stmt.ownerPayout) || 0;
             if (amount <= 0) {
                 skipped.push({ id: stmt.id, reason: 'Non-positive payout' });
                 continue;
             }
-            if (stmt.payoutStatus === 'paid' || stmt.payoutStatus === 'queued') {
-                skipped.push({ id: stmt.id, reason: 'Already paid/queued' });
+            if (IN_FLIGHT_STATUSES.has(stmt.payoutStatus)) {
+                skipped.push({ id: stmt.id, reason: `Already ${stmt.payoutStatus}` });
                 continue;
             }
 
@@ -1037,150 +1083,58 @@ router.post('/fund-and-queue', async (req, res) => {
             });
         }
 
-        // Sufficient balance — process all transfers
+        // Sufficient balance — process transfers one row at a time so each
+        // success is committed to the DB before we attempt the next. This
+        // prevents the partial-batch failure mode where Increase had created
+        // some transfers but the caller couldn't tell which, and a fallback
+        // path then re-sent them under a different idempotency key.
         let processed = 0;
         let failed = 0;
         const results = [];
 
-        // Use batch payments for 3+ payouts, individual for fewer
-        const USE_BATCH_THRESHOLD = 3;
+        for (const { statement, wiseRecipientId } of valid) {
+            // Atomic claim — skip if a concurrent request already grabbed this row.
+            const [claimedRows] = await Statement.update(
+                { payoutStatus: 'pending', payoutError: null },
+                { where: { id: statement.id, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
+            );
+            if (claimedRows === 0) {
+                skipped.push({ id: statement.id, reason: 'Already being processed' });
+                continue;
+            }
 
-        if (valid.length >= USE_BATCH_THRESHOLD) {
-            // ── BATCH PAYMENT MODE ──
             try {
-                // Atomically mark all as pending — skip any already claimed by another request
-                const claimedIds = [];
-                for (const { statement } of valid) {
-                    const [rows] = await Statement.update(
-                        { payoutStatus: 'pending', payoutError: null },
-                        { where: { id: statement.id, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
-                    );
-                    if (rows > 0) claimedIds.push(statement.id);
-                }
-                // Filter valid to only claimed statements
-                const claimed = valid.filter(v => claimedIds.includes(v.statement.id));
-                if (claimed.length === 0) {
-                    return res.status(409).json({ error: 'All statements are already being processed' });
-                }
+                const amount = parseFloat(statement.ownerPayout);
+                const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
 
-                const batchPayouts = claimed.map(({ statement, wiseRecipientId }) => ({
+                const { transfer, wiseFee } = await IncreaseService.sendPayout({
                     recipientId: wiseRecipientId,
-                    amount: parseFloat(statement.ownerPayout),
-                    reference: `Payout - ${statement.ownerName} - Stmt #${statement.id}`,
+                    amount,
+                    reference,
                     statementId: statement.id,
                     individualName: statement.ownerName || 'Owner',
-                }));
+                });
 
-                const { transfers } = await IncreaseService.sendBatchPayouts(batchPayouts);
+                const paidAt = new Date();
+                const totalTransferAmount = amount + wiseFee;
+                await statement.update({
+                    payoutStatus: 'paid',
+                    payoutTransferId: transfer.id,
+                    paidAt,
+                    wiseFee,
+                    totalTransferAmount,
+                    payoutError: null,
+                });
+                sendPayoutReceiptAsync(statement, transfer.id, amount, wiseFee, totalTransferAmount, paidAt);
 
-                // Update each statement with its transfer result
-                for (const t of transfers) {
-                    const match = claimed.find(v => v.statement.id === t.statementId);
-                    if (match) {
-                        const paidAt = new Date();
-                        const amount = toCents(match.statement.ownerPayout);
-                        const totalTransferAmount = amount + t.wiseFee;
-                        await match.statement.update({
-                            payoutStatus: 'paid',
-                            payoutTransferId: t.transfer.id,
-                            paidAt,
-                            wiseFee: t.wiseFee,
-                            totalTransferAmount,
-                            payoutError: null,
-                        });
-                        sendPayoutReceiptAsync(match.statement, t.transfer.id, amount, t.wiseFee, totalTransferAmount, paidAt);
-                        processed++;
-                        results.push({ id: match.statement.id, success: true, transferId: t.transfer.id });
-                    }
-                }
-
-                logger.info('Batch payout completed', { batchSize: claimed.length, processed });
-            } catch (batchErr) {
-                // Batch failed — fall back to individual transfers
-                logger.warn('Batch payment failed, falling back to individual transfers', { error: batchErr.message });
-
-                for (const { statement, wiseRecipientId } of claimed) {
-                    if (statement.payoutStatus === 'paid') continue; // Already processed
-                    try {
-                        await statement.update({ payoutStatus: 'pending', payoutError: null });
-                        const amount = parseFloat(statement.ownerPayout);
-                        const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
-
-                        const { transfer, wiseFee } = await IncreaseService.sendPayout({
-                            recipientId: wiseRecipientId,
-                            amount,
-                            reference,
-                            statementId: statement.id,
-                            individualName: statement.ownerName || 'Owner',
-                        });
-
-                        const paidAt = new Date();
-                        const totalTransferAmount = amount + wiseFee;
-                        await statement.update({
-                            payoutStatus: 'paid',
-                            payoutTransferId: transfer.id,
-                            paidAt,
-                            wiseFee,
-                            totalTransferAmount,
-                            payoutError: null,
-                        });
-                        sendPayoutReceiptAsync(statement, transfer.id, amount, wiseFee, totalTransferAmount, paidAt);
-                        processed++;
-                        results.push({ id: statement.id, success: true, transferId: transfer.id });
-                    } catch (err) {
-                        failed++;
-                        const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
-                        await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
-                        results.push({ id: statement.id, success: false, error: errorMsg });
-                    }
-                }
-            }
-        } else {
-            // ── INDIVIDUAL TRANSFER MODE (1-2 payouts) ──
-            for (const { statement, wiseRecipientId } of valid) {
-                try {
-                    // Atomic claim — skip if already processing
-                    const [claimed] = await Statement.update(
-                        { payoutStatus: 'pending', payoutError: null },
-                        { where: { id: statement.id, payoutStatus: { [Op.or]: [{ [Op.in]: SAFE_PAYOUT_STATUSES }, { [Op.is]: null }] } } }
-                    );
-                    if (claimed === 0) {
-                        skipped.push({ id: statement.id, reason: 'Already being processed' });
-                        continue;
-                    }
-
-                    const amount = parseFloat(statement.ownerPayout);
-                    const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
-
-                    const { transfer, wiseFee } = await IncreaseService.sendPayout({
-                        recipientId: wiseRecipientId,
-                        amount,
-                        reference,
-                        statementId: statement.id,
-                        individualName: statement.ownerName || 'Owner',
-                    });
-
-                    const paidAt = new Date();
-                    const totalTransferAmount = amount + wiseFee;
-                    await statement.update({
-                        payoutStatus: 'paid',
-                        payoutTransferId: transfer.id,
-                        paidAt,
-                        wiseFee,
-                        totalTransferAmount,
-                        payoutError: null,
-                    });
-                    sendPayoutReceiptAsync(statement, transfer.id, amount, wiseFee, totalTransferAmount, paidAt);
-
-                    processed++;
-                    results.push({ id: statement.id, success: true, transferId: transfer.id });
-                } catch (err) {
-                    failed++;
-                    const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
-                    await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
-                    results.push({ id: statement.id, success: false, error: errorMsg });
-                    logger.logError(err, { context: 'Payouts', action: 'bulkTransfer', statementId: statement.id });
-                }
+                processed++;
+                results.push({ id: statement.id, success: true, transferId: transfer.id });
+            } catch (err) {
+                failed++;
+                const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
+                await statement.update({ payoutStatus: 'failed', payoutError: errorMsg });
+                results.push({ id: statement.id, success: false, error: errorMsg });
+                logger.logError(err, { context: 'Payouts', action: 'bulkTransfer', statementId: statement.id });
             }
         }
 
