@@ -41,6 +41,20 @@ module.exports = function payoutReceipt({
 }) {
   const statusLabel = payoutStatus === 'collected' ? 'Collected' : 'Payment Sent';
   const fmt = (n) => `$${Number(n || 0).toFixed(2)}`;
+  // Escape any string that comes from the statement record. ownerName,
+  // propertyName, and transferId are all settable by app users (Hostify
+  // import, manual edits, /mark-paid request body), and even Gmail will
+  // execute event-handler attributes on rendered HTML (e.g. img onerror).
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const escPropertyName = esc(propertyName);
+  const escOwnerName = esc(ownerName);
+  const escTransferId = esc(transferId);
+  const escPeriodStart = esc(periodStart);
+  const escPeriodEnd = esc(periodEnd);
+  const escPaidAtDate = esc(paidAtDate);
+  const escPaidAtFull = esc(paidAtFull);
 
   // Each row is a 2-col table with fixed widths. Inline styles only.
   const row = (label, value, valueStyle = '') => `
@@ -76,7 +90,7 @@ module.exports = function payoutReceipt({
               </td>
               <td style="vertical-align:top;text-align:right;">
                 <div style="font-size:13px;font-weight:600;color:#ffffff;">#${statementId}</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px;">${paidAtDate}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px;">${escPaidAtDate}</div>
               </td>
             </tr>
           </table>
@@ -89,9 +103,9 @@ module.exports = function payoutReceipt({
           </div>
 
           ${section('Property Details', [
-            row('Property', propertyName),
-            row('Owner', ownerName),
-            row('Statement Period', `${periodStart} to ${periodEnd}`),
+            row('Property', escPropertyName),
+            row('Owner', escOwnerName),
+            row('Statement Period', `${escPeriodStart} to ${escPeriodEnd}`),
           ].join(''))}
 
           ${section('Payment Details', [
@@ -103,9 +117,9 @@ module.exports = function payoutReceipt({
 
           ${section('Transfer Details', [
             row('Method', 'Increase (ACH)'),
-            row('Transfer ID', `<span style="font-family:monospace;font-size:12px;word-break:break-all;">${transferId}</span>`),
+            row('Transfer ID', `<span style="font-family:monospace;font-size:12px;word-break:break-all;">${escTransferId}</span>`),
             row('Fee', fmt(wiseFee)),
-            row('Date Sent', paidAtFull),
+            row('Date Sent', escPaidAtFull),
           ].join(''))}
 
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;width:100%;margin-top:8px;border-top:2px solid #111827;">

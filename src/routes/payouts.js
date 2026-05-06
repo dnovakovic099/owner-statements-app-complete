@@ -928,13 +928,20 @@ router.post('/statements/:id/collect', async (req, res) => {
                 const sgMail = require('@sendgrid/mail');
                 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
+                // Escape every value before splicing it into raw HTML — the
+                // Increase API response is trusted but defensive escaping
+                // costs nothing, and statement.ownerName comes from the app's
+                // own user-controlled data.
+                const escEmail = (s) => String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 const bankDetailsHtml = bankDetails && bankDetails.length > 0
                     ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0">
                         <p style="font-weight:600;margin:0 0 8px">Wire Transfer Details:</p>
-                        <p style="margin:4px 0;font-family:monospace">Bank: ${bankDetails[0].bankName || 'N/A'}</p>
-                        <p style="margin:4px 0;font-family:monospace">Routing: ${bankDetails[0].routingNumber || 'N/A'}</p>
-                        <p style="margin:4px 0;font-family:monospace">Account: ${bankDetails[0].accountNumber || 'N/A'}</p>
-                        <p style="margin:4px 0;font-size:12px;color:#6b7280">Reference: Statement #${statementId} - ${statement.ownerName}</p>
+                        <p style="margin:4px 0;font-family:monospace">Bank: ${escEmail(bankDetails[0].bankName) || 'N/A'}</p>
+                        <p style="margin:4px 0;font-family:monospace">Routing: ${escEmail(bankDetails[0].routingNumber) || 'N/A'}</p>
+                        <p style="margin:4px 0;font-family:monospace">Account: ${escEmail(bankDetails[0].accountNumber) || 'N/A'}</p>
+                        <p style="margin:4px 0;font-size:12px;color:#6b7280">Reference: Statement #${statementId} - ${escEmail(statement.ownerName)}</p>
                     </div>`
                     : '';
 

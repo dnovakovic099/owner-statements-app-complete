@@ -14,11 +14,25 @@ const baseLayout = require('./baseLayout');
  * @returns {string} Full HTML email string
  */
 module.exports = function collectionInvoice({ ownerName, collectAmount, paymentPageUrl, bankDetailsHtml, statementId, startDate, endDate }) {
+  // ownerName/startDate/endDate may originate from Hostify or app edits;
+  // escape before interpolating so a hostile value can't inject script
+  // or rewrite the email body. bankDetailsHtml is intentionally
+  // pre-rendered by the /collect route — the values that go into it must
+  // be escaped at the callsite.
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const escOwnerName = esc(ownerName);
+  const escStartDate = esc(startDate);
+  const escEndDate = esc(endDate);
+  const escPaymentPageUrl = esc(paymentPageUrl);
+  const escStatementId = esc(statementId);
+
   const body = `
-<p style="margin:0 0 16px;font-size:15px;line-height:1.6">Dear ${ownerName},</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6">Dear ${escOwnerName},</p>
 
 <p style="margin:0 0 16px;font-size:15px;line-height:1.6">
-  Your statement for <strong>${startDate}</strong> to <strong>${endDate}</strong> shows a balance due of
+  Your statement for <strong>${escStartDate}</strong> to <strong>${escEndDate}</strong> shows a balance due of
   <strong style="color:#dc2626">$${collectAmount.toFixed(2)}</strong>.
 </p>
 
@@ -27,7 +41,7 @@ module.exports = function collectionInvoice({ ownerName, collectAmount, paymentP
 </p>
 
 <div style="text-align:center;margin:24px 0">
-  <a href="${paymentPageUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
+  <a href="${escPaymentPageUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
     View Payment Details
   </a>
 </div>
@@ -35,7 +49,7 @@ module.exports = function collectionInvoice({ ownerName, collectAmount, paymentP
 ${bankDetailsHtml || ''}
 
 <p style="margin:16px 0 0;color:#6b7280;font-size:13px;line-height:1.5">
-  When making a wire transfer, please include <strong>"Statement #${statementId}"</strong> as the reference
+  When making a wire transfer, please include <strong>"Statement #${escStatementId}"</strong> as the reference
   so we can match your payment.
 </p>
 

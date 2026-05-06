@@ -804,7 +804,11 @@ app.get('/pay/:token', async (req, res) => {
         }
 
         const collectAmount = Math.abs(parseFloat(statement.ownerPayout) || 0);
-        const ownerName = statement.ownerName || 'Owner';
+        // statement.ownerName is set by an authenticated app user — escape
+        // before interpolating so a hostile or imported value (Hostify can
+        // pass through arbitrary characters) can't inject script or replace
+        // the bank-details block on the public payment page seen by owners.
+        const ownerName = escapeHtml(statement.ownerName || 'Owner');
 
         // Try to get bank details from Increase
         let bankDetailsHtml = '';
@@ -813,14 +817,16 @@ app.get('/pay/:token', async (req, res) => {
             const bankDetails = await IncreaseService.getAccountBankDetails();
             if (bankDetails && bankDetails.length > 0) {
                 const bd = bankDetails[0];
+                // Defensive — Increase responses are trusted, but escaping
+                // costs nothing and matches the rest of this route.
                 bankDetailsHtml = `
                     <div class="bank-details">
                         <h3>Wire Transfer Details</h3>
-                        <div class="detail-row"><span class="label">Bank</span><span class="value">${bd.bankName || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${bd.routingNumber || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${bd.accountNumber || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Account Type</span><span class="value">${bd.accountType || 'Checking'}</span></div>
-                        ${bd.address ? `<div class="detail-row"><span class="label">Bank Address</span><span class="value">${bd.address}</span></div>` : ''}
+                        <div class="detail-row"><span class="label">Bank</span><span class="value">${escapeHtml(bd.bankName) || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Routing Number</span><span class="value">${escapeHtml(bd.routingNumber) || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Account Number</span><span class="value">${escapeHtml(bd.accountNumber) || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Account Type</span><span class="value">${escapeHtml(bd.accountType) || 'Checking'}</span></div>
+                        ${bd.address ? `<div class="detail-row"><span class="label">Bank Address</span><span class="value">${escapeHtml(bd.address)}</span></div>` : ''}
                         <div class="reference">
                             <strong>Important:</strong> Include <code>Statement #${statement.id} - ${ownerName}</code> as the payment reference/memo.
                         </div>
@@ -920,10 +926,13 @@ app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
         const wiseFee = parseFloat(statement.wiseFee) || 0;
         const totalAmount = parseFloat(statement.totalTransferAmount) || (payoutAmount + wiseFee);
         const paidAt = statement.paidAt ? new Date(statement.paidAt) : new Date();
-        const transferId = statement.payoutTransferId || 'N/A';
+        // transferId can be set via /mark-paid's request body, propertyName
+        // and ownerName via Hostify import or app edits — escape all three
+        // before interpolating into the receipt HTML.
+        const transferId = escapeHtml(statement.payoutTransferId || 'N/A');
         const statementId = statement.id;
-        const propertyName = statement.propertyName || 'Unknown Property';
-        const ownerName = statement.ownerName || 'Owner';
+        const propertyName = escapeHtml(statement.propertyName || 'Unknown Property');
+        const ownerName = escapeHtml(statement.ownerName || 'Owner');
         const periodStart = statement.weekStartDate ? new Date(statement.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
         const periodEnd = statement.weekEndDate ? new Date(statement.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
