@@ -1106,13 +1106,42 @@ app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) =>
 
 app.use('/api/payouts', authenticate, require('./routes/payouts'));
 
-// Queued payout processor - checks every 5 minutes for queued payouts when balance is sufficient
+// Queued payout processor — runs every 5 minutes.
+//
+// Two-stage pipeline. The cron must drive both stages itself, otherwise
+// auto-funded payouts (status `awaiting_funding`) never progress: nothing
+// promotes them to `queued`, so processQueuedPayouts has nothing to do.
+//
+//   awaiting_funding ──processAwaitingFunding──▶ queued ──processQueuedPayouts──▶ paid
+//
+// Stage 1 (processAwaitingFunding) checks the Increase balance against
+// totalNeeded; when balance is sufficient (the funding ACH has settled), it
+// promotes rows. Stage 2 then sends the actual transfers.
 const startQueuedPayoutChecker = () => {
     const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     setInterval(async () => {
         try {
             const { processQueuedPayouts } = require('./routes/payouts');
             const { Statement } = require('./models');
+            const { Op } = require('sequelize');
+
+            const inFlightCount = await Statement.count({
+                where: { payoutStatus: { [Op.in]: ['queued', 'awaiting_funding'] } },
+            });
+            if (inFlightCount === 0) return;
+
+            // Stage 1 — promote any awaiting_funding rows whose funding has settled.
+            try {
+                const reconciliationService = require('./services/ReconciliationService');
+                const fundingResult = await reconciliationService.processAwaitingFunding();
+                if (fundingResult.promoted > 0) {
+                    logger.info('[QueuedPayoutChecker] Promoted awaiting_funding to queued', fundingResult);
+                }
+            } catch (e) {
+                logger.warn('[QueuedPayoutChecker] processAwaitingFunding failed', { error: e.message });
+            }
+
+            // Stage 2 — process any queued rows (including ones we just promoted).
             const queuedCount = await Statement.count({ where: { payoutStatus: 'queued' } });
             if (queuedCount === 0) return;
 

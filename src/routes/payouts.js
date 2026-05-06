@@ -866,15 +866,21 @@ router.post('/statements/:id/collect', async (req, res) => {
             return res.status(400).json({ error: 'Statement does not have a negative balance' });
         }
 
-        if (statement.payoutStatus === 'collected' || statement.payoutStatus === 'paid') {
-            return res.status(400).json({ error: 'Already settled' });
+        // `invoice_sent` is the status set after a successful /collect. Without
+        // blocking it here, a second call would mint a new token (overwriting
+        // the prior one in payoutError so the original payment URL stops
+        // working) and email the owner a duplicate invoice.
+        if (['collected', 'paid', 'invoice_sent'].includes(statement.payoutStatus)) {
+            return res.status(400).json({ error: `Already ${statement.payoutStatus}` });
         }
 
         const collectAmount = Math.abs(payoutAmount);
 
-        // Generate a payment token for the collection page
+        // Generate a payment token for the collection page. The token is
+        // committed to payoutError on success only — see the final update
+        // below — so a request that errors mid-flight doesn't leave an active
+        // token attached to a statement that wasn't actually invoiced.
         const paymentToken = crypto.randomBytes(32).toString('hex');
-        await statement.update({ payoutError: `payment_token:${paymentToken}` }); // Store token temporarily
 
         const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 3003}`;
         const paymentPageUrl = `${appUrl}/pay/${paymentToken}`;
@@ -932,9 +938,16 @@ router.post('/statements/:id/collect', async (req, res) => {
             }
         }
 
+        // Only stamp paidAt when the statement is actually settled. An
+        // `invoice_sent` row means the owner has been asked to pay — the
+        // money hasn't moved. Marking paidAt here would misrepresent state
+        // in analytics, on the receipt page, and in the dashboard payout
+        // status column. paidAt is set later when the payment is reconciled
+        // (or when an admin manually marks the statement collected/paid).
+        const settledNow = !invoiceSent;
         await statement.update({
             payoutStatus: invoiceSent ? 'invoice_sent' : 'collected',
-            paidAt: new Date(),
+            paidAt: settledNow ? new Date() : null,
             payoutError: `payment_token:${paymentToken}`,
         });
 
@@ -945,7 +958,7 @@ router.post('/statements/:id/collect', async (req, res) => {
             invoiceSent,
             recipientEmail,
             paymentPageUrl,
-            paidAt: new Date().toISOString(),
+            paidAt: settledNow ? new Date().toISOString() : null,
         });
     } catch (error) {
         logger.logError(error, { context: 'Payouts', action: 'collect', statementId: req.params.id });
