@@ -16,7 +16,7 @@ const ListingService = require('./services/ListingService');
 const BackupService = require('./services/BackupService');
 
 // Authentication middleware
-const { authenticate, authorize, requireAdmin, requireEditor, requireViewer } = require('./middleware/auth');
+const { authenticate, authorize, requireAdmin, requireEditor, requireViewer, editorWrites } = require('./middleware/auth');
 
 // Security middleware
 const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter } = require('./middleware/rateLimiter');
@@ -348,34 +348,23 @@ app.use('/api/users', authenticate, require('./routes/users'));
 // Dashboard - Any authenticated user can view
 app.use('/api/dashboard', authenticate, require('./routes/dashboard-file'));
 
-// Statements - Viewers can read, Editors/Admins can modify
-app.use('/api/statements', authenticate, require('./routes/statements-file'));
-
-// Listings - Viewers can read, Editors/Admins can modify
-app.use('/api/listings', authenticate, require('./routes/listings'));
-
-// Listing Groups - Editors/Admins can manage groups
-app.use('/api/groups', authenticate, require('./routes/groups'));
-
-// Properties - Any authenticated user
-app.use('/api/properties', authenticate, require('./routes/properties-file'));
-
-// Reservations - Editors/Admins can manage
-app.use('/api/reservations', authenticate, require('./routes/reservations-file'));
-app.use('/api/reservations-import', authenticate, require('./routes/reservations'));
-
-// Expenses - Editors/Admins can manage
-app.use('/api/expenses', authenticate, require('./routes/expenses'));
-
-// QuickBooks - Editors/Admins
-app.use('/api/quickbooks', authenticate, require('./routes/quickbooks'));
-
-// Financials - QuickBooks financial reports and transaction queries
-app.use('/api/financials', authenticate, require('./routes/financials'));
-
-// Email - Editors/Admins can send, all can view logs
-app.use('/api/email', authenticate, require('./routes/email'));
-app.use('/api/email-templates', authenticate, require('./routes/email-templates'));
+// Statements / Listings / Groups / Properties / Reservations / Expenses /
+// Email / Financials / QuickBooks all mix reads and writes. editorWrites
+// preserves GET access for any authenticated user (so viewers can browse)
+// and gates POST/PUT/DELETE/PATCH to admin or editor — the same role set
+// permissions.canEditStatements/canEditListings/etc. already declared in
+// auth.js but never actually enforced at the route mount.
+app.use('/api/statements', authenticate, editorWrites, require('./routes/statements-file'));
+app.use('/api/listings', authenticate, editorWrites, require('./routes/listings'));
+app.use('/api/groups', authenticate, editorWrites, require('./routes/groups'));
+app.use('/api/properties', authenticate, editorWrites, require('./routes/properties-file'));
+app.use('/api/reservations', authenticate, editorWrites, require('./routes/reservations-file'));
+app.use('/api/reservations-import', authenticate, editorWrites, require('./routes/reservations'));
+app.use('/api/expenses', authenticate, editorWrites, require('./routes/expenses'));
+app.use('/api/quickbooks', authenticate, editorWrites, require('./routes/quickbooks'));
+app.use('/api/financials', authenticate, editorWrites, require('./routes/financials'));
+app.use('/api/email', authenticate, editorWrites, require('./routes/email'));
+app.use('/api/email-templates', authenticate, editorWrites, require('./routes/email-templates'));
 
 // HTML escape helper to prevent XSS in server-rendered pages
 const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1113,7 +1102,11 @@ app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) =>
     }
 });
 
-app.use('/api/payouts', authenticate, require('./routes/payouts'));
+// Payouts surface is editor+ only — even the GETs expose Increase balance,
+// recipient holder names, and account-level details that viewers shouldn't
+// see. Per-route writes (transfer, fund-and-queue, mark-paid, etc.) move
+// real money, so role enforcement at the mount is the conservative choice.
+app.use('/api/payouts', authenticate, authorize('admin', 'editor'), require('./routes/payouts'));
 
 // Queued payout processor — runs every 5 minutes.
 //
@@ -1171,7 +1164,10 @@ if (require.main === module) {
 }
 
 // Database Backup - Status and manual trigger
-app.use('/api/backup', authenticate, require('./routes/backup'));
+// Backup endpoints expose the entire database (including encrypted bank
+// fields) — admin-only. Internal routes don't enforce roles, so the gate
+// belongs at the mount.
+app.use('/api/backup', authenticate, authorize('admin'), require('./routes/backup'));
 
 // Activity Logs - Admin only
 app.use('/api/activity-logs', authenticate, require('./routes/activity-logs'));

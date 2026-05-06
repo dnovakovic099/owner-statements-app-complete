@@ -13,9 +13,21 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 
-// JWT Secret - use environment variable or generate a secure default
-const JWT_SECRET = process.env.JWT_SECRET || 'luxury-lodging-pm-jwt-secret-key-change-in-production';
+// JWT Secret. The dev fallback string is checked into the public repo;
+// running with it in production would let anyone with the source forge
+// admin tokens, so we refuse to start with it (or with no secret at all)
+// when NODE_ENV is production.
+const DEV_JWT_SECRET = 'luxury-lodging-pm-jwt-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || JWT_SECRET === DEV_JWT_SECRET)) {
+    // Fail fast — don't keep accepting forgeable tokens in a live deployment.
+    throw new Error('JWT_SECRET must be set to a non-default value in production. Refusing to start.');
+}
+if (JWT_SECRET === DEV_JWT_SECRET) {
+    logger.warn('Using built-in development JWT secret — set JWT_SECRET in your environment for any non-local deployment', { context: 'Auth' });
+}
 
 // Load legacy authentication config for backward compatibility
 let legacyAuthConfig;
@@ -225,6 +237,22 @@ const requireAdmin = [authenticate, authorize('admin')];
 const requireEditor = [authenticate, authorize('admin', 'editor')];
 
 /**
+ * Method-aware role gate — preserves viewer read access while blocking
+ * mutations. Lets GET (and HEAD/OPTIONS) flow through for any
+ * authenticated user; everything else requires editor or admin.
+ *
+ * Use at mount level on routers that mix reads and writes (statements,
+ * listings, groups, expenses, etc.) so viewers can still browse data
+ * but can't hit POST/PUT/DELETE/PATCH.
+ */
+const editorWrites = (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+        return next();
+    }
+    return authorize('admin', 'editor')(req, res, next);
+};
+
+/**
  * Middleware that requires at least viewer role (any authenticated user)
  */
 const requireViewer = [authenticate, authorize('admin', 'editor', 'viewer')];
@@ -265,6 +293,7 @@ module.exports = {
     requireAdmin,
     requireEditor,
     requireViewer,
+    editorWrites,
     parseBasicAuth,
     parseBearerToken,
     authenticateUser,
