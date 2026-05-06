@@ -667,6 +667,26 @@ router.post('/statements/:id/mark-paid', async (req, res) => {
         const payoutAmount = parseFloat(statement.ownerPayout) || 0;
         const fee = parseFloat(wiseFee) || 0;
 
+        // The endpoint is for transfers done outside the app — only valid on
+        // rows that have no payout record yet. Allow null/failed/cancelled
+        // and refuse anything else so we don't overwrite the original
+        // payoutTransferId/paidAt for a real ACH transfer, race with an
+        // in-flight one, or break the negative-balance/collection flow.
+        const inFlightStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        if (inFlightStatuses.has(statement.payoutStatus)) {
+            return res.status(409).json({
+                error: `Cannot mark-paid — statement has payoutStatus '${statement.payoutStatus}'. The existing record would be overwritten.`,
+                payoutStatus: statement.payoutStatus,
+            });
+        }
+
+        if (payoutAmount <= 0) {
+            return res.status(400).json({
+                error: `Cannot mark-paid — statement has non-positive owner payout ($${payoutAmount.toFixed(2)}). Use the collect flow for negative balances.`,
+                ownerPayout: payoutAmount,
+            });
+        }
+
         await statement.update({
             payoutStatus: 'paid',
             payoutTransferId: transferId ? String(transferId) : null,
