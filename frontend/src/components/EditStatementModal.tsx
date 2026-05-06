@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 import { Checkbox } from './ui/checkbox';
+import PayOwnerConfirmDialog from './PayOwnerConfirmDialog';
 
 // Custom Confirm Dialog Component
 interface ConfirmDialogProps {
@@ -176,6 +177,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
     variant: 'default',
     onConfirm: () => { }
   });
+
+  // Pay-owner confirmation modal: shows resolved Increase recipient before sending.
+  const [payConfirmOpen, setPayConfirmOpen] = useState(false);
 
   // Statement period & settings state
   const [editStartDate, setEditStartDate] = useState('');
@@ -1046,7 +1050,17 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h3 className="font-semibold text-lg">{statement.ownerName}</h3>
-                    <p className="text-gray-600">{statement.propertyName}</p>
+                    <div className="flex items-center gap-2">
+                      {statement.groupId && statement.groupName && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          <Users className="w-3 h-3" />
+                          Group
+                        </span>
+                      )}
+                      <p className="text-gray-600">
+                        {statement.groupId && statement.groupName ? statement.groupName : statement.propertyName}
+                      </p>
+                    </div>
                     <p className="text-sm text-gray-500">
                       {statement.weekStartDate} to {statement.weekEndDate}
                     </p>
@@ -1143,29 +1157,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       {(statement.status === 'final' && (statement as any).payoutStatus !== 'paid' && statement.ownerPayout > 0) && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setConfirmDialog({
-                              isOpen: true,
-                              title: 'Pay Owner',
-                              message: `Transfer $${statement.ownerPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${statement.ownerName}?`,
-                              confirmText: 'Pay Now',
-                              variant: 'success',
-                              onConfirm: async () => {
-                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-                                try {
-                                  setSaving(true);
-                                  const { payoutsAPI } = await import('../services/api');
-                                  await payoutsAPI.transferToOwner(statement.id);
-                                  onStatementUpdated();
-                                  loadStatement();
-                                } catch (err: any) {
-                                  setError(err.response?.data?.error || err.message || 'Failed to transfer payout');
-                                } finally {
-                                  setSaving(false);
-                                }
-                              }
-                            });
-                          }}
+                          onClick={() => setPayConfirmOpen(true)}
                           disabled={saving}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
@@ -2810,6 +2802,18 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
         variant={confirmDialog.variant}
         onConfirm={confirmDialog.onConfirm}
         onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <PayOwnerConfirmDialog
+        isOpen={payConfirmOpen}
+        statementId={statement?.id ?? null}
+        payoutAmount={statement?.ownerPayout ?? 0}
+        onClose={() => setPayConfirmOpen(false)}
+        onConfirmed={() => {
+          onStatementUpdated();
+          loadStatement();
+        }}
+        onError={(msg) => setError(msg)}
       />
     </div>
   );

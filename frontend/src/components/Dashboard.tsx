@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, AlertCircle, Search, Check, ChevronDown, Upload, X, Building2, Users } from 'lucide-react';
+import { Plus, AlertCircle, Search, Check, ChevronDown, Upload } from 'lucide-react';
+import PayOwnerConfirmDialog from './PayOwnerConfirmDialog';
 import { dashboardAPI, statementsAPI, expensesAPI, reservationsAPI, listingsAPI, emailAPI, payoutsAPI } from '../services/api';
 import { analytics } from '../services/analytics';
 import { Owner, Property, Statement } from '../types';
@@ -211,27 +212,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     isOpen: boolean;
     statementId: number | null;
     payoutAmount: number;
-    loading: boolean;
-    error: string | null;
-    submitting: boolean;
-    preview: {
-      ownerName: string | null;
-      propertyName: string | null;
-      source: 'group' | 'listing' | null;
-      sourceLabel: string | null;
-      holderName: string | null;
-      routingNumber: string | null;
-      accountNumberLast4: string | null;
-      increaseStatus: string | null;
-    } | null;
   }>({
     isOpen: false,
     statementId: null,
     payoutAmount: 0,
-    loading: false,
-    error: null,
-    submitting: false,
-    preview: null,
   });
 
   // Filter states
@@ -780,9 +764,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return;
         }
 
-        // Check if listing has a connected Increase recipient
+        // Check if listing has a connected Increase recipient. Skip for group
+        // statements — the backend resolves the group's account first, and the
+        // confirmation modal shows a clear error if no recipient is configured.
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
-        if (listingId) {
+        if (listingId && !statement.groupId) {
           const listing = listings.find(l => l.id === listingId);
           if (!listing?.wiseRecipientId) {
             showToast('No Increase account connected for this listing. Set up payout in Payout Accounts page.', 'error');
@@ -797,40 +783,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const payoutAmount = Number(statement.ownerPayout) || 0;
 
         if (payoutAmount > 0) {
-          setPayConfirm({
-            isOpen: true,
-            statementId: id,
-            payoutAmount,
-            loading: true,
-            error: null,
-            submitting: false,
-            preview: null,
-          });
-          payoutsAPI.previewRecipient(id)
-            .then((data) => {
-              setPayConfirm((prev) => prev.statementId === id ? {
-                ...prev,
-                loading: false,
-                error: data.error || null,
-                preview: {
-                  ownerName: data.ownerName,
-                  propertyName: data.propertyName,
-                  source: data.source,
-                  sourceLabel: data.sourceLabel,
-                  holderName: data.holderName,
-                  routingNumber: data.routingNumber,
-                  accountNumberLast4: data.accountNumberLast4,
-                  increaseStatus: data.increaseStatus,
-                },
-              } : prev);
-            })
-            .catch((err) => {
-              setPayConfirm((prev) => prev.statementId === id ? {
-                ...prev,
-                loading: false,
-                error: err?.response?.data?.error || err?.message || 'Failed to load recipient',
-              } : prev);
-            });
+          setPayConfirm({ isOpen: true, statementId: id, payoutAmount });
         } else {
           // Negative payout — send invoice to owner
           const collectAmount = Math.abs(payoutAmount);
@@ -1199,9 +1152,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } else if (action === 'pay-owner') {
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
-      // Filter for valid payouts (must have positive payout, not already paid, and have Increase account)
+      // Filter for valid payouts (must have positive payout, not already paid, and have Increase account).
+      // Group statements pass through unconditionally — backend resolveWiseRecipientId checks the group's
+      // account first, and a missing-recipient case is reported per-statement during fundAndQueue.
       const validPayouts = selectedStatements.filter(s => {
         if (s.ownerPayout <= 0 || (s as any).payoutStatus === 'paid') return false;
+        if (s.groupId) return true;
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
         if (!lid) return false;
         const listing = listings.find(l => l.id === lid);
@@ -1211,6 +1167,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
 
       const noWiseCount = selectedStatements.filter(s => {
+        if (s.groupId) return false;
         const lid = s.propertyId || (s.propertyIds && s.propertyIds[0]);
         const listing = lid ? listings.find(l => l.id === lid) : null;
         return !listing?.wiseRecipientId || listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending';
@@ -1854,133 +1811,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         showCancelButton={confirmDialog.showCancelButton !== false}
       />
 
-      {payConfirm.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black bg-opacity-50"
-            onClick={() => !payConfirm.submitting && setPayConfirm((p) => ({ ...p, isOpen: false }))}
-          />
-          <div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <button
-              onClick={() => !payConfirm.submitting && setPayConfirm((p) => ({ ...p, isOpen: false }))}
-              disabled={payConfirm.submitting}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Pay Owner via Increase</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Review the recipient before sending.</p>
-            </div>
-
-            {payConfirm.loading ? (
-              <div className="py-8 text-center text-sm text-gray-500">Loading recipient...</div>
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded border border-gray-200 dark:border-gray-700 p-3">
-                  <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Amount</div>
-                  <div className="text-2xl font-semibold text-green-600">${payConfirm.payoutAmount.toFixed(2)}</div>
-                </div>
-
-                {payConfirm.preview?.source && (
-                  <div className="flex items-center gap-2">
-                    {payConfirm.preview.source === 'group' ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                        <Users className="w-3 h-3" /> Group account
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                        <Building2 className="w-3 h-3" /> Listing account
-                      </span>
-                    )}
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{payConfirm.preview.sourceLabel}</span>
-                  </div>
-                )}
-
-                <div className="rounded border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
-                  <Row label="Account holder" value={payConfirm.preview?.holderName || '—'} mono={false} />
-                  <Row
-                    label="Account"
-                    value={payConfirm.preview?.accountNumberLast4 ? `••••${payConfirm.preview.accountNumberLast4}` : '—'}
-                    mono
-                  />
-                  <Row label="Routing" value={payConfirm.preview?.routingNumber || '—'} mono />
-                  {payConfirm.preview?.propertyName && (
-                    <Row label="Property" value={payConfirm.preview.propertyName} mono={false} />
-                  )}
-                  {payConfirm.preview?.increaseStatus && (
-                    <Row label="Increase status" value={payConfirm.preview.increaseStatus} mono />
-                  )}
-                </div>
-
-                {payConfirm.error && (
-                  <div className="rounded border border-red-200 bg-red-50 text-red-700 text-sm p-2">
-                    {payConfirm.error}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                onClick={() => setPayConfirm((p) => ({ ...p, isOpen: false }))}
-                disabled={payConfirm.submitting}
-                className="px-4 py-2 text-sm rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!payConfirm.statementId) return;
-                  setPayConfirm((p) => ({ ...p, submitting: true }));
-                  const toastId = showToast('Processing Increase transfer...', 'loading');
-                  try {
-                    const response = await payoutsAPI.transferToOwner(payConfirm.statementId);
-                    if (response.success) {
-                      if ((response as any).queued) {
-                        updateToast(toastId, (response as any).message || 'Insufficient balance — payout queued. Will process automatically when funds arrive.', 'info');
-                      } else {
-                        const actualTotal = response.totalTransferAmount || payConfirm.payoutAmount;
-                        updateToast(toastId, `Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
-                      }
-                      await loadStatements();
-                      loadInitialData();
-                    } else {
-                      updateToast(toastId, response.error || 'Transfer failed', 'error');
-                    }
-                  } catch (err: any) {
-                    const errorMessage = err?.response?.data?.error || err?.message || 'Transfer failed';
-                    updateToast(toastId, errorMessage, 'error');
-                  } finally {
-                    setPayConfirm({
-                      isOpen: false,
-                      statementId: null,
-                      payoutAmount: 0,
-                      loading: false,
-                      error: null,
-                      submitting: false,
-                      preview: null,
-                    });
-                  }
-                }}
-                disabled={payConfirm.loading || payConfirm.submitting || !payConfirm.preview?.holderName}
-                className="px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
-              >
-                {payConfirm.submitting ? 'Sending...' : 'Confirm & Send'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PayOwnerConfirmDialog
+        isOpen={payConfirm.isOpen}
+        statementId={payConfirm.statementId}
+        payoutAmount={payConfirm.payoutAmount}
+        onClose={() => setPayConfirm({ isOpen: false, statementId: null, payoutAmount: 0 })}
+        onConfirmed={(response) => {
+          if (response.queued) {
+            showToast(response.message || 'Insufficient balance — payout queued. Will process automatically when funds arrive.', 'info');
+          } else {
+            const actualTotal = response.totalTransferAmount || payConfirm.payoutAmount;
+            showToast(`Payment of $${actualTotal.toFixed(2)} sent successfully!`, 'success');
+          }
+          loadStatements();
+          loadInitialData();
+        }}
+        onError={(msg) => showToast(msg, 'error')}
+      />
     </Layout>
   );
 };
-
-const Row: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
-  <div className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
-    <span className="text-gray-500 dark:text-gray-400">{label}</span>
-    <span className={`text-gray-900 dark:text-gray-100 truncate ${mono ? 'font-mono text-xs' : 'font-medium'}`}>{value}</span>
-  </div>
-);
 
 export default Dashboard;

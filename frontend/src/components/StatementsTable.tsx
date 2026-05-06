@@ -705,8 +705,12 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {(() => {
               const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
               const listing = listingId && listings ? listings.find(l => Number(l.id) === Number(listingId)) : null;
-              const hasWiseRecipient = !!(listing?.wiseRecipientId);
-              const isRestricted = listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending';
+              // Group statements may pay out via the group's Increase account even
+              // if no constituent listing has one. Trust the backend's recipient
+              // resolver and let the confirmation modal report a missing recipient.
+              const isGroupStatement = !!statement.groupId;
+              const hasWiseRecipient = isGroupStatement || !!(listing?.wiseRecipientId);
+              const isRestricted = !isGroupStatement && (listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending');
               const noWise = !hasWiseRecipient || isRestricted;
               return (
                 <ActionButton
