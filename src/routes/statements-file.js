@@ -2276,6 +2276,18 @@ router.put('/:id/reconfigure', async (req, res) => {
             return res.status(404).json({ error: 'Statement not found' });
         }
 
+        // Reconfigure changes the date range and re-pulls every reservation —
+        // it produces a completely different set of numbers. Refuse when a
+        // payout is in flight or settled so we don't overwrite the figures
+        // tied to an already-completed ACH transfer.
+        const settledPayoutStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        if (settledPayoutStatuses.has(existingStatement.payoutStatus)) {
+            return res.status(409).json({
+                error: `Cannot reconfigure — statement has payoutStatus '${existingStatement.payoutStatus}'. The transfer record would no longer match.`,
+                payoutStatus: existingStatement.payoutStatus,
+            });
+        }
+
         // Preserve custom reservations (manually added)
         const customReservations = (existingStatement.reservations || []).filter(r => r.isCustom === true);
         const customReservationItems = (existingStatement.items || []).filter(item =>
@@ -2762,6 +2774,18 @@ router.put('/:id', async (req, res) => {
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
             return res.status(404).json({ error: 'Statement not found' });
+        }
+
+        // Reject edits to statements with a payout in flight or settled. The
+        // endpoint recalculates ownerPayout on save (see line below), which
+        // would overwrite the figure tied to an already-completed ACH transfer
+        // and desync the receipt page, analytics, and totalTransferAmount.
+        const settledPayoutStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        if (settledPayoutStatuses.has(statement.payoutStatus)) {
+            return res.status(409).json({
+                error: `Cannot edit — statement has payoutStatus '${statement.payoutStatus}'. The transfer record would no longer match the displayed amount.`,
+                payoutStatus: statement.payoutStatus,
+            });
         }
 
         let modified = false;
