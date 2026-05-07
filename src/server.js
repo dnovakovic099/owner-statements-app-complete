@@ -69,11 +69,29 @@ app.use((req, res, next) => {
     next();
 });
 
-// CORS configuration
+// CORS configuration. In production we require ALLOWED_ORIGINS — falling
+// back to `origin: true` would tell `cors` to reflect any origin, which
+// (with credentials: true) lets every site on the internet ride a user's
+// session. Fail closed instead, the same way we fail closed on JWT_SECRET.
+//
+// In development we leave it open so the CRA dev proxy and local tooling
+// can talk to the API without configuration.
+const parseAllowedOrigins = (raw) => raw.split(',').map((s) => s.trim()).filter(Boolean);
+let corsOrigin;
+if (process.env.NODE_ENV === 'production') {
+    if (!process.env.ALLOWED_ORIGINS) {
+        throw new Error('ALLOWED_ORIGINS must be set in production (comma-separated list of allowed origins). Refusing to start with a wide-open CORS policy.');
+    }
+    const allowed = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+    if (allowed.length === 0) {
+        throw new Error('ALLOWED_ORIGINS is set but contains no usable entries. Refusing to start.');
+    }
+    corsOrigin = allowed;
+} else {
+    corsOrigin = true;
+}
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production'
-        ? process.env.ALLOWED_ORIGINS?.split(',') || true
-        : true,
+    origin: corsOrigin,
     credentials: true,
     exposedHeaders: ['Content-Disposition']
 }));
@@ -1204,19 +1222,37 @@ if (!appVersion) {
 // production-fail check on the dev fallback. Don't re-declare it here with
 // the public default — that would silently bypass the startup guard.
 
-app.get('/api/events', (req, res) => {
+app.get('/api/events', async (req, res) => {
     const token = req.query.token;
     if (!token) return res.status(401).json({ error: 'Token required' });
+    let decoded;
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const clientId = `${decoded.username || decoded.id}_${Date.now()}`;
-        sseManager.addClient(clientId, res);
-        // Send current version immediately so client can detect future deploys
-        if (appVersion) {
-            sseManager.sendToClient(clientId, 'version', { v: appVersion });
-        }
+        decoded = jwt.verify(token, JWT_SECRET);
     } catch {
-        res.status(401).json({ error: 'Invalid token' });
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    // Re-validate the subject against the users table — same rule the
+    // authenticate middleware applies. SSE bypasses parseBearerToken because
+    // browsers can't set Authorization headers on EventSource, so the check
+    // has to happen inline here. Without it a deactivated user keeps
+    // streaming live events until their token expires.
+    if (!decoded.isSystemUser) {
+        try {
+            const { User } = require('./models');
+            const dbUser = await User.findByPk(decoded.id);
+            if (!dbUser || !dbUser.isActive || !dbUser.inviteAccepted) {
+                return res.status(401).json({ error: 'Account is no longer active' });
+            }
+        } catch (e) {
+            logger.warn('User lookup failed during SSE auth — denying connection', { context: 'SSE', userId: decoded.id, error: e.message });
+            return res.status(401).json({ error: 'Authentication check failed' });
+        }
+    }
+    const clientId = `${decoded.username || decoded.id}_${Date.now()}`;
+    sseManager.addClient(clientId, res);
+    // Send current version immediately so client can detect future deploys
+    if (appVersion) {
+        sseManager.sendToClient(clientId, 'version', { v: appVersion });
     }
 });
 
