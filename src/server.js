@@ -69,10 +69,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// CORS configuration. In production we require ALLOWED_ORIGINS — falling
-// back to `origin: true` would tell `cors` to reflect any origin, which
-// (with credentials: true) lets every site on the internet ride a user's
-// session. Fail closed instead, the same way we fail closed on JWT_SECRET.
+// CORS configuration. In production we require ALLOWED_ORIGINS so a missing
+// env var doesn't silently turn into a credentialed any-origin policy.
+// Setting ALLOWED_ORIGINS=* is an explicit opt-in to reflect any origin —
+// equivalent to the old default but now visible in env config and logged
+// at startup. Browsers reject `Access-Control-Allow-Origin: *` with
+// `credentials: true`, so the wildcard is implemented as `origin: true`
+// (echo back the request origin), which is what callers actually want.
 //
 // In development we leave it open so the CRA dev proxy and local tooling
 // can talk to the API without configuration.
@@ -80,13 +83,18 @@ const parseAllowedOrigins = (raw) => raw.split(',').map((s) => s.trim()).filter(
 let corsOrigin;
 if (process.env.NODE_ENV === 'production') {
     if (!process.env.ALLOWED_ORIGINS) {
-        throw new Error('ALLOWED_ORIGINS must be set in production (comma-separated list of allowed origins). Refusing to start with a wide-open CORS policy.');
+        throw new Error('ALLOWED_ORIGINS must be set in production (comma-separated list of allowed origins, or "*" to allow any). Refusing to start with no CORS policy at all.');
     }
     const allowed = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
     if (allowed.length === 0) {
         throw new Error('ALLOWED_ORIGINS is set but contains no usable entries. Refusing to start.');
     }
-    corsOrigin = allowed;
+    if (allowed.includes('*')) {
+        logger.warn('ALLOWED_ORIGINS=* — accepting credentialed requests from any origin. Tighten this to your actual frontend domains when you can.', { context: 'CORS' });
+        corsOrigin = true;
+    } else {
+        corsOrigin = allowed;
+    }
 } else {
     corsOrigin = true;
 }
