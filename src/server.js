@@ -16,7 +16,7 @@ const ListingService = require('./services/ListingService');
 const BackupService = require('./services/BackupService');
 
 // Authentication middleware
-const { authenticate, authorize, requireAdmin, requireEditor, requireViewer, editorWrites } = require('./middleware/auth');
+const { authenticate, authorize, requireAdmin, requireEditor, requireViewer, editorWrites, JWT_SECRET } = require('./middleware/auth');
 
 // Security middleware
 const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter } = require('./middleware/rateLimiter');
@@ -1200,7 +1200,9 @@ if (!appVersion) {
     } catch {}
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'luxury-lodging-pm-jwt-secret-key-change-in-production';
+// JWT_SECRET is imported from middleware/auth, which already enforces the
+// production-fail check on the dev fallback. Don't re-declare it here with
+// the public default — that would silently bypass the startup guard.
 
 app.get('/api/events', (req, res) => {
     const token = req.query.token;

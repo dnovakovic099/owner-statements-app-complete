@@ -107,31 +107,43 @@ router.post('/refresh', async (req, res) => {
     try {
         const decoded = verifyToken(tokenToRefresh);
 
-        if (decoded) {
-            // Generate new token with fresh expiration
-            const newToken = generateToken({
+        if (!decoded) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
+
+        // Re-validate the subject against the users table before reissuing —
+        // otherwise a deactivated user could keep their session alive
+        // indefinitely by hitting /refresh before their token expires.
+        let payload;
+        if (decoded.isSystemUser) {
+            payload = {
                 id: decoded.id,
                 username: decoded.username,
                 email: decoded.email,
                 role: decoded.role,
-                isSystemUser: decoded.isSystemUser
-            });
-
-            return res.json({
-                success: true,
-                message: 'Token refreshed',
-                token: newToken,
-                user: {
-                    id: decoded.id,
-                    username: decoded.username,
-                    email: decoded.email,
-                    role: decoded.role,
-                    isSystemUser: decoded.isSystemUser
-                }
-            });
+                isSystemUser: true,
+            };
+        } else {
+            const dbUser = await User.findByPk(decoded.id);
+            if (!dbUser || !dbUser.isActive || !dbUser.inviteAccepted) {
+                return res.status(401).json({ success: false, message: 'Account is no longer active' });
+            }
+            payload = {
+                id: dbUser.id,
+                username: dbUser.username,
+                email: dbUser.email,
+                role: dbUser.role,
+                isSystemUser: dbUser.isSystemUser || false,
+            };
         }
 
-        res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        const newToken = generateToken(payload);
+        return res.json({
+            success: true,
+            message: 'Token refreshed',
+            token: newToken,
+            user: payload,
+        });
     } catch (error) {
         logger.logError(error, { context: 'Auth', action: 'refreshToken' });
         res.status(500).json({ success: false, message: 'Token refresh failed' });
@@ -183,8 +195,8 @@ router.post('/accept-invite', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Token and password are required' });
         }
 
-        if (password.length < 6) {
-            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+        if (password.length < 12) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 12 characters' });
         }
 
         const user = await User.findOne({

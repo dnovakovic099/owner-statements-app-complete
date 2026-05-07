@@ -70,21 +70,22 @@ function verifyToken(token) {
 }
 
 /**
- * Parse Bearer token from Authorization header or query parameter
- * Query parameter is used for browser-based PDF viewing where headers can't be set
+ * Parse Bearer token from Authorization header.
+ *
+ * Tokens are NOT accepted via query parameters here — query strings
+ * leak into server access logs, browser history, and Referer headers,
+ * any of which would let an observer replay the user's session.
+ *
+ * Endpoints that genuinely need a query-string token (the receipt page,
+ * the SSE /api/events stream — both of which are loaded directly by
+ * the browser without auth headers) verify their own purpose-bound
+ * tokens manually rather than going through this helper.
  */
 function parseBearerToken(req) {
-    // First try Authorization header
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         return authHeader.split(' ')[1];
     }
-
-    // Fall back to query parameter (for PDF viewing in browser)
-    if (req.query.token) {
-        return req.query.token;
-    }
-
     return null;
 }
 
@@ -176,6 +177,56 @@ async function authenticateUser(username, password) {
 }
 
 /**
+ * Re-validate a JWT subject against the live users table.
+ *
+ * The JWT alone isn't enough — a fired employee's token stays valid for
+ * up to 7 days unless we look the user up. We also rehydrate role/email
+ * from the row so a demoted user loses elevated access on their next
+ * request, not after their token expires.
+ *
+ * Returns the live user payload (or null to reject). Cached briefly to
+ * avoid a DB hit on every request from the same session.
+ *
+ * Skips the DB check for `isSystemUser` tokens (the legacy LL admin
+ * account, which has id=0 and isn't represented in the users table).
+ */
+const _userCheckCache = new Map(); // userId → { user, expiresAt }
+const USER_CHECK_TTL_MS = 30 * 1000; // 30s — short, so deactivations propagate fast
+
+async function _validateJwtSubject(decoded) {
+    if (decoded.isSystemUser) {
+        return decoded; // legacy admin — no DB row exists
+    }
+
+    const cached = _userCheckCache.get(decoded.id);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.user;
+    }
+
+    try {
+        const dbUser = await User.findByPk(decoded.id);
+        if (!dbUser || !dbUser.isActive || !dbUser.inviteAccepted) {
+            _userCheckCache.delete(decoded.id);
+            return null;
+        }
+        // Rehydrate from the live row so role demotions / email changes /
+        // isSystemUser flips take effect immediately on next request.
+        const user = {
+            id: dbUser.id,
+            username: dbUser.username,
+            email: dbUser.email,
+            role: dbUser.role,
+            isSystemUser: dbUser.isSystemUser || false,
+        };
+        _userCheckCache.set(decoded.id, { user, expiresAt: Date.now() + USER_CHECK_TTL_MS });
+        return user;
+    } catch (e) {
+        logger.warn('User lookup failed during auth — denying request', { context: 'Auth', userId: decoded.id, error: e.message });
+        return null;
+    }
+}
+
+/**
  * Main authentication middleware
  * Supports both JWT (Bearer) and Basic Auth (for backward compatibility)
  */
@@ -184,11 +235,15 @@ async function authenticate(req, res, next) {
     const token = parseBearerToken(req);
     if (token) {
         const decoded = verifyToken(token);
-        if (decoded) {
-            req.user = decoded;
-            return next();
+        if (!decoded) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
         }
-        return res.status(401).json({ error: 'Invalid or expired token' });
+        const liveUser = await _validateJwtSubject(decoded);
+        if (!liveUser) {
+            return res.status(401).json({ error: 'Account is no longer active' });
+        }
+        req.user = liveUser;
+        return next();
     }
 
     // Fall back to Basic Auth for backward compatibility
