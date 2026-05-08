@@ -100,9 +100,21 @@ async function clearStaleRecipient(statement) {
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
         if (listingId) {
             const listing = await Listing.findByPk(listingId);
-            if (listing && listing.wiseRecipientId) {
-                await listing.update({ wiseRecipientId: null, wiseStatus: 'missing', payoutStatus: 'missing' });
-                return { entity: 'listing', id: listing.id };
+            if (listing) {
+                if (listing.wiseRecipientId) {
+                    await listing.update({ wiseRecipientId: null, wiseStatus: 'missing', payoutStatus: 'missing' });
+                    return { entity: 'listing', id: listing.id };
+                }
+                // Listing has no recipient of its own but inherits one from its
+                // group — that's the dangling id we just sent, so clear it on
+                // the group instead.
+                if (listing.groupId) {
+                    const group = await ListingGroup.findByPk(listing.groupId);
+                    if (group && group.wiseRecipientId) {
+                        await group.update({ wiseRecipientId: null, wiseStatus: 'missing' });
+                        return { entity: 'group', id: group.id };
+                    }
+                }
             }
         }
     } catch (e) {
@@ -113,22 +125,32 @@ async function clearStaleRecipient(statement) {
 
 /**
  * Resolve the Increase external account ID for a statement.
- * Priority: group recipient > individual listing recipient
+ *
+ * Priority order:
+ *   1. Group-level recipient when the statement is a group statement.
+ *   2. Listing's own recipient.
+ *   3. Listing's group's recipient — when the listing is a member of a group
+ *      with a verified recipient, single-listing statements inherit it.
+ *      This matches what the Listings UI now shows ("Routed via group …")
+ *      and how operators actually set things up: most owners only configure
+ *      payout once on the group, not per child listing.
+ *
+ * Returns { wiseRecipientId, source, groupId?, listingId?, error? } so
+ * callers don't have to re-derive which entity the recipient came from.
  */
 async function resolveWiseRecipientId(statement) {
-    // Check group-level recipient first
+    // 1. Group statement → group recipient
     if (statement.groupId) {
         try {
             const group = await ListingGroup.findByPk(statement.groupId);
             if (group && group.wiseRecipientId) {
-                return { wiseRecipientId: group.wiseRecipientId, source: 'group' };
+                return { wiseRecipientId: group.wiseRecipientId, source: 'group', groupId: statement.groupId };
             }
         } catch (e) {
             logger.warn('Failed to check group Increase recipient', { groupId: statement.groupId, error: e.message });
         }
     }
 
-    // Fall back to individual listing
     const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
     if (!listingId) {
         return { wiseRecipientId: null, source: null, error: 'Statement has no associated listing' };
@@ -139,14 +161,24 @@ async function resolveWiseRecipientId(statement) {
         return { wiseRecipientId: null, source: null, error: 'Listing not found' };
     }
 
-    // Model getter auto-decrypts wiseRecipientId (stores Increase external_account_id)
-    const recipientId = listing.wiseRecipientId;
-
-    if (!recipientId) {
-        return { wiseRecipientId: null, source: null, error: 'No Increase external account configured for this listing' };
+    // 2. Listing's own recipient (model getter auto-decrypts)
+    if (listing.wiseRecipientId) {
+        return { wiseRecipientId: listing.wiseRecipientId, source: 'listing', listingId };
     }
 
-    return { wiseRecipientId: recipientId, source: 'listing' };
+    // 3. Inherited from listing's group
+    if (listing.groupId) {
+        try {
+            const group = await ListingGroup.findByPk(listing.groupId);
+            if (group && group.wiseRecipientId) {
+                return { wiseRecipientId: group.wiseRecipientId, source: 'group', groupId: listing.groupId, listingId };
+            }
+        } catch (e) {
+            logger.warn('Failed to check listing-group Increase recipient', { groupId: listing.groupId, error: e.message });
+        }
+    }
+
+    return { wiseRecipientId: null, source: null, error: 'No Increase external account configured for this listing' };
 }
 
 // ─── POST /disconnect ────────────────────────────────────────
@@ -489,16 +521,29 @@ router.get('/statements/:id/verify-transfer', async (req, res) => {
 async function buildRecipientPreview(statement) {
     const statementId = statement.id;
     const payoutAmount = parseFloat(statement.ownerPayout) || 0;
-    const { wiseRecipientId, source, error: resolveError } = await resolveWiseRecipientId(statement);
+    const {
+        wiseRecipientId,
+        source,
+        groupId: resolvedGroupId,
+        listingId: resolvedListingId,
+        error: resolveError,
+    } = await resolveWiseRecipientId(statement);
 
     let sourceEntity = null;
     let sourceLabel = null;
     let bankFallback = { holder: null, last4: null, routing: null };
 
-    if (source === 'group') {
-        sourceEntity = await ListingGroup.findByPk(statement.groupId);
+    if (source === 'group' && resolvedGroupId) {
+        sourceEntity = await ListingGroup.findByPk(resolvedGroupId);
         if (sourceEntity) {
-            sourceLabel = `Group: ${sourceEntity.name}`;
+            // resolvedListingId is set when the recipient was inherited from
+            // the listing's group (per-listing statement); flag the indirection
+            // so the operator can see why the recipient differs from the
+            // listed property.
+            const inherited = !!resolvedListingId && !statement.groupId;
+            sourceLabel = inherited
+                ? `Group: ${sourceEntity.name} (inherited from listing's group)`
+                : `Group: ${sourceEntity.name}`;
             bankFallback = {
                 holder: sourceEntity.bankAccountHolder || null,
                 last4: sourceEntity.bankAccountNumber ? String(sourceEntity.bankAccountNumber).slice(-4) : null,
@@ -506,7 +551,9 @@ async function buildRecipientPreview(statement) {
             };
         }
     } else if (source === 'listing') {
-        const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
+        const listingId = resolvedListingId
+            || statement.propertyId
+            || (statement.propertyIds && statement.propertyIds[0]);
         sourceEntity = await Listing.findByPk(listingId);
         if (sourceEntity) {
             const label = sourceEntity.nickname || sourceEntity.displayName || sourceEntity.name;
