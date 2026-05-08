@@ -117,20 +117,46 @@ const PayOwnerConfirmDialog: React.FC<Props> = ({ isOpen, statementId, payoutAmo
               <div className="text-2xl font-semibold text-green-600">${payoutAmount.toFixed(2)}</div>
             </div>
 
-            {preview?.source && (
-              <div className="flex items-center gap-2">
-                {preview.source === 'group' ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                    <Users className="w-3 h-3" /> Group account
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                    <Building2 className="w-3 h-3" /> Listing account
-                  </span>
-                )}
-                <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{preview.sourceLabel}</span>
-              </div>
-            )}
+            {preview?.source && (() => {
+              // sourceLabel comes through as "Group: Name" or
+              // "Group: Name (inherited from listing's group)"; pull the
+              // entity name out separately so the badge alone communicates
+              // the kind, and any inherited note can flow onto its own line.
+              const raw = preview.sourceLabel || '';
+              const inheritedMatch = raw.match(/^(.+?)\s*\((inherited[^)]*)\)\s*$/i);
+              const primaryRaw = inheritedMatch ? inheritedMatch[1].trim() : raw;
+              const inheritedNote = inheritedMatch ? inheritedMatch[2] : null;
+              const primary = primaryRaw.replace(/^(Group|Listing):\s*/i, '');
+              const isGroup = preview.source === 'group';
+              const cardCls = isGroup
+                ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800';
+              const pillCls = isGroup
+                ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300'
+                : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300';
+              const primaryCls = isGroup
+                ? 'text-purple-900 dark:text-purple-200'
+                : 'text-blue-900 dark:text-blue-200';
+              const noteCls = isGroup
+                ? 'text-purple-700 dark:text-purple-300'
+                : 'text-blue-700 dark:text-blue-300';
+              return (
+                <div className={`rounded-lg border p-3 ${cardCls}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${pillCls}`}>
+                      {isGroup ? <Users className="w-3 h-3" /> : <Building2 className="w-3 h-3" />}
+                      {isGroup ? 'Group account' : 'Listing account'}
+                    </span>
+                  </div>
+                  {primary && (
+                    <div className={`text-sm font-medium break-words ${primaryCls}`}>{primary}</div>
+                  )}
+                  {inheritedNote && (
+                    <div className={`text-xs mt-1 break-words ${noteCls}`}>{inheritedNote.charAt(0).toUpperCase() + inheritedNote.slice(1)}</div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="rounded border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
               <Row label="Account holder" value={preview?.holderName || '—'} mono={false} />
