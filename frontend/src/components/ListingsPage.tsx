@@ -122,6 +122,46 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     }
   };
 
+  // Listings in a group inherit the group's payout recipient — payouts always
+  // route through the group's wiseRecipientId when one is set, even if the
+  // listing has its own. This helper computes the *effective* payout state
+  // shown to the user (own > group fallback) so the UI doesn't read
+  // "Not Collected" for a listing that's actually paid via a verified group.
+  type EffectivePayout = {
+    status: 'missing' | 'pending' | 'on_file';
+    recipientId: string | null;
+    source: 'listing' | 'group' | null;
+    sourceLabel?: string;
+  };
+  const getEffectivePayout = (listing: Listing): EffectivePayout => {
+    const own = (listing as any).wiseRecipientId as string | null | undefined;
+    if (own) {
+      return {
+        status: ((listing.payoutStatus as any) || 'on_file') as EffectivePayout['status'],
+        recipientId: own,
+        source: 'listing',
+      };
+    }
+    const group = listing.group;
+    if (group?.wiseRecipientId) {
+      let status: EffectivePayout['status'] = 'on_file';
+      if (group.wiseStatus === 'pending' || group.wiseStatus === 'requires_action') status = 'pending';
+      else if (group.wiseStatus === 'missing') status = 'missing';
+      else if (group.wiseStatus === 'verified') status = 'on_file';
+      return {
+        status,
+        recipientId: group.wiseRecipientId,
+        source: 'group',
+        sourceLabel: group.name,
+      };
+    }
+    return {
+      status: ((listing.payoutStatus as any) || 'missing') as EffectivePayout['status'],
+      recipientId: null,
+      source: null,
+    };
+  };
+
   useEffect(() => {
     loadListings(false, undefined, true);
     loadGroups();
@@ -1129,16 +1169,22 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         <div className="font-medium text-gray-900 dark:text-white truncate text-sm">
                           {getListingDisplayName(listing)}
                         </div>
-                        <span
-                          className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : (listing.payoutStatus || 'missing') === 'pending'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-red-100 text-red-700'
-                            }`}
-                        >
-                          {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
-                        </span>
+                        {(() => {
+                          const eff = getEffectivePayout(listing);
+                          return (
+                            <span
+                              title={eff.source === 'group' ? `Inherited from group: ${eff.sourceLabel || ''}` : undefined}
+                              className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${eff.status === 'on_file'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : eff.status === 'pending'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-red-100 text-red-700'
+                                }`}
+                            >
+                              {payoutLabel(eff.status)}{eff.source === 'group' ? ' (group)' : ''}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         ID: {listing.id}
@@ -1166,13 +1212,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             {tag}
                           </span>
                         ))}
-                        {(listing as any).wiseRecipientId && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                            Increase: {(listing as any).wiseRecipientId.length > 10
-                              ? `...${(listing as any).wiseRecipientId.slice(-6)}`
-                              : (listing as any).wiseRecipientId}
-                          </span>
-                        )}
+                        {(() => {
+                          const eff = getEffectivePayout(listing);
+                          if (!eff.recipientId) return null;
+                          const masked = eff.recipientId.length > 10
+                            ? `...${eff.recipientId.slice(-6)}`
+                            : eff.recipientId;
+                          return (
+                            <span
+                              title={eff.source === 'group' ? `Inherited from group: ${eff.sourceLabel || ''}` : undefined}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                            >
+                              Increase: {masked}{eff.source === 'group' ? ' (group)' : ''}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </button>
                   ))}
@@ -1208,16 +1262,22 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             <div className="font-medium text-gray-700 dark:text-gray-300 truncate text-sm">
                               {getListingDisplayName(listing)}
                             </div>
-                            <span
-                              className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${(listing.payoutStatus || 'missing') === 'on_file'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : (listing.payoutStatus || 'missing') === 'pending'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-red-100 text-red-700'
-                                }`}
-                            >
-                              {payoutLabel(((listing.payoutStatus as any) || 'missing'))}
-                            </span>
+                            {(() => {
+                              const eff = getEffectivePayout(listing);
+                              return (
+                                <span
+                                  title={eff.source === 'group' ? `Inherited from group: ${eff.sourceLabel || ''}` : undefined}
+                                  className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${eff.status === 'on_file'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : eff.status === 'pending'
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-red-100 text-red-700'
+                                    }`}
+                                >
+                                  {payoutLabel(eff.status)}{eff.source === 'group' ? ' (group)' : ''}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             ID: {listing.id}
@@ -1237,11 +1297,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                                 {tag}
                               </span>
                             ))}
-                            {(listing as any).wiseRecipientId && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                                Increase: ...{(listing as any).wiseRecipientId.slice(-6)}
-                              </span>
-                            )}
+                            {(() => {
+                              const eff = getEffectivePayout(listing);
+                              if (!eff.recipientId) return null;
+                              const masked = eff.recipientId.length > 10
+                                ? `...${eff.recipientId.slice(-6)}`
+                                : eff.recipientId;
+                              return (
+                                <span
+                                  title={eff.source === 'group' ? `Inherited from group: ${eff.sourceLabel || ''}` : undefined}
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                                >
+                                  Increase: {masked}{eff.source === 'group' ? ' (group)' : ''}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </button>
                       ))}
@@ -1650,6 +1720,43 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             <p className="text-xs text-slate-600 dark:text-gray-400">Increase external account ID and payout tracking status.</p>
                           </div>
                         </div>
+
+                        {(() => {
+                          const selected = listings.find(l => l.id === selectedListingId);
+                          if (!selected) return null;
+                          const ownRecipient = (selected as any).wiseRecipientId as string | null | undefined;
+                          const group = selected.group;
+                          if (ownRecipient || !group?.wiseRecipientId) return null;
+                          const masked = group.wiseRecipientId.length > 10
+                            ? `...${group.wiseRecipientId.slice(-6)}`
+                            : group.wiseRecipientId;
+                          const statusLabel =
+                            group.wiseStatus === 'verified' ? 'Verified' :
+                            group.wiseStatus === 'pending' ? 'Requested' :
+                            group.wiseStatus === 'requires_action' ? 'Action required' :
+                            'Not collected';
+                          const statusClass =
+                            group.wiseStatus === 'verified' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                            group.wiseStatus === 'pending' || group.wiseStatus === 'requires_action' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                            'bg-red-100 text-red-700 border-red-200';
+                          return (
+                            <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-3 flex flex-col gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
+                                  Routed via group
+                                </span>
+                                <span className="text-sm font-medium text-purple-900 dark:text-purple-200">{group.name}</span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusClass}`}>
+                                  {statusLabel}
+                                </span>
+                                <span className="font-mono text-[11px] text-purple-700 dark:text-purple-300">Increase: {masked}</span>
+                              </div>
+                              <p className="text-xs text-purple-700 dark:text-purple-300">
+                                Payouts for this listing are sent to the group's recipient. The per-listing fields below are only used if the listing leaves this group or the group has no recipient.
+                              </p>
+                            </div>
+                          );
+                        })()}
 
 
                         {/* Increase External Account ID Input */}

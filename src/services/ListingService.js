@@ -297,7 +297,13 @@ class ListingService {
                     });
                     const groupMap = new Map(groups.map(g => [g.id, g.toJSON()]));
 
-                    // Attach group data to each listing
+                    // Attach group data to each listing.
+                    // wiseRecipientId/wiseStatus are surfaced so the listing
+                    // edit UI can show inheritance — payouts for a grouped
+                    // listing route through the group's recipient (see
+                    // resolveWiseRecipientId in routes/payouts.js), so the
+                    // listing's own per-row payout fields look "Not Collected"
+                    // even when the group is fully verified.
                     // Note: toJSON() already decrypts wiseRecipientId via the model getter
                     return listings.map(l => {
                         const listingJson = l.toJSON();
@@ -306,7 +312,9 @@ class ListingService {
                             listingJson.group = {
                                 id: group.id,
                                 name: group.name,
-                                tags: group.tags
+                                tags: group.tags,
+                                wiseRecipientId: group.wiseRecipientId || null,
+                                wiseStatus: group.wiseStatus || 'missing'
                             };
                         } else {
                             listingJson.group = null;
