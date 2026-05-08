@@ -269,6 +269,17 @@ function authorize(...allowedRoles) {
             return res.status(401).json({ error: 'Authentication required' });
         }
 
+        // System users (the legacy LL admin and any account with
+        // isSystemUser=true in the users table — ferdy, deven, etc.) carry
+        // role='system', which isn't in the editor/admin/viewer triad.
+        // They're trusted full-access accounts, so let them past every
+        // role gate. Other routes (reports, users, activity-logs) already
+        // recognize role==='system' as privileged; this keeps authorize()
+        // consistent with that convention.
+        if (req.user.isSystemUser) {
+            return next();
+        }
+
         if (!allowedRoles.includes(req.user.role)) {
             return res.status(403).json({
                 error: 'Access denied',
