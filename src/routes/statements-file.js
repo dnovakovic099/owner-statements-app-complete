@@ -3790,26 +3790,21 @@ router.get('/:id/view', async (req, res) => {
         }
 
         .statement-number-badge {
-            border: 1px solid #d4d4d8;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             letter-spacing: 0.3px;
             color: var(--luxury-navy);
-            background: #fafafa;
             white-space: nowrap;
             align-self: flex-start;
         }
 
         .statement-number-badge .badge-label {
-            display: block;
-            font-size: 8px;
+            font-size: 10px;
             font-weight: 500;
             color: var(--luxury-gray);
             text-transform: uppercase;
             letter-spacing: 0.6px;
-            margin-bottom: 1px;
+            margin-right: 6px;
         }
 
         .logo-placeholder {
