@@ -182,6 +182,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   // Default column order
   const defaultColumnOrder = [
     'select',
+    'id',
     'ownerName',
     'propertyName',
     'week',
@@ -208,7 +209,12 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
     try {
       const saved = localStorage.getItem(COLUMN_ORDER_KEY);
-      return saved ? JSON.parse(saved) : defaultColumnOrder;
+      if (!saved) return defaultColumnOrder;
+      const parsed: string[] = JSON.parse(saved);
+      // Append any new default columns missing from the saved order so users
+      // see newly-added columns without losing their custom ordering.
+      const missing = defaultColumnOrder.filter(c => !parsed.includes(c));
+      return missing.length ? [...parsed, ...missing] : parsed;
     } catch {
       return defaultColumnOrder;
     }
@@ -385,6 +391,22 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       ),
       enableSorting: false,
       enableHiding: false,
+    },
+    {
+      accessorKey: 'id',
+      size: 120,
+      header: ({ column }) => (
+        <button
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="flex items-center gap-1 font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mx-auto"
+        >
+          Statement ID
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        </button>
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-gray-600 dark:text-gray-400 block text-center">#{row.getValue('id')}</span>
+      ),
     },
     {
       accessorKey: 'ownerName',
@@ -857,6 +879,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   }
 
   const columnLabels: Record<string, string> = {
+    id: 'Statement ID',
     ownerName: 'Owner',
     propertyName: 'Property',
     week: 'Period',
