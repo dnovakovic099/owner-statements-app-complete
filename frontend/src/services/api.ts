@@ -528,6 +528,7 @@ export const listingsAPI = {
 
   updateListingConfig: async (id: number, config: {
     displayName?: string;
+    statementDisplayName?: string | null;
     isCohostOnAirbnb?: boolean;
     pmFeePercentage?: number;
     defaultPetFee?: number | null;
@@ -775,6 +776,7 @@ export const groupsAPI = {
 
   createGroup: async (data: {
     name: string;
+    statementDisplayName?: string | null;
     tags: string[];
     listingIds: number[];
     calculationType?: 'checkout' | 'calendar';
@@ -788,6 +790,7 @@ export const groupsAPI = {
     id: number,
     data: {
       name?: string;
+      statementDisplayName?: string | null;
       tags?: string[];
       calculationType?: 'checkout' | 'calendar';
       wiseRecipientId?: string | null;

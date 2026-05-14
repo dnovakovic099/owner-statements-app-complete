@@ -14,6 +14,12 @@ const ListingGroup = sequelize.define('ListingGroup', {
         unique: true,
         comment: 'Unique name for the group (e.g., "Smith Properties")'
     },
+    statementDisplayName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'statement_display_name',
+        comment: 'Label shown for this group in rendered statements. Falls back to name when null.'
+    },
     tags: {
         type: DataTypes.TEXT,
         allowNull: true,

@@ -12,7 +12,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../utils/logger');
 const EmailService = require('../services/EmailService');
-const { Statement, Listing, EmailLog, ScheduledEmail, ActivityLog } = require('../models');
+const { Statement, Listing, ListingGroup, EmailLog, ScheduledEmail, ActivityLog } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -60,7 +60,11 @@ router.post('/send/:statementId', async (req, res) => {
 
         // Get listing for tags, owner greeting and nickname
         let frequency = frequencyTag;
-        let listingNickname = null;
+        // emailPropertyLabel is what we'll show in the email body / subject.
+        // statementDisplayName wins (set on the listing/group specifically for
+        // owner-facing statements); the listing's nickname is a UI-side label
+        // and would otherwise clobber it.
+        let emailPropertyLabel = null;
         let ownerGreeting = null;
 
         // For multilisting/combined statements, propertyId is null but propertyIds contains the array
@@ -73,23 +77,37 @@ router.post('/send/:statementId', async (req, res) => {
                 if (!frequency) {
                     frequency = EmailService.getFrequencyFromTags(listing.tags);
                 }
-                // Get listing nickname for property name (only for single-listing statements)
+                // Single-listing statements: prefer the listing's statement label,
+                // then fall back to nickname (the legacy override).
                 if (statement.propertyId) {
-                    listingNickname = listing.nickname;
+                    emailPropertyLabel = listing.statementDisplayName || listing.nickname || null;
                 }
                 // Get owner greeting for email personalization (e.g., "Ellen", "Scott")
                 ownerGreeting = listing.ownerGreeting;
             }
         }
+        // Group statements: use the group's statement label (or name) so the email
+        // doesn't fall through to the joined per-listing names.
+        if (statement.groupId) {
+            try {
+                const grp = await ListingGroup.findByPk(statement.groupId);
+                if (grp) {
+                    emailPropertyLabel = grp.statementDisplayName || grp.name || emailPropertyLabel;
+                }
+            } catch (e) {
+                logger.warn('Failed to resolve group label for email', { statementId, groupId: statement.groupId, error: e.message });
+            }
+        }
         frequency = frequency || 'Monthly';
 
-        // Use owner greeting for email greeting, nickname for property name
+        // Use owner greeting for email greeting; override propertyName so the
+        // owner-facing email matches the statement header.
         const statementData = statement.toJSON();
         if (ownerGreeting) {
             statementData.ownerName = ownerGreeting;
         }
-        if (listingNickname) {
-            statementData.propertyName = listingNickname;
+        if (emailPropertyLabel) {
+            statementData.propertyName = emailPropertyLabel;
         }
 
         // Get calculation type from statement (checkout or calendar)
@@ -109,12 +127,11 @@ router.post('/send/:statementId', async (req, res) => {
                 const refreshed = await Statement.findByPk(id);
                 if (refreshed) {
                     const data = refreshed.toJSON();
-                    // Use owner greeting for email, nickname for property name
                     if (ownerGreeting) {
                         data.ownerName = ownerGreeting;
                     }
-                    if (listingNickname) {
-                        data.propertyName = listingNickname;
+                    if (emailPropertyLabel) {
+                        data.propertyName = emailPropertyLabel;
                     }
                     return data;
                 }
@@ -917,7 +934,7 @@ router.post('/schedule', async (req, res) => {
                 propertyId: statement.propertyId,
                 recipientEmail: listing.ownerEmail,
                 recipientName: listing.ownerGreeting || statement.ownerName,
-                propertyName: listing.nickname || statement.propertyName,
+                propertyName: listing.statementDisplayName || statement.propertyName || listing.nickname,
                 frequencyTag,
                 scheduledFor: scheduledDate,
                 status: 'pending'

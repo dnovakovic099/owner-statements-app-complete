@@ -312,6 +312,7 @@ class ListingService {
                             listingJson.group = {
                                 id: group.id,
                                 name: group.name,
+                                statementDisplayName: group.statementDisplayName || null,
                                 tags: group.tags,
                                 wiseRecipientId: group.wiseRecipientId || null,
                                 wiseStatus: group.wiseStatus || 'missing'
@@ -340,7 +341,7 @@ class ListingService {
     async getListingNames() {
         try {
             const listings = await Listing.findAll({
-                attributes: ['id', 'name', 'displayName', 'nickname', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'wiseRecipientId', 'wiseStatus', 'groupId']
+                attributes: ['id', 'name', 'displayName', 'nickname', 'statementDisplayName', 'internalNotes', 'ownerEmail', 'tags', 'payoutStatus', 'payoutNotes', 'wiseRecipientId', 'wiseStatus', 'groupId']
             });
 
             // Load groups that have Increase recipients for inheritance
@@ -495,6 +496,7 @@ class ListingService {
 
             const updates = {};
             if (config.displayName !== undefined) updates.displayName = config.displayName;
+            if (config.statementDisplayName !== undefined) updates.statementDisplayName = config.statementDisplayName;
             if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
             if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
             if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;

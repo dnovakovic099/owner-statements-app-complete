@@ -163,6 +163,7 @@ export interface Listing {
   name: string;
   displayName?: string | null;
   nickname?: string | null;
+  statementDisplayName?: string | null;
   street?: string;
   city?: string;
   state?: string;
@@ -215,6 +216,7 @@ export interface Listing {
 export interface ListingGroup {
   id: number;
   name: string;
+  statementDisplayName?: string | null;
   tags: string[];
   listingIds: number[];
   calculationType?: 'checkout' | 'calendar';

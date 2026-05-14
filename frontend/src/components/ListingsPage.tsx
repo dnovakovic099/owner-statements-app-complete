@@ -84,6 +84,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   // Form state for selected listing
   const [displayName, setDisplayName] = useState('');
+  const [statementDisplayName, setStatementDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
@@ -243,6 +244,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const handleSaveGroup = async (data: {
     id?: number;
     name: string;
+    statementDisplayName?: string | null;
     tags: string[];
     listingIds: number[];
     wiseRecipientId?: string | null;
@@ -252,6 +254,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         // Update existing group
         await groupsAPI.updateGroup(data.id, {
           name: data.name,
+          statementDisplayName: data.statementDisplayName,
           tags: data.tags,
           wiseRecipientId: data.wiseRecipientId,
         });
@@ -318,6 +321,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       const listing = listings.find(l => l.id === selectedListingId);
       if (listing) {
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
+        setStatementDisplayName(listing.statementDisplayName || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
@@ -421,6 +425,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
   const resetForm = () => {
     setDisplayName('');
+    setStatementDisplayName('');
     setIsCohostOnAirbnb(false);
     setAirbnbPassThroughTax(false);
     setDisregardTax(false);
@@ -451,6 +456,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
 
       const config = {
         displayName: displayName.trim() || undefined,
+        statementDisplayName: statementDisplayName.trim() || null,
         isCohostOnAirbnb,
         airbnbPassThroughTax,
         disregardTax,
@@ -1372,6 +1378,26 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                         This name will be used in dropdowns and the UI. The original name "{selectedListing.name}"
                         will be preserved for mapping purposes.
+                      </p>
+                    </div>
+
+                    {/* Statement Display Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Statement Display Name
+                      </label>
+                      <input
+                        type="text"
+                        value={statementDisplayName}
+                        onChange={(e) => setStatementDisplayName(e.target.value)}
+                        placeholder="Name shown on rendered statements (optional)"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        Used as the property label in the statement header (single-listing
+                        and multi-listing statements). For grouped statements, the group's
+                        own statement display name takes precedence. Leave blank to fall back
+                        to the listing's name.
                       </p>
                     </div>
 

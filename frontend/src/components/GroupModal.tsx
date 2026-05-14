@@ -21,6 +21,7 @@ interface GroupModalProps {
   onSave: (data: {
     id?: number;
     name: string;
+    statementDisplayName?: string | null;
     tags: string[];
     listingIds: number[];
     calculationType: 'checkout' | 'calendar';
@@ -39,6 +40,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
   allGroups,
 }) => {
   const [name, setName] = useState('');
+  const [statementDisplayName, setStatementDisplayName] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedListingIds, setSelectedListingIds] = useState<number[]>([]);
   const [calculationType, setCalculationType] = useState<'checkout' | 'calendar'>('checkout');
@@ -67,12 +69,14 @@ const GroupModal: React.FC<GroupModalProps> = ({
     if (isOpen) {
       if (group) {
         setName(group.name);
+        setStatementDisplayName(group.statementDisplayName || '');
         setSelectedTags(group.tags || []);
         setSelectedListingIds(group.listingIds || []);
         setCalculationType(group.calculationType || 'checkout');
         setWiseRecipientId(group.wiseRecipientId || '');
       } else {
         setName('');
+        setStatementDisplayName('');
         setSelectedTags([]);
         setSelectedListingIds([]);
         setCalculationType('checkout');
@@ -135,6 +139,7 @@ const GroupModal: React.FC<GroupModalProps> = ({
       await onSave({
         id: group?.id,
         name: name.trim(),
+        statementDisplayName: statementDisplayName.trim() || null,
         tags: selectedTags,
         listingIds: selectedListingIds,
         calculationType,
@@ -188,6 +193,24 @@ const GroupModal: React.FC<GroupModalProps> = ({
               {errors.name && (
                 <p className="text-xs text-red-600 mt-1">{errors.name}</p>
               )}
+            </div>
+
+            {/* Statement Display Name */}
+            <div>
+              <Label htmlFor="groupStatementDisplayName" className="text-sm font-medium text-gray-700">
+                Statement Display Name
+              </Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Label shown in the statement header and owner emails for this group.
+                Leave blank to use the group name.
+              </p>
+              <Input
+                id="groupStatementDisplayName"
+                value={statementDisplayName}
+                onChange={(e) => setStatementDisplayName(e.target.value)}
+                placeholder="e.g., Madeira Complex"
+                className="mt-1"
+              />
             </div>
 
             {/* Schedule Tags */}

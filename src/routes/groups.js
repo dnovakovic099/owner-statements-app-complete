@@ -36,7 +36,7 @@ router.get('/', async (req, res) => {
 // POST /api/groups - Create a new group
 router.post('/', async (req, res) => {
     try {
-        const { name, tags, listingIds, calculationType } = req.body;
+        const { name, statementDisplayName, tags, listingIds, calculationType } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Group name is required' });
@@ -49,6 +49,12 @@ router.post('/', async (req, res) => {
         }
 
         const group = await ListingGroupService.createGroup(name, tags, listingIds, calculationType);
+
+        // Set statementDisplayName separately if provided (createGroup doesn't take it
+        // to keep its positional signature stable).
+        if (statementDisplayName !== undefined) {
+            await ListingGroupService.updateGroup(group.id, { statementDisplayName });
+        }
 
         // Log activity
         await ActivityLog.log(req, 'CREATE_GROUP', 'listing_group', group.id, {
@@ -99,9 +105,9 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, tags, calculationType, wiseRecipientId, wiseStatus } = req.body;
+        const { name, statementDisplayName, tags, calculationType, wiseRecipientId, wiseStatus } = req.body;
 
-        if (name === undefined && tags === undefined && calculationType === undefined && wiseRecipientId === undefined && wiseStatus === undefined) {
+        if (name === undefined && statementDisplayName === undefined && tags === undefined && calculationType === undefined && wiseRecipientId === undefined && wiseStatus === undefined) {
             return res.status(400).json({ error: 'At least one field is required to update' });
         }
 
@@ -115,6 +121,7 @@ router.put('/:id', async (req, res) => {
 
         const updates = {};
         if (name !== undefined) updates.name = name;
+        if (statementDisplayName !== undefined) updates.statementDisplayName = statementDisplayName;
         if (tags !== undefined) updates.tags = tags;
         if (calculationType !== undefined) updates.calculationType = calculationType;
         if (wiseRecipientId !== undefined) {

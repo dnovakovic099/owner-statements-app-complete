@@ -571,14 +571,14 @@ async function buildRecipientPreview(statement) {
         const grp = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'ListingGroup'
             ? sourceEntity
             : await ListingGroup.findByPk(statement.groupId);
-        if (grp) propertyName = grp.name;
+        if (grp) propertyName = grp.statementDisplayName || grp.name;
     } else {
         const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
         if (listingId) {
             const l = sourceEntity && sourceEntity.constructor && sourceEntity.constructor.name === 'Listing'
                 ? sourceEntity
                 : await Listing.findByPk(listingId);
-            if (l) propertyName = l.nickname || l.displayName || l.name;
+            if (l) propertyName = l.statementDisplayName || l.nickname || l.displayName || l.name;
         }
     }
 

@@ -1108,7 +1108,10 @@ This is an auto-generated email. If you have any questions or need clarification
         const paidAtFull = paidAt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
         const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
-        const propertyName = statement.propertyNames || statement.propertyName || 'Property';
+        // Prefer the curated header label (statementDisplayName fallback chain)
+        // over the raw joined list of underlying listing names. propertyNames
+        // still holds the comma-joined full list as a detail-view fallback.
+        const propertyName = statement.propertyName || statement.propertyNames || 'Property';
         const html = payoutReceiptTemplate({
             statementId: statement.id,
             payoutStatus: 'paid',
@@ -1388,7 +1391,7 @@ This is an auto-generated email. If you have any questions or need clarification
             const startDate = (statement.weekStartDate || '').replace(/\//g, '-');
             const endDate = (statement.weekEndDate || '').replace(/\//g, '-');
             const statementPeriod = `${startDate} to ${endDate}`;
-            const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
+            const filename = `Statement #${statementId} - ${cleanPropertyName} - ${statementPeriod}.pdf`;
 
             logger.debug(`Generated PDF for statement ${statementId}: ${filename}`, { context: 'EmailService', action: 'generateStatementPdf' });
 

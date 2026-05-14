@@ -116,6 +116,7 @@ class FileDataService {
                     if (dbListing) {
                         listing.tags = dbListing.tags || [];
                         listing.displayName = dbListing.displayName;
+                        listing.statementDisplayName = dbListing.statementDisplayName || null;
                         listing.pmFeePercentage = dbListing.pmFeePercentage;
                         listing.isCohostOnAirbnb = Boolean(dbListing.isCohostOnAirbnb);
                         listing.cleaningFeePassThrough = Boolean(dbListing.cleaningFeePassThrough);
@@ -131,6 +132,7 @@ class FileDataService {
                         listing.wiseStatus = dbListing.wiseStatus || 'missing';
                     } else {
                         listing.tags = [];
+                        listing.statementDisplayName = null;
                         listing.pmFeePercentage = 15.00;
                         listing.isCohostOnAirbnb = false;
                         listing.cleaningFeePassThrough = false;
@@ -157,6 +159,7 @@ class FileDataService {
                         name: db.name || db.displayName || `Property ${db.id}`,
                         nickname: db.nickname || null,
                         displayName: db.displayName || null,
+                        statementDisplayName: db.statementDisplayName || null,
                         address: db.address || '',
                         country: '',
                         city: db.city || '',

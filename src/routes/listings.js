@@ -222,10 +222,14 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
+        const { displayName, statementDisplayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
+        if (statementDisplayName !== undefined) {
+            const trimmed = typeof statementDisplayName === 'string' ? statementDisplayName.trim() : '';
+            config.statementDisplayName = trimmed || null;
+        }
         if (isCohostOnAirbnb !== undefined) config.isCohostOnAirbnb = isCohostOnAirbnb;
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;

@@ -104,7 +104,7 @@ class StatementService {
      * Uses same logic as manual generation
      */
     async generateGroupStatement(options) {
-        const { groupId, groupName, listingIds, startDate, endDate, calculationType = 'checkout', prefetched } = options;
+        const { groupId, groupName, groupStatementDisplayName, listingIds, startDate, endDate, calculationType = 'checkout', prefetched } = options;
 
         logger.info(`Generating statement for group "${groupName}" (${listingIds.length} listings)`, { context: 'StatementService', action: 'generateGroupStatement', groupName, listingCount: listingIds.length });
         logger.info(`Period: ${startDate} to ${endDate}, Type: ${calculationType}`, { context: 'StatementService', startDate, endDate, calculationType });
@@ -233,8 +233,11 @@ class StatementService {
             // Build internal notes
             const internalNotes = StatementCalculationService.buildInternalNotes(targetListings);
 
-            // Create property names string
-            const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
+            // Create property names string. statementDisplayName lives on the DB row
+            // (listingInfoMap), not the file-data listing — prefer it when set.
+            const propertyNames = targetListings
+                .map(l => listingInfoMap[l.id]?.statementDisplayName || l.nickname || l.displayName || l.name)
+                .join(', ');
 
             // Get owners for owner info
             const owners = await FileDataService.getOwners();
@@ -247,7 +250,7 @@ class StatementService {
                 ownerName: owner.name,
                 propertyId: null,
                 propertyIds: parsedPropertyIds,
-                propertyName: groupName,
+                propertyName: groupStatementDisplayName || groupName,
                 propertyNames: propertyNames,
                 groupId,
                 groupName,
@@ -369,12 +372,15 @@ class StatementService {
                 throw new Error(`Listing ${listingId} not found`);
             }
 
-            const listingName = targetListing.nickname || targetListing.displayName || targetListing.name;
-
             // Get listing info with PM fees from database
             const dbListings = await ListingService.getListingsWithPmFees([parsedPropertyId]);
             const listingInfoMap = {};
             dbListings.forEach(l => { listingInfoMap[l.id] = l; });
+
+            // statementDisplayName lives on the DB row, not the file-data listing.
+            const dbListing = listingInfoMap[parsedPropertyId];
+            const listingName = (dbListing && dbListing.statementDisplayName)
+                || targetListing.nickname || targetListing.displayName || targetListing.name;
 
             // Merge file data
             if (listingInfoMap[parsedPropertyId]) {

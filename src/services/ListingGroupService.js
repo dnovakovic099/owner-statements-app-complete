@@ -90,7 +90,7 @@ class ListingGroupService {
             // Get all member listings
             const members = await this.Listing.findAll({
                 where: { groupId: id },
-                attributes: ['id', 'name', 'displayName', 'nickname', 'city', 'state', 'tags', 'ownerEmail', 'isActive'],
+                attributes: ['id', 'name', 'displayName', 'nickname', 'statementDisplayName', 'city', 'state', 'tags', 'ownerEmail', 'isActive'],
                 order: [['name', 'ASC']]
             });
 
@@ -212,6 +212,14 @@ class ListingGroupService {
             // Update calculationType if provided
             if (updates.calculationType !== undefined) {
                 updateData.calculationType = updates.calculationType || 'checkout';
+            }
+
+            // Update statementDisplayName if provided (empty string clears it)
+            if (updates.statementDisplayName !== undefined) {
+                const trimmed = typeof updates.statementDisplayName === 'string'
+                    ? updates.statementDisplayName.trim()
+                    : '';
+                updateData.statementDisplayName = trimmed || null;
             }
 
             // Update wiseRecipientId if provided

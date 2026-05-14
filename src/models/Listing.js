@@ -24,6 +24,12 @@ const Listing = sequelize.define('Listing', {
         type: DataTypes.STRING,
         allowNull: true
     },
+    statementDisplayName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'statement_display_name',
+        comment: 'Label shown for this property in rendered statements. Falls back to name when null.'
+    },
     street: {
         type: DataTypes.STRING,
         allowNull: true
