@@ -4,6 +4,7 @@ import {
   ColumnFiltersState,
   ColumnOrderState,
   ColumnSizingState,
+  FilterFn,
   RowSelectionState,
   SortingState,
   VisibilityState,
@@ -810,6 +811,24 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   ];
 
   // Filter statements by markers (client-side for current page)
+  // Custom global filter: matches statement.id when search looks like a number
+  // (e.g. "2069", "#2069", "Statement #2069"), otherwise substring-matches
+  // owner / property / property-names. Keeps the client-side filter aligned
+  // with what the server already accepts so results don't get wiped here.
+  const fuzzyGlobalFilter: FilterFn<Statement> = (row, _columnId, filterValue: string) => {
+    const search = String(filterValue || '').toLowerCase().trim();
+    if (!search) return true;
+    const stripped = search.replace(/^statement\s*/i, '').replace(/^#/, '').trim();
+    if (/^\d+$/.test(stripped) && String(row.original.id) === stripped) return true;
+    const haystacks = [
+      String(row.original.id),
+      (row.original as any).ownerName,
+      row.original.propertyName,
+      (row.original as any).propertyNames,
+    ].filter(Boolean).map(v => String(v).toLowerCase());
+    return haystacks.some(h => h.includes(search));
+  };
+
   const filteredStatements = React.useMemo(() => {
     if (markerFilter.length === 0) return statements;
 
@@ -843,7 +862,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
     enableRowSelection: true,
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
-    globalFilterFn: 'includesString',
+    globalFilterFn: fuzzyGlobalFilter,
     manualPagination: true, // Server-side pagination
     pageCount,
     state: {
