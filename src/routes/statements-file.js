@@ -147,10 +147,18 @@ router.get('/', async (req, res) => {
             });
         }
 
-        // Search filter - case-insensitive search across propertyName, groupName, ownerName
+        // Search filter — case-insensitive across propertyName/groupName/ownerName/propertyNames,
+        // plus numeric statement-id match. Accepted id forms: "2069", "#2069",
+        // "Statement #2069" (case-insensitive). Match is exact on the digits
+        // (substring on text fields), since users typing "2" probably mean to
+        // search text, not pull statement 2.
         if (search && search.trim()) {
-            const searchLower = search.toLowerCase().trim();
+            const raw = search.trim();
+            const searchLower = raw.toLowerCase();
+            const idMatch = raw.match(/(?:^|\D)(\d+)\s*$/);
+            const exactId = idMatch ? parseInt(idMatch[1], 10) : null;
             statements = statements.filter(s => {
+                if (exactId !== null && parseInt(s.id, 10) === exactId) return true;
                 const propertyName = (s.propertyName || '').toLowerCase();
                 const groupName = (s.groupName || '').toLowerCase();
                 const ownerName = (s.ownerName || '').toLowerCase();
@@ -1090,14 +1098,19 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const targetListingMap = new Map();
         targetListings.forEach(l => targetListingMap.set(parseInt(l.id), l));
 
-        // Create property names string for display
-        const propertyNames = targetListings.map(l => l.nickname || l.displayName || l.name).join(', ');
+        // Statement header label resolution. statementDisplayName (set on the
+        // listing/group) is the explicit "what to call this on the statement"
+        // override; fall through to nickname/displayName/name otherwise.
+        const labelFor = (l) => l.statementDisplayName || l.nickname || l.displayName || l.name;
+        const propertyNames = targetListings.map(labelFor).join(', ');
         const shortPropertyNames = targetListings.length <= 3
             ? propertyNames
-            : `${targetListings.slice(0, 2).map(l => l.nickname || l.displayName || l.name).join(', ')} +${targetListings.length - 2} more`;
+            : `${targetListings.slice(0, 2).map(labelFor).join(', ')} +${targetListings.length - 2} more`;
 
-        // Use group name for display if this is a group-based statement
-        const displayName = group ? group.name : shortPropertyNames;
+        // For group statements, prefer the group's own statement label.
+        const displayName = group
+            ? (group.statementDisplayName || group.name)
+            : shortPropertyNames;
 
         // Create statement object
         const statement = {
@@ -1898,7 +1911,7 @@ router.post('/generate', async (req, res) => {
             ownerId: owner.id === 'default' ? 1 : parseInt(owner.id),
             ownerName: owner.name,
             propertyId: propertyId ? parseInt(propertyId) : null,
-            propertyName: propertyId ? (targetListings[0].nickname || targetListings[0].displayName || targetListings[0].name) : 'All Properties',
+            propertyName: propertyId ? (targetListings[0].statementDisplayName || targetListings[0].nickname || targetListings[0].displayName || targetListings[0].name) : 'All Properties',
             weekStartDate: startDate,
             weekEndDate: endDate,
             calculationType,
@@ -3714,7 +3727,7 @@ router.get('/:id/view', async (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${statement.propertyName || `Statement ${id}`} - Luxury Lodging</title>
+    <title>Statement #${statement.id} - ${statement.propertyName || 'Luxury Lodging'} - Luxury Lodging</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -3775,7 +3788,30 @@ router.get('/:id/view', async (req, res) => {
             color: var(--luxury-gray);
             font-weight: 500;
         }
-        
+
+        .statement-number-badge {
+            border: 1px solid #d4d4d8;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            color: var(--luxury-navy);
+            background: #fafafa;
+            white-space: nowrap;
+            align-self: flex-start;
+        }
+
+        .statement-number-badge .badge-label {
+            display: block;
+            font-size: 8px;
+            font-weight: 500;
+            color: var(--luxury-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 1px;
+        }
+
         .logo-placeholder {
             width: 80px;
             height: 80px;
@@ -5255,6 +5291,9 @@ router.get('/:id/view', async (req, res) => {
                         <span>support@luxurylodgingpm.com | +1 (813) 594-8882</span>
     </div>
             </div>
+                <div class="statement-number-badge">
+                    <span class="badge-label">Statement</span>#${statement.id}
+                </div>
     </div>
 
             <div class="statement-details">
@@ -6782,7 +6821,7 @@ router.get('/:id/download', async (req, res) => {
         const endDate = statement.weekEndDate?.replace(/\//g, '-') || 'unknown';
         const statementPeriod = `${startDate} to ${endDate}`;
 
-        const filename = `${cleanPropertyName} - ${statementPeriod}.pdf`;
+        const filename = `Statement #${id} - ${cleanPropertyName} - ${statementPeriod}.pdf`;
 
         // Log download activity with proper details
         const propertyDisplay = statement.propertyName || statement.propertyNames || `Statement #${id}`;
@@ -6929,6 +6968,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             const statement = await StatementService.generateGroupStatement({
                                 groupId: group.id,
                                 groupName: group.name,
+                                groupStatementDisplayName: group.statementDisplayName || null,
                                 listingIds: memberIds,
                                 startDate,
                                 endDate,
@@ -7068,7 +7108,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
             // Process batch in parallel
             const batchResults = await Promise.all(batch.map(async (property) => {
                 try {
-                    const propertyName = property.nickname || property.displayName || property.name || 'Unknown';
+                    const propertyName = property.statementDisplayName || property.nickname || property.displayName || property.name || 'Unknown';
 
                     // Filter reservations for this property from pre-grouped map (O(1) lookup)
                     // Include 'blocked' for manual calendar blocks; exclude from overlap (those are booking-only signals)
@@ -7333,7 +7373,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             ownerId: 1,
                             ownerName: 'Default Owner',
                             propertyId: property.id,
-                            propertyName: property.nickname || property.displayName || property.name,
+                            propertyName: property.statementDisplayName || property.nickname || property.displayName || property.name,
                             weekStartDate: startDate,
                             weekEndDate: endDate,
                             calculationType,

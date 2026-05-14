@@ -991,7 +991,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search..."
+                placeholder="Search property, owner, or #id…"
                 value={globalFilter ?? ''}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9 w-full sm:w-56 h-9 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 dark:text-white focus:border-blue-300 focus:ring-blue-200"
