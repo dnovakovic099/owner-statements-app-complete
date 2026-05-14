@@ -211,10 +211,30 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       const saved = localStorage.getItem(COLUMN_ORDER_KEY);
       if (!saved) return defaultColumnOrder;
       const parsed: string[] = JSON.parse(saved);
-      // Append any new default columns missing from the saved order so users
-      // see newly-added columns without losing their custom ordering.
+
+      // Insert any new default columns missing from the saved order at their
+      // default-order position, so users see newly-added columns where they're
+      // expected without losing their custom ordering.
       const missing = defaultColumnOrder.filter(c => !parsed.includes(c));
-      return missing.length ? [...parsed, ...missing] : parsed;
+      let result = [...parsed];
+      for (const col of missing) {
+        const idx = defaultColumnOrder.indexOf(col);
+        result.splice(Math.min(idx, result.length), 0, col);
+      }
+
+      // Corrective one-shot: an earlier migration appended new columns to the
+      // very end of the order, which placed 'id' past 'actions' (off-screen).
+      // If we still see 'id' sitting after 'actions', move it to its default
+      // position. Won't trigger for users who intentionally moved it.
+      const idIdx = result.indexOf('id');
+      const actionsIdx = result.indexOf('actions');
+      if (idIdx !== -1 && actionsIdx !== -1 && idIdx > actionsIdx) {
+        result = result.filter(c => c !== 'id');
+        const targetIdx = Math.min(defaultColumnOrder.indexOf('id'), result.length);
+        result.splice(targetIdx, 0, 'id');
+      }
+
+      return result;
     } catch {
       return defaultColumnOrder;
     }
