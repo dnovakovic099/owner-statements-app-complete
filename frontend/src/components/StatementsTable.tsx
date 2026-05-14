@@ -176,7 +176,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   userRole,
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
-  const COLUMN_ORDER_KEY = 'statements-table-column-order';
+  const COLUMN_ORDER_KEY = 'statements-table-column-order-v2';
   const COLUMN_SIZING_KEY = 'statements-table-column-sizing';
 
   // Default column order
@@ -213,27 +213,15 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       const parsed: string[] = JSON.parse(saved);
 
       // Insert any new default columns missing from the saved order at their
-      // default-order position, so users see newly-added columns where they're
-      // expected without losing their custom ordering.
+      // default-order position, so future column additions land where they're
+      // expected without losing the user's customizations.
       const missing = defaultColumnOrder.filter(c => !parsed.includes(c));
-      let result = [...parsed];
+      if (!missing.length) return parsed;
+      const result = [...parsed];
       for (const col of missing) {
         const idx = defaultColumnOrder.indexOf(col);
         result.splice(Math.min(idx, result.length), 0, col);
       }
-
-      // Corrective one-shot: an earlier migration appended new columns to the
-      // very end of the order, which placed 'id' past 'actions' (off-screen).
-      // If we still see 'id' sitting after 'actions', move it to its default
-      // position. Won't trigger for users who intentionally moved it.
-      const idIdx = result.indexOf('id');
-      const actionsIdx = result.indexOf('actions');
-      if (idIdx !== -1 && actionsIdx !== -1 && idIdx > actionsIdx) {
-        result = result.filter(c => c !== 'id');
-        const targetIdx = Math.min(defaultColumnOrder.indexOf('id'), result.length);
-        result.splice(targetIdx, 0, 'id');
-      }
-
       return result;
     } catch {
       return defaultColumnOrder;
