@@ -1,8 +1,8 @@
 /**
  * Payout receipt rendered as HTML. Used both as an in-browser receipt and as
- * the body of the payout-sent email. Designed as an editorial financial
- * document — Gmail and most email clients ignore flexbox/grid, so the layout
- * is built with `<table>` rows and inline styles to guarantee alignment.
+ * the body of the payout-sent email. Designed as a clean, classic receipt —
+ * Gmail and most email clients ignore flexbox/grid, so the layout is built
+ * with `<table>` rows and inline styles to guarantee alignment.
  *
  * @param {object} params
  * @param {number} params.statementId
@@ -40,27 +40,24 @@ module.exports = function payoutReceipt({
   paidAtFull,
 }) {
   const isCollected = payoutStatus === 'collected';
-  const statusLabel = isCollected ? 'Collected' : 'Sent';
-  const heroLabel = isCollected ? 'Collected from owner' : 'Payout to owner';
+  const statusLabel = isCollected ? 'Collected' : 'Paid';
+  const heroLabel = isCollected ? 'Amount Collected' : 'Amount Paid';
 
-  // Tabular currency: $17,460.73
   const fmt = (n) => `$${Number(n || 0).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
-  // Escape everything that originates from the statement record. ownerName,
-  // propertyName, and transferId are settable by app users (Hostify import,
-  // manual edits, /mark-paid request body), and email clients including Gmail
+  // Escape every user-controlled string. ownerName, propertyName, and
+  // transferId are settable by app users; email clients including Gmail will
   // execute event-handler attributes on rendered HTML (e.g. img onerror).
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-  // Multi-listing group statements (legacy ones without statementDisplayName)
-  // arrive here as 'Listing A, Listing B, Listing C, ...'. Show the first
-  // listing followed by a muted '+ N more' so the document doesn't lose its
-  // hierarchy to a 12-line property field.
+  // Legacy group statements arrive as 'Listing A, Listing B, Listing C, ...'.
+  // Show only the first listing followed by '+N more' so the document keeps
+  // its hierarchy instead of being dominated by a wall of unit names.
   const condenseProperty = (raw) => {
     const parts = String(raw || '').split(',').map(p => p.trim()).filter(Boolean);
     if (parts.length <= 1) return { primary: esc(raw || 'Property'), extra: 0 };
@@ -68,8 +65,8 @@ module.exports = function payoutReceipt({
     return { primary: esc(parts[0]), extra: parts.length - 1 };
   };
   const prop = condenseProperty(propertyName);
-  const propertyHeadline = prop.extra
-    ? `${prop.primary}<span style="color:#9c917f;font-style:italic;font-family:'EB Garamond','Cormorant Garamond',Georgia,serif;font-weight:400;"> &nbsp;+ ${prop.extra} more</span>`
+  const propertyHtml = prop.extra
+    ? `${prop.primary} <span style="color:#9ca3af;font-weight:400;">+ ${prop.extra} more</span>`
     : prop.primary;
 
   const escOwnerName = esc(ownerName);
@@ -79,31 +76,26 @@ module.exports = function payoutReceipt({
   const escPaidAtDate = esc(paidAtDate);
   const escPaidAtFull = esc(paidAtFull);
 
-  // Shared inline styles
-  const fontSans = `font-family:'IBM Plex Sans','Helvetica Neue',Helvetica,Arial,sans-serif`;
-  const fontSerif = `font-family:'Cormorant Garamond','EB Garamond',Georgia,'Times New Roman',serif`;
-  const fontMono = `font-family:'IBM Plex Mono',Menlo,Consolas,monospace`;
-  const ink = '#1a1614';
-  const muted = '#857c6e';
-  const faint = '#9c917f';
-  const hairline = '#e6dfd1';
-  const paper = '#f4f0e7';
-  const card = '#fdfbf6';
-  const accent = isCollected ? '#7a3a2a' : '#2c5f3f';
+  const fontStack = `font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif`;
+  const fontMono = `font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace`;
+  const ink = '#111827';
+  const muted = '#6b7280';
+  const faint = '#9ca3af';
+  const hairline = '#e5e7eb';
+  const statusColor = isCollected ? '#b45309' : '#047857';
 
-  // One ledger row: small-caps label on the left, tabular figures on the right.
-  const ledgerRow = (label, value, opts = {}) => `
+  // A row in the breakdown table: label left, value right, hairline below.
+  const row = (label, value, opts = {}) => `
         <tr>
-          <td style="padding:14px 0;border-bottom:1px solid ${hairline};${fontSans};font-size:11px;font-weight:500;color:${muted};text-transform:uppercase;letter-spacing:0.12em;">${label}</td>
-          <td style="padding:14px 0;border-bottom:1px solid ${hairline};${fontSans};font-size:${opts.size || '15px'};font-weight:${opts.weight || 500};color:${opts.color || ink};text-align:right;font-variant-numeric:tabular-nums;letter-spacing:0.01em;">${value}</td>
+          <td style="padding:14px 0;border-bottom:1px solid ${hairline};${fontStack};font-size:14px;color:${muted};">${label}</td>
+          <td style="padding:14px 0;border-bottom:1px solid ${hairline};${fontStack};font-size:14px;color:${opts.color || ink};font-weight:${opts.weight || 400};text-align:right;font-variant-numeric:tabular-nums;">${value}</td>
         </tr>`;
 
-  // Compact two-column block (Method/Transfer ID/Fee/Date) — used inside the
-  // muted transfer card.
-  const detailRow = (label, value, mono = false) => `
+  // A row in the transfer details table (no hairline; tighter).
+  const meta = (label, value, mono = false) => `
         <tr>
-          <td style="padding:9px 0;${fontSans};font-size:11px;font-weight:500;color:${faint};text-transform:uppercase;letter-spacing:0.1em;width:40%;vertical-align:top;">${label}</td>
-          <td style="padding:9px 0;${mono ? fontMono : fontSans};font-size:12px;font-weight:500;color:${ink};text-align:right;word-break:break-all;">${value}</td>
+          <td style="padding:8px 0;${fontStack};font-size:13px;color:${muted};vertical-align:top;width:40%;">${label}</td>
+          <td style="padding:8px 0;${mono ? fontMono : fontStack};font-size:13px;color:${ink};text-align:right;word-break:break-all;">${value}</td>
         </tr>`;
 
   return `<!DOCTYPE html>
@@ -114,125 +106,113 @@ module.exports = function payoutReceipt({
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>Payout Receipt &middot; Statement ${statementId}</title>
-<!-- Web fonts: Apple Mail, Gmail, and Yahoo load these; Outlook falls back to Georgia/Helvetica -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-<body style="margin:0;padding:0;background:${paper};${fontSans};color:${ink};-webkit-text-size-adjust:100%;">
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${paper};padding:40px 16px;">
+<body style="margin:0;padding:0;background:#f5f5f5;${fontStack};color:${ink};-webkit-text-size-adjust:100%;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f5f5f5;padding:32px 16px;">
   <tr><td align="center">
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="620" style="max-width:620px;width:100%;background:${card};border:1px solid ${hairline};">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid ${hairline};">
 
-      <!-- Masthead -->
+      <!-- Header -->
       <tr>
-        <td style="padding:28px 40px 18px;">
+        <td style="padding:32px 36px 20px;border-bottom:1px solid ${hairline};">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
             <tr>
-              <td style="vertical-align:middle;">
-                <div style="${fontSerif};font-size:18px;font-weight:600;color:${ink};letter-spacing:0.04em;line-height:1;">Luxury Lodging</div>
-                <div style="${fontSans};font-size:10px;font-weight:500;color:${faint};text-transform:uppercase;letter-spacing:0.22em;margin-top:6px;">Property Management</div>
+              <td style="vertical-align:top;">
+                <div style="${fontStack};font-size:15px;font-weight:600;color:${ink};letter-spacing:-0.005em;">Luxury Lodging</div>
+                <div style="${fontStack};font-size:12px;color:${muted};margin-top:2px;">Property Management</div>
               </td>
-              <td style="vertical-align:middle;text-align:right;">
-                <div style="${fontSans};font-size:10px;font-weight:500;color:${faint};text-transform:uppercase;letter-spacing:0.18em;">Statement</div>
-                <div style="${fontMono};font-size:14px;font-weight:500;color:${ink};margin-top:4px;letter-spacing:0.05em;">№ ${statementId}</div>
+              <td style="vertical-align:top;text-align:right;">
+                <div style="${fontStack};font-size:12px;color:${muted};">Statement</div>
+                <div style="${fontStack};font-size:14px;font-weight:500;color:${ink};margin-top:2px;">#${statementId}</div>
               </td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Hairline under masthead -->
-      <tr><td style="padding:0 40px;"><div style="border-top:1px solid ${hairline};line-height:0;font-size:0;">&nbsp;</div></td></tr>
-
-      <!-- Hero: payout amount -->
+      <!-- Hero amount -->
       <tr>
-        <td style="padding:40px 40px 32px;text-align:center;">
-          <div style="${fontSans};font-size:10px;font-weight:500;color:${muted};text-transform:uppercase;letter-spacing:0.28em;">${heroLabel}</div>
-          <div style="${fontSerif};font-size:54px;font-weight:500;color:${ink};line-height:1.05;margin-top:14px;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;">${fmt(payoutAmount)}</div>
-          <div style="${fontSerif};font-style:italic;font-size:15px;color:${muted};margin-top:14px;line-height:1.4;">
-            ${statusLabel} on <span style="color:${accent};font-style:normal;font-weight:500;">${escPaidAtDate}</span>
+        <td style="padding:36px 36px 28px;text-align:center;border-bottom:1px solid ${hairline};">
+          <div style="${fontStack};font-size:12px;color:${muted};text-transform:uppercase;letter-spacing:0.06em;font-weight:500;">${heroLabel}</div>
+          <div style="${fontStack};font-size:36px;font-weight:600;color:${ink};margin-top:10px;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;line-height:1.1;">${fmt(payoutAmount)}</div>
+          <div style="${fontStack};font-size:13px;color:${muted};margin-top:10px;">
+            <span style="color:${statusColor};font-weight:500;">${statusLabel}</span> on ${escPaidAtDate}
           </div>
         </td>
       </tr>
 
-      <!-- Property + period card -->
+      <!-- Property / Owner / Period -->
       <tr>
-        <td style="padding:0 40px;">
-          <div style="background:${paper};border:1px solid ${hairline};padding:20px 22px;">
-            <div style="${fontSans};font-size:10px;font-weight:500;color:${muted};text-transform:uppercase;letter-spacing:0.22em;">Property</div>
-            <div style="${fontSerif};font-size:22px;font-weight:500;color:${ink};line-height:1.25;margin-top:6px;letter-spacing:0.005em;">${propertyHeadline}</div>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:18px;">
-              <tr>
-                <td style="vertical-align:top;width:50%;padding-right:12px;">
-                  <div style="${fontSans};font-size:10px;font-weight:500;color:${faint};text-transform:uppercase;letter-spacing:0.18em;">Owner</div>
-                  <div style="${fontSans};font-size:13px;color:${ink};margin-top:5px;font-weight:500;">${escOwnerName}</div>
-                </td>
-                <td style="vertical-align:top;width:50%;padding-left:12px;border-left:1px solid ${hairline};">
-                  <div style="${fontSans};font-size:10px;font-weight:500;color:${faint};text-transform:uppercase;letter-spacing:0.18em;">Period</div>
-                  <div style="${fontSans};font-size:13px;color:${ink};margin-top:5px;font-weight:500;">${escPeriodStart} <span style="color:${faint};">—</span> ${escPeriodEnd}</div>
-                </td>
-              </tr>
-            </table>
-          </div>
-        </td>
-      </tr>
-
-      <!-- Ledger -->
-      <tr>
-        <td style="padding:36px 40px 8px;">
-          <div style="${fontSans};font-size:10px;font-weight:500;color:${muted};text-transform:uppercase;letter-spacing:0.28em;margin-bottom:8px;">Breakdown</div>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;border-top:1px solid ${hairline};">
-            <tbody>
-              ${ledgerRow('Revenue', fmt(totalRevenue))}
-              ${ledgerRow('PM commission', `&minus;${fmt(pmCommission)}`)}
-              ${ledgerRow('Expenses', `&minus;${fmt(totalExpenses)}`)}
-            </tbody>
-          </table>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;margin-top:6px;border-top:2px solid ${ink};">
-            <tbody>
-              <tr>
-                <td style="padding:18px 0 4px;${fontSans};font-size:11px;font-weight:600;color:${ink};text-transform:uppercase;letter-spacing:0.16em;">Owner payout</td>
-                <td style="padding:18px 0 4px;${fontSerif};font-size:22px;font-weight:600;color:${accent};text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-0.005em;">${fmt(payoutAmount)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </td>
-      </tr>
-
-      <!-- Transfer card -->
-      <tr>
-        <td style="padding:28px 40px 4px;">
-          <div style="${fontSans};font-size:10px;font-weight:500;color:${muted};text-transform:uppercase;letter-spacing:0.28em;margin-bottom:10px;">Transfer</div>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${paper};border:1px solid ${hairline};">
-            <tr><td style="padding:14px 22px;">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                <tbody>
-                  ${detailRow('Method', 'Increase &middot; ACH')}
-                  ${detailRow('Transfer ID', escTransferId || '&mdash;', true)}
-                  ${detailRow('Fee', fmt(wiseFee))}
-                  ${detailRow('Sent', escPaidAtFull)}
+        <td style="padding:24px 36px;border-bottom:1px solid ${hairline};">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+            <tr>
+              <td style="vertical-align:top;padding-bottom:14px;">
+                <div style="${fontStack};font-size:12px;color:${muted};">Property</div>
+                <div style="${fontStack};font-size:14px;font-weight:500;color:${ink};margin-top:3px;line-height:1.4;">${propertyHtml}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align:top;padding-top:12px;border-top:1px solid ${hairline};">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                   <tr>
-                    <td style="padding:14px 0 0;border-top:1px solid ${hairline};${fontSans};font-size:11px;font-weight:600;color:${ink};text-transform:uppercase;letter-spacing:0.14em;">Total transferred</td>
-                    <td style="padding:14px 0 0;border-top:1px solid ${hairline};${fontSans};font-size:14px;font-weight:600;color:${ink};text-align:right;font-variant-numeric:tabular-nums;">${fmt(totalTransferAmount)}</td>
+                    <td style="vertical-align:top;width:50%;padding-right:10px;">
+                      <div style="${fontStack};font-size:12px;color:${muted};">Owner</div>
+                      <div style="${fontStack};font-size:14px;color:${ink};margin-top:3px;">${escOwnerName}</div>
+                    </td>
+                    <td style="vertical-align:top;width:50%;padding-left:10px;">
+                      <div style="${fontStack};font-size:12px;color:${muted};">Statement Period</div>
+                      <div style="${fontStack};font-size:14px;color:${ink};margin-top:3px;">${escPeriodStart} – ${escPeriodEnd}</div>
+                    </td>
                   </tr>
-                </tbody>
-              </table>
-            </td></tr>
+                </table>
+              </td>
+            </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Colophon -->
+      <!-- Breakdown -->
       <tr>
-        <td style="padding:32px 40px 36px;text-align:center;">
-          <div style="border-top:1px solid ${hairline};padding-top:22px;">
-            <div style="${fontSerif};font-style:italic;font-size:13px;color:${muted};line-height:1.5;">
-              On record &middot; <span style="color:${ink};">Luxury Lodging Property Management</span>
-            </div>
-            <div style="${fontSans};font-size:10px;color:${faint};margin-top:8px;letter-spacing:0.04em;">
-              This receipt is an automated record of an ACH transfer. Please retain for your files.
-            </div>
+        <td style="padding:24px 36px 8px;">
+          <div style="${fontStack};font-size:12px;color:${muted};text-transform:uppercase;letter-spacing:0.06em;font-weight:500;margin-bottom:6px;">Breakdown</div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;">
+            <tbody>
+              ${row('Revenue', fmt(totalRevenue))}
+              ${row('PM Commission', `&minus;${fmt(pmCommission)}`)}
+              ${row('Expenses', `&minus;${fmt(totalExpenses)}`)}
+              <tr>
+                <td style="padding:18px 0 0;${fontStack};font-size:14px;color:${ink};font-weight:600;">Owner Payout</td>
+                <td style="padding:18px 0 0;${fontStack};font-size:16px;color:${ink};font-weight:600;text-align:right;font-variant-numeric:tabular-nums;">${fmt(payoutAmount)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Transfer details -->
+      <tr>
+        <td style="padding:28px 36px 24px;border-top:1px solid ${hairline};margin-top:16px;">
+          <div style="${fontStack};font-size:12px;color:${muted};text-transform:uppercase;letter-spacing:0.06em;font-weight:500;margin-bottom:8px;">Transfer Details</div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:collapse;">
+            <tbody>
+              ${meta('Method', 'Increase &middot; ACH')}
+              ${meta('Transfer ID', escTransferId || '&mdash;', true)}
+              ${meta('Fee', fmt(wiseFee))}
+              ${meta('Sent', escPaidAtFull)}
+              <tr>
+                <td style="padding:14px 0 0;border-top:1px solid ${hairline};${fontStack};font-size:13px;color:${ink};font-weight:600;">Total Transferred</td>
+                <td style="padding:14px 0 0;border-top:1px solid ${hairline};${fontStack};font-size:14px;color:${ink};font-weight:600;text-align:right;font-variant-numeric:tabular-nums;">${fmt(totalTransferAmount)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="padding:18px 36px 22px;text-align:center;background:#fafafa;border-top:1px solid ${hairline};">
+          <div style="${fontStack};font-size:11px;color:${faint};line-height:1.5;">
+            Automated receipt &middot; Luxury Lodging Property Management
           </div>
         </td>
       </tr>
