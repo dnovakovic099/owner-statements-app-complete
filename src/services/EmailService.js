@@ -1112,6 +1112,16 @@ This is an auto-generated email. If you have any questions or need clarification
         // over the raw joined list of underlying listing names. propertyNames
         // still holds the comma-joined full list as a detail-view fallback.
         const propertyName = statement.propertyName || statement.propertyNames || 'Property';
+
+        // Legacy group statements stored propertyName as a comma-joined list
+        // of every underlying listing, which makes the subject line unreadable
+        // in Gmail. Collapse to '<first> +N more' once it gets past 3 parts.
+        const subjectProperty = (() => {
+            const parts = String(propertyName).split(',').map(p => p.trim()).filter(Boolean);
+            if (parts.length <= 1) return propertyName;
+            if (parts.length <= 3) return parts.join(', ');
+            return `${parts[0]} +${parts.length - 1} more`;
+        })();
         const html = payoutReceiptTemplate({
             statementId: statement.id,
             payoutStatus: 'paid',
@@ -1130,7 +1140,7 @@ This is an auto-generated email. If you have any questions or need clarification
             paidAtFull,
         });
 
-        const subject = `Payout sent — $${this.formatCurrency(payoutAmount)} for ${propertyName}`;
+        const subject = `Payout sent · $${this.formatCurrency(payoutAmount)} · ${subjectProperty} · Statement #${statement.id}`;
         const mailOptions = {
             from: `"Luxury Lodging" <${process.env.FROM_EMAIL || 'statements@luxurylodgingpm.com'}>`,
             to: recipientEmail,
