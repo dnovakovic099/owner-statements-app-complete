@@ -1803,6 +1803,30 @@ class HostifyService {
             if (paginationTruncated) {
                 console.warn(`[FINANCE-BULK] WARNING: Pagination capped at ${BULK_MAX_PAGES} pages (${allReservations.length} matches) — falling back to per-listing fetch`);
                 allReservations = await this.getReservationsForListings(expandedListingIds, fromDate, toDate, dateType);
+            } else {
+                // Hostify's unfiltered /reservations endpoint excludes service_pms=0 (offboarded)
+                // listings, so they don't appear in the bulk pool. For any baseListingId with 0
+                // matches, recheck via getReservationsForListings — its per-listing path retries
+                // with a filters-array request that bypasses Hostify's offboarded exclusion.
+                const matchedBaseIds = new Set();
+                allReservations.forEach(r => {
+                    const pid = parseInt(r.propertyId);
+                    if (baseIdSet.has(String(pid))) matchedBaseIds.add(pid);
+                    if (childToParentMap.has(pid)) matchedBaseIds.add(childToParentMap.get(pid));
+                });
+                const unmatchedBaseIds = baseListingIds.filter(id => !matchedBaseIds.has(parseInt(id)));
+                if (unmatchedBaseIds.length > 0) {
+                    const offboardedChecks = await Promise.all(
+                        unmatchedBaseIds.map(async id => ({ id, isOffboarded: await this.isListingOffboarded(id) }))
+                    );
+                    const offboardedIds = offboardedChecks.filter(c => c.isOffboarded).map(c => c.id);
+                    if (offboardedIds.length > 0) {
+                        console.log(`[FINANCE-OFFBOARDED] ${offboardedIds.length} offboarded listing(s) had 0 matches via bulk path; refetching per-listing: ${offboardedIds.join(', ')}`);
+                        const offboardedReservations = await this.getReservationsForListings(offboardedIds, fromDate, toDate, dateType);
+                        allReservations = allReservations.concat(offboardedReservations);
+                        console.log(`[FINANCE-OFFBOARDED] Added ${offboardedReservations.length} reservation(s) for offboarded listing(s)`);
+                    }
+                }
             }
         } else {
             // For larger listing counts, use per-listing fetch (API does server-side filtering)

@@ -6880,6 +6880,36 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const listings = await FileDataService.getListings();
         logger.debug('Total listings from database', { context: 'StatementsFile', count: listings.length });
 
+        // STEP 2.5: Gap-fill offboarded listings. Hostify's unfiltered /reservations
+        // endpoint silently excludes service_pms=0 listings, so they're missing from the
+        // bulk pool. Fetch them per-listing — that path retries with a filter-array request
+        // which bypasses Hostify's offboarded exclusion.
+        const offboardedListings = listings.filter(l => l.isOffboarded);
+        if (offboardedListings.length > 0) {
+            const reservationListingIds = new Set(allReservations.map(r => parseInt(r.propertyId)));
+            const missingOffboarded = offboardedListings.filter(l => !reservationListingIds.has(parseInt(l.id)));
+            if (missingOffboarded.length > 0) {
+                logger.info('Gap-filling reservations for offboarded listings', { context: 'StatementsFile', count: missingOffboarded.length, listingIds: missingOffboarded.map(l => l.id) });
+                try {
+                    const { fromDate: bulkFrom, toDate: bulkTo } = bulkData.dateRange;
+                    const offboardedReservations = await hostifyService.getReservationsForListings(
+                        missingOffboarded.map(l => parseInt(l.id)),
+                        bulkFrom,
+                        bulkTo,
+                        'checkIn'
+                    );
+                    if (offboardedReservations.length > 0) {
+                        allReservations.push(...offboardedReservations);
+                        logger.info('Added offboarded reservations to bulk pool', { context: 'StatementsFile', added: offboardedReservations.length });
+                    } else {
+                        logger.info('No offboarded reservations found in period', { context: 'StatementsFile' });
+                    }
+                } catch (gapFillError) {
+                    logger.logError(gapFillError, { context: 'StatementsFile', action: 'gapFillOffboardedReservations' });
+                }
+            }
+        }
+
         // STEP 3: Fetch expenses
         logger.debug('Fetching expenses', { context: 'StatementsFile', step: 3 });
         const allExpenses = await FileDataService.getExpenses(startDate, endDate, null);
