@@ -516,26 +516,30 @@ class HostifyService {
                 }
             }
 
-            // Offboarded-listing fallback: Hostify's /reservations list endpoint
-            // (both query-param and filters-array forms) returns incomplete or empty
-            // results for service_pms=0 listings — some reservations are detached
-            // from the listing index even though they still carry listing_id. The
-            // /calendar endpoint, however, exposes reservation_id per booked day
-            // and works for offboarded listings, so we use it to discover IDs and
-            // then fetch each reservation by ID.
-            if (allReservations.length === 0) {
-                const offboarded = await this.isListingOffboarded(listingId);
-                if (offboarded) {
-                    console.log(`[OFFBOARDED] Listing ${listingId} is offboarded (service_pms=0); discovering reservations via /calendar...`);
-                    const viaCalendar = await this._fetchReservationsViaCalendar(listingId, startDate, endDate, dateType);
-                    if (viaCalendar.length > 0) {
-                        console.log(`[OFFBOARDED] Found ${viaCalendar.length} reservation(s) for offboarded listing ${listingId} via /calendar`);
-                        // viaCalendar items are raw Hostify reservation objects (with merged fees);
-                        // they'll be transformed by the final map below.
-                        allReservations = viaCalendar;
+            // Offboarded-listing augmentation: Hostify's /reservations list endpoint
+            // returns incomplete results for service_pms=0 listings — for instance
+            // it returns "blocked" entries (manual blocks) but silently drops some
+            // confirmed reservations that still carry the listing_id. Checking
+            // allReservations.length === 0 isn't enough; the listing can have blocks
+            // visible AND real reservations invisible. So for offboarded listings,
+            // always probe /calendar and merge any reservation IDs not already in
+            // the list response. isListingOffboarded is cached, so this is cheap
+            // for active listings on repeat calls.
+            const offboarded = await this.isListingOffboarded(listingId);
+            if (offboarded) {
+                console.log(`[OFFBOARDED] Listing ${listingId} is offboarded (service_pms=0); probing /calendar for missing reservations...`);
+                const viaCalendar = await this._fetchReservationsViaCalendar(listingId, startDate, endDate, dateType);
+                if (viaCalendar.length > 0) {
+                    const existingIds = new Set(allReservations.map(r => String(r.id)));
+                    const additions = viaCalendar.filter(r => r.id && !existingIds.has(String(r.id)));
+                    if (additions.length > 0) {
+                        console.log(`[OFFBOARDED] Adding ${additions.length} reservation(s) discovered via /calendar (list response had ${allReservations.length})`);
+                        allReservations = allReservations.concat(additions);
                     } else {
-                        console.log(`[OFFBOARDED] No reservations found for offboarded listing ${listingId} via /calendar`);
+                        console.log(`[OFFBOARDED] /calendar found ${viaCalendar.length} reservation(s), all already in list response`);
                     }
+                } else {
+                    console.log(`[OFFBOARDED] /calendar returned no reservation IDs for listing ${listingId}`);
                 }
             }
         } catch (error) {
