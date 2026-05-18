@@ -461,7 +461,8 @@ class HostifyService {
         console.log(`[OFFBOARDED-CAL] Listing ${listingId}: ${resIds.size} reservation ID(s) from /calendar (${calStart} to ${endDate})`);
 
         // Fetch each reservation by ID. /reservations/{id} works for offboarded
-        // listings even when the list endpoint doesn't. Throttle to avoid 429s.
+        // listings even when the list endpoint doesn't. Use getReservationDetails
+        // so we also get the guest-name lookup (and caching) for free.
         const ids = Array.from(resIds);
         const CONCURRENCY = 3;
         const fetched = [];
@@ -470,7 +471,7 @@ class HostifyService {
             const results = await Promise.all(
                 batch.map(async id => {
                     try {
-                        const detail = await this.makeRequest(`/reservations/${id}`, { fees: 1 });
+                        const detail = await this.getReservationDetails(id);
                         if (detail.success && detail.reservation) {
                             // Merge the top-level `fees` array onto the reservation so
                             // transformReservation picks it up via reservation.fees.
