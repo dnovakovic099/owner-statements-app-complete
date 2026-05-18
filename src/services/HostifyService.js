@@ -1667,6 +1667,15 @@ class HostifyService {
                 const isChild = childToParentMap.has(listingId);
                 const attributedId = isChild ? childToParentMap.get(listingId) : listingId;
 
+                // Offboarded listings shouldn't surface "Offboarding" / manual-block
+                // pseudo-reservations on statements — they're noise: $0 revenue, just
+                // shows the property as blocked. Real reservations on offboarded
+                // listings are still pulled in via the /calendar fallback above.
+                if (await this.isListingOffboarded(attributedId)) {
+                    console.log(`[CAL-BLOCKS] Skipping ${groups.length} block group(s) for offboarded listing ${attributedId}`);
+                    continue;
+                }
+
                 for (const g of groups) {
                     const key = `${attributedId}|${g.startDate}|${g.checkoutDate}|${g.note || ''}`;
                     if (byKey.has(key)) continue;
