@@ -416,8 +416,80 @@ class HostifyService {
         return await this.makeRequest('/reservations', params);
     }
 
+    // Discover reservations for an offboarded listing via the /calendar endpoint.
+    // /calendar works for service_pms=0 listings and returns reservation_id per
+    // booked day; we then fetch each reservation by ID. Returns raw Hostify
+    // reservation objects (with `fees` merged in) so the caller can pass them
+    // through transformReservation like any other list-API result.
+    async _fetchReservationsViaCalendar(listingId, startDate, endDate, dateType = 'checkIn') {
+        // For checkOut/departureDate semantics, a reservation whose checkOut == startDate
+        // has all its booked nights strictly before startDate. Expand the calendar
+        // window back by 1 day so we still discover those reservations.
+        let calStart = startDate;
+        if (dateType === 'checkOut' || dateType === 'departureDate') {
+            const d = new Date(startDate + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() - 1);
+            calStart = d.toISOString().split('T')[0];
+        }
+
+        let calResp;
+        try {
+            calResp = await this.makeRequest('/calendar', {
+                listing_id: listingId,
+                start_date: calStart,
+                end_date: endDate
+            });
+        } catch (err) {
+            console.log(`[OFFBOARDED-CAL] Listing ${listingId}: /calendar error: ${err.message}`);
+            return [];
+        }
+
+        if (!calResp.success || !Array.isArray(calResp.calendar)) {
+            return [];
+        }
+
+        const resIds = new Set();
+        calResp.calendar.forEach(day => {
+            if (day.reservation_id) resIds.add(day.reservation_id);
+            if (Array.isArray(day.reservation_ids)) {
+                day.reservation_ids.forEach(id => resIds.add(id));
+            }
+        });
+
+        if (resIds.size === 0) return [];
+
+        console.log(`[OFFBOARDED-CAL] Listing ${listingId}: ${resIds.size} reservation ID(s) from /calendar (${calStart} to ${endDate})`);
+
+        // Fetch each reservation by ID. /reservations/{id} works for offboarded
+        // listings even when the list endpoint doesn't. Throttle to avoid 429s.
+        const ids = Array.from(resIds);
+        const CONCURRENCY = 3;
+        const fetched = [];
+        for (let i = 0; i < ids.length; i += CONCURRENCY) {
+            const batch = ids.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(
+                batch.map(async id => {
+                    try {
+                        const detail = await this.makeRequest(`/reservations/${id}`, { fees: 1 });
+                        if (detail.success && detail.reservation) {
+                            // Merge the top-level `fees` array onto the reservation so
+                            // transformReservation picks it up via reservation.fees.
+                            return { ...detail.reservation, fees: detail.fees };
+                        }
+                    } catch (err) {
+                        console.error(`[OFFBOARDED-CAL] Failed to fetch reservation ${id}: ${err.message}`);
+                    }
+                    return null;
+                })
+            );
+            results.forEach(r => { if (r) fetched.push(r); });
+        }
+
+        return fetched;
+    }
+
     // Fetch reservations for a specific listing ID
-    // Includes fallback for offboarded listings (service_pms=0) using filter-based approach
+    // Includes fallback for offboarded listings (service_pms=0) via /calendar discovery
     async getReservationsForListing(listingId, startDate, endDate, dateType = 'checkIn') {
         let allReservations = [];
         let page = 1;
@@ -444,30 +516,25 @@ class HostifyService {
                 }
             }
 
-            // Fallback for offboarded listings: if 0 results, check if listing is offboarded
-            // and retry using listing_id as a filter field (bypasses Hostify's service_pms exclusion)
+            // Offboarded-listing fallback: Hostify's /reservations list endpoint
+            // (both query-param and filters-array forms) returns incomplete or empty
+            // results for service_pms=0 listings — some reservations are detached
+            // from the listing index even though they still carry listing_id. The
+            // /calendar endpoint, however, exposes reservation_id per booked day
+            // and works for offboarded listings, so we use it to discover IDs and
+            // then fetch each reservation by ID.
             if (allReservations.length === 0) {
                 const offboarded = await this.isListingOffboarded(listingId);
                 if (offboarded) {
-                    console.log(`[OFFBOARDED] Listing ${listingId} is offboarded (service_pms=0), retrying with filter-based approach...`);
-                    page = 1;
-                    hasMore = true;
-                    while (hasMore) {
-                        const response = await this.getReservations(startDate, endDate, page, perPage, listingId, dateType, true);
-
-                        if (response.success && response.reservations?.length > 0) {
-                            allReservations = allReservations.concat(response.reservations);
-                            hasMore = response.reservations.length === perPage && response.total > allReservations.length;
-                            page++;
-                            if (page > 50) break;
-                        } else {
-                            hasMore = false;
-                        }
-                    }
-                    if (allReservations.length > 0) {
-                        console.log(`[OFFBOARDED] Found ${allReservations.length} reservations for offboarded listing ${listingId} via filter approach`);
+                    console.log(`[OFFBOARDED] Listing ${listingId} is offboarded (service_pms=0); discovering reservations via /calendar...`);
+                    const viaCalendar = await this._fetchReservationsViaCalendar(listingId, startDate, endDate, dateType);
+                    if (viaCalendar.length > 0) {
+                        console.log(`[OFFBOARDED] Found ${viaCalendar.length} reservation(s) for offboarded listing ${listingId} via /calendar`);
+                        // viaCalendar items are raw Hostify reservation objects (with merged fees);
+                        // they'll be transformed by the final map below.
+                        allReservations = viaCalendar;
                     } else {
-                        console.log(`[OFFBOARDED] No reservations found for offboarded listing ${listingId} even with filter approach`);
+                        console.log(`[OFFBOARDED] No reservations found for offboarded listing ${listingId} via /calendar`);
                     }
                 }
             }
