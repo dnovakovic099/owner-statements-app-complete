@@ -5885,11 +5885,14 @@ router.get('/:id/view', async (req, res) => {
                 const totalExpenses = statement.items?.filter(item => {
                     if (item.type !== 'expense') return false;
                     if (isHiddenItem(item)) return false;
-                    // Exclude cleaning expenses when cleaningFeePassThrough is enabled
+                    // Exclude cleaning AND supplies expenses when cleaningFeePassThrough is
+                    // enabled — both are already deducted inside Gross Payout, so counting
+                    // them here too would double-subtract them from net payout. Must match
+                    // the expense table + TOTAL EXPENSES filter above.
                     if (statement.cleaningFeePassThrough) {
                         const category = (item.category || '').toLowerCase();
                         const description = (item.description || '').toLowerCase();
-                        if (category.includes('cleaning') || description.startsWith('cleaning')) {
+                        if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
                             return false;
                         }
                     }
