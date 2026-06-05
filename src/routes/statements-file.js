@@ -383,35 +383,59 @@ router.get('/', async (req, res) => {
                         grossPayoutSum += grossPayout;
                     }
 
-                    // Calculate expenses and upsells
-                    // Filter out cleaning expenses for properties with cleaningFeePassThrough (already deducted in grossPayout)
-                    const totalExpenses = (s.expenses || []).reduce((sum, exp) => {
-                        // LL Cover expenses are company-covered and must NOT reduce owner payout.
-                        // Generation (stored ownerPayout) and the PDF both exclude them; this recalc
-                        // must too, otherwise the dashboard "Payout" understates the real payout.
-                        if (isLlCoverExpense(exp)) return sum;
+                    // Single source of truth: compute expenses/upsells from the SAME `items`
+                    // array the PDF "Net Payout" and the stored statement use, so the dashboard
+                    // Payout can never drift from the statement again. `items` already excludes
+                    // LL Cover (company-covered, not present in the list items) and hides
+                    // cross-statement duplicates — the exact set the PDF sums. Only fall back to
+                    // the raw `expenses` array for legacy statements that were saved without items.
+                    let totalExpenses, totalUpsells;
+                    const itemsArr = Array.isArray(s.items) ? s.items : [];
+                    const hasItems = itemsArr.some(i => i && (i.type === 'expense' || i.type === 'upsell' || i.type === 'revenue'));
 
-                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
-                        if (isUpsell) return sum;
-
-                        // Check if this is a cleaning expense for a property with pass-through enabled
-                        const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
-                        const expListing = expPropertyId ? listingMap.get(expPropertyId) : null;
-                        if (expListing?.cleaningFeePassThrough) {
-                            const category = (exp.category || '').toLowerCase();
-                            const type = (exp.type || '').toLowerCase();
-                            const description = (exp.description || '').toLowerCase();
-                            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
-                            if (isCleaningOrSupplies) return sum; // Skip cleaning/supplies expenses - already deducted in grossPayout
-                        }
-
-                        return sum + Math.abs(exp.amount);
-                    }, 0);
-                    const totalUpsells = (s.expenses || []).reduce((sum, exp) => {
-                        if (isLlCoverExpense(exp)) return sum; // LL Cover excluded from payout entirely
-                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
-                        return isUpsell ? sum + exp.amount : sum;
-                    }, 0);
+                    if (hasItems) {
+                        // Mirror the PDF summary computation exactly (see NET PAYOUT block below).
+                        totalUpsells = itemsArr
+                            .filter(i => i.type === 'upsell' && !isHiddenItem(i))
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                        totalExpenses = itemsArr
+                            .filter(i => {
+                                if (i.type !== 'expense' || isHiddenItem(i)) return false;
+                                // Cleaning/supplies are already deducted inside grossPayout under
+                                // pass-through, so exclude them here to avoid double-counting.
+                                if (hasPassThrough) {
+                                    const category = (i.category || '').toLowerCase();
+                                    const description = (i.description || '').toLowerCase();
+                                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            })
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                    } else {
+                        // Legacy fallback: raw expenses array (LL Cover + cleaning/supplies excluded).
+                        totalExpenses = (s.expenses || []).reduce((sum, exp) => {
+                            if (isLlCoverExpense(exp)) return sum;
+                            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                            if (isUpsell) return sum;
+                            const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
+                            const expListing = expPropertyId ? listingMap.get(expPropertyId) : null;
+                            if (expListing?.cleaningFeePassThrough) {
+                                const category = (exp.category || '').toLowerCase();
+                                const type = (exp.type || '').toLowerCase();
+                                const description = (exp.description || '').toLowerCase();
+                                const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+                                if (isCleaningOrSupplies) return sum;
+                            }
+                            return sum + Math.abs(exp.amount);
+                        }, 0);
+                        totalUpsells = (s.expenses || []).reduce((sum, exp) => {
+                            if (isLlCoverExpense(exp)) return sum;
+                            const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
+                            return isUpsell ? sum + exp.amount : sum;
+                        }, 0);
+                    }
 
                     recalculatedPayout = grossPayoutSum + totalUpsells - totalExpenses;
                 }
