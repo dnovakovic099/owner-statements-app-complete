@@ -386,6 +386,11 @@ router.get('/', async (req, res) => {
                     // Calculate expenses and upsells
                     // Filter out cleaning expenses for properties with cleaningFeePassThrough (already deducted in grossPayout)
                     const totalExpenses = (s.expenses || []).reduce((sum, exp) => {
+                        // LL Cover expenses are company-covered and must NOT reduce owner payout.
+                        // Generation (stored ownerPayout) and the PDF both exclude them; this recalc
+                        // must too, otherwise the dashboard "Payout" understates the real payout.
+                        if (isLlCoverExpense(exp)) return sum;
+
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         if (isUpsell) return sum;
 
@@ -403,6 +408,7 @@ router.get('/', async (req, res) => {
                         return sum + Math.abs(exp.amount);
                     }, 0);
                     const totalUpsells = (s.expenses || []).reduce((sum, exp) => {
+                        if (isLlCoverExpense(exp)) return sum; // LL Cover excluded from payout entirely
                         const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                         return isUpsell ? sum + exp.amount : sum;
                     }, 0);
@@ -412,7 +418,9 @@ router.get('/', async (req, res) => {
             }
 
             // Compute needsReview marker - true if statement has ANY expenses or additional payouts
-            const allExpenses = s.expenses || [];
+            // LL Cover expenses are company-covered and never affect the owner, so they
+            // shouldn't trigger a review flag on their own.
+            const allExpenses = (s.expenses || []).filter(exp => !isLlCoverExpense(exp));
             // Expenses are negative amounts (costs to owner)
             const expenseItems = allExpenses.filter(exp => {
                 const isUpsell = exp.amount > 0 ||
