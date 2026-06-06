@@ -1020,9 +1020,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => onBulkAction(selectedIds, 'pay-owner')}
-                disabled={bulkProcessing || statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final')}
+                disabled={bulkProcessing || !statements.filter(s => selectedIds.includes(s.id)).some(s => (s.status === 'final' || s.status === 'sent') && s.ownerPayout > 0 && s.payoutStatus !== 'paid')}
                 className="h-8 border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={statements.filter(s => selectedIds.includes(s.id)).some(s => s.status !== 'final') ? "Only final statements can be paid" : "Pay Owners"}
+                title={!statements.filter(s => selectedIds.includes(s.id)).some(s => (s.status === 'final' || s.status === 'sent') && s.ownerPayout > 0 && s.payoutStatus !== 'paid') ? "Select at least one final or sent statement with an unpaid payout" : "Pay Owners"}
               >
                 <DollarSign className="w-4 h-4 mr-1.5" />
                 Pay Owners
