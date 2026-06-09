@@ -461,6 +461,18 @@ router.get('/', async (req, res) => {
             });
             const needsReview = expenseItems.length > 0 || additionalPayouts.length > 0;
 
+            // Flag reservations carrying $0 tax so reviewers can catch a missing/zero
+            // tax responsibility at a glance. Per request this is flagged in ANY
+            // situation — regardless of the disregardTax / Airbnb pass-through toggles
+            // (the "tickboxes"). A reservation counts as zero-tax when it has no
+            // detailed finance OR its clientTaxResponsibility is not a positive number.
+            const zeroTaxReservations = (s.reservations || []).filter(r => {
+                if (r.status === 'blocked') return false;
+                const tax = r.hasDetailedFinance ? (Number(r.clientTaxResponsibility) || 0) : 0;
+                return tax <= 0;
+            });
+            const zeroTaxCount = zeroTaxReservations.length;
+
             return {
                 id: s.id,
                 ownerId: s.ownerId,
@@ -501,7 +513,9 @@ router.get('/', async (req, res) => {
                 } : null,
                 reservationCount: (s.reservations || []).filter(r => r.status !== 'blocked').length,
                 hasPriorStatementDuplicates: (s.duplicateWarnings || []).some(w => w.type === 'prior_statement'),
-                priorStatementDuplicateCount: (s.duplicateWarnings || []).filter(w => w.type === 'prior_statement').length
+                priorStatementDuplicateCount: (s.duplicateWarnings || []).filter(w => w.type === 'prior_statement').length,
+                hasZeroTax: zeroTaxCount > 0,
+                zeroTaxCount
             };
         });
 
@@ -5429,7 +5443,7 @@ router.get('/:id/view', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                            ${statement.reservations?.map(reservation => {
+                            ${statement.reservations?.filter(reservation => reservation.status !== 'blocked').map(reservation => {
                     // Get per-property settings from the map, fall back to statement-level settings
                     const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                         isCohostOnAirbnb: statement.isCohostOnAirbnb,
@@ -5551,6 +5565,9 @@ router.get('/:id/view', async (req, res) => {
                         let totalResortFee = 0; // For Guest Paid Damage Coverage
 
                         statement.reservations?.forEach(reservation => {
+                            // Blocked dates (manual blocks / owner maintenance) aren't real
+                            // rental activity — skip so TOTALS match the visible rows.
+                            if (reservation.status === 'blocked') return;
                             // Get per-property settings from the map, fall back to statement-level settings
                             const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                                 isCohostOnAirbnb: statement.isCohostOnAirbnb,
@@ -5851,6 +5868,9 @@ router.get('/:id/view', async (req, res) => {
                 let summaryGrossPayout = 0;
 
                 statement.reservations?.forEach(reservation => {
+                    // Blocked dates (manual blocks / owner maintenance) aren't real
+                    // rental activity — skip so the summary matches the visible rows.
+                    if (reservation.status === 'blocked') return;
                     // Get per-property settings from the map, fall back to statement-level settings
                     const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                         isCohostOnAirbnb: statement.isCohostOnAirbnb,

@@ -46,10 +46,12 @@ export interface Reservation {
   platformFees: number;
   cleaningFee?: number;
   nights: number;
-  status: 'confirmed' | 'completed' | 'cancelled' | 'modified' | 'new';
+  status: 'confirmed' | 'completed' | 'cancelled' | 'modified' | 'new' | 'blocked';
   source: string;
   isProrated: boolean;
   weeklyPayoutDate: string | null;
+  clientTaxResponsibility?: number;
+  hasDetailedFinance?: boolean;
 }
 
 export interface StatementItem {
@@ -119,6 +121,8 @@ export interface Statement {
   reservationCount?: number;
   hasPriorStatementDuplicates?: boolean;
   priorStatementDuplicateCount?: number;
+  hasZeroTax?: boolean;
+  zeroTaxCount?: number;
   groupId?: number | null;
   groupName?: string | null;
 }

@@ -959,6 +959,10 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const llCoverUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'll_cover') || [];
   const priorStatementUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'prior_statement') || [];
   const reservations = statement?.reservations || [];
+  // Blocked dates (manual blocks / owner maintenance) are pseudo-reservations with
+  // $0 financials — they aren't real rental activity and shouldn't be shown or
+  // counted as reservations in the editor (mirrors the PDF, which excludes them).
+  const visibleReservations = reservations.filter(r => r.status !== 'blocked');
 
   const selectedExpensesTotal = selectedExpenseIndices.reduce((sum, index) => {
     return sum + (expenses[index]?.amount || 0);
@@ -2196,7 +2200,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
               <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">
-                    Current Reservations ({reservations.length})
+                    Current Reservations ({visibleReservations.length})
                     {statement?.cleaningFeePassThrough && (
                       <span className="ml-2 text-sm font-normal text-blue-600">(Cleaning Fee Pass-Through Enabled)</span>
                     )}
@@ -2213,25 +2217,47 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                   )}
                 </div>
 
-                {reservations.length === 0 ? (
+                {(() => {
+                  const zeroTaxCount = reservations.filter(r => {
+                    const tax = r.hasDetailedFinance ? (Number(r.clientTaxResponsibility) || 0) : 0;
+                    return tax <= 0 && r.status !== 'blocked';
+                  }).length;
+                  return zeroTaxCount > 0 ? (
+                    <div className="mb-4 flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-300 text-red-800">
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <strong>{zeroTaxCount} reservation{zeroTaxCount > 1 ? 's' : ''}</strong> in this statement {zeroTaxCount > 1 ? 'have' : 'has'} <strong>$0 tax</strong>. Verify the tax responsibility before sending — the affected {zeroTaxCount > 1 ? 'rows are' : 'row is'} highlighted in red below.
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+                {visibleReservations.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     No reservations in this statement
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {reservations.slice(0, reservationsDisplayCount).map((reservation) => {
+                    {visibleReservations.slice(0, reservationsDisplayCount).map((reservation) => {
                       const resId = reservation.hostifyId || reservation.id;
                       const isSelected = selectedReservationIdsToRemove.includes(resId);
                       const resIdStr = String(resId);
                       const currentCleaningFee = cleaningFeeEdits[resIdStr] !== undefined
                         ? cleaningFeeEdits[resIdStr]
                         : String(reservation.cleaningFee || 0);
+                      // Effective tax shown on the statement (mirrors PDF: only
+                      // detailed-finance reservations carry a tax value). Flagged in
+                      // ANY situation when $0 — regardless of disregardTax / Airbnb
+                      // pass-through toggles — so missing tax is glaringly visible.
+                      const taxValue = reservation.hasDetailedFinance ? (Number(reservation.clientTaxResponsibility) || 0) : 0;
+                      const isZeroTax = taxValue <= 0 && reservation.status !== 'blocked';
                       return (
                         <div
                           key={resId}
                           className={`border rounded-lg p-4 ${isSelected
                             ? 'bg-red-50 border-red-200'
-                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                            : isZeroTax
+                              ? 'bg-white border-red-400 ring-1 ring-red-300'
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
                         >
                           <div className="flex items-center justify-between">
@@ -2287,6 +2313,22 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                   </div>
                                 </div>
                               )}
+                              {/* Tax box — turns RED and glaring when the reservation carries $0 tax */}
+                              <div
+                                className={`flex flex-col items-end px-2 py-1 rounded-md border ${isZeroTax
+                                  ? 'bg-red-50 border-red-400 text-red-700'
+                                  : 'bg-gray-50 border-gray-200 text-gray-600'
+                                  }`}
+                                title={isZeroTax ? 'This reservation has $0 tax — please verify' : 'Tax responsibility'}
+                              >
+                                <span className="text-[10px] uppercase tracking-wide leading-none flex items-center gap-1">
+                                  {isZeroTax && <AlertTriangle className="w-3 h-3" />}
+                                  Tax
+                                </span>
+                                <span className={`text-sm font-semibold leading-tight ${isZeroTax ? 'text-red-700' : ''}`}>
+                                  ${taxValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
                               <div className="flex items-center text-green-600 font-semibold">
                                 <DollarSign className="w-4 h-4 mr-1" />
                                 {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2297,14 +2339,14 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       );
                     })}
                     {/* Show More / Show Less buttons for reservations */}
-                    {reservations.length > ITEMS_PER_PAGE && (
+                    {visibleReservations.length > ITEMS_PER_PAGE && (
                       <div className="flex justify-center gap-2 pt-4">
-                        {reservationsDisplayCount < reservations.length && (
+                        {reservationsDisplayCount < visibleReservations.length && (
                           <button
-                            onClick={() => setReservationsDisplayCount(prev => Math.min(prev + ITEMS_PER_PAGE, reservations.length))}
+                            onClick={() => setReservationsDisplayCount(prev => Math.min(prev + ITEMS_PER_PAGE, visibleReservations.length))}
                             className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
                           >
-                            Show More ({Math.min(ITEMS_PER_PAGE, reservations.length - reservationsDisplayCount)} more)
+                            Show More ({Math.min(ITEMS_PER_PAGE, visibleReservations.length - reservationsDisplayCount)} more)
                           </button>
                         )}
                         {reservationsDisplayCount > ITEMS_PER_PAGE && (
@@ -2316,7 +2358,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           </button>
                         )}
                         <span className="px-4 py-2 text-sm text-gray-500">
-                          Showing {Math.min(reservationsDisplayCount, reservations.length)} of {reservations.length}
+                          Showing {Math.min(reservationsDisplayCount, visibleReservations.length)} of {visibleReservations.length}
                         </span>
                       </div>
                     )}

@@ -455,6 +455,8 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
         const cancelledCount = row.original.cancelledReservationCount || 0;
         const hasPriorDuplicates = row.original.hasPriorStatementDuplicates;
         const priorDuplicateCount = row.original.priorStatementDuplicateCount || 0;
+        const hasZeroTax = row.original.hasZeroTax;
+        const zeroTaxCount = row.original.zeroTaxCount || 0;
         const isGroup = !!(row.original.groupId && row.original.groupName);
         const groupMemberNames = isGroup && row.original.propertyIds
           ? row.original.propertyIds
@@ -509,6 +511,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   {reviewDetails?.expenseCount && reviewDetails?.additionalPayoutCount ? ', ' : ''}
                   {reviewDetails?.additionalPayoutCount ? `${reviewDetails.additionalPayoutCount} additional payout${reviewDetails.additionalPayoutCount > 1 ? 's' : ''}` : ''}
                   {!reviewDetails?.expenseCount && !reviewDetails?.additionalPayoutCount && 'Has expenses or additional payouts'}
+                </span>
+              </span>
+            )}
+            {hasZeroTax && (
+              <span className="relative group/zerotax flex-shrink-0">
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-300 animate-pulse">
+                  <Receipt className="h-3 w-3" />
+                  $0 TAX
+                </span>
+                <span className="absolute left-0 top-full mt-1 z-50 hidden group-hover/zerotax:inline-flex items-center bg-red-600 text-white px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none shadow-lg dark:shadow-gray-950/50">
+                  {zeroTaxCount} reservation{zeroTaxCount > 1 ? 's' : ''} with $0 tax — review
                 </span>
               </span>
             )}
@@ -837,6 +850,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
       if (markerFilter.includes('review') && s.needsReview) return true;
       if (markerFilter.includes('calendar') && s.shouldConvertToCalendar) return true;
       if (markerFilter.includes('duplicates') && s.hasPriorStatementDuplicates) return true;
+      if (markerFilter.includes('zerotax') && s.hasZeroTax) return true;
       return false;
     });
   }, [statements, markerFilter]);
@@ -1210,6 +1224,16 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 >
                   Prior Statement Duplicates
                 </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={markerFilter.includes('zerotax')}
+                  onCheckedChange={(checked) => {
+                    setMarkerFilter(prev =>
+                      checked ? [...prev, 'zerotax'] : prev.filter(v => v !== 'zerotax')
+                    );
+                  }}
+                >
+                  $0 Tax Reservations
+                </DropdownMenuCheckboxItem>
                 {markerFilter.length > 0 && (
                   <>
                     <DropdownMenuSeparator />
@@ -1289,7 +1313,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
             {markerFilter.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 text-xs font-medium rounded-md border border-purple-100 dark:border-purple-800">
                 Markers: {markerFilter.map(m =>
-                  m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : m === 'duplicates' ? 'Duplicates' : 'Calendar'
+                  m === 'cleaning' ? 'Cleaning' : m === 'review' ? 'Expenses/Payouts' : m === 'duplicates' ? 'Duplicates' : m === 'zerotax' ? '$0 Tax' : 'Calendar'
                 ).join(', ')}
                 <button onClick={() => setMarkerFilter([])} className="hover:text-purple-900 dark:hover:text-purple-100 ml-0.5">×</button>
               </span>
