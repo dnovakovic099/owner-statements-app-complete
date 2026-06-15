@@ -49,9 +49,9 @@ const MAX_EMAIL_RETRIES = 5;
 
 const DEFAULT_CONFIG = {
     enabled: true,
-    backupHours: [18],
-    backupDays: [1],            // 0=Sun, 1=Mon, ... 6=Sat — default Monday only
-    dailyHour: 18,
+    backupHours: [6],           // 6 AM EST
+    backupDays: [1, 2],         // 0=Sun, 1=Mon, ... 6=Sat — Monday & Tuesday only (twice per week)
+    dailyHour: 6,
     retention: {
         'scheduled': 7,
         'weekly':   90,
@@ -109,6 +109,9 @@ class BackupService {
 
         // Load config from DB/disk (or create defaults)
         await this._loadConfig();
+
+        // One-time correction of any stale high-frequency schedule to the agreed cadence
+        await this._migrateScheduleOnce();
 
         // Ensure BackupLog table exists
         await this._ensureTable();
@@ -257,6 +260,35 @@ class BackupService {
         this.config = { ...DEFAULT_CONFIG };
         this._saveConfig();
         logger.info('Backup config initialized with defaults', { context: 'BackupService' });
+    }
+
+    /**
+     * One-time correction of the stored backup schedule to the agreed cadence:
+     * Mondays and Tuesdays at 6 AM EST (twice per week). Older configs ran every
+     * 3 hours, every day, which flooded inboxes with backup emails. This runs at
+     * most ONCE per environment — guarded by a flag row in app_configs — so it
+     * fixes the stale DB/disk schedule on the next deploy without ever clobbering
+     * a later schedule change made by an admin through the UI/API.
+     */
+    async _migrateScheduleOnce() {
+        const FLAG_KEY = 'backup_schedule_migrated_mon_tue_6am';
+        try {
+            const AppConfig = require('../models/AppConfig');
+            const flag = await AppConfig.findOne({ where: { key: FLAG_KEY } });
+            if (flag) return; // already migrated for this environment
+
+            this.config.backupHours = [6];
+            this.config.backupDays = [1, 2];
+            this.config.dailyHour = 6;
+            await this._saveConfig();
+            await AppConfig.upsert({
+                key: FLAG_KEY,
+                value: { migratedAt: new Date().toISOString(), schedule: 'Mon & Tue at 06:00 EST' }
+            });
+            logger.info('Backup schedule migrated to Mon & Tue at 6 AM EST (one-time)', { context: 'BackupService' });
+        } catch (err) {
+            logger.warn(`Backup schedule migration skipped: ${err.message}`, { context: 'BackupService' });
+        }
     }
 
     async _saveConfig() {
