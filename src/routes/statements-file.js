@@ -9,8 +9,9 @@ const { ActivityLog } = require('../models');
 const { decryptOptional } = require('../utils/fieldEncryption');
 const pdfCache = require('../utils/pdfCache');
 
-const isLlCoverExpense = (expense) => Boolean(expense && expense.llCover && expense.llCover !== 0);
-const isHiddenItem = (item) => Boolean(item && item.hidden);
+// Expense/item classification (LL Cover, hidden, canceled) — shared, unit-tested
+// in src/tests/expenseClassification.jest.test.js.
+const { isLlCoverExpense, isHiddenItem, isCanceledExpense } = require('../utils/expenseClassification');
 
 /**
  * Build Chrome launch args for html-pdf-node/Puppeteer.
@@ -416,7 +417,7 @@ router.get('/', async (req, res) => {
                     } else {
                         // Legacy fallback: raw expenses array (LL Cover + cleaning/supplies excluded).
                         totalExpenses = (s.expenses || []).reduce((sum, exp) => {
-                            if (isLlCoverExpense(exp)) return sum;
+                            if (isLlCoverExpense(exp) || isCanceledExpense(exp)) return sum;
                             const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                             if (isUpsell) return sum;
                             const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
@@ -431,7 +432,7 @@ router.get('/', async (req, res) => {
                             return sum + Math.abs(exp.amount);
                         }, 0);
                         totalUpsells = (s.expenses || []).reduce((sum, exp) => {
-                            if (isLlCoverExpense(exp)) return sum;
+                            if (isLlCoverExpense(exp) || isCanceledExpense(exp)) return sum;
                             const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell');
                             return isUpsell ? sum + exp.amount : sum;
                         }, 0);
@@ -442,9 +443,9 @@ router.get('/', async (req, res) => {
             }
 
             // Compute needsReview marker - true if statement has ANY expenses or additional payouts
-            // LL Cover expenses are company-covered and never affect the owner, so they
-            // shouldn't trigger a review flag on their own.
-            const allExpenses = (s.expenses || []).filter(exp => !isLlCoverExpense(exp));
+            // LL Cover expenses are company-covered and never affect the owner, and Canceled
+            // expenses are excluded from the statement, so neither should trigger a review flag.
+            const allExpenses = (s.expenses || []).filter(exp => !isLlCoverExpense(exp) && !isCanceledExpense(exp));
             // Expenses are negative amounts (costs to owner)
             const expenseItems = allExpenses.filter(exp => {
                 const isUpsell = exp.amount > 0 ||
@@ -702,30 +703,43 @@ router.get('/:id', async (req, res) => {
             }
         }
 
-        // Inject LL Cover expenses as hidden items for edit visibility
+        // Inject LL Cover + Canceled expenses as hidden items for edit visibility.
+        // Both are excluded from the PDF (hidden) but shown greyed in the editor so
+        // reviewers can see company-covered and canceled expenses that were left off.
         if (statement.expenses && statement.expenses.length > 0) {
             const existingItems = statement.items || [];
+            const toHiddenItem = (exp, hiddenReason) => {
+                const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
+                return {
+                    type: isUpsell ? 'upsell' : 'expense',
+                    description: exp.description,
+                    amount: Math.abs(exp.amount),
+                    date: exp.date,
+                    category: exp.type || exp.category || 'expense',
+                    vendor: exp.vendor,
+                    listing: exp.listing,
+                    hidden: true,
+                    hiddenReason
+                };
+            };
+            const itemsToAppend = [];
+
             const hasLlCoverItems = existingItems.some(i => i.hiddenReason === 'll_cover');
             if (!hasLlCoverItems) {
-                const llCoverExpenses = statement.expenses.filter(exp => isLlCoverExpense(exp));
-                if (llCoverExpenses.length > 0) {
-                    const llCoverItems = llCoverExpenses.map(exp => {
-                        const isUpsell = exp.amount > 0 || (exp.type && exp.type.toLowerCase() === 'upsell') || (exp.category && exp.category.toLowerCase() === 'upsell') || exp.expenseType === 'extras';
-                        return {
-                            type: isUpsell ? 'upsell' : 'expense',
-                            description: exp.description,
-                            amount: Math.abs(exp.amount),
-                            date: exp.date,
-                            category: exp.type || exp.category || 'expense',
-                            vendor: exp.vendor,
-                            listing: exp.listing,
-                            hidden: true,
-                            hiddenReason: 'll_cover'
-                        };
-                    });
-                    statement.items = [...existingItems, ...llCoverItems];
-                    await FileDataService.updateStatement(id, { items: statement.items });
-                }
+                // A canceled+LL-Cover expense is shown once, under Canceled.
+                const llCoverExpenses = statement.expenses.filter(exp => isLlCoverExpense(exp) && !isCanceledExpense(exp));
+                itemsToAppend.push(...llCoverExpenses.map(exp => toHiddenItem(exp, 'll_cover')));
+            }
+
+            const hasCanceledItems = existingItems.some(i => i.hiddenReason === 'canceled');
+            if (!hasCanceledItems) {
+                const canceledExpenses = statement.expenses.filter(exp => isCanceledExpense(exp));
+                itemsToAppend.push(...canceledExpenses.map(exp => toHiddenItem(exp, 'canceled')));
+            }
+
+            if (itemsToAppend.length > 0) {
+                statement.items = [...existingItems, ...itemsToAppend];
+                await FileDataService.updateStatement(id, { items: statement.items });
             }
         }
 
@@ -911,8 +925,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const expenseDate = new Date(exp.date);
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
-        const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
-        const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
+        const canceledExpenses = periodExpensesAll.filter(exp => isCanceledExpense(exp));
+        const llCoverExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
+        const periodExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
 
         // Identify cleaning expenses
         const cleaningExpenses = periodExpenses.filter(exp => {
@@ -1674,8 +1689,9 @@ router.post('/generate', async (req, res) => {
             const expenseDate = new Date(exp.date);
             return expenseDate >= periodStart && expenseDate <= periodEnd;
         });
-        const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
-        const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
+        const canceledExpenses = periodExpensesAll.filter(exp => isCanceledExpense(exp));
+        const llCoverExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
+        const periodExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
 
         // Check if this is a co-host on Airbnb property (need this early for revenue calculation)
         let isCohostOnAirbnb = false;
@@ -2402,8 +2418,9 @@ router.put('/:id/reconfigure', async (req, res) => {
             // Flatten and dedupe
             const allReservations = reservationsArrays.flat();
             const allExpenses = expensesArrays.flat();
-            const llCoverExpenses = allExpenses.filter(exp => isLlCoverExpense(exp));
-            const visibleExpenses = allExpenses.filter(exp => !isLlCoverExpense(exp));
+            const canceledExpenses = allExpenses.filter(exp => isCanceledExpense(exp));
+            const llCoverExpenses = allExpenses.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
+            const visibleExpenses = allExpenses.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
 
             // Build property listing info map for PM fee lookups
             const propertyListingMap = {};
@@ -2609,8 +2626,9 @@ router.put('/:id/reconfigure', async (req, res) => {
         }
 
         // Filter and calculate expenses
-        const expenseCandidates = expenses.filter(exp => !isLlCoverExpense(exp));
-        const llCoverExpenses = expenses.filter(exp => isLlCoverExpense(exp));
+        const canceledExpenses = expenses.filter(exp => isCanceledExpense(exp));
+        const expenseCandidates = expenses.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
+        const llCoverExpenses = expenses.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
         const filteredExpenses = cleaningFeePassThrough
             ? expenseCandidates.filter(exp => {
                 const cat = (exp.category || exp.type || '').toLowerCase();
@@ -7282,8 +7300,9 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
-                    const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
-                    const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
+                    const canceledExpenses = periodExpensesAll.filter(exp => isCanceledExpense(exp));
+                    const llCoverExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
+                    const periodExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
                     if (llCoverExpenses.length > 0) {
                         logger.debug('Marking LL Cover expenses as hidden', { context: 'StatementsFile', propertyId: property.id, count: llCoverExpenses.length });
                     }
@@ -7808,8 +7827,9 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         const expenseDate = new Date(exp.date);
                         return expenseDate >= periodStart && expenseDate <= periodEnd;
                     });
-                    const llCoverExpenses = periodExpensesAll.filter(exp => isLlCoverExpense(exp));
-                    const periodExpenses = periodExpensesAll.filter(exp => !isLlCoverExpense(exp));
+                    const canceledExpenses = periodExpensesAll.filter(exp => isCanceledExpense(exp));
+                    const llCoverExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
+                    const periodExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
 
                     // Skip if no activity
                     if (periodReservations.length === 0 && periodExpenses.length === 0) {

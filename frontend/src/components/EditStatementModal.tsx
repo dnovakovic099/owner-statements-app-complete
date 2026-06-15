@@ -95,6 +95,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [selectedPriorExpenseIndices, setSelectedPriorExpenseIndices] = useState<number[]>([]);
   const [selectedPriorUpsellIndices, setSelectedPriorUpsellIndices] = useState<number[]>([]);
   const [showPriorExpenses, setShowPriorExpenses] = useState(false);
+  const [showCanceledExpenses, setShowCanceledExpenses] = useState(false);
   const [showPriorUpsells, setShowPriorUpsells] = useState(false);
   const [showHiddenExpenses, setShowHiddenExpenses] = useState(false);
   const [showHiddenUpsells, setShowHiddenUpsells] = useState(false);
@@ -951,11 +952,13 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   };
   const expenses = statement?.items?.filter(item => item.type === 'expense' && !item.hidden && !isCleaningPassThroughItem(item)) || [];
   const cleaningPassThroughFees = statement?.items?.filter(item => item.type === 'expense' && !item.hidden && isCleaningPassThroughItem(item)) || [];
-  const hiddenExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement') || [];
+  const hiddenExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement' && item.hiddenReason !== 'canceled') || [];
   const llCoverExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason === 'll_cover') || [];
   const priorStatementExpenses = statement?.items?.filter(item => item.type === 'expense' && item.hidden && item.hiddenReason === 'prior_statement') || [];
+  // Canceled (SecureStay status = Canceled) — excluded from the PDF, shown read-only for reference.
+  const canceledItems = statement?.items?.filter(item => (item.type === 'expense' || item.type === 'upsell') && item.hidden && item.hiddenReason === 'canceled') || [];
   const upsells = statement?.items?.filter(item => item.type === 'upsell' && !item.hidden) || [];
-  const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement') || [];
+  const hiddenUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason !== 'll_cover' && item.hiddenReason !== 'prior_statement' && item.hiddenReason !== 'canceled') || [];
   const llCoverUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'll_cover') || [];
   const priorStatementUpsells = statement?.items?.filter(item => item.type === 'upsell' && item.hidden && item.hiddenReason === 'prior_statement') || [];
   const reservations = statement?.reservations || [];
@@ -1857,6 +1860,57 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                       })}
                     </div>
                     </>
+                    )}
+                  </div>
+                )}
+
+                {/* Canceled Expenses (SecureStay status = Canceled) — read-only, excluded from PDF */}
+                {canceledItems.length > 0 && (
+                  <div className="mt-4 rounded-lg border-2 border-red-200 bg-red-50 p-4">
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setShowCanceledExpenses(!showCanceledExpenses)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {showCanceledExpenses ? <ChevronDown className="w-4 h-4 text-red-600" /> : <ChevronRight className="w-4 h-4 text-red-600" />}
+                        <span className="inline-flex items-center rounded-full bg-red-600 px-2.5 py-1 text-xs font-semibold text-white">
+                          Canceled
+                        </span>
+                        <h4 className="text-sm font-semibold text-red-900">
+                          Canceled Expenses ({canceledItems.length})
+                        </h4>
+                      </div>
+                      <span className="text-xs text-red-700">Excluded from statement &amp; PDF</span>
+                    </div>
+                    {showCanceledExpenses && (
+                      <>
+                        <p className="text-xs text-red-700 mb-3 mt-3">
+                          These expenses are marked &quot;Canceled&quot; in SecureStay. They are automatically excluded from the generated statement and shown here for reference only.
+                        </p>
+                        <div className="space-y-2">
+                          {canceledItems.map((expense, index) => (
+                            <div
+                              key={`canceled-expense-${index}`}
+                              className="border rounded-lg p-3 bg-white border-red-200"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-gray-800 line-through">{expense.description}</h4>
+                                  <div className="text-xs text-gray-500">
+                                    <span className="capitalize">{expense.category}</span> {expense.date && <>&bull; {expense.date}</>}
+                                    {expense.vendor && <span> &bull; {expense.vendor}</span>}
+                                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">Canceled</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center text-red-400 font-semibold line-through">
+                                  <DollarSign className="w-4 h-4 mr-1" />
+                                  {expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </div>
                 )}

@@ -63,7 +63,7 @@ export interface StatementItem {
   vendor?: string;
   listing?: string;
   hidden?: boolean;
-  hiddenReason?: 'manual' | 'll_cover' | 'prior_statement';
+  hiddenReason?: 'manual' | 'll_cover' | 'prior_statement' | 'canceled';
   priorStatementId?: number;
   priorPeriod?: string;
 }
