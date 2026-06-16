@@ -104,6 +104,256 @@ function formatPeriodLabel(date, granularity) {
 }
 
 /**
+ * Fan a set of combined/group statements (property_id NULL) out into per-property
+ * { revenue, pmFee, payout } contributions, using the same per-reservation PDF formula as
+ * /property-financials (the canonical implementation). Combined statements store their
+ * financials as a single aggregate under a null property_id, so the per-property SQL
+ * GROUP BY endpoints silently drop them; this reconstructs each property's share from the
+ * reservation- and item-level JSON. Returns a Map keyed by integer propertyId.
+ *
+ * NOTE: per-property PM commission uses the statement's single pmPercentage; for groups that
+ * mix PM% across properties this approximates the stored aggregate.
+ */
+function fanOutCombinedByProperty(combinedStatements) {
+    const map = new Map();
+    const get = (propId) => {
+        const key = parseInt(propId);
+        if (!map.has(key)) {
+            map.set(key, { propertyId: key, name: null, ownerName: null,
+                revenue: 0, pmFee: 0, grossPayoutSum: 0, expenses: 0, adjustments: 0 });
+        }
+        return map.get(key);
+    };
+
+    for (const stmt of combinedStatements) {
+        const stmtPmPct    = parseFloat(stmt.pmPercentage) || 0;
+        const stmtWaive    = !!stmt.waiveCommission;
+        const stmtWaiveEnd = stmt.waiveCommissionUntil || null;
+        const stmtEndDate  = stmt.weekEndDate || '';
+        const stmtDisregardTax      = !!stmt.disregardTax;
+        const stmtAirbnbPassThrough = !!stmt.airbnbPassThroughTax;
+        const stmtCohost   = !!stmt.isCohostOnAirbnb;
+        const isWaiverActive = stmtWaive && (
+            !stmtWaiveEnd ||
+            new Date(stmtEndDate + 'T00:00:00') <= new Date(stmtWaiveEnd + 'T23:59:59')
+        );
+
+        const reservations = typeof stmt.reservations === 'string'
+            ? JSON.parse(stmt.reservations)
+            : (stmt.reservations || []);
+        const items = typeof stmt.items === 'string'
+            ? JSON.parse(stmt.items)
+            : (Array.isArray(stmt.items) ? stmt.items : []);
+
+        const seen = new Set();
+        for (const r of reservations) {
+            if (r.status === 'blocked' || r.propertyId == null) continue;
+            const resId = r.hostifyId || r.id;
+            const dedupeKey = `${parseInt(r.propertyId)}:${resId}`;
+            if (resId && seen.has(dedupeKey)) continue;
+            if (resId) seen.add(dedupeKey);
+
+            const isAirbnb = r.source && r.source.toLowerCase().includes('airbnb');
+            const isCohostAirbnb = isAirbnb && stmtCohost;
+            const rawClientRevenue = r.hasDetailedFinance ? (parseFloat(r.clientRevenue) || 0) : (parseFloat(r.grossAmount) || 0);
+            const clientRevenue    = isCohostAirbnb ? 0 : rawClientRevenue;
+            const luxuryFee        = r.isCustom && r.luxuryLodgingFee !== undefined
+                ? parseFloat(r.luxuryLodgingFee)
+                : rawClientRevenue * (stmtPmPct / 100);
+            const pmFeeToDeduct    = isWaiverActive ? 0 : luxuryFee;
+            const taxResponsibility = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
+            const shouldAddTax     = !stmtDisregardTax && (!isAirbnb || stmtAirbnbPassThrough);
+            const taxToAdd         = shouldAddTax ? taxResponsibility : 0;
+            const resGrossPayout   = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeToDeduct);
+            const resClientPayout  = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (resGrossPayout + taxToAdd);
+
+            const e = get(r.propertyId);
+            if (e.ownerName == null) e.ownerName = stmt.ownerName || null;
+            e.revenue        += rawClientRevenue;
+            e.pmFee          += pmFeeToDeduct;
+            e.grossPayoutSum += resClientPayout;
+        }
+
+        // Net expenses / upsells per property come from rendered, non-hidden line items.
+        for (const it of items) {
+            if (it.hidden || it.propertyId == null) continue;
+            const amount = Math.abs(parseFloat(it.amount) || 0);
+            if (it.type === 'expense') get(it.propertyId).expenses += amount;
+            else if (it.type === 'upsell') get(it.propertyId).adjustments += amount;
+        }
+    }
+
+    for (const e of map.values()) {
+        e.payout = e.grossPayoutSum + e.adjustments - e.expenses;
+    }
+    return map;
+}
+
+/**
+ * Select a de-duplicated, non-overlapping set of statement IDs for a date range. This is the
+ * single source of truth for "which statements count in this period" — shared by /summary and
+ * /property-financials so their totals reconcile. Individual statements dedup per property;
+ * combined/group statements (property_id NULL) dedup per group. A statement that fully covers the
+ * query range wins over narrower ones; otherwise a non-overlapping set is built by clipping each
+ * statement to the query window and dropping any subsumed by a wider one.
+ */
+async function selectDedupedStatementIds(startDate, endDate, calculationType) {
+    const calcTypeFilter = (calculationType === 'checkout' || calculationType === 'calendar')
+        ? `AND calculation_type = :calculationType`
+        : '';
+    const replacements = { start: startDate, end: endDate };
+    if (calculationType === 'checkout' || calculationType === 'calendar') {
+        replacements.calculationType = calculationType;
+    }
+
+    const metaRows = await sequelize.query(
+        `SELECT id, property_id AS "propertyId", group_id AS "groupId",
+                week_start_date::text AS "weekStartDate",
+                week_end_date::text   AS "weekEndDate"
+         FROM statements
+         WHERE week_start_date <= :end
+           AND week_end_date   >= :start
+           ${calcTypeFilter}
+         ORDER BY id DESC`,
+        { replacements, type: sequelize.QueryTypes.SELECT }
+    );
+
+    // Bucket for date-range dedup: individuals per property, combined/group statements per group.
+    const buckets = new Map();
+    for (const row of metaRows) {
+        const bucketKey = row.propertyId != null
+            ? `p:${row.propertyId}`
+            : `g:${row.groupId != null ? row.groupId : 'id' + row.id}`;
+        if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+        buckets.get(bucketKey).push(row);
+    }
+
+    const selectedIds = [];
+    for (const [, propRows] of buckets) {
+        // propRows already sorted by id DESC (newest first)
+        // Prefer a single statement that covers the ENTIRE query range (newest such wins).
+        const fullCover = propRows.find(row => {
+            const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
+            const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
+            return s && e && s <= startDate && e >= endDate;
+        });
+        if (fullCover) {
+            selectedIds.push(fullCover.id);
+            continue;
+        }
+
+        // Otherwise build a non-overlapping set from sub-period statements, clipping to the window.
+        let propSelected = [];
+        for (const row of propRows) {
+            const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
+            const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
+            if (s && e) {
+                const effS = s < startDate ? startDate : s;
+                const effE = e > endDate   ? endDate   : e;
+                if (effS <= effE) {
+                    const alreadyCovered = propSelected.some(p => p.effS !== undefined && p.effS <= effS && p.effE >= effE);
+                    if (alreadyCovered) continue;
+                    propSelected = propSelected.filter(p =>
+                        !(p.effS !== undefined && effS <= p.effS && effE >= p.effE)
+                    );
+                    propSelected.push({ id: row.id, effS, effE });
+                    continue;
+                }
+            }
+            propSelected.push({ id: row.id });
+        }
+        selectedIds.push(...propSelected.map(p => p.id));
+    }
+
+    return selectedIds;
+}
+
+/**
+ * Aggregate one period's summary metrics over the de-duplicated statement set (so the summary
+ * card counts the same statements as /property-financials). Sums stored statement columns and
+ * derives the reservation-level breakdown, both restricted to the selected IDs and excluding
+ * $0-activity statements.
+ */
+async function aggregatePeriodSummary(startDate, endDate, calculationType) {
+    const empty = {
+        totalRevenue: 0, ownerPayout: 0, pmCommission: 0, totalExpenses: 0,
+        techFees: 0, insuranceFees: 0, totalCleaningFee: 0, adjustments: 0,
+        statementCount: 0, negativePayoutCount: 0, propertyCount: 0, avgPayoutPerStatement: 0,
+        baseRate: 0, guestFees: 0, platformFees: 0, taxes: 0, grossPayout: 0, reservationCount: 0
+    };
+
+    const selectedIds = await selectDedupedStatementIds(startDate, endDate, calculationType);
+    if (selectedIds.length === 0) return empty;
+
+    const idIn = { [Op.in]: selectedIds };
+    const zeroActivity = { [Op.or]: [{ totalRevenue: { [Op.ne]: 0 } }, { ownerPayout: { [Op.ne]: 0 } }] };
+
+    const result = await Statement.findOne({
+        attributes: [
+            [fn('SUM', col('total_revenue')), 'totalRevenue'],
+            [fn('SUM', col('owner_payout')), 'ownerPayout'],
+            [fn('SUM', col('pm_commission')), 'pmCommission'],
+            [fn('SUM', col('total_expenses')), 'totalExpenses'],
+            [fn('SUM', col('tech_fees')), 'techFees'],
+            [fn('SUM', col('insurance_fees')), 'insuranceFees'],
+            [fn('SUM', col('total_cleaning_fee')), 'totalCleaningFee'],
+            [fn('SUM', col('adjustments')), 'adjustments'],
+            [fn('COUNT', col('id')), 'statementCount']
+        ],
+        where: { id: idIn, ...zeroActivity },
+        raw: true
+    });
+
+    const negativePayoutCount = await Statement.count({
+        where: { id: idIn, ownerPayout: { [Op.lt]: 0 } }
+    });
+
+    const propertyCount = await Statement.count({
+        distinct: true,
+        col: 'property_id',
+        where: { id: idIn, ...zeroActivity }
+    });
+
+    const statementsWithReservations = await Statement.findAll({
+        attributes: ['reservations'],
+        where: { id: idIn, ...zeroActivity },
+        raw: true
+    });
+
+    let baseRate = 0, guestFees = 0, platformFees = 0, taxes = 0, grossPayout = 0, reservationCount = 0;
+    for (const stmt of statementsWithReservations) {
+        const reservations = (stmt.reservations || []).filter(r => r.status !== 'blocked');
+        reservationCount += reservations.length;
+        for (const res of reservations) {
+            baseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
+            guestFees += parseFloat(res.cleaningAndOtherFees || res.cleaningFee || 0);
+            platformFees += parseFloat(res.platformFees || res.hostServiceFee || 0);
+            taxes += parseFloat(res.clientTaxResponsibility || res.taxAmount || res.tax || 0);
+            grossPayout += parseFloat(res.clientPayout || res.hostPayoutAmount || 0);
+        }
+    }
+
+    const statementCount = parseInt(result?.statementCount) || 0;
+    const ownerPayout = parseFloat(result?.ownerPayout) || 0;
+
+    return {
+        totalRevenue: parseFloat(result?.totalRevenue) || 0,
+        ownerPayout,
+        pmCommission: parseFloat(result?.pmCommission) || 0,
+        totalExpenses: parseFloat(result?.totalExpenses) || 0,
+        techFees: parseFloat(result?.techFees) || 0,
+        insuranceFees: parseFloat(result?.insuranceFees) || 0,
+        totalCleaningFee: parseFloat(result?.totalCleaningFee) || 0,
+        adjustments: parseFloat(result?.adjustments) || 0,
+        statementCount,
+        negativePayoutCount: negativePayoutCount || 0,
+        propertyCount: propertyCount || 0,
+        avgPayoutPerStatement: statementCount > 0 ? ownerPayout / statementCount : 0,
+        baseRate, guestFees, platformFees, taxes, grossPayout, reservationCount
+    };
+}
+
+/**
  * GET /api/analytics/summary
  *
  * Returns aggregated summary metrics for a date range with optional comparison period.
@@ -142,112 +392,11 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
             });
         }
 
-        // Aggregate current period (using overlap logic - statement period overlaps with selected range)
-        // Exclude $0 activity statements (where both revenue = 0 AND payout = 0) to match dashboard
-        const currentResult = await Statement.findOne({
-            attributes: [
-                [fn('SUM', col('total_revenue')), 'totalRevenue'],
-                [fn('SUM', col('owner_payout')), 'ownerPayout'],
-                [fn('SUM', col('pm_commission')), 'pmCommission'],
-                [fn('SUM', col('total_expenses')), 'totalExpenses'],
-                [fn('SUM', col('tech_fees')), 'techFees'],
-                [fn('SUM', col('insurance_fees')), 'insuranceFees'],
-                [fn('SUM', col('total_cleaning_fee')), 'totalCleaningFee'],
-                [fn('SUM', col('adjustments')), 'adjustments'],
-                [fn('COUNT', col('id')), 'statementCount']
-            ],
-            where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
-                [Op.or]: [
-                    { totalRevenue: { [Op.ne]: 0 } },
-                    { ownerPayout: { [Op.ne]: 0 } }
-                ]
-            },
-            raw: true
-        });
-
-        // Get additional metrics separately
-        const negativePayoutResult = await Statement.count({
-            where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
-                ownerPayout: { [Op.lt]: 0 }
-            }
-        });
-
-        const propertyCountResult = await Statement.count({
-            distinct: true,
-            col: 'property_id',
-            where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
-                [Op.or]: [
-                    { totalRevenue: { [Op.ne]: 0 } },
-                    { ownerPayout: { [Op.ne]: 0 } }
-                ]
-            }
-        });
-
-        const statementCount = parseInt(currentResult?.statementCount) || 0;
-        const ownerPayout = parseFloat(currentResult?.ownerPayout) || 0;
-
-        const current = {
-            totalRevenue: parseFloat(currentResult?.totalRevenue) || 0,
-            ownerPayout: ownerPayout,
-            pmCommission: parseFloat(currentResult?.pmCommission) || 0,
-            totalExpenses: parseFloat(currentResult?.totalExpenses) || 0,
-            techFees: parseFloat(currentResult?.techFees) || 0,
-            insuranceFees: parseFloat(currentResult?.insuranceFees) || 0,
-            totalCleaningFee: parseFloat(currentResult?.totalCleaningFee) || 0,
-            adjustments: parseFloat(currentResult?.adjustments) || 0,
-            statementCount: statementCount,
-            negativePayoutCount: negativePayoutResult || 0,
-            propertyCount: propertyCountResult || 0,
-            avgPayoutPerStatement: statementCount > 0 ? ownerPayout / statementCount : 0
-        };
-
-        // Get detailed breakdown from reservations JSON (exclude $0 activity)
-        const statementsWithReservations = await Statement.findAll({
-            attributes: ['reservations'],
-            where: {
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
-                [Op.or]: [
-                    { totalRevenue: { [Op.ne]: 0 } },
-                    { ownerPayout: { [Op.ne]: 0 } }
-                ]
-            },
-            raw: true
-        });
-
-        // Parse reservations to get detailed breakdown
-        let baseRate = 0, guestFees = 0, platformFees = 0, taxes = 0, grossPayout = 0;
-        let reservationCount = 0;
-
-        for (const stmt of statementsWithReservations) {
-            const reservations = (stmt.reservations || []).filter(r => r.status !== 'blocked');
-            reservationCount += reservations.length;
-            for (const res of reservations) {
-                // baseRate is the accommodation base rate
-                baseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
-                // guestFees includes cleaning fee and other guest-paid fees
-                guestFees += parseFloat(res.cleaningAndOtherFees || res.cleaningFee || 0);
-                // platformFees are the channel/platform fees (Airbnb service fee, etc.)
-                platformFees += parseFloat(res.platformFees || res.hostServiceFee || 0);
-                // taxes paid by guests
-                taxes += parseFloat(res.clientTaxResponsibility || res.taxAmount || res.tax || 0);
-                // grossPayout is the client/host payout
-                grossPayout += parseFloat(res.clientPayout || res.hostPayoutAmount || 0);
-            }
-        }
-
-        current.baseRate = baseRate;
-        current.guestFees = guestFees;
-        current.platformFees = platformFees;
-        current.taxes = taxes;
-        current.grossPayout = grossPayout;
-        current.reservationCount = reservationCount;
+        // Statement set is de-duplicated/clipped via the shared selector so the summary card
+        // reconciles with the /property-financials ranking — no double-counting from overlapping
+        // or regenerated statements. Optional calculationType narrows to checkout/calendar.
+        const calculationType = req.query.calculationType;
+        const current = await aggregatePeriodSummary(startDate, endDate, calculationType);
 
         let previous = null;
         let percentChange = {};
@@ -258,102 +407,7 @@ router.get('/summary', setCacheHeaders(300), async (req, res) => {
             const compEnd = parseDate(compareEnd);
 
             if (compStart && compEnd) {
-                const previousResult = await Statement.findOne({
-                    attributes: [
-                        [fn('SUM', col('total_revenue')), 'totalRevenue'],
-                        [fn('SUM', col('owner_payout')), 'ownerPayout'],
-                        [fn('SUM', col('pm_commission')), 'pmCommission'],
-                        [fn('SUM', col('total_expenses')), 'totalExpenses'],
-                        [fn('SUM', col('tech_fees')), 'techFees'],
-                        [fn('SUM', col('insurance_fees')), 'insuranceFees'],
-                        [fn('SUM', col('total_cleaning_fee')), 'totalCleaningFee'],
-                        [fn('SUM', col('adjustments')), 'adjustments'],
-                        [fn('COUNT', col('id')), 'statementCount']
-                    ],
-                    where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
-                        [Op.or]: [
-                            { totalRevenue: { [Op.ne]: 0 } },
-                            { ownerPayout: { [Op.ne]: 0 } }
-                        ]
-                    },
-                    raw: true
-                });
-
-                const prevNegativePayoutResult = await Statement.count({
-                    where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
-                        ownerPayout: { [Op.lt]: 0 }
-                    }
-                });
-
-                const prevPropertyCountResult = await Statement.count({
-                    distinct: true,
-                    col: 'property_id',
-                    where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
-                        [Op.or]: [
-                            { totalRevenue: { [Op.ne]: 0 } },
-                            { ownerPayout: { [Op.ne]: 0 } }
-                        ]
-                    }
-                });
-
-                const prevStatementCount = parseInt(previousResult?.statementCount) || 0;
-                const prevOwnerPayout = parseFloat(previousResult?.ownerPayout) || 0;
-
-                previous = {
-                    totalRevenue: parseFloat(previousResult?.totalRevenue) || 0,
-                    ownerPayout: prevOwnerPayout,
-                    pmCommission: parseFloat(previousResult?.pmCommission) || 0,
-                    totalExpenses: parseFloat(previousResult?.totalExpenses) || 0,
-                    techFees: parseFloat(previousResult?.techFees) || 0,
-                    insuranceFees: parseFloat(previousResult?.insuranceFees) || 0,
-                    totalCleaningFee: parseFloat(previousResult?.totalCleaningFee) || 0,
-                    adjustments: parseFloat(previousResult?.adjustments) || 0,
-                    statementCount: prevStatementCount,
-                    negativePayoutCount: prevNegativePayoutResult || 0,
-                    propertyCount: prevPropertyCountResult || 0,
-                    avgPayoutPerStatement: prevStatementCount > 0 ? prevOwnerPayout / prevStatementCount : 0
-                };
-
-                // Get previous period detailed breakdown (exclude $0 activity)
-                const prevStatementsWithReservations = await Statement.findAll({
-                    attributes: ['reservations'],
-                    where: {
-                        weekStartDate: { [Op.lte]: compEnd },
-                        weekEndDate: { [Op.gte]: compStart },
-                        [Op.or]: [
-                            { totalRevenue: { [Op.ne]: 0 } },
-                            { ownerPayout: { [Op.ne]: 0 } }
-                        ]
-                    },
-                    raw: true
-                });
-
-                let prevBaseRate = 0, prevGuestFees = 0, prevPlatformFees = 0, prevTaxes = 0, prevGrossPayout = 0;
-                let prevReservationCount = 0;
-                for (const stmt of prevStatementsWithReservations) {
-                    const reservations = (stmt.reservations || []).filter(r => r.status !== 'blocked');
-                    prevReservationCount += reservations.length;
-                    for (const res of reservations) {
-                        prevBaseRate += parseFloat(res.baseRate || res.accommodationTotal || 0);
-                        prevGuestFees += parseFloat(res.cleaningAndOtherFees || res.cleaningFee || 0);
-                        prevPlatformFees += parseFloat(res.platformFees || res.hostServiceFee || 0);
-                        prevTaxes += parseFloat(res.clientTaxResponsibility || res.taxAmount || res.tax || 0);
-                        prevGrossPayout += parseFloat(res.clientPayout || res.hostPayoutAmount || 0);
-                    }
-                }
-
-                previous.baseRate = prevBaseRate;
-                previous.guestFees = prevGuestFees;
-                previous.platformFees = prevPlatformFees;
-                previous.taxes = prevTaxes;
-                previous.grossPayout = prevGrossPayout;
-                previous.reservationCount = prevReservationCount;
+                previous = await aggregatePeriodSummary(compareStart, compareEnd, calculationType);
 
                 // Calculate percent changes
                 percentChange = {
@@ -431,7 +485,12 @@ router.get('/revenue-trend', setCacheHeaders(300), async (req, res) => {
         const validGranularities = ['day', 'week', 'month', 'quarter'];
         const normalizedGranularity = validGranularities.includes(granularity) ? granularity : 'month';
 
-        // Query with date truncation for grouping (using overlap logic, exclude $0 activity)
+        // Restrict to the de-duplicated statement set (shared with /summary) so trends don't
+        // double-count overlapping/regenerated statements.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
+        // Query with date truncation for grouping (exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
                 [getDateTruncExpression(normalizedGranularity), 'periodDate'],
@@ -440,9 +499,7 @@ router.get('/revenue-trend', setCacheHeaders(300), async (req, res) => {
                 [fn('SUM', col('owner_payout')), 'payout']
             ],
             where: {
-                // Within condition: statement period must fall within selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                id: { [Op.in]: selectedIds },
                 // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -512,16 +569,19 @@ router.get('/payout-trend', setCacheHeaders(300), async (req, res) => {
         const validGranularities = ['day', 'week', 'month', 'quarter'];
         const normalizedGranularity = validGranularities.includes(granularity) ? granularity : 'month';
 
-        // Query with date truncation for grouping (using overlap logic, exclude $0 activity)
+        // Restrict to the de-duplicated statement set (shared with /summary) so trends don't
+        // double-count overlapping/regenerated statements.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
+        // Query with date truncation for grouping (exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
                 [getDateTruncExpression(normalizedGranularity), 'periodDate'],
                 [fn('SUM', col('owner_payout')), 'payout']
             ],
             where: {
-                // Within condition: statement period must fall within selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                id: { [Op.in]: selectedIds },
                 // Exclude $0 activity statements (where both totalRevenue = 0 AND ownerPayout = 0)
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -587,13 +647,16 @@ router.get('/expense-breakdown', setCacheHeaders(300), async (req, res) => {
             });
         }
 
-        // Fetch all statements in the date range (using overlap logic, exclude $0 activity)
+        // Restrict to the de-duplicated statement set (shared with /summary) so the breakdown
+        // doesn't double-count overlapping/regenerated statements.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
+        // Fetch the selected statements' items (exclude $0 activity)
         const statements = await Statement.findAll({
             attributes: ['items'],
             where: {
-                // Within condition: statement period must fall within selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                id: { [Op.in]: selectedIds },
                 // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -690,7 +753,12 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
         };
         const sortField = sortFieldMap[sortBy] || 'revenue';
 
-        // Aggregate by property (using overlap logic, exclude $0 activity)
+        // Restrict to the de-duplicated statement set (shared with /summary) so the bar chart
+        // doesn't double-count overlapping/regenerated statements.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
+        // Aggregate individual statements by property (exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
                 'propertyId',
@@ -700,9 +768,7 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
                 [fn('SUM', col('pm_commission')), 'pmFee']
             ],
             where: {
-                // Within condition: statement period must fall within selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                id: { [Op.in]: selectedIds },
                 propertyId: { [Op.ne]: null },
                 // Exclude $0 activity statements
                 [Op.or]: [
@@ -714,7 +780,7 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
             raw: true
         });
 
-        // Format and sort results
+        // Format results (individual statements only — the GROUP BY excludes property_id NULL)
         let performance = results.map(row => ({
             propertyId: row.propertyId,
             name: row.propertyName || `Property ${row.propertyId}`,
@@ -722,6 +788,37 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
             payout: parseFloat(row.payout) || 0,
             pmFee: parseFloat(row.pmFee) || 0
         }));
+
+        // Merge in combined/group statements (property_id NULL) by fanning them out per property.
+        const combinedStmts = await Statement.findAll({
+            attributes: ['id', 'ownerName', 'reservations', 'items', 'pmPercentage', 'weekEndDate',
+                         'isCohostOnAirbnb', 'waiveCommission', 'waiveCommissionUntil',
+                         'disregardTax', 'airbnbPassThroughTax'],
+            where: {
+                id: { [Op.in]: selectedIds },
+                propertyId: null,
+                [Op.or]: [
+                    { totalRevenue: { [Op.ne]: 0 } },
+                    { ownerPayout: { [Op.ne]: 0 } }
+                ]
+            },
+            raw: true
+        });
+        const combinedMap = fanOutCombinedByProperty(combinedStmts);
+        const perfByProp = new Map(performance.map(p => [parseInt(p.propertyId), p]));
+        for (const [propId, c] of combinedMap) {
+            const existing = perfByProp.get(propId);
+            if (existing) {
+                existing.revenue += c.revenue;
+                existing.payout  += c.payout;
+                existing.pmFee   += c.pmFee;
+            } else {
+                const p = { propertyId: propId, name: `Property ${propId}`,
+                    revenue: c.revenue, payout: c.payout, pmFee: c.pmFee };
+                performance.push(p);
+                perfByProp.set(propId, p);
+            }
+        }
 
         // Sort by requested field (descending)
         performance.sort((a, b) => b[sortField] - a[sortField]);
@@ -798,13 +895,14 @@ router.get('/damage-coverage', setCacheHeaders(300), async (req, res) => {
         if (!dates) return;
         const { start, end, startDate, endDate } = dates;
 
-        // Fetch all statements in date range (resortFee is inside reservations JSON)
+        // Fetch all statements in date range (resortFee is inside reservations JSON).
+        // Combined/group statements (property_id NULL) are included — the loop below already
+        // attributes each reservation to its own propertyId, so they fan out correctly.
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations'],
             where: {
                 weekStartDate: { [Op.lte]: end },
                 weekEndDate: { [Op.gte]: start },
-                propertyId: { [Op.ne]: null },
             },
             raw: true
         });
@@ -918,93 +1016,14 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const { start, end, startDate, endDate } = dates;
         const { ownerId, propertyId, groupId, tag, includeZero, calculationType } = req.query;
 
-        // Optional filter values used in both raw SQL (step 1) and Sequelize (step 3)
-
-        // Fetch statements — two-step to avoid ORM column-naming issues with raw:true.
-        // Step 1: lightweight query for IDs + date ranges to determine which statements
-        //         to include (date-range dedup: newest wide statement beats older narrow ones).
-        let metaRows;
+        // Select the de-duplicated, non-overlapping statement set (shared with /summary so the
+        // per-property ranking and the summary card reconcile to the same statements).
+        let selectedIds;
         try {
-            // Build optional calculationType filter
-            const calcTypeFilter = (calculationType === 'checkout' || calculationType === 'calendar')
-                ? `AND calculation_type = :calculationType`
-                : '';
-            const replacements = { start: startDate, end: endDate };
-            if (calculationType === 'checkout' || calculationType === 'calendar') {
-                replacements.calculationType = calculationType;
-            }
-
-            metaRows = await sequelize.query(
-                `SELECT id, property_id AS "propertyId",
-                        week_start_date::text AS "weekStartDate",
-                        week_end_date::text   AS "weekEndDate"
-                 FROM statements
-                 WHERE week_start_date <= :end
-                   AND week_end_date   >= :start
-                   AND property_id IS NOT NULL
-                   ${calcTypeFilter}
-                 ORDER BY id DESC`,
-                { replacements, type: sequelize.QueryTypes.SELECT }
-            );
+            selectedIds = await selectDedupedStatementIds(startDate, endDate, calculationType);
         } catch (queryErr) {
             logger.logError(queryErr, { context: 'Analytics', action: 'propertyFinancials' });
             throw queryErr;
-        }
-
-        // Step 2: For each property, keep only non-overlapping statements (newest ID wins).
-        const statementsByProperty = new Map();
-        for (const row of metaRows) {
-            const propId = row.propertyId;
-            if (!statementsByProperty.has(propId)) statementsByProperty.set(propId, []);
-            statementsByProperty.get(propId).push(row);
-        }
-
-        const selectedIds = [];
-        for (const [, propRows] of statementsByProperty) {
-            // propRows already sorted by id DESC (newest first)
-
-            // Prefer: if any single statement covers the ENTIRE query range, use the
-            // newest such statement and skip everything else for this property.
-            // This prevents double-counting when, e.g., a Jan 1-Feb 28 combined statement
-            // coexists with a newer Feb 1-28 statement — without this check both would be
-            // included and February revenue would be summed twice.
-            const fullCover = propRows.find(row => {
-                const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
-                const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
-                return s && e && s <= startDate && e >= endDate;
-            });
-            if (fullCover) {
-                selectedIds.push(fullCover.id);
-                continue;
-            }
-
-            // Fallback: build a non-overlapping set from sub-period statements.
-            // Clip each statement's range to the query window so that statements which
-            // merely "poke into" the range from outside (e.g. a weekly Jan 27–Feb 2
-            // when the query is Feb 1–28) are correctly seen as already covered.
-            // When a wider interval subsumes a narrower one, remove the narrower one.
-            let propSelected = []; // { id, effS?, effE? }
-            for (const row of propRows) {
-                const s = row.weekStartDate ? row.weekStartDate.slice(0, 10) : null;
-                const e = row.weekEndDate   ? row.weekEndDate.slice(0, 10)   : null;
-                if (s && e) {
-                    const effS = s < startDate ? startDate : s;
-                    const effE = e > endDate   ? endDate   : e;
-                    if (effS <= effE) {
-                        const alreadyCovered = propSelected.some(p => p.effS !== undefined && p.effS <= effS && p.effE >= effE);
-                        if (alreadyCovered) continue;
-                        // Remove any previously selected entries whose range is fully contained by this wider one
-                        // (filter instead of splice to avoid O(n²) array shifting)
-                        propSelected = propSelected.filter(p =>
-                            !(p.effS !== undefined && effS <= p.effS && effE >= p.effE)
-                        );
-                        propSelected.push({ id: row.id, effS, effE });
-                        continue;
-                    }
-                }
-                propSelected.push({ id: row.id });
-            }
-            selectedIds.push(...propSelected.map(p => p.id));
         }
 
         if (selectedIds.length === 0) {
@@ -1025,7 +1044,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         if (tag) step3Where.groupTags = { [Op.like]: `%${tag}%` };
 
         const statements = await Statement.findAll({
-            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations', 'expenses',
+            attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations', 'expenses', 'items',
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments',
                          'pmPercentage', 'weekEndDate', 'isCohostOnAirbnb',
                          'waiveCommission', 'waiveCommissionUntil',
@@ -1042,13 +1061,13 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         // Reservations are further deduplicated by hostifyId to handle edge cases.
         const propertyMap = new Map();
 
-        for (const stmt of selectedStatements) {
-            const propId = stmt.propertyId;
+        // Get or create a per-property aggregation bucket.
+        const getEntry = (propId, name, ownerName) => {
             if (!propertyMap.has(propId)) {
                 propertyMap.set(propId, {
                     propertyId: propId,
-                    name: stmt.propertyName || `Property ${propId}`,
-                    ownerName: stmt.ownerName || null,
+                    name: name || `Property ${propId}`,
+                    ownerName: ownerName || null,
                     baseRate: 0,
                     guestFees: 0,
                     platformFees: 0,
@@ -1063,29 +1082,11 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     _seenReservationIds: new Set(),
                 });
             }
-            const entry = propertyMap.get(propId);
-            entry.statementCount += 1;
+            return propertyMap.get(propId);
+        };
 
-            // Use statement-level totals directly — these match exactly what the statement shows.
-            // Revenue/pmCommission/ownerPayout are already correct in the stored statement.
-            entry.revenue      += parseFloat(stmt.totalRevenue)   || 0;
-            entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
-            entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
-            // adjustments is hardcoded 0 in StatementService; derive totalUpsells from raw expenses
-            const rawExpenses = typeof stmt.expenses === 'string'
-                ? JSON.parse(stmt.expenses)
-                : (Array.isArray(stmt.expenses) ? stmt.expenses : []);
-            const stmtUpsells = rawExpenses.reduce((sum, exp) => {
-                const amount = parseFloat(exp.amount) || 0;
-                const type = (exp.type || '').toLowerCase();
-                const category = (exp.category || '').toLowerCase();
-                const isUpsell = amount > 0 || type === 'upsell' || category === 'upsell';
-                return isUpsell ? sum + amount : sum;
-            }, 0);
-            entry.adjustments  += stmtUpsells;
-
-            // Replicate the exact PDF formula for grossPayout per reservation
-            // so the analytics total matches the statement exactly.
+        for (const stmt of selectedStatements) {
+            // Statement-level flags drive the per-reservation PDF formula below.
             const stmtPmPct    = parseFloat(stmt.pmPercentage) || 0;
             const stmtWaive    = !!stmt.waiveCommission;
             const stmtWaiveEnd = stmt.waiveCommissionUntil || null;
@@ -1103,10 +1104,15 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 ? JSON.parse(stmt.reservations)
                 : (stmt.reservations || []);
 
-            for (const r of reservations) {
-                if (r.status === 'blocked') continue; // manual calendar blocks have no revenue/payout
+            // Apply one reservation's exact PDF-formula contribution to a property bucket so
+            // the analytics totals match the statement. When accumulateRevenue is true
+            // (combined statements, which have no single property_id), per-property revenue and
+            // PM commission are derived here from reservation-level data; individual statements
+            // use their stored statement totals instead.
+            const applyReservation = (entry, r, accumulateRevenue) => {
+                if (r.status === 'blocked') return; // manual calendar blocks have no revenue/payout
                 const resId = r.hostifyId || r.id;
-                if (resId && entry._seenReservationIds.has(resId)) continue;
+                if (resId && entry._seenReservationIds.has(resId)) return;
                 if (resId) entry._seenReservationIds.add(resId);
 
                 const isAirbnb = r.source && r.source.toLowerCase().includes('airbnb');
@@ -1131,6 +1137,74 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                 entry.guestFees        += parseFloat(r.cleaningAndOtherFees || r.cleaningFee || 0);
                 entry.platformFees     += parseFloat(r.platformFees || r.hostServiceFee || 0);
                 entry.taxes            += taxResponsibility;
+                if (accumulateRevenue) {
+                    entry.revenue      += rawClientRevenue;   // PDF REVENUE column
+                    entry.pmCommission += pmFeeToDeduct;      // PDF PM COMMISSION column
+                }
+            };
+
+            if (stmt.propertyId != null) {
+                // Individual statement: attribute everything to its single property using the
+                // stored statement totals, which match exactly what the statement shows.
+                const entry = getEntry(stmt.propertyId, stmt.propertyName, stmt.ownerName);
+                entry.statementCount += 1;
+
+                entry.revenue      += parseFloat(stmt.totalRevenue)   || 0;
+                entry.pmCommission += parseFloat(stmt.pmCommission)    || 0;
+                entry.expenses     += parseFloat(stmt.totalExpenses)   || 0;
+                // adjustments is hardcoded 0 in StatementService; derive totalUpsells from raw expenses
+                const rawExpenses = typeof stmt.expenses === 'string'
+                    ? JSON.parse(stmt.expenses)
+                    : (Array.isArray(stmt.expenses) ? stmt.expenses : []);
+                const stmtUpsells = rawExpenses.reduce((sum, exp) => {
+                    const amount = parseFloat(exp.amount) || 0;
+                    const type = (exp.type || '').toLowerCase();
+                    const category = (exp.category || '').toLowerCase();
+                    const isUpsell = amount > 0 || type === 'upsell' || category === 'upsell';
+                    return isUpsell ? sum + amount : sum;
+                }, 0);
+                entry.adjustments  += stmtUpsells;
+
+                for (const r of reservations) applyReservation(entry, r, false);
+            } else {
+                // Combined/group statement: property_id is NULL and the stored financials are an
+                // aggregate across several properties. Fan out per constituent property using the
+                // reservation- and item-level data (each carries its own propertyId) so the
+                // statement appears in the per-property ranking instead of being dropped.
+                // NOTE: per-property PM commission uses the statement's single pmPercentage; for
+                // groups that mix PM% across properties this approximates the stored aggregate.
+                const items = typeof stmt.items === 'string'
+                    ? JSON.parse(stmt.items)
+                    : (Array.isArray(stmt.items) ? stmt.items : []);
+
+                const touched = new Set();
+                for (const r of reservations) {
+                    if (r.propertyId != null) touched.add(parseInt(r.propertyId));
+                }
+                for (const it of items) {
+                    if (it.propertyId != null) touched.add(parseInt(it.propertyId));
+                }
+                for (const propId of touched) {
+                    getEntry(propId, null, stmt.ownerName).statementCount += 1;
+                }
+
+                for (const r of reservations) {
+                    if (r.propertyId == null) continue;
+                    applyReservation(getEntry(parseInt(r.propertyId), null, stmt.ownerName), r, true);
+                }
+
+                // Net expenses / upsells per property come from the rendered, non-hidden line
+                // items (these already exclude LL Cover, cleaning pass-through and prior-statement
+                // duplicates, so each property reconciles with its own owner payout).
+                for (const it of items) {
+                    if (it.hidden || it.propertyId == null) continue;
+                    const amount = Math.abs(parseFloat(it.amount) || 0);
+                    if (it.type === 'expense') {
+                        getEntry(parseInt(it.propertyId), null, stmt.ownerName).expenses += amount;
+                    } else if (it.type === 'upsell') {
+                        getEntry(parseInt(it.propertyId), null, stmt.ownerName).adjustments += amount;
+                    }
+                }
             }
         }
 
@@ -1274,7 +1348,12 @@ router.get('/owner-breakdown', setCacheHeaders(300), async (req, res) => {
             });
         }
 
-        // Aggregate by owner (using overlap logic, exclude $0 activity)
+        // Restrict to the de-duplicated statement set (shared with /summary) so owner totals
+        // don't double-count overlapping/regenerated statements.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
+        // Aggregate by owner (exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
                 'ownerName',
@@ -1284,9 +1363,7 @@ router.get('/owner-breakdown', setCacheHeaders(300), async (req, res) => {
                 [fn('COUNT', col('id')), 'statementCount']
             ],
             where: {
-                // Within condition: statement period must fall within selected range
-                weekStartDate: { [Op.lte]: end },
-                weekEndDate: { [Op.gte]: start },
+                id: { [Op.in]: selectedIds },
                 ownerName: { [Op.ne]: null },
                 // Exclude $0 activity statements
                 [Op.or]: [
@@ -1519,6 +1596,12 @@ router.get('/monthly-comparison', setCacheHeaders(300), async (req, res) => {
         const startDate = new Date();
         startDate.setMonth(startDate.getMonth() - numMonths);
 
+        // Restrict to the de-duplicated statement set (shared with /summary) so monthly totals
+        // don't double-count overlapping/regenerated statements.
+        const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const selectedIds = await selectDedupedStatementIds(fmt(startDate), fmt(endDate), req.query.calculationType);
+        if (selectedIds.length === 0) return res.json([]);
+
         // Query with monthly grouping (exclude $0 activity)
         const results = await Statement.findAll({
             attributes: [
@@ -1529,8 +1612,7 @@ router.get('/monthly-comparison', setCacheHeaders(300), async (req, res) => {
                 [fn('COUNT', col('id')), 'count']
             ],
             where: {
-                weekStartDate: { [Op.lte]: endDate },
-                weekEndDate: { [Op.gte]: startDate },
+                id: { [Op.in]: selectedIds },
                 // Exclude $0 activity statements
                 [Op.or]: [
                     { totalRevenue: { [Op.ne]: 0 } },
@@ -1599,10 +1681,11 @@ router.get('/export', async (req, res) => {
             });
         }
 
-        // Base where clause for all queries (within range, exclude $0 activity)
+        // Base where clause for all queries: restrict to the de-duplicated statement set (shared
+        // with /summary) and exclude $0 activity, so the export matches the dashboard exactly.
+        const selectedIds = await selectDedupedStatementIds(startDate, endDate, req.query.calculationType);
         const baseWhere = {
-            weekStartDate: { [Op.lte]: end },
-            weekEndDate: { [Op.gte]: start },
+            id: { [Op.in]: selectedIds },
             [Op.or]: [
                 { totalRevenue: { [Op.ne]: 0 } },
                 { ownerPayout: { [Op.ne]: 0 } }
@@ -1662,6 +1745,30 @@ router.get('/export', async (req, res) => {
             payout: parseFloat(row.payout) || 0,
             pmFee: parseFloat(row.pmFee) || 0
         }));
+
+        // Merge in combined/group statements (property_id NULL) by fanning them out per property.
+        const exportCombinedStmts = await Statement.findAll({
+            attributes: ['id', 'ownerName', 'reservations', 'items', 'pmPercentage', 'weekEndDate',
+                         'isCohostOnAirbnb', 'waiveCommission', 'waiveCommissionUntil',
+                         'disregardTax', 'airbnbPassThroughTax'],
+            where: { ...baseWhere, propertyId: null },
+            raw: true
+        });
+        const exportCombinedMap = fanOutCombinedByProperty(exportCombinedStmts);
+        const ppByProp = new Map(propertyPerformance.map(p => [parseInt(p.propertyId), p]));
+        for (const [propId, c] of exportCombinedMap) {
+            const existing = ppByProp.get(propId);
+            if (existing) {
+                existing.revenue += c.revenue;
+                existing.payout  += c.payout;
+                existing.pmFee   += c.pmFee;
+            } else {
+                const p = { propertyId: propId, name: `Property ${propId}`,
+                    revenue: c.revenue, payout: c.payout, pmFee: c.pmFee };
+                propertyPerformance.push(p);
+                ppByProp.set(propId, p);
+            }
+        }
 
         // Enrich with listing names
         try {
