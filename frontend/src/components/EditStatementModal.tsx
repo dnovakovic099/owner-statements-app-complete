@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 import { Checkbox } from './ui/checkbox';
@@ -83,6 +84,9 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   statementId,
   onStatementUpdated,
 }) => {
+  const { user } = useAuth();
+  // Super-edit (inline reservation number editing) is restricted to specific users.
+  const canSuperEdit = !!(user?.isSystemUser || user?.canSuperEditReservations);
   const [statement, setStatement] = useState<Statement | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +107,11 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   const [selectedReservationIdsToAdd, setSelectedReservationIdsToAdd] = useState<number[]>([]);
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
   const [cleaningFeeEdits, setCleaningFeeEdits] = useState<{ [reservationId: string]: string }>({});
+  // Super-edit: inline reservation financial number editing
+  const [editingReservationId, setEditingReservationId] = useState<string | null>(null);
+  const [reservationFinancialEdits, setReservationFinancialEdits] = useState<{
+    [reservationId: string]: { baseRate: string; guestFees: string; platformFees: string; tax: string; guestPaidDamageCoverage: string };
+  }>({});
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [showAvailableSection, setShowAvailableSection] = useState(false);
   const [cancelledReservations, setCancelledReservations] = useState<any[]>([]);
@@ -632,6 +641,68 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
           setSaving(false);
         }
       }
+    });
+  };
+
+  // ── Super-edit: inline reservation financial numbers ──────────────────────
+  const openReservationFinancialEditor = (reservation: any, resIdStr: string) => {
+    setReservationFinancialEdits(prev => ({
+      ...prev,
+      [resIdStr]: {
+        baseRate: String(reservation.baseRate ?? 0),
+        guestFees: String(reservation.cleaningAndOtherFees ?? 0),
+        platformFees: String(reservation.platformFees ?? 0),
+        tax: String(reservation.clientTaxResponsibility ?? 0),
+        guestPaidDamageCoverage: String(reservation.resortFee ?? 0),
+      },
+    }));
+    setEditingReservationId(resIdStr);
+  };
+
+  const handleReservationFinancialChange = (resIdStr: string, field: string, value: string) => {
+    setReservationFinancialEdits(prev => ({
+      ...prev,
+      [resIdStr]: { ...prev[resIdStr], [field]: value },
+    }));
+  };
+
+  const handleSaveReservationFinancials = (resIdStr: string) => {
+    if (!statement) return;
+    const edit = reservationFinancialEdits[resIdStr];
+    if (!edit) return;
+    const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+    const updates = {
+      baseRate: num(edit.baseRate),
+      guestFees: num(edit.guestFees),
+      platformFees: num(edit.platformFees),
+      tax: num(edit.tax),
+      guestPaidDamageCoverage: num(edit.guestPaidDamageCoverage),
+    };
+    const revenue = updates.baseRate + updates.guestFees - updates.platformFees;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Edit Reservation Numbers',
+      message: `Overwrite this reservation's numbers? Revenue will be $${revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (base + guest − platform), and PM commission + payout will recalculate. This updates the statement without regenerating.`,
+      confirmText: 'Save Numbers',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          setSaving(true);
+          setError(null);
+          await statementsAPI.editStatement(statement.id, {
+            reservationFinancialUpdates: { [resIdStr]: updates },
+          });
+          onStatementUpdated();
+          onClose();
+        } catch (err) {
+          setError('Failed to update reservation numbers');
+          console.error('Failed to update reservation numbers:', err);
+        } finally {
+          setSaving(false);
+        }
+      },
     });
   };
 
@@ -2387,8 +2458,80 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 <DollarSign className="w-4 h-4 mr-1" />
                                 {(reservation.grossAmount || reservation.clientRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
+                              {canSuperEdit && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (editingReservationId === resIdStr) {
+                                      setEditingReservationId(null);
+                                    } else {
+                                      openReservationFinancialEditor(reservation, resIdStr);
+                                    }
+                                  }}
+                                  title="Edit reservation numbers"
+                                  className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
+                          {canSuperEdit && editingReservationId === resIdStr && reservationFinancialEdits[resIdStr] && (
+                            <div className="mt-3 pt-3 border-t border-gray-200" onClick={(e) => e.stopPropagation()}>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {([
+                                  { key: 'baseRate', label: 'Base Rate' },
+                                  { key: 'guestFees', label: 'Guest Fees' },
+                                  { key: 'platformFees', label: 'Platform Fees' },
+                                  { key: 'tax', label: 'Tax' },
+                                  { key: 'guestPaidDamageCoverage', label: 'Damage Coverage' },
+                                ] as const).map(({ key, label }) => (
+                                  <div key={key}>
+                                    <label className="block text-xs text-gray-500 mb-1">{label} ($)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={reservationFinancialEdits[resIdStr][key]}
+                                      onChange={(e) => handleReservationFinancialChange(resIdStr, key, e.target.value)}
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                              {(() => {
+                                const ed = reservationFinancialEdits[resIdStr];
+                                const n = (v: string) => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+                                const rev = n(ed.baseRate) + n(ed.guestFees) - n(ed.platformFees);
+                                const pmPct = Number(statement?.pmPercentage) || 0;
+                                const pm = rev * (pmPct / 100);
+                                return (
+                                  <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                                    <span className="text-gray-600">Revenue (auto): <span className="font-semibold text-gray-900">${rev.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                                    <span className="text-gray-600">PM @ {pmPct}% (auto): <span className="font-semibold text-gray-900">${pm.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                                    <span className="text-[11px] text-gray-400">Revenue = Base + Guest − Platform</span>
+                                  </div>
+                                );
+                              })()}
+                              <div className="mt-3 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingReservationId(null)}
+                                  className="px-3 py-1.5 text-sm border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={() => handleSaveReservationFinancials(resIdStr)}
+                                  className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  <Save className="w-4 h-4" /> Save Numbers
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

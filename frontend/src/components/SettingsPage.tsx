@@ -108,7 +108,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
   // Edit modal state
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({
-    isActive: true
+    isActive: true,
+    canSuperEditReservations: false
   });
 
   // Confirm dialog state
@@ -664,7 +665,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                                 <button
                                   onClick={() => {
                                     setEditingUser(user);
-                                    setEditForm({ isActive: user.isActive });
+                                    setEditForm({ isActive: user.isActive, canSuperEditReservations: !!user.canSuperEditReservations });
                                   }}
                                   className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
                                   title="Edit User"
@@ -1017,6 +1018,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                 </label>
                 <p className="text-xs text-gray-500 ml-6 mt-1">
                   Inactive users cannot log in
+                </p>
+              </div>
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editForm.canSuperEditReservations}
+                    onChange={(e) => setEditForm({ ...editForm, canSuperEditReservations: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Reservation super-edit</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6 mt-1">
+                  Allows inline-editing reservation numbers in statements (recalculates totals without regenerating). Dangerous — grant sparingly.
                 </p>
               </div>
             </div>

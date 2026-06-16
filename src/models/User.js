@@ -59,6 +59,13 @@ const User = sequelize.define('User', {
         defaultValue: false,
         field: 'is_system_user'
     },
+    canSuperEditReservations: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'can_super_edit_reservations',
+        comment: 'Allows inline-editing reservation financial numbers in statements'
+    },
     lastLogin: {
         type: DataTypes.DATE,
         allowNull: true,

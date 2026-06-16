@@ -23,7 +23,7 @@ const requireAdmin = (req, res, next) => {
 router.get('/', requireAdmin, async (req, res) => {
     try {
         const users = await User.findAll({
-            attributes: ['id', 'username', 'email', 'role', 'isActive', 'inviteAccepted', 'isSystemUser', 'lastLogin', 'createdAt'],
+            attributes: ['id', 'username', 'email', 'role', 'isActive', 'inviteAccepted', 'isSystemUser', 'canSuperEditReservations', 'lastLogin', 'createdAt'],
             order: [['createdAt', 'DESC']]
         });
         res.json({ success: true, users });
@@ -230,7 +230,7 @@ router.post('/:id/resend-invite', requireAdmin, async (req, res) => {
 router.put('/:id', requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { isActive } = req.body;
+        const { isActive, canSuperEditReservations } = req.body;
 
         const user = await User.findByPk(id);
 
@@ -252,6 +252,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
             user.isActive = isActive;
         }
 
+        // Per-user permission to inline-edit reservation financial numbers in statements.
+        if (typeof canSuperEditReservations === 'boolean') {
+            user.canSuperEditReservations = canSuperEditReservations;
+        }
+
         await user.save();
 
         res.json({
@@ -262,7 +267,8 @@ router.put('/:id', requireAdmin, async (req, res) => {
                 email: user.email,
                 role: user.role,
                 isActive: user.isActive,
-                inviteAccepted: user.inviteAccepted
+                inviteAccepted: user.inviteAccepted,
+                canSuperEditReservations: user.canSuperEditReservations
             }
         });
     } catch (error) {

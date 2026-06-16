@@ -32,7 +32,8 @@ router.post('/login', async (req, res) => {
                     username: user.username,
                     email: user.email,
                     role: user.role,
-                    isSystemUser: user.isSystemUser
+                    isSystemUser: user.isSystemUser,
+                    canSuperEditReservations: user.canSuperEditReservations || false
                 }
             });
         }
@@ -75,7 +76,8 @@ router.post('/verify', async (req, res) => {
                     username: decoded.username,
                     email: decoded.email,
                     role: decoded.role,
-                    isSystemUser: decoded.isSystemUser
+                    isSystemUser: decoded.isSystemUser,
+                    canSuperEditReservations: decoded.canSuperEditReservations || false
                 }
             });
         }
@@ -122,6 +124,7 @@ router.post('/refresh', async (req, res) => {
                 email: decoded.email,
                 role: decoded.role,
                 isSystemUser: true,
+                canSuperEditReservations: decoded.canSuperEditReservations || false,
             };
         } else {
             const dbUser = await User.findByPk(decoded.id);
@@ -134,6 +137,7 @@ router.post('/refresh', async (req, res) => {
                 email: dbUser.email,
                 role: dbUser.role,
                 isSystemUser: dbUser.isSystemUser || false,
+                canSuperEditReservations: dbUser.canSuperEditReservations || false,
             };
         }
 
@@ -229,7 +233,8 @@ router.post('/accept-invite', async (req, res) => {
             username: user.username,
             email: user.email,
             role: user.role,
-            isSystemUser: user.isSystemUser
+            isSystemUser: user.isSystemUser,
+            canSuperEditReservations: user.canSuperEditReservations || false
         });
 
         res.json({
@@ -239,7 +244,8 @@ router.post('/accept-invite', async (req, res) => {
             user: {
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                canSuperEditReservations: user.canSuperEditReservations || false
             }
         });
     } catch (error) {

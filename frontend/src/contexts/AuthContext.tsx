@@ -7,6 +7,7 @@ interface User {
   email?: string;
   role?: 'system' | 'admin' | 'editor' | 'viewer';
   isSystemUser?: boolean;
+  canSuperEditReservations?: boolean;
 }
 
 interface AuthContextType {

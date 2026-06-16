@@ -253,6 +253,15 @@ export const statementsAPI = {
       guestPaidDamageCoverage?: number;
     };
     reservationCleaningFeeUpdates?: { [reservationId: string]: number };
+    reservationFinancialUpdates?: {
+      [reservationId: string]: {
+        baseRate?: number;
+        guestFees?: number;
+        platformFees?: number;
+        tax?: number;
+        guestPaidDamageCoverage?: number;
+      };
+    };
     expenseItemUpdates?: Array<{
       globalIndex: number;
       date?: string;
@@ -1092,6 +1101,7 @@ export interface User {
   isActive: boolean;
   inviteAccepted: boolean;
   isSystemUser?: boolean;
+  canSuperEditReservations?: boolean;
   lastLogin: string | null;
   createdAt: string;
 }
@@ -1137,6 +1147,7 @@ export const usersAPI = {
   // Update user (admin only)
   updateUser: async (userId: number, data: {
     isActive?: boolean;
+    canSuperEditReservations?: boolean;
   }): Promise<{ success: boolean; user: User }> => {
     const response = await api.put(`/users/${userId}`, data);
     return response.data;

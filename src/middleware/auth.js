@@ -51,7 +51,8 @@ function generateToken(user) {
             username: user.username,
             email: user.email,
             role: user.role,
-            isSystemUser: user.isSystemUser || false
+            isSystemUser: user.isSystemUser || false,
+            canSuperEditReservations: user.canSuperEditReservations || false
         },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
@@ -136,6 +137,7 @@ async function authenticateUser(username, password) {
                     email: dbUser.email,
                     role: dbUser.role,
                     isSystemUser: dbUser.isSystemUser,
+                    canSuperEditReservations: dbUser.canSuperEditReservations || false,
                     source: 'database'
                 };
             }
@@ -156,6 +158,7 @@ async function authenticateUser(username, password) {
                     email: dbUser.email,
                     role: dbUser.role,
                     isSystemUser: dbUser.isSystemUser,
+                    canSuperEditReservations: dbUser.canSuperEditReservations || false,
                     source: 'legacy-with-db'
                 };
             }
@@ -217,6 +220,7 @@ async function _validateJwtSubject(decoded) {
             email: dbUser.email,
             role: dbUser.role,
             isSystemUser: dbUser.isSystemUser || false,
+            canSuperEditReservations: dbUser.canSuperEditReservations || false,
         };
         _userCheckCache.set(decoded.id, { user, expiresAt: Date.now() + USER_CHECK_TTL_MS });
         return user;

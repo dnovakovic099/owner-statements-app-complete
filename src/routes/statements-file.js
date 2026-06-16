@@ -2469,13 +2469,18 @@ router.put('/:id/reconfigure', async (req, res) => {
             // Merge custom reservations back
             const mergedReservations = [...allReservations, ...customReservations];
 
-            // Custom reservations carry their own user-entered finance fields.
+            // Custom reservations carry their own user-entered finance fields. Tax is only
+            // added to the payout when passed through to the owner (not disregarded, and
+            // non-Airbnb OR Airbnb pass-through) — mirrors the real-reservation rule.
             let customGrossPayout = 0;
             for (const cr of customReservations) {
                 const clientRev = parseFloat(cr.clientRevenue) || parseFloat(cr.amount) || 0;
                 const luxFee = parseFloat(cr.luxuryLodgingFee) || 0;
                 const tax = parseFloat(cr.clientTaxResponsibility) || 0;
-                customGrossPayout += clientRev - luxFee + tax;
+                const crListing = propertyListingMap[cr.propertyId] || {};
+                const isAirbnb = !!(cr.source && cr.source.toLowerCase().includes('airbnb'));
+                const shouldAddTax = !crListing.disregardTax && (!isAirbnb || crListing.airbnbPassThroughTax);
+                customGrossPayout += clientRev - luxFee + (shouldAddTax ? tax : 0);
                 totalRevenue += parseFloat(cr.amount) || 0;
             }
             const finalOwnerPayout = regularGrossPayout + customGrossPayout + totalUpsells - totalExpenses;
@@ -2846,7 +2851,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, expenseItemUpdates, upsellItemUpdates, itemVisibilityUpdates } = req.body;
+        const { expenseIdsToRemove, cancelledReservationIdsToAdd, reservationIdsToAdd, reservationIdsToRemove, customReservationToAdd, reservationCleaningFeeUpdates, reservationFinancialUpdates, expenseItemUpdates, upsellItemUpdates, itemVisibilityUpdates } = req.body;
 
         const statement = await FileDataService.getStatementById(id);
         if (!statement) {
@@ -3098,8 +3103,9 @@ router.put('/:id', async (req, res) => {
             const nights = parseInt(customReservationToAdd.nights) ||
                 Math.ceil((new Date(customReservationToAdd.checkOutDate) - new Date(customReservationToAdd.checkInDate)) / (1000 * 60 * 60 * 24));
 
-            // Calculate clientRevenue (revenue before PM commission)
-            const clientRevenue = grossPayout + pmCommission;
+            // Revenue = Base Rate + Guest Fees - Platform Fees (same formula as real Hostify
+            // reservations, see HostifyService clientRevenue). Platform fees are entered positive.
+            const clientRevenue = baseRate + guestFees - platformFees;
 
             const customReservation = {
                 id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -3171,6 +3177,89 @@ router.put('/:id', async (req, res) => {
                 statement.totalCleaningFee = (statement.reservations || []).reduce((sum, res) => {
                     return sum + (parseFloat(res.cleaningFee) || 0);
                 }, 0);
+            }
+        }
+
+        // Super-edit: inline-edit reservation financial numbers. DANGEROUS — restricted to
+        // users with the canSuperEditReservations permission (system users allowed implicitly).
+        // Revenue is auto-derived (base + guest - platform); PM commission and owner payout are
+        // recomputed by the recalculation block below — no values are taken on faith here.
+        if (reservationFinancialUpdates && typeof reservationFinancialUpdates === 'object' && Object.keys(reservationFinancialUpdates).length > 0) {
+            const canSuperEdit = !!(req.user && (req.user.isSystemUser || req.user.canSuperEditReservations));
+            if (!canSuperEdit) {
+                return res.status(403).json({ error: 'You do not have permission to edit reservation numbers.' });
+            }
+
+            const num = (v, fallback) => {
+                const n = parseFloat(v);
+                return isNaN(n) ? fallback : n;
+            };
+
+            const auditChanges = [];
+            for (const [resIdStr, updates] of Object.entries(reservationFinancialUpdates)) {
+                if (!updates || typeof updates !== 'object') continue;
+                const reservation = (statement.reservations || []).find(res => {
+                    const id = res.hostifyId || res.id;
+                    return String(id) === String(resIdStr);
+                });
+                if (!reservation) {
+                    logger.warn('reservationFinancialUpdates: reservation not found, skipping', { context: 'StatementsFile', resId: resIdStr });
+                    continue;
+                }
+
+                const before = {
+                    baseRate: reservation.baseRate,
+                    guestFees: reservation.cleaningAndOtherFees,
+                    platformFees: reservation.platformFees,
+                    tax: reservation.clientTaxResponsibility,
+                    damageCoverage: reservation.resortFee,
+                    clientRevenue: reservation.clientRevenue,
+                };
+
+                if (updates.baseRate !== undefined) reservation.baseRate = num(updates.baseRate, reservation.baseRate);
+                if (updates.guestFees !== undefined) reservation.cleaningAndOtherFees = num(updates.guestFees, reservation.cleaningAndOtherFees);
+                if (updates.platformFees !== undefined) reservation.platformFees = num(updates.platformFees, reservation.platformFees);
+                if (updates.tax !== undefined) reservation.clientTaxResponsibility = num(updates.tax, reservation.clientTaxResponsibility);
+                if (updates.guestPaidDamageCoverage !== undefined) reservation.resortFee = num(updates.guestPaidDamageCoverage, reservation.resortFee);
+
+                // Auto-derive revenue: base + guest - platform (same as HostifyService clientRevenue).
+                const baseRate = parseFloat(reservation.baseRate) || 0;
+                const guestFees = parseFloat(reservation.cleaningAndOtherFees) || 0;
+                const platformFees = parseFloat(reservation.platformFees) || 0;
+                reservation.clientRevenue = baseRate + guestFees - platformFees;
+                reservation.hasDetailedFinance = true;
+
+                // Keep the reservation's revenue line item in sync (best-effort match by
+                // property + guest + check-in; statement totals are derived from reservations).
+                const revItem = (statement.items || []).find(it =>
+                    it.type === 'revenue' &&
+                    String(it.propertyId) === String(reservation.propertyId) &&
+                    (it.description || '').includes(reservation.guestName || ' ') &&
+                    (it.description || '').includes(reservation.checkInDate || ' ')
+                );
+                if (revItem) revItem.amount = reservation.clientRevenue;
+
+                auditChanges.push({
+                    resId: resIdStr,
+                    before,
+                    after: {
+                        baseRate: reservation.baseRate,
+                        guestFees: reservation.cleaningAndOtherFees,
+                        platformFees: reservation.platformFees,
+                        tax: reservation.clientTaxResponsibility,
+                        damageCoverage: reservation.resortFee,
+                        clientRevenue: reservation.clientRevenue,
+                    },
+                });
+                modified = true;
+            }
+
+            if (auditChanges.length > 0) {
+                await ActivityLog.log(req, 'EDIT_RESERVATION_NUMBERS', 'statement', statement.id, {
+                    statementId: statement.id,
+                    editedBy: req.user && req.user.username,
+                    changes: auditChanges,
+                });
             }
         }
 
@@ -3285,12 +3374,19 @@ router.put('/:id', async (req, res) => {
                 statement.weekEndDate,
                 statement.calculationType || 'checkout'
             );
-            // Custom reservations carry user-entered finance fields directly.
+            // Custom reservations carry user-entered finance fields directly. Tax is only
+            // added to the payout when it's actually passed through to the owner — same rule
+            // as real reservations: not disregarded, and (non-Airbnb OR Airbnb pass-through).
             for (const res of customReservations) {
                 const clientRev = parseFloat(res.clientRevenue) || 0;
                 const luxFee = parseFloat(res.luxuryLodgingFee) || 0;
                 const tax = parseFloat(res.clientTaxResponsibility) || 0;
-                grossPayoutSum += clientRev - luxFee + tax;
+                const resListing = editListingMap[res.propertyId] || {};
+                const isAirbnb = !!(res.source && res.source.toLowerCase().includes('airbnb'));
+                const disregardTax = resListing.disregardTax ?? statement.disregardTax ?? false;
+                const airbnbPassThroughTax = resListing.airbnbPassThroughTax ?? statement.airbnbPassThroughTax ?? false;
+                const shouldAddTax = !disregardTax && (!isAirbnb || airbnbPassThroughTax);
+                grossPayoutSum += clientRev - luxFee + (shouldAddTax ? tax : 0);
             }
             const adjustments = parseFloat(statement.adjustments || 0);
             statement.ownerPayout = Math.round(
