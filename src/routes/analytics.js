@@ -198,8 +198,11 @@ function fanOutCombinedByProperty(combinedStatements) {
  * statement to the query window and dropping any subsumed by a wider one.
  */
 async function selectDedupedStatementIds(startDate, endDate, calculationType) {
+    // The checkout/calendar toggle filters individual statements by their calculation type, but
+    // combined/group statements (property_id NULL) are always included so they remain visible in
+    // every view regardless of how the group's statement was generated.
     const calcTypeFilter = (calculationType === 'checkout' || calculationType === 'calendar')
-        ? `AND calculation_type = :calculationType`
+        ? `AND (calculation_type = :calculationType OR property_id IS NULL)`
         : '';
     const replacements = { start: startDate, end: endDate };
     if (calculationType === 'checkout' || calculationType === 'calendar') {
