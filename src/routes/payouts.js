@@ -123,6 +123,25 @@ async function clearStaleRecipient(statement) {
     return null;
 }
 
+// Max length for the ACH statement_descriptor (shown as "Description" in the Increase
+// dashboard, and—shortened by ACH/NACHA limits—on the recipient's bank statement).
+// Increase accepts at least this many characters for ACH transfers.
+const MAX_PAYOUT_DESCRIPTOR = 30;
+
+/**
+ * Build the payout descriptor: "Stmt Payout <Owner> #<statementId>".
+ * The "#<statementId>" suffix is always preserved; only the owner name is trimmed
+ * if the whole string would exceed the descriptor length limit.
+ */
+function buildPayoutDescriptor(ownerName, statementId) {
+    const prefix = 'Stmt Payout ';
+    const suffix = ` #${statementId}`;
+    const room = MAX_PAYOUT_DESCRIPTOR - prefix.length - suffix.length;
+    const name = String(ownerName || 'Owner').trim();
+    const trimmedName = room > 0 ? name.slice(0, room).trim() : '';
+    return `${prefix}${trimmedName}${suffix}`.slice(0, MAX_PAYOUT_DESCRIPTOR);
+}
+
 /**
  * Resolve the Increase external account ID for a statement.
  *
@@ -834,7 +853,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         // Execute payout via ACH
         const ownerName = statement.ownerName || 'Owner';
-        const reference = `Payout - ${ownerName} - Stmt #${statementId}`;
+        const reference = buildPayoutDescriptor(ownerName, statementId);
 
         const { transfer, wiseFee } = await IncreaseService.sendPayout({
             recipientId: wiseRecipientId,
@@ -1203,7 +1222,7 @@ router.post('/fund-and-queue', async (req, res) => {
 
             try {
                 const amount = parseFloat(statement.ownerPayout);
-                const reference = `Payout - ${statement.ownerName} - Stmt #${statement.id}`;
+                const reference = buildPayoutDescriptor(statement.ownerName, statement.id);
 
                 const { transfer, wiseFee } = await IncreaseService.sendPayout({
                     recipientId: wiseRecipientId,
@@ -1372,7 +1391,7 @@ async function processQueuedPayouts() {
                 continue;
             }
 
-            const reference = `Payout - ${statement.ownerName || 'Owner'} - Stmt #${statement.id}`;
+            const reference = buildPayoutDescriptor(statement.ownerName, statement.id);
             const { transfer, wiseFee } = await IncreaseService.sendPayout({
                 recipientId: wiseRecipientId,
                 amount: payoutAmount,

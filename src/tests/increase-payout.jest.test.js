@@ -203,7 +203,7 @@ describeOrSkip('Suite 3: Single Payouts', () => {
             statementId: 80005,
         });
         expect(transfer).toHaveProperty('id');
-        expect(transfer.statement_descriptor.length).toBeLessThanOrEqual(22);
+        expect(transfer.statement_descriptor.length).toBeLessThanOrEqual(30);
         createdTransferIds.push(transfer.id);
         console.log(`Truncated descriptor: "${transfer.statement_descriptor}"`);
     });
@@ -460,7 +460,7 @@ describeOrSkip('Suite 7: End-to-End Flow', () => {
         });
 
         // Reference gets truncated to 22 chars
-        expect(transfer.statement_descriptor.length).toBeLessThanOrEqual(22);
+        expect(transfer.statement_descriptor.length).toBeLessThanOrEqual(30);
         expect(transfer).toHaveProperty('id');
         createdTransferIds.push(transfer.id);
         console.log(`Statement payout descriptor: "${transfer.statement_descriptor}"`);

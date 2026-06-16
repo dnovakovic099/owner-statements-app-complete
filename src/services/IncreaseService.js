@@ -193,7 +193,7 @@ class IncreaseService {
      */
     async createTransfer({ externalAccountId, amount, statementDescriptor, statementId, individualName, idempotencyKey }) {
         const amountCents = Math.round(amount * 100);
-        const descriptor = (statementDescriptor || `Payout #${statementId}`).substring(0, 22);
+        const descriptor = (statementDescriptor || `Payout #${statementId}`).substring(0, 30);
         const body = {
             account_id: this.accountId,
             external_account_id: externalAccountId,
@@ -235,7 +235,7 @@ class IncreaseService {
      * Returns { transfer, wiseFee: 0 } (Increase fees are billed separately, not per-API-call)
      */
     async sendPayout({ recipientId, amount, reference, statementId, individualName }) {
-        const descriptor = (reference || `Payout #${statementId}`).substring(0, 22);
+        const descriptor = (reference || `Payout #${statementId}`).substring(0, 30);
         const idempotencyKey = crypto.createHash('sha256').update(`payout-${statementId}-${amount}-${recipientId}`).digest('hex');
         const transfer = await this.createTransfer({
             externalAccountId: recipientId,
@@ -261,7 +261,7 @@ class IncreaseService {
     async sendBatchPayouts(payouts) {
         const transfers = [];
         for (const payout of payouts) {
-            const descriptor = (payout.reference || `Payout #${payout.statementId}`).substring(0, 22);
+            const descriptor = (payout.reference || `Payout #${payout.statementId}`).substring(0, 30);
             const idempotencyKey = crypto.createHash('sha256').update(`batch-${payout.statementId}-${payout.amount}-${payout.recipientId}`).digest('hex');
             const transfer = await this.createTransfer({
                 externalAccountId: payout.recipientId,
