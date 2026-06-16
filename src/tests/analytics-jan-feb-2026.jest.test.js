@@ -99,7 +99,7 @@ describe(`Analytics Jan 1–Feb 28 2026 · top-15 properties`, () => {
         const metaRows = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'weekStartDate', 'weekEndDate',
                          'totalRevenue', 'pmCommission', 'ownerPayout',
-                         'reservations', 'expenses',
+                         'reservations', 'expenses', 'items',
                          'pmPercentage', 'calculationType',
                          'waiveCommission', 'waiveCommissionUntil',
                          'isCohostOnAirbnb', 'disregardTax', 'airbnbPassThroughTax',
@@ -265,7 +265,17 @@ describe(`Analytics Jan 1–Feb 28 2026 · top-15 properties`, () => {
                     endDate:     stmtEnd,
                     calculationType: stmt.calculationType || 'checkout',
                 });
-                calcPayout += result.ownerPayout;
+                // Stored payout excludes prior-statement-duplicate upsells/expenses (flagged
+                // hidden in `items` at generation), but calculateStatementFinancials re-includes
+                // them (it dedupes only reservations, not expenses), so back them out here.
+                const items = parseJson(stmt.items);
+                const priorDupUpsells = items
+                    .filter(i => i.type === 'upsell' && i.hidden && i.hiddenReason === 'prior_statement')
+                    .reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+                const priorDupExpenses = items
+                    .filter(i => i.type === 'expense' && i.hidden && i.hiddenReason === 'prior_statement')
+                    .reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+                calcPayout += result.ownerPayout - priorDupUpsells + priorDupExpenses;
             }
 
             const storedRounded = Math.round(prop.storedOwnerPayout * 100) / 100;
