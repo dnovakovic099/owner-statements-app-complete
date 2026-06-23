@@ -118,8 +118,10 @@ export const statementsAPI = {
     tag?: string;
     startDate: string;
     endDate: string;
+    groupId?: number;
     calculationType: string;
     generateCombined?: boolean; // For tag-based generation: true = one combined statement, false = separate statements
+    includePriorStatementDuplicates?: boolean; // When true, include items already on a prior statement instead of hiding them
   }): Promise<{
     message: string;
     jobId?: string;  // For background jobs (bulk generation)

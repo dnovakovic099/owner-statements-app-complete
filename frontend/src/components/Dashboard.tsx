@@ -406,11 +406,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     ownerId: string;
     propertyId?: string;
     propertyIds?: string[];
+    groupId?: number;
     tag?: string;
     startDate: string;
     endDate: string;
     calculationType: string;
     generateCombined?: boolean;
+    includePriorStatementDuplicates?: boolean;
   }) => {
     // No toast here - the modal has its own loading overlay
     const isBulk = data.ownerId === 'all' || (data.tag && !data.propertyId && !data.generateCombined);

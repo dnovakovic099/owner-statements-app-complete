@@ -25,7 +25,7 @@ import {
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; groupId?: number; tag?: string; startDate: string; endDate: string; calculationType: string; generateCombined?: boolean }) => Promise<void>;
+  onGenerate: (data: { ownerId: string; propertyId?: string; propertyIds?: string[]; groupId?: number; tag?: string; startDate: string; endDate: string; calculationType: string; generateCombined?: boolean; includePriorStatementDuplicates?: boolean }) => Promise<void>;
   owners: Owner[];
   properties: Property[];
 }
@@ -159,6 +159,10 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
   // Combined statement toggle - when true, generate ONE statement for all selected properties
   const [generateCombined, setGenerateCombined] = useState(true);
 
+  // When true, include reservations/expenses that already appear on a prior statement
+  // (normally these are hidden/excluded as duplicates). Off by default.
+  const [includePriorDuplicates, setIncludePriorDuplicates] = useState(false);
+
   // Owner dropdown state
   const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState('');
@@ -281,6 +285,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           startDate,
           endDate,
           calculationType,
+          includePriorStatementDuplicates: includePriorDuplicates,
         });
       } else if (selectedPropertyIds.length > 0) {
         if (generateCombined && selectedPropertyIds.length > 1) {
@@ -292,6 +297,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
             startDate,
             endDate,
             calculationType,
+            includePriorStatementDuplicates: includePriorDuplicates,
           });
         } else {
           const total = selectedPropertyIds.length;
@@ -309,6 +315,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                 startDate,
                 endDate,
                 calculationType,
+                includePriorStatementDuplicates: includePriorDuplicates,
               });
             } catch (err) {
               console.error(`Error generating statement for property ${propId}:`, err);
@@ -332,6 +339,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
               endDate,
               calculationType,
               generateCombined,
+              includePriorStatementDuplicates: includePriorDuplicates,
             });
           } catch (err) {
             console.error(`Error generating statement for tag ${tag}:`, err);
@@ -344,6 +352,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
           startDate,
           endDate,
           calculationType,
+          includePriorStatementDuplicates: includePriorDuplicates,
         });
       }
 
@@ -353,6 +362,7 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
       setSelectedGroupId(null);
       setGenerateAll(false);
       setGenerateCombined(true);
+      setIncludePriorDuplicates(false);
       setPropertySearch('');
       setGenerationProgress({ current: 0, total: 0 });
       setIsGenerating(false);
@@ -1101,6 +1111,29 @@ const GenerateModal: React.FC<GenerateModalProps> = ({
                       <strong>Note:</strong> Revenue will be prorated based on nights in period.
                     </div>
                   )}
+                </div>
+
+                {/* Include prior-statement duplicates */}
+                <div className="space-y-1.5">
+                  <label className={`flex items-start p-2.5 border rounded-md cursor-pointer transition-all ${
+                    includePriorDuplicates
+                      ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-400'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <Checkbox
+                      id="includePriorDuplicates"
+                      checked={includePriorDuplicates}
+                      onCheckedChange={(checked) => setIncludePriorDuplicates(checked === true)}
+                      className="mt-0.5 mr-2"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">Include items from prior statements</div>
+                      <div className="text-xs text-gray-500">
+                        Add reservations &amp; expenses that already appear on an earlier statement
+                        (normally hidden as duplicates). Use only when intentionally re-billing.
+                      </div>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>

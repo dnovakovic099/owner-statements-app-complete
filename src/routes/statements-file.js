@@ -788,6 +788,9 @@ router.get('/:id', async (req, res) => {
 // Optional 'group' parameter contains group info when generating from a listing group
 async function generateCombinedStatement(req, res, propertyIds, ownerId, startDate, endDate, calculationType, group = null) {
     try {
+        // When true, do NOT drop items already billed on a prior statement — include every
+        // reservation/expense in this period and count them toward the totals.
+        const includePriorDuplicates = req.body && req.body.includePriorStatementDuplicates === true;
         const periodStart = new Date(startDate);
         const periodEnd = new Date(endDate);
 
@@ -891,7 +894,9 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                 logger.info(`Summary range (${periodDays} days > 7) — skipping prior-statement dedupe`, { context: 'StatementsFile', action: 'generateCombinedStatement' });
             }
         } else {
-            const priorReservationSignatures = buildPriorReservationSignatures(priorStatements);
+            const priorReservationSignatures = includePriorDuplicates
+                ? new Map()
+                : buildPriorReservationSignatures(priorStatements);
             periodReservations = [];
             for (const res of periodReservationsRaw) {
                 const match = matchReservationToPrior(res, priorReservationSignatures);
@@ -1094,7 +1099,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const ownerPayout = grossPayoutSum + totalUpsells - totalExpenses;
 
         // Cross-statement duplicate expense detection (priorStatements fetched in parallel above)
-        const priorSignatures = buildPriorExpenseSignatures(priorStatements);
+        const priorSignatures = includePriorDuplicates ? new Map() : buildPriorExpenseSignatures(priorStatements);
         const priorStatementFlaggedExpenses = [];
         const nonDuplicateFilteredExpenses = [];
         const priorStatementDuplicateWarnings = [];
@@ -1390,11 +1395,15 @@ router.post('/generate', async (req, res) => {
     req.setTimeout(10 * 60 * 1000);
     res.setTimeout(10 * 60 * 1000);
     try {
-        let { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined } = req.body;
+        let { propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType = 'checkout', generateCombined, includePriorStatementDuplicates } = req.body;
+
+        // When true, do NOT drop items that already appear on a prior statement — include
+        // every reservation/expense in this period and count them toward the totals.
+        const includePriorDuplicates = includePriorStatementDuplicates === true;
 
         logger.info('[GENERATE] Statement generation requested', {
             context: 'StatementsFile', action: 'generate',
-            propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType, generateCombined
+            propertyId, propertyIds, ownerId, tag, groupId, startDate, endDate, calculationType, generateCombined, includePriorDuplicates
         });
 
         if (!startDate || !endDate) {
@@ -1580,7 +1589,11 @@ router.post('/generate', async (req, res) => {
         // loads for the full targetListings set (tag / all-properties modes).
         const priorStatementsForDedupe = priorStatementsEarly
             || await FileDataService.getPriorStatementExpenses(targetListings.map(l => parseInt(l.id)));
-        const priorReservationSignatures = buildPriorReservationSignatures(priorStatementsForDedupe);
+        // When the operator asked to include prior-statement duplicates, use an empty
+        // signature map so nothing matches and every reservation is kept + counted.
+        const priorReservationSignatures = includePriorDuplicates
+            ? new Map()
+            : buildPriorReservationSignatures(priorStatementsForDedupe);
 
         // Filter reservations - optimized with reduced logging
         // Include 'blocked' for manual calendar blocks; exclude from overlap (those are booking-only signals)
@@ -1906,7 +1919,7 @@ router.post('/generate', async (req, res) => {
 
         // Cross-statement duplicate expense detection (reuses priorStatementsForDedupe already loaded above)
         const priorStatements = priorStatementsForDedupe;
-        const priorSignatures = buildPriorExpenseSignatures(priorStatements);
+        const priorSignatures = includePriorDuplicates ? new Map() : buildPriorExpenseSignatures(priorStatements);
         const priorStatementFlaggedExpenses = [];
         const nonDuplicateFilteredExpenses = [];
         const priorStatementDuplicateWarnings = [];
