@@ -1407,16 +1407,31 @@ async function processQueuedPayouts() {
     const totalNeeded = queued.reduce((sum, s) => sum + toCents(s.ownerPayout), 0);
     const balance = await IncreaseService.getBalance();
 
+    // Greedy, not all-or-nothing: pay every queued statement the balance can
+    // cover (oldest-first) instead of refusing the whole batch when the total
+    // exceeds the balance. Mirrors processAwaitingFunding so one large payout
+    // can't strand all the smaller ones. `remaining` is the balance we expect
+    // to have left after each successful send.
+    let remaining = toCents(balance);
     if (balance < totalNeeded) {
-        logger.warn('Insufficient Increase balance for queued payouts', { balance, totalNeeded, queuedCount: queued.length });
-        return { success: false, error: 'Insufficient balance', balance, totalNeeded };
+        logger.warn('Insufficient balance for full queued batch — paying the covered subset', { balance, totalNeeded, queuedCount: queued.length });
     }
 
     let processed = 0;
     let failed = 0;
+    let skippedInsufficient = 0;
 
     for (const statement of queued) {
         try {
+            // Skip rows the remaining balance can't cover yet — leave them
+            // queued for the next cycle / a top-up. Checked before the atomic
+            // claim so we never mark-pending something we won't actually send.
+            const amountPreview = toCents(statement.ownerPayout);
+            if (amountPreview > 0 && amountPreview > remaining) {
+                skippedInsufficient++;
+                continue;
+            }
+
             // Atomic claim — skip if status changed since we queried
             const [claimedRows] = await Statement.update(
                 { payoutStatus: 'pending', payoutError: null },
@@ -1458,8 +1473,9 @@ async function processQueuedPayouts() {
                 totalTransferAmount,
             });
             sendPayoutReceiptAsync(statement, transfer.id, payoutAmount, wiseFee, totalTransferAmount, paidAt);
+            remaining = toCents(remaining - payoutAmount); // only decrement on a real send
             processed++;
-            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id });
+            logger.info('Queued payout processed', { statementId: statement.id, transferId: transfer.id, remaining });
         } catch (err) {
             failed++;
             const errorMsg = err.response?.data?.message || err.message || 'Transfer failed';
@@ -1468,8 +1484,11 @@ async function processQueuedPayouts() {
         }
     }
 
-    logger.info('Queued payouts processing complete', { processed, failed });
-    return { success: true, processed, failed };
+    if (skippedInsufficient > 0) {
+        logger.warn('Some queued payouts left unpaid — balance did not cover them', { processed, failed, skippedInsufficient, balance, totalNeeded });
+    }
+    logger.info('Queued payouts processing complete', { processed, failed, skippedInsufficient });
+    return { success: true, processed, failed, skippedInsufficient };
 }
 
 module.exports = router;
