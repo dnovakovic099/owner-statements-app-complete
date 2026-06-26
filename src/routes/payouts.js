@@ -140,16 +140,14 @@ function statementPayoutLabel(statement) {
 }
 
 /**
- * Build the payout descriptor: "<property/owner label> #<statementId>".
- * The "#<statementId>" suffix is always preserved for reconciliation; the label
- * is trimmed to fit the descriptor length limit.
+ * Build the ACH statement descriptor: "Payout #<statementId>". The property /
+ * owner identity goes in the transfer's individual_name (see statementPayoutLabel);
+ * Increase shows the dashboard "Description" as individual_name + this descriptor,
+ * so keeping this short avoids duplicating the property name. The "#<id>" is
+ * preserved for reconciliation.
  */
-function buildPayoutDescriptor(label, statementId) {
-    const suffix = ` #${statementId}`;
-    const room = MAX_PAYOUT_DESCRIPTOR - suffix.length;
-    const base = String(label || 'Owner').trim();
-    const trimmed = room > 0 ? base.slice(0, room).trim() : '';
-    return `${trimmed}${suffix}`.slice(0, MAX_PAYOUT_DESCRIPTOR);
+function buildPayoutDescriptor(statementId) {
+    return `Payout #${statementId}`.slice(0, MAX_PAYOUT_DESCRIPTOR);
 }
 
 /**
@@ -863,14 +861,14 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         // Execute payout via ACH
         const ownerName = statement.ownerName || 'Owner';
-        const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statementId);
+        const reference = buildPayoutDescriptor(statementId);
 
         const { transfer, wiseFee } = await IncreaseService.sendPayout({
             recipientId: wiseRecipientId,
             amount: payoutAmount,
             reference,
             statementId,
-            individualName: ownerName,
+            individualName: statementPayoutLabel(statement),
         });
 
         const totalTransferAmount = payoutAmount + wiseFee;
@@ -1232,14 +1230,14 @@ router.post('/fund-and-queue', async (req, res) => {
 
             try {
                 const amount = parseFloat(statement.ownerPayout);
-                const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statement.id);
+                const reference = buildPayoutDescriptor(statement.id);
 
                 const { transfer, wiseFee } = await IncreaseService.sendPayout({
                     recipientId: wiseRecipientId,
                     amount,
                     reference,
                     statementId: statement.id,
-                    individualName: statement.ownerName || 'Owner',
+                    individualName: statementPayoutLabel(statement),
                 });
 
                 const paidAt = new Date();
@@ -1440,13 +1438,13 @@ async function processQueuedPayouts() {
                 continue;
             }
 
-            const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statement.id);
+            const reference = buildPayoutDescriptor(statement.id);
             const { transfer, wiseFee } = await IncreaseService.sendPayout({
                 recipientId: wiseRecipientId,
                 amount: payoutAmount,
                 reference,
                 statementId: statement.id,
-                individualName: statement.ownerName || 'Owner',
+                individualName: statementPayoutLabel(statement),
             });
 
             const paidAt = new Date();
