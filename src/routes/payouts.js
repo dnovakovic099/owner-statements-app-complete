@@ -1307,6 +1307,33 @@ router.get('/balance', async (req, res) => {
     }
 });
 
+// ─── POST /fund ────────────────────────────────────────────
+// Admin: manually pull funds from the business bank into Increase (ACH debit)
+// to top up the balance so awaiting_funding / queued payouts can clear. The
+// fixed auto-replenish ($5,000) can't be reused same-day (idempotency key is
+// keyed on amount+date), so this takes an explicit amount.
+router.post('/fund', async (req, res) => {
+    try {
+        if (!IncreaseService.isFundingConfigured()) {
+            return res.status(400).json({ error: 'Funding source not configured (set INCREASE_FUNDING_ACCOUNT_ID)' });
+        }
+        const amount = parseFloat(req.body?.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({ error: 'A positive `amount` (in dollars) is required' });
+        }
+        if (amount > 50000) {
+            return res.status(400).json({ error: 'Amount exceeds the $50,000 manual-funding cap' });
+        }
+        const transfer = await IncreaseService.requestFunding(amount);
+        logger.info('Manual funding pull initiated', { amount, transferId: transfer.id, status: transfer.status });
+        return res.json({ success: true, transferId: transfer.id, amount, status: transfer.status });
+    } catch (error) {
+        const data = error?.response?.data;
+        logger.logError(error, { context: 'Payouts', action: 'manualFund', increaseResponse: data });
+        return res.status(500).json({ error: 'Funding pull failed', detail: data?.detail || data?.title || error.message });
+    }
+});
+
 // ─── GET /reconcile ──────────────────────────────────────────
 // Check Increase transfer statuses and update statements accordingly (admin-only)
 router.get('/reconcile', async (req, res) => {
