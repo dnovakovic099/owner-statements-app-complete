@@ -129,17 +129,27 @@ async function clearStaleRecipient(statement) {
 const MAX_PAYOUT_DESCRIPTOR = 30;
 
 /**
- * Build the payout descriptor: "Stmt Payout <Owner> #<statementId>".
- * The "#<statementId>" suffix is always preserved; only the owner name is trimmed
- * if the whole string would exceed the descriptor length limit.
+ * ACH-safe payout label — prefer the statement's display name / property over
+ * the (often generic "Default") owner name so each payout is identifiable in
+ * the Increase "Description" column. Strips characters outside the NACHA-safe
+ * set (letters, digits, space, dash, period, hash).
  */
-function buildPayoutDescriptor(ownerName, statementId) {
-    const prefix = 'Stmt Payout ';
+function statementPayoutLabel(statement) {
+    const raw = statement.statementDisplayName || statement.propertyName || statement.ownerName || 'Owner';
+    return String(raw).replace(/[^A-Za-z0-9 #.\-]/g, ' ').replace(/\s+/g, ' ').trim() || 'Owner';
+}
+
+/**
+ * Build the payout descriptor: "<property/owner label> #<statementId>".
+ * The "#<statementId>" suffix is always preserved for reconciliation; the label
+ * is trimmed to fit the descriptor length limit.
+ */
+function buildPayoutDescriptor(label, statementId) {
     const suffix = ` #${statementId}`;
-    const room = MAX_PAYOUT_DESCRIPTOR - prefix.length - suffix.length;
-    const name = String(ownerName || 'Owner').trim();
-    const trimmedName = room > 0 ? name.slice(0, room).trim() : '';
-    return `${prefix}${trimmedName}${suffix}`.slice(0, MAX_PAYOUT_DESCRIPTOR);
+    const room = MAX_PAYOUT_DESCRIPTOR - suffix.length;
+    const base = String(label || 'Owner').trim();
+    const trimmed = room > 0 ? base.slice(0, room).trim() : '';
+    return `${trimmed}${suffix}`.slice(0, MAX_PAYOUT_DESCRIPTOR);
 }
 
 /**
@@ -853,7 +863,7 @@ router.post('/statements/:id/transfer', async (req, res) => {
 
         // Execute payout via ACH
         const ownerName = statement.ownerName || 'Owner';
-        const reference = buildPayoutDescriptor(ownerName, statementId);
+        const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statementId);
 
         const { transfer, wiseFee } = await IncreaseService.sendPayout({
             recipientId: wiseRecipientId,
@@ -1222,7 +1232,7 @@ router.post('/fund-and-queue', async (req, res) => {
 
             try {
                 const amount = parseFloat(statement.ownerPayout);
-                const reference = buildPayoutDescriptor(statement.ownerName, statement.id);
+                const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statement.id);
 
                 const { transfer, wiseFee } = await IncreaseService.sendPayout({
                     recipientId: wiseRecipientId,
@@ -1430,7 +1440,7 @@ async function processQueuedPayouts() {
                 continue;
             }
 
-            const reference = buildPayoutDescriptor(statement.ownerName, statement.id);
+            const reference = buildPayoutDescriptor(statementPayoutLabel(statement), statement.id);
             const { transfer, wiseFee } = await IncreaseService.sendPayout({
                 recipientId: wiseRecipientId,
                 amount: payoutAmount,
