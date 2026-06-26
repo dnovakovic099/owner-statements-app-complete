@@ -1150,17 +1150,59 @@ const startQueuedPayoutChecker = () => {
     setInterval(async () => {
         try {
             const { processQueuedPayouts } = require('./routes/payouts');
+            const reconciliationService = require('./services/ReconciliationService');
+            const IncreaseService = require('./services/IncreaseService');
             const { Statement } = require('./models');
             const { Op } = require('sequelize');
+
+            // Stage 0 — proactive replenish to keep a funding buffer so payouts
+            // don't have to wait on an on-demand ACH funding hold. Gated by
+            // INCREASE_REPLENISH_START_DATE (YYYY-MM-DD): stays OFF until that
+            // date is set AND reached, so enabling it can't trigger a surprise
+            // pull. Once on, it pulls only when balance < INCREASE_MIN_BALANCE.
+            const replenishStart = process.env.INCREASE_REPLENISH_START_DATE;
+            if (replenishStart && new Date().toISOString().slice(0, 10) >= replenishStart) {
+                try {
+                    const r = await IncreaseService.checkAndReplenish();
+                    if (r && r.replenished) {
+                        logger.info('[QueuedPayoutChecker] Auto-replenished funding buffer', r);
+                    }
+                } catch (e) {
+                    logger.warn('[QueuedPayoutChecker] auto-replenish failed', { error: e.message });
+                }
+            }
 
             const inFlightCount = await Statement.count({
                 where: { payoutStatus: { [Op.in]: ['queued', 'awaiting_funding'] } },
             });
             if (inFlightCount === 0) return;
 
+            // Stage 0b — surface payouts stuck awaiting funding too long, so the
+            // operator hears it from monitoring (Winston/Sentry) instead of from
+            // the property owner. Threshold via PAYOUT_STUCK_ALERT_HOURS (default 24).
+            try {
+                const STUCK_HOURS = parseInt(process.env.PAYOUT_STUCK_ALERT_HOURS) || 24;
+                const stuckCutoff = Date.now() - STUCK_HOURS * 60 * 60 * 1000;
+                const awaitingRows = await Statement.findAll({ where: { payoutStatus: 'awaiting_funding' } });
+                const stuck = awaitingRows.filter((r) => {
+                    const ts = new Date(r.createdAt || r.created_at).getTime();
+                    return Number.isFinite(ts) && ts < stuckCutoff;
+                });
+                if (stuck.length > 0) {
+                    const total = stuck.reduce((s, r) => s + (parseFloat(r.ownerPayout) || 0), 0);
+                    logger.warn('[QueuedPayoutChecker] Payouts stuck awaiting funding', {
+                        count: stuck.length,
+                        totalUsd: Math.round(total * 100) / 100,
+                        olderThanHours: STUCK_HOURS,
+                        statementIds: stuck.map((r) => r.id),
+                    });
+                }
+            } catch (e) {
+                logger.warn('[QueuedPayoutChecker] stuck-payout check failed', { error: e.message });
+            }
+
             // Stage 1 — promote any awaiting_funding rows whose funding has settled.
             try {
-                const reconciliationService = require('./services/ReconciliationService');
                 const fundingResult = await reconciliationService.processAwaitingFunding();
                 if (fundingResult.promoted > 0) {
                     logger.info('[QueuedPayoutChecker] Promoted awaiting_funding to queued', fundingResult);
