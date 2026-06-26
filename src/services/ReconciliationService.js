@@ -99,24 +99,43 @@ class ReconciliationService {
 
         const totalNeeded = awaiting.reduce((sum, s) => sum + (parseFloat(s.ownerPayout) || 0), 0);
 
-        if (balance < totalNeeded) {
-            logger.info('Awaiting funding: balance still insufficient', { balance, totalNeeded, count: awaiting.length });
-            return { awaitingChecked: awaiting.length, promoted: 0, balance, totalNeeded };
-        }
-
-        // Balance is sufficient — promote to 'queued' so processQueuedPayouts handles them
+        // Promote as many payouts as the available balance can cover, oldest-first,
+        // instead of all-or-nothing. A single underfunded payout — e.g. when its
+        // auto-funding ACH debit settled short because two batches sized their pulls
+        // against the same pre-settlement balance snapshot — must not block every
+        // other owner's payout. Rows that don't fit yet stay `awaiting_funding` and
+        // are retried on the next cycle once the balance is topped up.
+        //
+        // Safe against processQueuedPayouts' own balance gate: the promoted subset
+        // sums to <= balance by construction, so that stage will send them all.
+        const round2 = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
+        let remaining = round2(balance);
         let promoted = 0;
+        let skippedInsufficient = 0;
         for (const stmt of awaiting) {
+            const amount = round2(stmt.ownerPayout);
+            if (amount <= 0) continue;
+            if (amount > remaining) {
+                skippedInsufficient++;
+                continue; // can't cover this one yet — keep checking smaller ones
+            }
             try {
                 await stmt.update({ payoutStatus: 'queued', payoutError: null });
+                remaining = round2(remaining - amount);
                 promoted++;
-                logger.info('Promoted awaiting_funding to queued', { statementId: stmt.id });
+                logger.info('Promoted awaiting_funding to queued', { statementId: stmt.id, amount, remaining });
             } catch (e) {
                 logger.warn('Failed to promote awaiting_funding statement', { statementId: stmt.id, error: e.message });
             }
         }
 
-        return { awaitingChecked: awaiting.length, promoted, balance };
+        if (skippedInsufficient > 0) {
+            logger.info('Awaiting funding: balance covered a partial set', {
+                balance, totalNeeded, promoted, skippedInsufficient,
+            });
+        }
+
+        return { awaitingChecked: awaiting.length, promoted, balance, totalNeeded };
     }
 
     _mapTransferStatus(increaseStatus) {
