@@ -1324,6 +1324,18 @@ router.post('/fund', async (req, res) => {
         if (amount > 50000) {
             return res.status(400).json({ error: 'Amount exceeds the $50,000 manual-funding cap' });
         }
+        // Large pulls require a system user. admin/editor can top up routine
+        // amounts, but anything above this threshold must be authorized by a
+        // system-level account so a single operator can't move large sums.
+        const SYSTEM_APPROVAL_THRESHOLD = 15000;
+        const isSystemUser = req.user?.isSystemUser === true || req.user?.role === 'system';
+        if (amount > SYSTEM_APPROVAL_THRESHOLD && !isSystemUser) {
+            return res.status(403).json({
+                error: `Funding pulls over $${SYSTEM_APPROVAL_THRESHOLD.toLocaleString()} require system-user approval.`,
+                threshold: SYSTEM_APPROVAL_THRESHOLD,
+                requested: amount,
+            });
+        }
         const transfer = await IncreaseService.requestFunding(amount);
         logger.info('Manual funding pull initiated', { amount, transferId: transfer.id, status: transfer.status });
         return res.json({ success: true, transferId: transfer.id, amount, status: transfer.status });
