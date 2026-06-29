@@ -9,6 +9,10 @@ class IncreaseService {
         this.fundingAccountId = process.env.INCREASE_FUNDING_ACCOUNT_ID; // External account ID for your business bank (funding source)
         this.minBalance = parseFloat(process.env.INCREASE_MIN_BALANCE) || 3000;   // Replenish trigger threshold (dollars)
         this.replenishAmount = parseFloat(process.env.INCREASE_REPLENISH_AMOUNT) || 5000; // Amount to pull when replenishing (dollars)
+        // ACH debits are held for several business days before they raise available
+        // balance. Treat funding pulls created within this window as still "in flight"
+        // so we neither double-pull during settlement nor suppress a genuine new pull.
+        this.settleWindowMinutes = parseInt(process.env.INCREASE_FUNDING_SETTLE_MINUTES, 10) || 2880; // 48h default
         this.baseUrl = process.env.INCREASE_SANDBOX === 'true'
             ? 'https://sandbox.increase.com'
             : 'https://api.increase.com';
@@ -290,19 +294,68 @@ class IncreaseService {
     }
 
     /**
+     * Funding ACH debits (pulls into the account) created within `windowMinutes`
+     * that are not in a terminal-failed state — i.e. money already on its way in,
+     * whether still settling or held. Used both as the double-fire guard and to make
+     * the replenish/auto-fund decisions hold-aware so we don't re-pull every cycle
+     * while a prior pull is held. Returns { totalDollars, transfers }.
+     */
+    async _inflightFunding(windowMinutes) {
+        const after = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+        try {
+            const res = await this._client().get('/ach_transfers', {
+                params: { account_id: this.accountId, 'created_at.after': after, limit: 100 },
+            });
+            const TERMINAL_FAIL = ['returned', 'rejected', 'canceled', 'failed'];
+            const transfers = (res.data.data || []).filter(t =>
+                t.external_account_id === this.fundingAccountId &&
+                t.amount < 0 &&                                // debit = pulling funds in
+                !TERMINAL_FAIL.includes(t.status)
+            );
+            const totalCents = transfers.reduce((s, t) => s + Math.abs(t.amount), 0);
+            return { totalDollars: totalCents / 100, transfers };
+        } catch (e) {
+            // If we can't confirm, assume none in flight rather than silently
+            // blocking a needed pull — the idempotency key still guards exact repeats.
+            logger.warn('In-flight funding lookup failed — assuming none', { error: e.message });
+            return { totalDollars: 0, transfers: [] };
+        }
+    }
+
+    /**
      * Pull funds from your business bank into the Increase account via ACH debit.
      * Creates an inbound ACH transfer by debiting the funding external account.
      * Amount is in dollars. Returns the ACH transfer object.
      *
      * Note: ACH debits typically settle same-day or next business day.
      */
-    async requestFunding(amountDollars) {
+    async requestFunding(amountDollars, options = {}) {
         if (!this.isFundingConfigured()) {
             throw new Error('Funding source not configured — set INCREASE_FUNDING_ACCOUNT_ID');
         }
         const amountCents = Math.round(amountDollars * 100);
+
+        // Dedup guard: don't pull the same amount again while a matching pull is
+        // still in flight (covers an accidental double-fire). A genuine, distinct
+        // funding decision passes a different `eventKey` and is not blocked here.
+        if (!options.skipDedup) {
+            const { transfers } = await this._inflightFunding(options.dedupWindowMinutes || 15);
+            const dup = transfers.find(t => Math.abs(t.amount) === amountCents);
+            if (dup) {
+                logger.warn('Skipping funding pull — matching in-flight funding transfer found', {
+                    existingTransferId: dup.id, amount: amountDollars, status: dup.status,
+                });
+                return dup;
+            }
+        }
+
+        // Event-scoped idempotency key: unique per funding decision so two distinct
+        // pulls (even same amount, same day) are never collapsed by Increase. Pass a
+        // stable `eventKey` to make truly-simultaneous identical decisions idempotent.
+        const eventToken = options.eventKey
+            || `${new Date().toISOString()}-${crypto.randomBytes(6).toString('hex')}`;
         const idempotencyKey = crypto.createHash('sha256')
-            .update(`funding-${this.accountId}-${amountCents}-${new Date().toISOString().slice(0, 10)}`)
+            .update(`funding-${this.accountId}-${amountCents}-${eventToken}`)
             .digest('hex');
         const body = {
             account_id: this.accountId,
@@ -338,6 +391,11 @@ class IncreaseService {
             return { balance: null, funded: false, fundingTransferId: null, deficit: 0 };
         }
 
+        // Pay-now vs. wait is gated on *available* balance only — in-flight ACH
+        // debits are held and not spendable yet, so they must NOT relax this check
+        // (doing so would attempt a payout against unavailable funds). In-flight
+        // sizing of the pull is left to a later change; the requestFunding dedup
+        // guard already prevents an exact-amount double-pull.
         if (balance >= neededAmountDollars) {
             return { balance, funded: false, fundingTransferId: null, deficit: 0 };
         }
@@ -379,13 +437,20 @@ class IncreaseService {
             return null;
         }
 
-        if (balance >= this.minBalance) {
-            logger.info('Balance above threshold, no replenish needed', { balance, minBalance: this.minBalance });
-            return { replenished: false, balance };
+        // Count funds already pulled and still settling. Without this, replenish
+        // re-fires every reconciliation cycle while the prior pull is held (held ACH
+        // debits don't raise available balance for days) and over-pulls the bank.
+        const { totalDollars: inflight } = await this._inflightFunding(this.settleWindowMinutes);
+        const effective = balance + inflight;
+        if (effective >= this.minBalance) {
+            logger.info('Balance (incl. in-flight funding) above threshold, no replenish needed', {
+                balance, inflight, minBalance: this.minBalance,
+            });
+            return { replenished: false, balance, inflight };
         }
 
         logger.info('Balance below threshold, initiating replenish', {
-            balance, minBalance: this.minBalance, replenishAmount: this.replenishAmount,
+            balance, inflight, minBalance: this.minBalance, replenishAmount: this.replenishAmount,
         });
 
         try {
