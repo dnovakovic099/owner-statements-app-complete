@@ -47,8 +47,11 @@ class SecureStayService {
                     toDate: endDate,
                     page: currentPage,
                     limit: limit,
-                    dateType: 'expenseDate',
-                    expenseState: 'active'
+                    dateType: 'expenseDate'
+                    // No expenseState filter: fetch every state so all statuses flow
+                    // through. Only "Cancelled" expenses are excluded, and that gate
+                    // lives at statement-build time (isCanceledExpense). Everything
+                    // else is added.
                 };
 
                 // Add type parameter if specified (expense, extras, or omit for both)
