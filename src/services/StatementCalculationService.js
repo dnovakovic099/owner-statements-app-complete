@@ -5,6 +5,7 @@
  */
 
 const logger = require('../utils/logger');
+const { isCanceledExpense } = require('../utils/expenseClassification');
 
 class StatementCalculationService {
     /**
@@ -168,6 +169,13 @@ class StatementCalculationService {
             // Check date filter
             const expenseDate = new Date(exp.date);
             if (expenseDate < periodStart || expenseDate > periodEnd) {
+                continue;
+            }
+
+            // Exclude canceled SecureStay expenses (status contains "cancel").
+            // Every other status is included — matches the manual route in
+            // statements-file.js so both generation paths stay consistent.
+            if (isCanceledExpense(exp)) {
                 continue;
             }
 
