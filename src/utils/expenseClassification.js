@@ -27,4 +27,26 @@ const isCanceledExpense = (expense) => {
     return status.includes('cancel');
 };
 
-module.exports = { isLlCoverExpense, isHiddenItem, isCanceledExpense };
+/**
+ * True when an expense is STANDARD turnover cleaning — the cleaning that a
+ * property's guest-paid cleaning fee is meant to cover. This is the category
+ * that a cleaning-fee-passthrough property should NOT bill to the owner.
+ *
+ * The SecureStay `category` field can be a comma-separated list (e.g.
+ * "Cleaning, Supplies"), so we split into tokens and match an EXACT "cleaning"
+ * token (falling back to type === "cleaning"). Qualified cleaning such as
+ * "Extra Cleaning" or "Special Cleaning" is an ADDITIONAL service — it is NOT
+ * standard cleaning and therefore stays on the statement even under passthrough.
+ */
+const isStandardCleaning = (expense) => {
+    if (!expense) return false;
+    const categoryTokens = String(expense.category || '')
+        .toLowerCase()
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+    if (categoryTokens.includes('cleaning')) return true;
+    return String(expense.type || '').trim().toLowerCase() === 'cleaning';
+};
+
+module.exports = { isLlCoverExpense, isHiddenItem, isCanceledExpense, isStandardCleaning };

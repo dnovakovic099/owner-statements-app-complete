@@ -5,7 +5,7 @@
  */
 
 const logger = require('../utils/logger');
-const { isCanceledExpense } = require('../utils/expenseClassification');
+const { isCanceledExpense, isStandardCleaning } = require('../utils/expenseClassification');
 
 class StatementCalculationService {
     /**
@@ -185,17 +185,20 @@ class StatementCalculationService {
                 continue;
             }
 
-            // Check if cleaning or supplies expense
+            // Cleaning-fee passthrough: when a property's guest-paid cleaning fee
+            // covers the STANDARD turnover cleaning, drop that cleaning (and
+            // supplies) expense so the owner isn't double-charged. "Extra Cleaning"
+            // / "Special Cleaning" is an ADDITIONAL service and stays on the
+            // statement — isStandardCleaning matches an exact "cleaning" token, not
+            // any substring, so qualified cleaning is intentionally excluded here.
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
-            const description = (exp.description || '').toLowerCase();
-            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning') ||
-                category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+            const isSupplies = category.includes('supplies') || type.includes('supplies');
+            const isPassThroughCovered = isStandardCleaning(exp) || isSupplies;
 
-            // Skip cleaning and supplies expenses for properties with cleaningFeePassThrough enabled
             const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
             const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
-            if (isCleaningOrSupplies && hasCleaningPassThrough) {
+            if (isPassThroughCovered && hasCleaningPassThrough) {
                 continue;
             }
 
@@ -239,13 +242,9 @@ class StatementCalculationService {
             res.status !== 'blocked' && propertiesWithPassThrough.includes(parseInt(res.propertyId))
         );
 
-        // Identify cleaning expenses
-        const cleaningExpenses = filteredExpenses.filter(exp => {
-            const category = (exp.category || '').toLowerCase();
-            const type = (exp.type || '').toLowerCase();
-            const description = (exp.description || '').toLowerCase();
-            return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
-        });
+        // Identify standard turnover cleaning expenses (one expected per stay).
+        // Extra/Special Cleaning is an additional service and must not count here.
+        const cleaningExpenses = filteredExpenses.filter(exp => isStandardCleaning(exp));
 
         // Count cleaning expenses for properties with passthrough
         const passThroughCleaningExpenses = cleaningExpenses.filter(exp =>
