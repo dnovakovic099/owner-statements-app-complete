@@ -47,11 +47,14 @@ class SecureStayService {
                     toDate: endDate,
                     page: currentPage,
                     limit: limit,
-                    dateType: 'expenseDate'
-                    // No expenseState filter: fetch every state so all statuses flow
-                    // through. Only "Cancelled" expenses are excluded, and that gate
-                    // lives at statement-build time (isCanceledExpense). Everything
-                    // else is added.
+                    dateType: 'expenseDate',
+                    // expenseState is REQUIRED by the SecureStay API (must be one of
+                    // active | deleted | null). "active" returns every live expense
+                    // regardless of its `status` field (Paid/Approved/Pending/
+                    // Cancelled/...). "Cancelled" is a status, NOT an expenseState, so
+                    // it still flows through here and is excluded at statement-build
+                    // time via isCanceledExpense. Omitting this param 400s the request.
+                    expenseState: 'active'
                 };
 
                 // Add type parameter if specified (expense, extras, or omit for both)
