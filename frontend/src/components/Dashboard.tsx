@@ -30,6 +30,7 @@ interface User {
   username: string;
   email?: string;
   role?: 'system' | 'admin' | 'editor' | 'viewer';
+  isSystemUser?: boolean;
 }
 
 interface DashboardProps {
