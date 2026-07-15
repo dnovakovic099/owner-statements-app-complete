@@ -19,7 +19,7 @@ const BackupService = require('./services/BackupService');
 const { authenticate, authorize, requireAdmin, requireEditor, requireViewer, editorWrites, JWT_SECRET } = require('./middleware/auth');
 
 // Security middleware
-const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter } = require('./middleware/rateLimiter');
+const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter, payoutSetupPageLimiter } = require('./middleware/rateLimiter');
 const sanitize = require('./middleware/sanitize');
 
 // Metrics
@@ -396,7 +396,7 @@ app.use('/api/email-templates', authenticate, editorWrites, require('./routes/em
 const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 // Payout setup page (public — owner visits this link to add bank details)
-app.get('/payout-setup/:token', payoutSetupLimiter, async (req, res) => {
+app.get('/payout-setup/:token', payoutSetupPageLimiter, async (req, res) => {
     try {
         const { token } = req.params;
         const { Listing } = require('./models');

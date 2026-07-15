@@ -41,16 +41,37 @@ const payoutLimiter = rateLimit({
 });
 
 /**
- * Public payout setup rate limiter.
- * 10 requests per 15 minutes per IP — public-facing endpoints need tight limits.
+ * Public payout-setup PAGE loads (GET /payout-setup/:token).
+ * Loading/refreshing the owner invite page is cheap and safe — an invalid token
+ * just 404s — so allow generous refreshes. A tight limit here only locks a
+ * legitimate owner out of their own setup page (and, because express-rate-limit
+ * replies with the JSON `message`, shows them a raw-JSON error), which is exactly
+ * the failure we saw. 100 per 15 minutes per IP.
  */
-const payoutSetupLimiter = rateLimit({
+const payoutSetupPageLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10,
+    max: 100,
     message: { error: 'Too many payout setup requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => req.ip,
 });
 
-module.exports = { authLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter };
+/**
+ * Public payout-setup SUBMISSIONS (POST /api/payouts/setup/:token).
+ * This creates an Increase external account, so keep a firm cap — but
+ * `skipFailedRequests` means validation errors (400s) don't count, so an owner
+ * fixing a mistyped routing/account number and resubmitting is never locked out.
+ * Only accepted submissions count. 30 per 15 minutes per IP.
+ */
+const payoutSetupLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 30,
+    message: { error: 'Too many payout setup requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip,
+    skipFailedRequests: true,
+});
+
+module.exports = { authLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter, payoutSetupPageLimiter };
