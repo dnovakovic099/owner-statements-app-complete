@@ -761,6 +761,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           },
         });
         return;
+      } else if (action === 'reactivate-payout') {
+        if (!user?.isSystemUser) {
+          showToast('Only authorized (system) users can reactivate a payout.', 'error');
+          return;
+        }
+        const toastId = showToast('Reactivating payout...', 'loading');
+        try {
+          const response = await payoutsAPI.reactivatePayout(id);
+          if (response.success) {
+            updateToast(toastId, 'Payout reactivated — a fresh 7-day window has started.', 'success');
+            await loadStatements();
+          } else {
+            updateToast(toastId, response.error || 'Failed to reactivate payout', 'error');
+          }
+        } catch (err: any) {
+          updateToast(toastId, err?.response?.data?.error || 'Failed to reactivate payout', 'error');
+        }
       } else if (action === 'pay-owner') {
         analytics.trackFeatureUsage('payout_initiation', { statementId: id });
         // Find the statement to get its info
@@ -778,6 +795,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const payoutStatus = (statement as any).payoutStatus;
         if (payoutStatus === 'paid' || payoutStatus === 'collected') {
           showToast('This statement has already been settled', 'error');
+          return;
+        }
+
+        // Age lock: a 7+ day old statement can't be paid until a system user
+        // reactivates it. Backend enforces this too (403); guard here for UX.
+        if ((statement as any).isPayoutLocked) {
+          showToast(
+            user?.isSystemUser
+              ? 'Payout is locked (statement is 7+ days old). Use the unlock button to reactivate it first.'
+              : 'Payout locked: this statement is over 7 days old. Ask an authorized user (Ferdy, Darko, or Louis) to reactivate it.',
+            'error'
+          );
           return;
         }
 
@@ -1720,6 +1749,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             }}
             initialSearch={filters.search}
             userRole={user?.role}
+            isSystemUser={!!user?.isSystemUser}
           />
         </div>
       </div>

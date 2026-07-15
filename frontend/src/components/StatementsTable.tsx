@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X, Users } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X, Users, Unlock } from 'lucide-react';
 import { Statement } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -65,6 +65,7 @@ interface StatementsTableProps {
   onSearchChange?: (search: string) => void; // Callback for server-side search
   initialSearch?: string; // Initial search value from parent
   userRole?: string; // User role for feature gating
+  isSystemUser?: boolean; // System users can reactivate an aged (payout-locked) statement
 }
 
 const formatCurrency = (amount: number) => {
@@ -175,6 +176,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   onSearchChange,
   initialSearch = '',
   userRole,
+  isSystemUser = false,
 }) => {
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
   const COLUMN_ORDER_KEY = 'statements-table-column-order-v2';
@@ -756,7 +758,14 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               const hasWiseRecipient = isGroupStatement || !!(listing?.wiseRecipientId);
               const isRestricted = !isGroupStatement && (listing?.wiseStatus === 'requires_action' || listing?.wiseStatus === 'pending');
               const noWise = !hasWiseRecipient || isRestricted;
+              // Payout age lock: once a statement is 7+ days old the payout is
+              // disabled for everyone until a system user reactivates it. Settled/
+              // in-flight statuses take priority in the tooltip since those are
+              // never locked anyway.
+              const settledOrInFlight = statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent';
+              const isLocked = !!statement.isPayoutLocked && !settledOrInFlight;
               return (
+                <>
                 <ActionButton
                   onClick={() => onAction(statement.id, 'pay-owner')}
                   tooltip={
@@ -764,6 +773,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                       statement.payoutStatus === 'pending' ? 'Payment is being processed' :
                       statement.payoutStatus === 'awaiting_funding' ? 'Funding in progress — payout will process automatically' :
                       statement.payoutStatus === 'invoice_sent' ? 'Invoice already sent to owner' :
+                      isLocked ? (isSystemUser ? 'Payout locked (7+ days old) — click the unlock button to reactivate' : 'Payout locked: statement is over 7 days old. Ask an authorized user (Ferdy/Darko/Louis) to reactivate.') :
                       !hasWiseRecipient ? 'No Increase account connected' :
                         isRestricted ? 'Increase account not yet verified' :
                           (statement.status !== 'final' && statement.status !== 'sent') ? 'Statement must be sent or finalized first' :
@@ -773,8 +783,17 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                   }
                   icon={<DollarSign className="w-[18px] h-[18px]" />}
                   color={noWise ? "text-gray-400" : statement.ownerPayout < 0 ? "text-red-600" : "text-green-600"}
-                  disabled={(statement.status !== 'final' && statement.status !== 'sent') || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise}
+                  disabled={(statement.status !== 'final' && statement.status !== 'sent') || statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' || statement.payoutStatus === 'pending' || statement.payoutStatus === 'awaiting_funding' || statement.payoutStatus === 'invoice_sent' || statement.ownerPayout === 0 || noWise || isLocked}
                 />
+                {isLocked && isSystemUser && (
+                  <ActionButton
+                    onClick={() => onAction(statement.id, 'reactivate-payout')}
+                    tooltip="Reactivate payout — starts a fresh 7-day window"
+                    icon={<Unlock className="w-[18px] h-[18px]" />}
+                    color="text-amber-600"
+                  />
+                )}
+                </>
               );
             })()}
 

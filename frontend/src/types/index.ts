@@ -118,6 +118,11 @@ export interface Statement {
   payoutError?: string | null;
   wiseFee?: number | null;
   totalTransferAmount?: number | null;
+  // 7-day payout age lock. `isPayoutLocked` is computed server-side; once true the
+  // "Pay Owner" button is disabled until a system user reactivates the payout.
+  isPayoutLocked?: boolean;
+  payoutReactivatedAt?: string | null;
+  payoutReactivatedBy?: string | null;
   reservationCount?: number;
   hasPriorStatementDuplicates?: boolean;
   priorStatementDuplicateCount?: number;

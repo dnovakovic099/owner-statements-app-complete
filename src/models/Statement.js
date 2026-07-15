@@ -238,6 +238,18 @@ const Statement = sequelize.define('Statement', {
         field: 'total_transfer_amount',
         comment: 'Total amount transferred (ownerPayout + wiseFee)'
     },
+    payoutReactivatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'payout_reactivated_at',
+        comment: 'When a system user last re-enabled payout on an aged statement. Resets the 7-day payout lock window (age is measured from this when set, else created_at).'
+    },
+    payoutReactivatedBy: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'payout_reactivated_by',
+        comment: 'Username/email of the system user who last reactivated payout on this statement'
+    },
     // Snapshot listing settings at generation time
     waiveCommission: {
         type: DataTypes.BOOLEAN,

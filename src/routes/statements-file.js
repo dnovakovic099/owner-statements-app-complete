@@ -12,6 +12,8 @@ const pdfCache = require('../utils/pdfCache');
 // Expense/item classification (LL Cover, hidden, canceled) — shared, unit-tested
 // in src/tests/expenseClassification.jest.test.js.
 const { isLlCoverExpense, isHiddenItem, isCanceledExpense } = require('../utils/expenseClassification');
+// Server-computed 7-day payout age lock — kept in lockstep with the payout gate.
+const { isPayoutLocked } = require('../utils/payoutLock');
 
 /**
  * Build Chrome launch args for html-pdf-node/Puppeteer.
@@ -500,6 +502,12 @@ router.get('/', async (req, res) => {
                 payoutTransferId: s.payoutTransferId || null,
                 wiseFee: s.wiseFee || null,
                 totalTransferAmount: s.totalTransferAmount || null,
+                payoutReactivatedAt: s.payoutReactivatedAt || null,
+                payoutReactivatedBy: s.payoutReactivatedBy || null,
+                // 7-day age lock: true once the payout can no longer be sent until a
+                // system user reactivates it. Computed server-side so it matches the
+                // gate in routes/payouts.js exactly (utils/payoutLock).
+                isPayoutLocked: isPayoutLocked(s),
                 sentAt: s.sentAt,
                 createdAt: s.createdAt || s.created_at,
                 updatedAt: s.updatedAt || s.updated_at,

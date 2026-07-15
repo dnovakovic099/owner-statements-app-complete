@@ -647,6 +647,18 @@ export const payoutsAPI = {
     return response.data;
   },
 
+  // Re-enable the Increase payout on an aged (7+ day) statement. System users only.
+  reactivatePayout: async (statementId: number): Promise<{
+    success: boolean;
+    message: string;
+    payoutReactivatedAt: string;
+    payoutReactivatedBy: string;
+    error?: string;
+  }> => {
+    const response = await api.post(`/payouts/statements/${statementId}/reactivate-payout`);
+    return response.data;
+  },
+
   collectFromOwner: async (statementId: number): Promise<{
     success: boolean;
     message: string;

@@ -13,6 +13,10 @@ const { Statement } = require('../models');
 
 const SAFE_PAYOUT_STATUSES = [null, 'failed', 'cancelled', 'awaiting_funding'];
 
+// Payout age lock (7-day). Shared with the statement list so the gate below and
+// the client-facing `isPayoutLocked` flag stay in lockstep. See utils/payoutLock.
+const { isPayoutLocked } = require('../utils/payoutLock');
+
 /** Round to 2 decimal places to avoid floating-point drift in currency math */
 const toCents = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
 const payoutReceiptTemplate = require('../templates/emails/payoutReceipt');
@@ -778,6 +782,46 @@ router.post('/statements/:id/mark-paid', async (req, res) => {
     }
 });
 
+// ─── POST /statements/:id/reactivate-payout ────────────────
+// Re-enable the Increase payout on an aged (7+ day) statement. Restricted to
+// system users (Ferdy / Darko / Louis etc.). Stamps payout_reactivated_at = now,
+// which starts a fresh 7-day window; the payout button becomes usable again until
+// it ages out once more.
+router.post('/statements/:id/reactivate-payout', async (req, res) => {
+    try {
+        if (!req.user || !req.user.isSystemUser) {
+            return res.status(403).json({ error: 'Only authorized (system) users can reactivate a payout.' });
+        }
+
+        const statementId = parseInt(req.params.id);
+        const statement = await Statement.findByPk(statementId);
+        if (!statement) return res.status(404).json({ error: 'Statement not found' });
+
+        // Nothing to reactivate once the payout is settled / in-flight.
+        const settledOrInFlight = ['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent'];
+        if (settledOrInFlight.includes(statement.payoutStatus)) {
+            return res.status(400).json({ error: `Statement payout is already ${statement.payoutStatus} — nothing to reactivate.` });
+        }
+
+        const reactivatedBy = req.user.email || req.user.username || `user:${req.user.id}`;
+        await statement.update({
+            payoutReactivatedAt: new Date(),
+            payoutReactivatedBy: reactivatedBy,
+        });
+
+        logger.info(`[PAYOUT] Statement ${statementId} payout reactivated by ${reactivatedBy}`, { context: 'Payouts', action: 'reactivate-payout' });
+        return res.json({
+            success: true,
+            message: 'Payout reactivated. A fresh 7-day window has started.',
+            payoutReactivatedAt: statement.payoutReactivatedAt,
+            payoutReactivatedBy: statement.payoutReactivatedBy,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'reactivate-payout', statementId: req.params.id });
+        return res.status(500).json({ error: 'Failed to reactivate payout' });
+    }
+});
+
 // ─── POST /statements/:id/transfer ─────────────────────────
 // Pay owner via Wise for a single statement
 router.post('/statements/:id/transfer', async (req, res) => {
@@ -803,6 +847,18 @@ router.post('/statements/:id/transfer', async (req, res) => {
         const blockingStatuses = ['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent'];
         if (blockingStatuses.includes(statement.payoutStatus)) {
             return res.status(400).json({ error: `Statement already ${statement.payoutStatus}` });
+        }
+
+        // Age lock: once a statement is 7+ days old (from creation, or from the
+        // last reactivation), its Increase payout is disabled. A system user must
+        // reactivate it first (POST /statements/:id/reactivate-payout), which
+        // starts a fresh 7-day window.
+        if (isPayoutLocked(statement)) {
+            logger.warn(`[PAYOUT] Transfer blocked — statement ${statementId} is payout-locked (aged)`, { context: 'Payouts', action: 'transfer' });
+            return res.status(403).json({
+                error: 'Payout locked: this statement is more than 7 days old. An authorized (system) user must reactivate it before it can be paid.',
+                payoutLocked: true,
+            });
         }
 
         if (!IncreaseService.isConfigured()) {
@@ -1147,6 +1203,12 @@ router.post('/fund-and-queue', async (req, res) => {
             }
             if (IN_FLIGHT_STATUSES.has(stmt.payoutStatus)) {
                 skipped.push({ id: stmt.id, reason: `Already ${stmt.payoutStatus}` });
+                continue;
+            }
+            // Age lock: a 7+ day old statement must be reactivated by a system
+            // user before it can be paid. Skip it here rather than pay it silently.
+            if (isPayoutLocked(stmt)) {
+                skipped.push({ id: stmt.id, reason: 'Payout locked (7+ days old) — reactivate first' });
                 continue;
             }
 
