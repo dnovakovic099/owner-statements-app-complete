@@ -5,7 +5,10 @@
  */
 
 const logger = require('../utils/logger');
-const { isCanceledExpense, isStandardCleaning } = require('../utils/expenseClassification');
+const {
+    isCanceledExpense,
+    isPassThroughCoveredExpense
+} = require('../utils/expenseClassification');
 
 class StatementCalculationService {
     /**
@@ -193,12 +196,14 @@ class StatementCalculationService {
             // any substring, so qualified cleaning is intentionally excluded here.
             const category = (exp.category || '').toLowerCase();
             const type = (exp.type || '').toLowerCase();
-            const isSupplies = category.includes('supplies') || type.includes('supplies');
-            const isPassThroughCovered = isStandardCleaning(exp) || isSupplies;
 
-            const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
+            // SecureStay normalizes listingMapId as secureStayListingId and leaves
+            // propertyId null. Resolve either identifier so pass-through filtering
+            // still applies to API-shaped expenses in combined/group statements.
+            const sourcePropertyId = exp.propertyId ?? exp.secureStayListingId;
+            const propId = sourcePropertyId != null ? parseInt(sourcePropertyId) : null;
             const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
-            if (isPassThroughCovered && hasCleaningPassThrough) {
+            if (hasCleaningPassThrough && isPassThroughCoveredExpense(exp)) {
                 continue;
             }
 

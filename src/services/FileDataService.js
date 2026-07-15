@@ -554,12 +554,11 @@ class FileDataService {
             const propIdInt = parseInt(propId);
 
             // Filter SecureStay expenses for this property
-            const secureStayExpenses = allApiExpenses.filter(exp => {
-                if (exp.secureStayListingId) {
-                    return parseInt(exp.secureStayListingId) === propIdInt;
-                }
-                return false;
-            });
+            const secureStayExpenses = allApiExpenses
+                .filter(exp => exp.secureStayListingId && parseInt(exp.secureStayListingId) === propIdInt)
+                // Preserve the owning property on the statement snapshot. SecureStay
+                // itself only supplies listingMapId/secureStayListingId.
+                .map(exp => ({ ...exp, propertyId: propIdInt }));
 
             // Filter uploaded expenses for this property
             const uploadedExpenses = allUploadedExpenses.filter(exp => {
@@ -686,6 +685,14 @@ class FileDataService {
                     secureStayExpenses = apiExpenses;
                 }
                 
+                // Downstream statement rules (including cleaning pass-through) are
+                // property-specific, so never leave matched SecureStay rows unowned.
+                if (propertyId) {
+                    secureStayExpenses = secureStayExpenses.map(expense => ({
+                        ...expense,
+                        propertyId: parseInt(propertyId)
+                    }));
+                }
                 allExpenses.push(...secureStayExpenses);
             }
         } catch (error) {

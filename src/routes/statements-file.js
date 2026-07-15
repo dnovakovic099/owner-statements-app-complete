@@ -11,7 +11,13 @@ const pdfCache = require('../utils/pdfCache');
 
 // Expense/item classification (LL Cover, hidden, canceled) — shared, unit-tested
 // in src/tests/expenseClassification.jest.test.js.
-const { isLlCoverExpense, isHiddenItem, isCanceledExpense } = require('../utils/expenseClassification');
+const {
+    isLlCoverExpense,
+    isHiddenItem,
+    isCanceledExpense,
+    isStandardCleaning,
+    isPassThroughCoveredExpense
+} = require('../utils/expenseClassification');
 // Server-computed 7-day payout age lock — kept in lockstep with the payout gate.
 const { isPayoutLocked } = require('../utils/payoutLock');
 
@@ -47,6 +53,24 @@ function computePassThroughCleaningFee(statement, reservation) {
     const snapshot = statement.listingSettingsSnapshot?.[reservation.propertyId] || statement.listingSettingsSnapshot?.[statement.propertyId];
     const pmPct = snapshot?.pmFeePercentage ?? statement.pmPercentage ?? 15;
     return Math.ceil((guestPaid / (1 + pmPct / 100)) / 5) * 5;
+}
+
+/**
+ * Apply pass-through expense rules per property. Combined statements may mix
+ * pass-through and non-pass-through listings, so the statement-level flag is
+ * only a legacy fallback when no property-specific snapshot is available.
+ */
+function isStatementPassThroughCoveredExpense(statement, expense, listingSettingsMap = null) {
+    if (!isPassThroughCoveredExpense(expense)) return false;
+
+    const sourcePropertyId = expense?.propertyId ?? expense?.secureStayListingId;
+    if (sourcePropertyId != null) {
+        const settings = listingSettingsMap?.[sourcePropertyId]
+            || statement.listingSettingsSnapshot?.[sourcePropertyId];
+        if (settings) return Boolean(settings.cleaningFeePassThrough);
+    }
+
+    return Boolean(statement.cleaningFeePassThrough);
 }
 
 /**
@@ -406,12 +430,8 @@ router.get('/', async (req, res) => {
                                 if (i.type !== 'expense' || isHiddenItem(i)) return false;
                                 // Cleaning/supplies are already deducted inside grossPayout under
                                 // pass-through, so exclude them here to avoid double-counting.
-                                if (hasPassThrough) {
-                                    const category = (i.category || '').toLowerCase();
-                                    const description = (i.description || '').toLowerCase();
-                                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                                        return false;
-                                    }
+                                if (hasPassThrough && isStatementPassThroughCoveredExpense(s, i)) {
+                                    return false;
                                 }
                                 return true;
                             })
@@ -424,12 +444,8 @@ router.get('/', async (req, res) => {
                             if (isUpsell) return sum;
                             const expPropertyId = exp.propertyId ? parseInt(exp.propertyId) : null;
                             const expListing = expPropertyId ? listingMap.get(expPropertyId) : null;
-                            if (expListing?.cleaningFeePassThrough) {
-                                const category = (exp.category || '').toLowerCase();
-                                const type = (exp.type || '').toLowerCase();
-                                const description = (exp.description || '').toLowerCase();
-                                const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
-                                if (isCleaningOrSupplies) return sum;
+                            if (expListing?.cleaningFeePassThrough && isPassThroughCoveredExpense(exp)) {
+                                return sum;
                             }
                             return sum + Math.abs(exp.amount);
                         }, 0);
@@ -943,12 +959,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
         const periodExpenses = periodExpensesAll.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
 
         // Identify cleaning expenses
-        const cleaningExpenses = periodExpenses.filter(exp => {
-            const category = (exp.category || '').toLowerCase();
-            const type = (exp.type || '').toLowerCase();
-            const description = (exp.description || '').toLowerCase();
-            return category.includes('cleaning') || type.includes('cleaning') || description.includes('cleaning');
-        });
+        const cleaningExpenses = periodExpenses.filter(isStandardCleaning);
 
         // Validate cleaning expenses vs reservations for properties with cleaningFeePassThrough
         let cleaningMismatchWarning = null;
@@ -974,23 +985,16 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             }
         }
 
-        // Identify supplies expenses
-        const suppliesExpenses = periodExpenses.filter(exp => {
-            const category = (exp.category || '').toLowerCase();
-            const type = (exp.type || '').toLowerCase();
-            const description = (exp.description || '').toLowerCase();
-            return category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
-        });
-
         // Filter out cleaning and supplies expenses for properties with cleaningFeePassThrough enabled
         // This prevents double-charging (once via Cleaning Expense column, once via expense list)
         const filteredExpenses = periodExpenses.filter(exp => {
-            const propId = exp.propertyId ? parseInt(exp.propertyId) : null;
+            const sourcePropertyId = exp.propertyId ?? exp.secureStayListingId;
+            const propId = sourcePropertyId != null ? parseInt(sourcePropertyId) : null;
             const hasCleaningPassThrough = propId && listingInfoMap[propId]?.cleaningFeePassThrough;
 
             if (hasCleaningPassThrough) {
                 // Exclude cleaning and supplies expenses for this property
-                return !cleaningExpenses.includes(exp) && !suppliesExpenses.includes(exp);
+                return !isPassThroughCoveredExpense(exp);
             }
             return true;
         });
@@ -1764,13 +1768,7 @@ router.post('/generate', async (req, res) => {
 
         // Filter expenses - if cleaningFeePassThrough is enabled, exclude "Cleaning" expenses
         const filteredExpenses = cleaningFeePassThrough
-            ? periodExpenses.filter(exp => {
-                const category = (exp.category || '').toLowerCase();
-                const type = (exp.type || '').toLowerCase();
-                const description = (exp.description || '').toLowerCase();
-                // Exclude if categorized as cleaning or supplies
-                return !category.includes('cleaning') && !type.includes('cleaning') && !description.startsWith('cleaning') && !category.includes('supplies') && !type.includes('supplies') && !description.includes('supplies');
-            })
+            ? periodExpenses.filter(exp => !isPassThroughCoveredExpense(exp))
             : periodExpenses;
 
         // Generate cleaning fee expenses from reservations when pass-through is enabled
@@ -2656,11 +2654,7 @@ router.put('/:id/reconfigure', async (req, res) => {
         const expenseCandidates = expenses.filter(exp => !isCanceledExpense(exp) && !isLlCoverExpense(exp));
         const llCoverExpenses = expenses.filter(exp => !isCanceledExpense(exp) && isLlCoverExpense(exp));
         const filteredExpenses = cleaningFeePassThrough
-            ? expenseCandidates.filter(exp => {
-                const cat = (exp.category || exp.type || '').toLowerCase();
-                const desc = (exp.description || '').toLowerCase();
-                return !cat.includes('cleaning') && !cat.includes('supplies') && !desc.includes('cleaning') && !desc.includes('supplies');
-            })
+            ? expenseCandidates.filter(exp => !isPassThroughCoveredExpense(exp))
             : expenseCandidates;
 
         let totalExpenses = 0;
@@ -3331,12 +3325,8 @@ router.put('/:id', async (req, res) => {
                 if (item.type !== 'expense') return false;
                 if (isHiddenItem(item)) return false;
                 // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-                if (statement.cleaningFeePassThrough) {
-                    const category = (item.category || '').toLowerCase();
-                    const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                        return false;
-                    }
+                if (isStatementPassThroughCoveredExpense(statement, item)) {
+                    return false;
                 }
                 return true;
             });
@@ -3814,12 +3804,8 @@ router.get('/:id/view', async (req, res) => {
             if (item.type !== 'expense') return false;
             if (isHiddenItem(item)) return false;
             // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-            if (statement.cleaningFeePassThrough) {
-                const category = (item.category || '').toLowerCase();
-                const description = (item.description || '').toLowerCase();
-                if (category.includes('cleaning') || description.startsWith('cleaning')) {
-                    return false;
-                }
+            if (isStatementPassThroughCoveredExpense(statement, item, listingSettingsMap)) {
+                return false;
             }
             return true;
         }).reduce((sum, item) => sum + item.amount, 0) || 0;
@@ -3833,9 +3819,17 @@ router.get('/:id/view', async (req, res) => {
             totalExpenses: Math.round(totalExpenses * 100) / 100
         };
 
-        // Only update if values have changed (to avoid unnecessary writes)
-        if (Math.abs(statement.ownerPayout - valuesToUpdate.ownerPayout) > 0.01 ||
-            Math.abs(statement.totalRevenue - valuesToUpdate.totalRevenue) > 0.01) {
+        // A completed/in-flight transfer is an immutable financial snapshot.
+        // Rendering or downloading a PDF must never rewrite the amount tied to
+        // that transfer. Draft/final unpaid statements can still self-heal.
+        const settledPayoutStatuses = new Set(['paid', 'pending', 'awaiting_funding', 'queued', 'collected', 'invoice_sent']);
+        const financialsChanged =
+            Math.abs(statement.ownerPayout - valuesToUpdate.ownerPayout) > 0.01 ||
+            Math.abs(statement.totalRevenue - valuesToUpdate.totalRevenue) > 0.01 ||
+            Math.abs(statement.pmCommission - valuesToUpdate.pmCommission) > 0.01 ||
+            Math.abs(statement.totalExpenses - valuesToUpdate.totalExpenses) > 0.01;
+
+        if (!settledPayoutStatuses.has(statement.payoutStatus) && financialsChanged) {
             try {
                 await FileDataService.updateStatement(id, valuesToUpdate);
                 // Update local statement object for HTML generation
@@ -5871,12 +5865,8 @@ router.get('/:id/view', async (req, res) => {
                 if (item.type !== 'expense') return false;
                 if (isHiddenItem(item)) return false;
                 // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-                if (statement.cleaningFeePassThrough) {
-                    const category = (item.category || '').toLowerCase();
-                    const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                        return false;
-                    }
+                if (isStatementPassThroughCoveredExpense(statement, item, listingSettingsMap)) {
+                    return false;
                 }
                 return true;
             }).length > 0 ? `
@@ -5898,12 +5888,8 @@ router.get('/:id/view', async (req, res) => {
                 if (item.type !== 'expense') return false;
                 if (isHiddenItem(item)) return false;
                 // When cleaningFeePassThrough is enabled, hide cleaning expenses from this section
-                if (statement.cleaningFeePassThrough) {
-                    const category = (item.category || '').toLowerCase();
-                    const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                        return false;
-                    }
+                if (isStatementPassThroughCoveredExpense(statement, item, listingSettingsMap)) {
+                    return false;
                 }
                 return true;
             }).map(expense => {
@@ -5941,12 +5927,8 @@ router.get('/:id/view', async (req, res) => {
                 if (item.type !== 'expense') return false;
                 if (isHiddenItem(item)) return false;
                 // Exclude cleaning expenses when cleaningFeePassThrough is enabled
-                if (statement.cleaningFeePassThrough) {
-                    const category = (item.category || '').toLowerCase();
-                    const description = (item.description || '').toLowerCase();
-                    if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                        return false;
-                    }
+                if (isStatementPassThroughCoveredExpense(statement, item, listingSettingsMap)) {
+                    return false;
                 }
                 return true;
             }).reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
@@ -6076,12 +6058,8 @@ router.get('/:id/view', async (req, res) => {
                     // enabled — both are already deducted inside Gross Payout, so counting
                     // them here too would double-subtract them from net payout. Must match
                     // the expense table + TOTAL EXPENSES filter above.
-                    if (statement.cleaningFeePassThrough) {
-                        const category = (item.category || '').toLowerCase();
-                        const description = (item.description || '').toLowerCase();
-                        if (category.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || description.includes('supplies')) {
-                            return false;
-                        }
+                    if (isStatementPassThroughCoveredExpense(statement, item, listingSettingsMap)) {
+                        return false;
                     }
                     return true;
                 }).reduce((sum, item) => sum + item.amount, 0) || 0;
@@ -7117,14 +7095,16 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
         const expensesByPropertyId = new Map();
         allExpenses.forEach(exp => {
             const propId = parseInt(exp.propertyId);
-            if (!expensesByPropertyId.has(propId)) expensesByPropertyId.set(propId, []);
-            expensesByPropertyId.get(propId).push(exp);
+            if (!Number.isNaN(propId)) {
+                if (!expensesByPropertyId.has(propId)) expensesByPropertyId.set(propId, []);
+                expensesByPropertyId.get(propId).push(exp);
+            }
             // Also index by secureStayListingId if present
             if (exp.secureStayListingId) {
                 const ssId = parseInt(exp.secureStayListingId);
                 if (ssId !== propId) {
                     if (!expensesByPropertyId.has(ssId)) expensesByPropertyId.set(ssId, []);
-                    expensesByPropertyId.get(ssId).push(exp);
+                    expensesByPropertyId.get(ssId).push({ ...exp, propertyId: ssId });
                 }
             }
         });
@@ -7968,13 +7948,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                     // Filter out cleaning expenses if cleaningFeePassThrough is enabled
                     // This prevents double-charging (once via Cleaning Expense column, once via expense list)
                     const filteredExpenses = cleaningFeePassThrough
-                        ? periodExpenses.filter(exp => {
-                            const category = (exp.category || '').toLowerCase();
-                            const type = (exp.type || '').toLowerCase();
-                            const description = (exp.description || '').toLowerCase();
-                            const isCleaningOrSupplies = category.includes('cleaning') || type.includes('cleaning') || description.startsWith('cleaning') || category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
-                            return !isCleaningOrSupplies;
-                        })
+                        ? periodExpenses.filter(exp => !isPassThroughCoveredExpense(exp))
                         : periodExpenses;
 
                     // Generate cleaning fee expenses from reservations when pass-through is enabled

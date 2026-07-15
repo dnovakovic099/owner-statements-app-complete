@@ -16,7 +16,11 @@
  */
 
 const StatementCalculationService = require('../services/StatementCalculationService');
-const { isStandardCleaning } = require('../utils/expenseClassification');
+const {
+    isStandardCleaning,
+    isSuppliesExpense,
+    isPassThroughCoveredExpense
+} = require('../utils/expenseClassification');
 
 describe('isStandardCleaning classification', () => {
     test.each([
@@ -48,6 +52,12 @@ describe('isStandardCleaning classification', () => {
     test('null / undefined expense is not cleaning', () => {
         expect(isStandardCleaning(null)).toBe(false);
         expect(isStandardCleaning(undefined)).toBe(false);
+    });
+
+    test('classifies supplies without treating special cleaning as pass-through covered', () => {
+        expect(isSuppliesExpense({ category: 'Supplies, Claims' })).toBe(true);
+        expect(isSuppliesExpense({ description: 'Hefty trash bags and supplies' })).toBe(true);
+        expect(isPassThroughCoveredExpense({ category: 'Special Cleaning' })).toBe(false);
     });
 });
 
@@ -115,5 +125,50 @@ describe('processExpenses — passthrough drops Cleaning, keeps Special Cleaning
         );
         const ids = filteredExpenses.map((e) => e.id).sort();
         expect(ids).toEqual(['extra', 'maint', 'special']);
+    });
+
+    test('statement #8385 regression: API-shaped LL Cover and supplies never reduce payout', () => {
+        const propertyId = 300028032;
+        const result = StatementCalculationService.processExpenses(
+            [
+                makeExpense({
+                    id: 9121,
+                    propertyId: null,
+                    secureStayListingId: propertyId,
+                    category: 'Resolutions',
+                    type: 'Resolutions',
+                    description: 'adjustment: double payout for 6/22 statement',
+                    amount: -1061,
+                }),
+                makeExpense({
+                    id: 9078,
+                    propertyId: null,
+                    secureStayListingId: propertyId,
+                    category: 'Supplies, Claims',
+                    type: 'Supplies, Claims',
+                    description: 'Trash bags for unit 31',
+                    amount: -48.64,
+                    llCover: 1,
+                }),
+                makeExpense({
+                    id: 9024,
+                    propertyId: null,
+                    secureStayListingId: propertyId,
+                    category: 'Supplies',
+                    type: 'Supplies',
+                    description: 'Hefty trash bags',
+                    amount: -35.30,
+                }),
+            ],
+            [propertyId],
+            periodStart,
+            periodEnd,
+            { [propertyId]: { id: propertyId, cleaningFeePassThrough: true } },
+            []
+        );
+
+        expect(result.filteredExpenses.map(expense => expense.id)).toEqual([9121]);
+        expect(result.llCoverExpenses.map(expense => expense.id)).toEqual([9078]);
+        expect(result.totalExpenses).toBe(1061);
     });
 });

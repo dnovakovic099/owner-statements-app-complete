@@ -49,4 +49,28 @@ const isStandardCleaning = (expense) => {
     return String(expense.type || '').trim().toLowerCase() === 'cleaning';
 };
 
-module.exports = { isLlCoverExpense, isHiddenItem, isCanceledExpense, isStandardCleaning };
+/** True when an expense is cleaning supplies covered by the pass-through fee. */
+const isSuppliesExpense = (expense) => {
+    if (!expense) return false;
+    const category = String(expense.category || '').toLowerCase();
+    const type = String(expense.type || '').toLowerCase();
+    const description = String(expense.description || '').toLowerCase();
+    return category.includes('supplies') || type.includes('supplies') || description.includes('supplies');
+};
+
+/**
+ * Expenses covered by the guest-paid cleaning pass-through must not also be
+ * deducted from the owner payout. Qualified cleaning (for example "Special
+ * Cleaning") remains owner-chargeable via isStandardCleaning's token matching.
+ */
+const isPassThroughCoveredExpense = (expense) =>
+    isStandardCleaning(expense) || isSuppliesExpense(expense);
+
+module.exports = {
+    isLlCoverExpense,
+    isHiddenItem,
+    isCanceledExpense,
+    isStandardCleaning,
+    isSuppliesExpense,
+    isPassThroughCoveredExpense
+};
