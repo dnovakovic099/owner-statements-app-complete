@@ -329,4 +329,41 @@ const Statement = sequelize.define('Statement', {
     ]
 });
 
+// Email an ops alert whenever a statement's payout status changes to a
+// meaningful state, so the team sees the pipeline move (or fail) without reading
+// logs. Fires on instance .update() calls across every route/cron path. Transient
+// internal states ('pending', 'queued') are skipped to avoid noise; the alert is
+// best-effort and must never break the update itself.
+Statement.addHook('afterUpdate', (instance) => {
+    try {
+        if (typeof instance.changed !== 'function' || !instance.changed('payoutStatus')) return;
+        const prev = instance.previous('payoutStatus');
+        const next = instance.payoutStatus;
+        if (prev === next) return;
+
+        const NOTIFY_STATES = new Set(['paid', 'failed', 'topup_failed', 'awaiting_funding', 'collected', 'invoice_sent', 'cancelled']);
+        if (!NOTIFY_STATES.has(next)) return;
+
+        const amount = Math.round((parseFloat(instance.ownerPayout) || 0) * 100) / 100;
+        const level = (next === 'paid' || next === 'collected') ? 'success'
+            : (next === 'failed' || next === 'topup_failed') ? 'error'
+                : 'info';
+
+        const { notifyOpsAsync } = require('../utils/notify');
+        notifyOpsAsync({
+            title: `Payout ${next}: statement #${instance.id}`,
+            text: `${instance.propertyName || ''} — $${amount.toFixed(2)}`,
+            fields: [
+                { label: 'Statement', value: `#${instance.id}` },
+                { label: 'Transition', value: `${prev || '(none)'} → ${next}` },
+                { label: 'Owner', value: instance.ownerName || '(unknown)' },
+                ...(instance.payoutError ? [{ label: 'Error', value: String(instance.payoutError).slice(0, 200) }] : []),
+            ],
+            level,
+        });
+    } catch (_) {
+        // Notification must never break a payout DB write.
+    }
+});
+
 module.exports = Statement;

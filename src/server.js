@@ -1145,6 +1145,9 @@ app.use('/api/payouts', authenticate, authorize('admin', 'editor'), require('./r
 // Stage 1 (processAwaitingFunding) checks the Increase balance against
 // totalNeeded; when balance is sufficient (the funding ACH has settled), it
 // promotes rows. Stage 2 then sends the actual transfers.
+const { notifyOpsAsync } = require('./utils/notify');
+// Throttle state for the stuck-payout email (persists for the process lifetime).
+let lastStuckAlert = { sig: null, ts: 0 };
 const startQueuedPayoutChecker = () => {
     const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     setInterval(async () => {
@@ -1189,13 +1192,39 @@ const startQueuedPayoutChecker = () => {
                     return Number.isFinite(ts) && ts < stuckCutoff;
                 });
                 if (stuck.length > 0) {
-                    const total = stuck.reduce((s, r) => s + (parseFloat(r.ownerPayout) || 0), 0);
+                    const total = Math.round(stuck.reduce((s, r) => s + (parseFloat(r.ownerPayout) || 0), 0) * 100) / 100;
                     logger.warn('[QueuedPayoutChecker] Payouts stuck awaiting funding', {
                         count: stuck.length,
-                        totalUsd: Math.round(total * 100) / 100,
+                        totalUsd: total,
                         olderThanHours: STUCK_HOURS,
                         statementIds: stuck.map((r) => r.id),
                     });
+                    // Email the ops team — but throttle so a persistent stuck
+                    // condition doesn't send every 5 minutes. Re-alerts every
+                    // STUCK_ALERT_EMAIL_EVERY_HOURS (default 6h), or immediately if
+                    // the stuck set changed since the last email.
+                    try {
+                        const everyMs = (parseInt(process.env.STUCK_ALERT_EMAIL_EVERY_HOURS) || 6) * 60 * 60 * 1000;
+                        const sig = stuck.map((r) => r.id).sort((a, b) => a - b).join(',');
+                        const now = Date.now();
+                        if (sig !== lastStuckAlert.sig || now - lastStuckAlert.ts >= everyMs) {
+                            lastStuckAlert = { sig, ts: now };
+                            const oldest = stuck.reduce((a, b) => (new Date(a.createdAt) < new Date(b.createdAt) ? a : b));
+                            notifyOpsAsync({
+                                title: `${stuck.length} payout(s) stuck awaiting funding — $${total.toFixed(2)}`,
+                                text: `These have been in awaiting_funding for over ${STUCK_HOURS}h. Likely cause: the Increase account balance can't cover them. Fund the account to release them (oldest-first).`,
+                                fields: [
+                                    { label: 'Count', value: String(stuck.length) },
+                                    { label: 'Total owed', value: `$${total.toFixed(2)}` },
+                                    { label: 'Oldest', value: `#${oldest.id} (${new Date(oldest.createdAt).toISOString().slice(0, 10)})` },
+                                    { label: 'Statement IDs', value: stuck.map((r) => r.id).join(', ') },
+                                ],
+                                level: 'warn',
+                            });
+                        }
+                    } catch (e) {
+                        logger.warn('[QueuedPayoutChecker] stuck-payout email failed', { error: e.message });
+                    }
                 }
             } catch (e) {
                 logger.warn('[QueuedPayoutChecker] stuck-payout check failed', { error: e.message });
