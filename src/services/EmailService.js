@@ -1637,7 +1637,7 @@ This is an auto-generated email. If you have any questions or need clarification
      * Send a plain-text operational alert to internal recipients (ops team, not
      * owners). No-op when SMTP isn't configured. `to` may be comma-separated.
      */
-    async sendOpsAlert(to, subject, text) {
+    async sendOpsAlert(to, subject, text, html = null) {
         if (!this.isConfigured) {
             logger.warn('SMTP not configured; cannot send ops alert', { context: 'EmailService', action: 'sendOpsAlert', subject });
             return null;
@@ -1647,6 +1647,7 @@ This is an auto-generated email. If you have any questions or need clarification
             to,
             subject,
             text: text || subject,
+            ...(html ? { html } : {}),
         };
         const result = await this.transporter.sendMail(mailOptions);
         logger.info(`Ops alert sent to ${to}: ${subject}`, { context: 'EmailService', action: 'sendOpsAlert' });

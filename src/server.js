@@ -1145,9 +1145,37 @@ app.use('/api/payouts', authenticate, authorize('admin', 'editor'), require('./r
 // Stage 1 (processAwaitingFunding) checks the Increase balance against
 // totalNeeded; when balance is sufficient (the funding ACH has settled), it
 // promotes rows. Stage 2 then sends the actual transfers.
-const { notifyOpsAsync } = require('./utils/notify');
+const { notifyOpsAsync, flushStatusChanges, pendingDigestCount } = require('./utils/notify');
 // Throttle state for the stuck-payout email (persists for the process lifetime).
 let lastStuckAlert = { sig: null, ts: 0 };
+
+// End-of-day payout digest: send ONE combined email per day summarizing all
+// payout status changes (instead of a burst of small emails). Fires once when
+// the clock passes PAYOUT_DIGEST_HOUR_EST (default 21 / 9 PM EST). The buffer is
+// persisted to disk (utils/notify.js) so a mid-day restart doesn't lose changes.
+let lastDigestDate = null;
+const startDailyDigestScheduler = () => {
+    const DIGEST_HOUR = parseInt(process.env.PAYOUT_DIGEST_HOUR_EST) || 21;
+    const tick = async () => {
+        try {
+            const now = new Date();
+            const estDate = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+            const estHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }), 10);
+            if (estHour >= DIGEST_HOUR && lastDigestDate !== estDate) {
+                lastDigestDate = estDate; // guard: at most one digest per EST day
+                const pending = pendingDigestCount();
+                if (pending > 0) {
+                    logger.info(`[PayoutDigest] Sending end-of-day digest (${pending} change(s))`);
+                    await flushStatusChanges();
+                }
+            }
+        } catch (err) {
+            logger.warn('[PayoutDigest] scheduler tick failed', { error: err.message });
+        }
+    };
+    setInterval(tick, 5 * 60 * 1000); // check every 5 minutes
+    logger.info(`Daily payout digest scheduler started - sends at ${DIGEST_HOUR}:00 EST`);
+};
 const startQueuedPayoutChecker = () => {
     const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     setInterval(async () => {
@@ -1258,6 +1286,7 @@ const startQueuedPayoutChecker = () => {
 // Only start the background checker when running as main process (not during tests)
 if (require.main === module) {
     startQueuedPayoutChecker();
+    startDailyDigestScheduler();
 }
 
 // Database Backup - Status and manual trigger

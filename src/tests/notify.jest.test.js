@@ -6,6 +6,12 @@
  * never throw. Run with: npm run test:jest
  */
 
+// Isolate the digest buffer to a throwaway file so tests never touch data/.
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+process.env.PAYOUT_DIGEST_BUFFER_FILE = path.join(os.tmpdir(), `payout-digest-test-${process.pid}.json`);
+
 jest.mock('../services/EmailService', () => ({
     isConfigured: true,
     sendOpsAlert: jest.fn().mockResolvedValue({ messageId: 'test' }),
@@ -57,30 +63,48 @@ describe('notifyOps', () => {
     });
 });
 
-describe('batched payout status changes', () => {
+describe('end-of-day payout digest', () => {
     beforeEach(() => { EmailService.isConfigured = true; process.env.OPS_ALERT_EMAIL = 'ops@x.com'; });
     afterEach(async () => { await flushStatusChanges(); EmailService.sendOpsAlert.mockClear(); });
+    afterAll(() => { try { fs.unlinkSync(process.env.PAYOUT_DIGEST_BUFFER_FILE); } catch (_) {} });
 
-    test('multiple queued changes flush as ONE combined email', async () => {
+    test('a full day of changes flushes as ONE combined digest email', async () => {
         queuePayoutStatusChange({ id: 8585, prev: 'awaiting_funding', next: 'paid', amount: 7132.87, property: '58th Ave' });
         queuePayoutStatusChange({ id: 8716, prev: 'awaiting_funding', next: 'paid', amount: 1664.10, property: 'Merion' });
         queuePayoutStatusChange({ id: 8743, prev: 'pending', next: 'failed', amount: 4941.26, property: '58th Ave', error: 'no funds' });
         await flushStatusChanges();
 
         expect(EmailService.sendOpsAlert).toHaveBeenCalledTimes(1);
-        const [, subject, body] = EmailService.sendOpsAlert.mock.calls[0];
-        expect(subject).toContain('[ERROR]');           // any failure escalates the batch
-        expect(subject).toContain('3 payout status changes');
+        const [, subject, body, html] = EmailService.sendOpsAlert.mock.calls[0];
+        // Failures escalate the subject; count + total appear for a scannable summary.
+        expect(subject).toContain('[ACTION NEEDED]');
+        expect(subject).toContain('3 updates');
+        expect(subject).toContain('Payout digest');
+        // Plain-text fallback still lists every payout, grouped by status.
         expect(body).toContain('#8585');
         expect(body).toContain('#8716');
         expect(body).toContain('#8743');
         expect(body).toContain('no funds');
         expect(body).toMatch(/PAID — 2 payout/);
         expect(body).toMatch(/FAILED — 1 payout/);
+        // The HTML digest is present and includes the amounts/statement ids.
+        expect(html).toBeTruthy();
+        expect(html).toContain('Daily payout digest');
+        expect(html).toContain('#8585');
+        expect(html).toContain('7,132.87');
     });
 
-    test('flush with an empty buffer sends nothing', async () => {
+    test('no changes means no email (empty buffer is a no-op)', async () => {
         await flushStatusChanges();
         expect(EmailService.sendOpsAlert).not.toHaveBeenCalled();
+    });
+
+    test('queued changes survive a fresh module load (persisted to disk)', async () => {
+        queuePayoutStatusChange({ id: 9001, prev: 'pending', next: 'paid', amount: 100, property: 'Persisted' });
+        jest.resetModules();
+        // Re-require the module: it should load the persisted buffer from disk.
+        const reloaded = require('../utils/notify');
+        expect(reloaded.pendingDigestCount()).toBeGreaterThanOrEqual(1);
+        await reloaded.flushStatusChanges();
     });
 });
