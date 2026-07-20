@@ -49,4 +49,58 @@ function notifyOpsAsync(msg) {
     notifyOps(msg).catch((e) => logger.warn('[notify] notifyOpsAsync failed', { error: e?.message }));
 }
 
-module.exports = { notifyOps, notifyOpsAsync, opsRecipients };
+// ─── Batched payout status-change alerts ───────────────────────────────────
+// A batch of payouts changing status (e.g. 13 clearing at once) should produce
+// ONE combined email, not one per statement. We buffer changes and flush them
+// together after a short quiet window.
+const STATUS_BATCH_MS = parseInt(process.env.OPS_STATUS_BATCH_MS) || 60000; // 60s
+let statusBuffer = [];
+let flushTimer = null;
+const money = (v) => (Math.round((parseFloat(v) || 0) * 100) / 100).toFixed(2);
+
+/**
+ * Queue a single payout status change; the combined email is sent ~STATUS_BATCH_MS
+ * after the first queued change (later changes join the same email). Synchronous
+ * and never throws — safe to call from a DB hook.
+ * @param {{id:number|string, prev?:string, next:string, amount?:number, property?:string, owner?:string, error?:string}} change
+ */
+function queuePayoutStatusChange(change) {
+    try {
+        statusBuffer.push(change);
+        if (!flushTimer) {
+            flushTimer = setTimeout(() => { flushStatusChanges().catch(() => {}); }, STATUS_BATCH_MS);
+            if (flushTimer.unref) flushTimer.unref(); // don't keep the process alive
+        }
+    } catch (_) { /* never break a caller */ }
+}
+
+/** Flush the buffered status changes as one combined email. Always resolves. */
+async function flushStatusChanges() {
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    const batch = statusBuffer;
+    statusBuffer = [];
+    if (batch.length === 0) return;
+
+    const byStatus = {};
+    for (const c of batch) (byStatus[c.next] = byStatus[c.next] || []).push(c);
+
+    const lines = [];
+    let grandTotal = 0;
+    for (const status of Object.keys(byStatus)) {
+        const items = byStatus[status];
+        const sum = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+        grandTotal += sum;
+        lines.push(`${status.toUpperCase()} — ${items.length} payout(s), $${money(sum)}`);
+        for (const i of items) {
+            lines.push(`  #${i.id} ${i.property || ''} — $${money(i.amount)} (${i.prev || '(none)'} → ${i.next})${i.error ? ` [${i.error}]` : ''}`);
+        }
+    }
+    const anyFailure = batch.some((c) => c.next === 'failed' || c.next === 'topup_failed');
+    await notifyOps({
+        title: `${batch.length} payout status change${batch.length > 1 ? 's' : ''} — $${money(grandTotal)}`,
+        text: lines.join('\n'),
+        level: anyFailure ? 'error' : 'info',
+    });
+}
+
+module.exports = { notifyOps, notifyOpsAsync, opsRecipients, queuePayoutStatusChange, flushStatusChanges };

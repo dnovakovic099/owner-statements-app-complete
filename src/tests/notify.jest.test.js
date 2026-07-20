@@ -12,7 +12,7 @@ jest.mock('../services/EmailService', () => ({
 }));
 
 const EmailService = require('../services/EmailService');
-const { notifyOps, opsRecipients } = require('../utils/notify');
+const { notifyOps, opsRecipients, queuePayoutStatusChange, flushStatusChanges } = require('../utils/notify');
 
 const OLD_ENV = process.env.OPS_ALERT_EMAIL;
 afterEach(() => {
@@ -54,5 +54,33 @@ describe('notifyOps', () => {
     test('never throws when the email send rejects', async () => {
         EmailService.sendOpsAlert.mockRejectedValueOnce(new Error('smtp down'));
         await expect(notifyOps({ title: 'x' })).resolves.toBeUndefined();
+    });
+});
+
+describe('batched payout status changes', () => {
+    beforeEach(() => { EmailService.isConfigured = true; process.env.OPS_ALERT_EMAIL = 'ops@x.com'; });
+    afterEach(async () => { await flushStatusChanges(); EmailService.sendOpsAlert.mockClear(); });
+
+    test('multiple queued changes flush as ONE combined email', async () => {
+        queuePayoutStatusChange({ id: 8585, prev: 'awaiting_funding', next: 'paid', amount: 7132.87, property: '58th Ave' });
+        queuePayoutStatusChange({ id: 8716, prev: 'awaiting_funding', next: 'paid', amount: 1664.10, property: 'Merion' });
+        queuePayoutStatusChange({ id: 8743, prev: 'pending', next: 'failed', amount: 4941.26, property: '58th Ave', error: 'no funds' });
+        await flushStatusChanges();
+
+        expect(EmailService.sendOpsAlert).toHaveBeenCalledTimes(1);
+        const [, subject, body] = EmailService.sendOpsAlert.mock.calls[0];
+        expect(subject).toContain('[ERROR]');           // any failure escalates the batch
+        expect(subject).toContain('3 payout status changes');
+        expect(body).toContain('#8585');
+        expect(body).toContain('#8716');
+        expect(body).toContain('#8743');
+        expect(body).toContain('no funds');
+        expect(body).toMatch(/PAID — 2 payout/);
+        expect(body).toMatch(/FAILED — 1 payout/);
+    });
+
+    test('flush with an empty buffer sends nothing', async () => {
+        await flushStatusChanges();
+        expect(EmailService.sendOpsAlert).not.toHaveBeenCalled();
     });
 });

@@ -1,15 +1,18 @@
 /**
  * Statement payout-status change notification hook — Jest Suite
  *
- * The Statement model's afterUpdate hook emails an ops alert whenever
- * payoutStatus changes to a meaningful state (paid/failed/awaiting_funding/...).
- * Transient internal states (pending/queued) are skipped. Run: npm run test:jest
+ * The Statement model's afterUpdate hook QUEUES a payout-status change (which the
+ * notifier later flushes as one combined email) whenever payoutStatus changes to
+ * a meaningful state. Transient states (pending/queued) are skipped.
+ * Run: npm run test:jest
  */
 
 jest.mock('../utils/notify', () => ({
     notifyOpsAsync: jest.fn(),
     notifyOps: jest.fn(),
     opsRecipients: jest.fn(() => ['devendravariya73@gmail.com']),
+    queuePayoutStatusChange: jest.fn(),
+    flushStatusChanges: jest.fn(),
 }));
 
 const notify = require('../utils/notify');
@@ -31,38 +34,34 @@ const fakeInstance = (overrides = {}) => ({
 
 const runAfterUpdate = (instance) => Statement.runHooks('afterUpdate', instance, {});
 
-afterEach(() => notify.notifyOpsAsync.mockClear());
+afterEach(() => notify.queuePayoutStatusChange.mockClear());
 
-describe('Statement afterUpdate payout notification', () => {
-    test('notifies on awaiting_funding -> paid (success)', async () => {
+describe('Statement afterUpdate queues payout status change', () => {
+    test('queues on awaiting_funding -> paid with full payload', async () => {
         await runAfterUpdate(fakeInstance());
-        expect(notify.notifyOpsAsync).toHaveBeenCalledTimes(1);
-        const arg = notify.notifyOpsAsync.mock.calls[0][0];
-        expect(arg.title).toContain('#8585');
-        expect(arg.title).toContain('paid');
-        expect(arg.level).toBe('success');
+        expect(notify.queuePayoutStatusChange).toHaveBeenCalledTimes(1);
+        const arg = notify.queuePayoutStatusChange.mock.calls[0][0];
+        expect(arg).toMatchObject({ id: 8585, prev: 'awaiting_funding', next: 'paid', amount: 7132.87, property: '58th Ave. N' });
     });
 
-    test('notifies on -> failed with error field and error level', async () => {
+    test('queues on -> failed and carries the payout error', async () => {
         await runAfterUpdate(fakeInstance({ payoutStatus: 'failed', _prev: 'pending', payoutError: 'insufficient funds' }));
-        expect(notify.notifyOpsAsync).toHaveBeenCalledTimes(1);
-        const arg = notify.notifyOpsAsync.mock.calls[0][0];
-        expect(arg.level).toBe('error');
-        expect(JSON.stringify(arg.fields)).toContain('insufficient funds');
+        expect(notify.queuePayoutStatusChange).toHaveBeenCalledTimes(1);
+        expect(notify.queuePayoutStatusChange.mock.calls[0][0]).toMatchObject({ next: 'failed', error: 'insufficient funds' });
     });
 
-    test('does NOT notify when payoutStatus did not change', async () => {
+    test('does NOT queue when payoutStatus did not change', async () => {
         await runAfterUpdate(fakeInstance({ changed: () => false }));
-        expect(notify.notifyOpsAsync).not.toHaveBeenCalled();
+        expect(notify.queuePayoutStatusChange).not.toHaveBeenCalled();
     });
 
-    test.each(['pending', 'queued'])('does NOT notify for transient state %p', async (state) => {
+    test.each(['pending', 'queued'])('does NOT queue for transient state %p', async (state) => {
         await runAfterUpdate(fakeInstance({ payoutStatus: state }));
-        expect(notify.notifyOpsAsync).not.toHaveBeenCalled();
+        expect(notify.queuePayoutStatusChange).not.toHaveBeenCalled();
     });
 
-    test('does NOT notify when a non-payout field changed', async () => {
+    test('does NOT queue when a non-payout field changed', async () => {
         await runAfterUpdate(fakeInstance({ changed: (f) => f === 'ownerName' }));
-        expect(notify.notifyOpsAsync).not.toHaveBeenCalled();
+        expect(notify.queuePayoutStatusChange).not.toHaveBeenCalled();
     });
 });
