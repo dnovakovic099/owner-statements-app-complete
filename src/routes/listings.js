@@ -222,7 +222,7 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, statementDisplayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
+        const { displayName, statementDisplayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, pmFeeSchedule, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -252,6 +252,31 @@ router.put('/:id/config', async (req, res) => {
             }
         }
         if (newPmFeeStartDate !== undefined) config.newPmFeeStartDate = newPmFeeStartDate || null;
+        if (pmFeeSchedule !== undefined) {
+            if (pmFeeSchedule === null) {
+                config.pmFeeSchedule = null;
+            } else if (!Array.isArray(pmFeeSchedule)) {
+                return res.status(400).json({ error: 'pmFeeSchedule must be an array or null' });
+            } else {
+                const normalized = [];
+                for (const entry of pmFeeSchedule) {
+                    if (!entry || typeof entry !== 'object') {
+                        return res.status(400).json({ error: 'Each pmFeeSchedule entry must be an object with percentage and startDate' });
+                    }
+                    const pct = parseFloat(entry.percentage);
+                    if (isNaN(pct) || pct < 0 || pct > 100) {
+                        return res.status(400).json({ error: 'pmFeeSchedule percentage must be between 0 and 100' });
+                    }
+                    if (!entry.startDate || isNaN(new Date(entry.startDate).getTime())) {
+                        return res.status(400).json({ error: 'pmFeeSchedule startDate must be a valid date' });
+                    }
+                    normalized.push({ percentage: pct, startDate: entry.startDate });
+                }
+                // Store oldest-first; null out when empty so the feature reads as off
+                normalized.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+                config.pmFeeSchedule = normalized.length > 0 ? normalized : null;
+            }
+        }
         if (tags !== undefined) config.tags = tags;
         if (internalNotes !== undefined) config.internalNotes = internalNotes;
         if (ownerEmail !== undefined) config.ownerEmail = ownerEmail;
@@ -329,6 +354,7 @@ router.put('/:id/config', async (req, res) => {
             newPmFeeEnabled: 'New PM Fee Enabled',
             newPmFeePercentage: 'New PM Fee %',
             newPmFeeStartDate: 'New PM Fee Start Date',
+            pmFeeSchedule: 'PM Fee Schedule',
             tags: 'Tags',
             internalNotes: 'Internal Notes',
             ownerEmail: 'Owner Email',
@@ -343,6 +369,9 @@ router.put('/:id/config', async (req, res) => {
             if (typeof value === 'boolean') return `${label}: ${value ? 'Yes' : 'No'}`;
             if (value === null) return `${label}: cleared`;
             if (key === 'pmFeePercentage') return `${label}: ${value}%`;
+            if (key === 'pmFeeSchedule' && Array.isArray(value)) {
+                return `${label}: ${value.map(t => `${t.percentage}% from ${t.startDate}`).join(', ')}`;
+            }
             return `${label}: ${value}`;
         });
         await ActivityLog.log(req, 'UPDATE_LISTING', 'listing', id, {

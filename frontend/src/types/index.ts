@@ -167,6 +167,11 @@ export interface SyncResponse {
   total?: number;
 }
 
+export interface PmFeeTransition {
+  percentage: number;
+  startDate: string; // YYYY-MM-DD
+}
+
 export interface Listing {
   id: number;
   name: string;
@@ -202,6 +207,7 @@ export interface Listing {
   newPmFeeEnabled?: boolean;
   newPmFeePercentage?: number | null;
   newPmFeeStartDate?: string | null;
+  pmFeeSchedule?: PmFeeTransition[] | null;
   defaultPetFee?: number | null;
   tags?: string[];
   ownerEmail?: string | null;

@@ -531,6 +531,7 @@ class ListingService {
             if (config.newPmFeeEnabled !== undefined) updates.newPmFeeEnabled = config.newPmFeeEnabled;
             if (config.newPmFeePercentage !== undefined) updates.newPmFeePercentage = config.newPmFeePercentage;
             if (config.newPmFeeStartDate !== undefined) updates.newPmFeeStartDate = config.newPmFeeStartDate;
+            if (config.pmFeeSchedule !== undefined) updates.pmFeeSchedule = config.pmFeeSchedule;
             if (config.wiseStatus !== undefined) updates.wiseStatus = config.wiseStatus;
             // Support groupId assignment (null to remove from group, number to assign to group)
             if (config.groupId !== undefined) updates.groupId = config.groupId;

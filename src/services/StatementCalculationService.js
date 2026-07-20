@@ -415,18 +415,44 @@ class StatementCalculationService {
     }
 
     /**
+     * Normalize a listing's PM fee transition config into a sorted list of
+     * { startDate: Date, percentage: number } entries. Prefers the multi-entry
+     * `pmFeeSchedule` array; falls back to the legacy single newPmFee* fields so
+     * listings saved before the schedule feature keep working unchanged.
+     */
+    _getPmFeeTransitions(listingInfo) {
+        const raw = Array.isArray(listingInfo.pmFeeSchedule) && listingInfo.pmFeeSchedule.length > 0
+            ? listingInfo.pmFeeSchedule
+            : (listingInfo.newPmFeeEnabled && listingInfo.newPmFeeStartDate && listingInfo.newPmFeePercentage != null
+                ? [{ percentage: listingInfo.newPmFeePercentage, startDate: listingInfo.newPmFeeStartDate }]
+                : []);
+
+        return raw
+            .map((t) => ({ percentage: parseFloat(t.percentage), startDate: t.startDate ? new Date(t.startDate) : null }))
+            .filter((t) => t.startDate && !isNaN(t.startDate.getTime()) && !isNaN(t.percentage))
+            .sort((a, b) => a.startDate - b.startDate);
+    }
+
+    /**
      * Determine the effective PM fee for a reservation based on the listing's
-     * new-PM-fee transition settings and the reservation's created_at date.
+     * PM-fee transition schedule and the reservation's created_at date. Picks the
+     * latest transition whose start date is on/before the reservation's created
+     * date; if none applies (or no created date), falls back to the base fee.
      */
     _getEffectivePmFee(listingInfo, reservationCreatedAt) {
         const baseFee = listingInfo.pmFeePercentage ?? 15;
-        if (!listingInfo.newPmFeeEnabled || !listingInfo.newPmFeeStartDate || listingInfo.newPmFeePercentage == null) {
-            return baseFee;
-        }
-        if (!reservationCreatedAt) return baseFee;
+        const transitions = this._getPmFeeTransitions(listingInfo);
+        if (transitions.length === 0 || !reservationCreatedAt) return baseFee;
+
         const createdDate = new Date(reservationCreatedAt);
-        const startDate = new Date(listingInfo.newPmFeeStartDate);
-        return createdDate >= startDate ? parseFloat(listingInfo.newPmFeePercentage) : baseFee;
+        if (isNaN(createdDate.getTime())) return baseFee;
+
+        let effective = baseFee;
+        for (const t of transitions) {
+            if (createdDate >= t.startDate) effective = t.percentage;
+            else break; // transitions are sorted ascending; the rest are in the future
+        }
+        return effective;
     }
 
     /**

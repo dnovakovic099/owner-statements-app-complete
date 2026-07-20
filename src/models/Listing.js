@@ -140,6 +140,13 @@ const Listing = sequelize.define('Listing', {
         field: 'new_pm_fee_start_date',
         comment: 'Date from which the new PM fee percentage applies (based on reservation created_at)'
     },
+    pmFeeSchedule: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+        field: 'pm_fee_schedule',
+        comment: 'Array of PM fee transitions [{percentage, startDate}] applied by reservation created_at. Supersedes the single newPmFee* fields when present.'
+    },
     defaultPetFee: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,

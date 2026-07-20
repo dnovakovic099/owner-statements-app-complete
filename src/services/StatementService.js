@@ -290,6 +290,7 @@ class StatementService {
                             newPmFeeEnabled: Boolean(info.newPmFeeEnabled),
                             newPmFeePercentage: info.newPmFeePercentage ?? null,
                             newPmFeeStartDate: info.newPmFeeStartDate || null,
+                            pmFeeSchedule: Array.isArray(info.pmFeeSchedule) ? info.pmFeeSchedule : null,
                             nickname: info.nickname || info.displayName || info.name || ''
                         };
                     }
@@ -480,7 +481,8 @@ class StatementService {
                         pmFeePercentage: listingInfoMap[parsedPropertyId].pmFeePercentage ?? 15,
                         newPmFeeEnabled: Boolean(listingInfoMap[parsedPropertyId].newPmFeeEnabled),
                         newPmFeePercentage: listingInfoMap[parsedPropertyId].newPmFeePercentage ?? null,
-                        newPmFeeStartDate: listingInfoMap[parsedPropertyId].newPmFeeStartDate || null
+                        newPmFeeStartDate: listingInfoMap[parsedPropertyId].newPmFeeStartDate || null,
+                        pmFeeSchedule: Array.isArray(listingInfoMap[parsedPropertyId].pmFeeSchedule) ? listingInfoMap[parsedPropertyId].pmFeeSchedule : null
                     }
                 } : null,
                 status: 'draft',

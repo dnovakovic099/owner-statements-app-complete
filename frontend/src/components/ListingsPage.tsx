@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Save, RefreshCw, AlertCircle, CheckCircle, Download, FolderOpen, Plus, Users as UsersIcon, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { listingsAPI, groupsAPI } from '../services/api';
-import { Listing, ListingGroup } from '../types';
+import { Listing, ListingGroup, PmFeeTransition } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { useToast } from './ui/toast';
 import GroupModal from './GroupModal';
@@ -95,8 +95,10 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [waiveCommissionUntil, setWaiveCommissionUntil] = useState<string>('');
   const [pmFeePercentage, setPmFeePercentage] = useState<number>(15);
   const [newPmFeeEnabled, setNewPmFeeEnabled] = useState(false);
-  const [newPmFeePercentage, setNewPmFeePercentage] = useState<number>(15);
-  const [newPmFeeStartDate, setNewPmFeeStartDate] = useState<string>('');
+  // Multi-entry PM fee transition schedule. Each entry: a new rate that applies
+  // to reservations created on/after its start date (older bookings keep the
+  // rate from the prior entry, or the base PM fee before the first entry).
+  const [pmFeeSchedule, setPmFeeSchedule] = useState<PmFeeTransition[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
@@ -331,9 +333,18 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setWaiveCommission(listing.waiveCommission || false);
         setWaiveCommissionUntil(listing.waiveCommissionUntil || '');
         setPmFeePercentage(listing.pmFeePercentage ?? 15);
-        setNewPmFeeEnabled(listing.newPmFeeEnabled || false);
-        setNewPmFeePercentage(listing.newPmFeePercentage ?? 15);
-        setNewPmFeeStartDate(listing.newPmFeeStartDate || '');
+        // Load the transition schedule: prefer the multi-entry array, fall back
+        // to the legacy single new-PM-fee fields so older listings still show.
+        if (Array.isArray(listing.pmFeeSchedule) && listing.pmFeeSchedule.length > 0) {
+          setPmFeeSchedule(listing.pmFeeSchedule.map(t => ({ percentage: t.percentage, startDate: t.startDate || '' })));
+          setNewPmFeeEnabled(true);
+        } else if (listing.newPmFeeEnabled) {
+          setPmFeeSchedule([{ percentage: listing.newPmFeePercentage ?? 15, startDate: listing.newPmFeeStartDate || '' }]);
+          setNewPmFeeEnabled(true);
+        } else {
+          setPmFeeSchedule([]);
+          setNewPmFeeEnabled(false);
+        }
         setTags(listing.tags || []);
         setOwnerEmail(listing.ownerEmail || '');
         setOwnerGreeting(listing.ownerGreeting || '');
@@ -434,8 +445,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
     setWaiveCommissionUntil('');
     setPmFeePercentage(15);
     setNewPmFeeEnabled(false);
-    setNewPmFeePercentage(15);
-    setNewPmFeeStartDate('');
+    setPmFeeSchedule([]);
     setTags([]);
     setNewTag('');
     setOwnerEmail('');
@@ -466,9 +476,21 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         waiveCommission,
         waiveCommissionUntil: waiveCommissionUntil || null,
         pmFeePercentage,
-        newPmFeeEnabled,
-        newPmFeePercentage: newPmFeeEnabled ? newPmFeePercentage : null,
-        newPmFeeStartDate: newPmFeeEnabled ? newPmFeeStartDate : null,
+        // Clean + sort transitions (drop rows without a start date), oldest first.
+        ...(() => {
+          const clean = (newPmFeeEnabled ? pmFeeSchedule : [])
+            .filter(t => t.startDate && !isNaN(new Date(t.startDate).getTime()) && !isNaN(Number(t.percentage)))
+            .map(t => ({ percentage: Number(t.percentage), startDate: t.startDate }))
+            .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+          const active = newPmFeeEnabled && clean.length > 0;
+          return {
+            pmFeeSchedule: active ? clean : null,
+            // Mirror the first transition into the legacy fields for backward compat.
+            newPmFeeEnabled: active,
+            newPmFeePercentage: active ? clean[0].percentage : null,
+            newPmFeeStartDate: active ? clean[0].startDate : null,
+          };
+        })(),
         tags,
         ownerEmail: ownerEmail.trim() || null,
         ownerGreeting: ownerGreeting.trim() || null,
@@ -1637,7 +1659,14 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                           type="checkbox"
                           id="newPmFeeEnabled"
                           checked={newPmFeeEnabled}
-                          onChange={(e) => setNewPmFeeEnabled(e.target.checked)}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setNewPmFeeEnabled(on);
+                            // Seed one blank row when turning it on with nothing set.
+                            if (on && pmFeeSchedule.length === 0) {
+                              setPmFeeSchedule([{ percentage: pmFeePercentage ?? 15, startDate: '' }]);
+                            }
+                          }}
                           className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                         />
                         <label htmlFor="newPmFeeEnabled" className="text-sm font-medium text-gray-900 dark:text-white">
@@ -1645,34 +1674,59 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         </label>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-7">
-                        Enable to set a new PM fee percentage. Reservations created on or after the start date will use the new rate.
+                        Add one or more rate changes. Each takes effect for reservations created on or after its start date; bookings created before the earliest date keep the base PM Fee % above.
                       </p>
                       {newPmFeeEnabled && (
-                        <div className="mt-3 ml-7 flex items-center space-x-4">
-                          <div>
-                            <label className="block text-xs font-medium text-amber-800 mb-1">New PM Fee %</label>
-                            <div className="flex items-center space-x-2">
-                              <input
-                                type="number"
-                                value={newPmFeePercentage}
-                                onChange={(e) => setNewPmFeePercentage(parseFloat(e.target.value))}
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                className="w-24 border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                              />
-                              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+                        <div className="mt-3 ml-7 space-y-3">
+                          {pmFeeSchedule.map((row, idx) => (
+                            <div key={idx} className="flex items-end space-x-4">
+                              <div>
+                                <label className="block text-xs font-medium text-amber-800 mb-1">New PM Fee %</label>
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="number"
+                                    value={row.percentage}
+                                    onChange={(e) => {
+                                      const v = parseFloat(e.target.value);
+                                      setPmFeeSchedule(prev => prev.map((r, i) => i === idx ? { ...r, percentage: isNaN(v) ? 0 : v } : r));
+                                    }}
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    className="w-24 border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                  />
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-amber-800 mb-1">Start Date</label>
+                                <input
+                                  type="date"
+                                  value={row.startDate}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setPmFeeSchedule(prev => prev.map((r, i) => i === idx ? { ...r, startDate: v } : r));
+                                  }}
+                                  className="border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPmFeeSchedule(prev => prev.filter((_, i) => i !== idx))}
+                                className="mb-1 px-2 py-1.5 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"
+                                title="Remove this rate change"
+                              >
+                                Remove
+                              </button>
                             </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-amber-800 mb-1">Start Date</label>
-                            <input
-                              type="date"
-                              value={newPmFeeStartDate}
-                              onChange={(e) => setNewPmFeeStartDate(e.target.value)}
-                              className="border border-amber-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            />
-                          </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setPmFeeSchedule(prev => [...prev, { percentage: pmFeePercentage ?? 15, startDate: '' }])}
+                            className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-400"
+                          >
+                            + Add another setup
+                          </button>
                         </div>
                       )}
                     </div>
