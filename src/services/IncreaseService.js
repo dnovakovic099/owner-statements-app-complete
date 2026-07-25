@@ -2,6 +2,20 @@ const axios = require('axios');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 
+/**
+ * ACH transfer statuses Increase still lets us cancel — every state before the
+ * entry is handed to the Fed. Once a transfer reaches `submitted` the money is
+ * on the rails and cancellation is impossible; it can only come back as a
+ * return. Anything not listed here is either already submitted or terminal.
+ */
+const CANCELABLE_STATUSES = [
+    'pending_approval',
+    'pending_transfer_session_confirmation',
+    'pending_reviewing',
+    'pending_submission',
+    'requires_attention',
+];
+
 class IncreaseService {
     constructor() {
         this.apiKey = process.env.INCREASE_API_KEY;
@@ -232,6 +246,77 @@ class IncreaseService {
     async listTransfers({ limit = 10 } = {}) {
         const res = await this._client().get(`/ach_transfers?limit=${limit}`);
         return res.data.data || [];
+    }
+
+    /**
+     * Every ACH transfer on the account, following Increase's cursor pagination.
+     * `maxPages` is a runaway guard — an account with more history than that
+     * returns what was read plus `truncated: true` so callers can say so out
+     * loud rather than silently acting on a partial list.
+     */
+    async listAllTransfers({ maxPages = 20, pageSize = 100 } = {}) {
+        const transfers = [];
+        let cursor = null;
+        let pages = 0;
+
+        do {
+            const params = { account_id: this.accountId, limit: pageSize };
+            if (cursor) params.cursor = cursor;
+            const res = await this._client().get('/ach_transfers', { params });
+            transfers.push(...(res.data.data || []));
+            cursor = res.data.next_cursor || null;
+            pages += 1;
+        } while (cursor && pages < maxPages);
+
+        return { transfers, truncated: !!cursor };
+    }
+
+    /**
+     * Transfers still cancelable — i.e. pending and not yet submitted to the Fed.
+     * Each is tagged with `direction` because a negative amount is an ACH debit
+     * pulling money *into* the account (funding), not a payout going out.
+     */
+    async listPendingTransfers(options = {}) {
+        const { transfers, truncated } = await this.listAllTransfers(options);
+        const pending = transfers
+            .filter(t => CANCELABLE_STATUSES.includes(t.status))
+            .map(t => ({
+                id: t.id,
+                status: t.status,
+                amountDollars: Math.abs(t.amount) / 100,
+                direction: t.amount < 0 ? 'funding_pull' : 'payout',
+                externalAccountId: t.external_account_id,
+                statementDescriptor: t.statement_descriptor,
+                companyEntryDescription: t.company_entry_description,
+                individualName: t.individual_name,
+                createdAt: t.created_at,
+            }));
+        return { pending, truncated, scanned: transfers.length };
+    }
+
+    /**
+     * Cancel a single pending ACH transfer.
+     * Increase rejects this once the transfer has been submitted; that rejection
+     * is surfaced as `{ canceled: false, reason }` rather than thrown so a batch
+     * cancel can report per-transfer outcomes instead of aborting partway.
+     */
+    async cancelTransfer(transferId) {
+        try {
+            const res = await this._client().post(`/ach_transfers/${transferId}/cancel`);
+            logger.info('Increase ACH transfer canceled', {
+                transferId,
+                status: res.data?.status,
+            });
+            return { canceled: true, transferId, status: res.data?.status, transfer: res.data };
+        } catch (err) {
+            const detail = err.response?.data?.detail || err.response?.data?.title || err.message;
+            logger.warn('Increase ACH transfer could not be canceled', {
+                transferId,
+                httpStatus: err.response?.status,
+                detail,
+            });
+            return { canceled: false, transferId, reason: detail, httpStatus: err.response?.status };
+        }
     }
 
     /**
@@ -491,3 +576,4 @@ class IncreaseService {
 }
 
 module.exports = new IncreaseService();
+module.exports.CANCELABLE_STATUSES = CANCELABLE_STATUSES;

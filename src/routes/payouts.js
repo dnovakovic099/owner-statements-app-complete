@@ -426,6 +426,178 @@ router.get('/recipients/:externalAccountId/check', async (req, res) => {
     }
 });
 
+/**
+ * Join Increase transfers to the statements that carry them as payoutTransferId,
+ * so an operator sees whose payout a transfer belongs to before cancelling it.
+ * A transfer with no match is a funding pull or was created outside the app.
+ */
+async function attachStatements(transfers) {
+    const ids = transfers.map(t => t.id).filter(Boolean);
+    if (!ids.length) return transfers.map(t => ({ ...t, statement: null }));
+
+    const statements = await Statement.findAll({ where: { payoutTransferId: { [Op.in]: ids } } });
+    const byTransferId = new Map(statements.map(s => [s.payoutTransferId, s]));
+
+    return transfers.map(t => {
+        const s = byTransferId.get(t.id);
+        return {
+            ...t,
+            statement: s ? {
+                id: s.id,
+                propertyName: s.propertyName,
+                ownerPayout: s.ownerPayout,
+                payoutStatus: s.payoutStatus,
+                paidAt: s.paidAt,
+            } : null,
+        };
+    });
+}
+
+// ─── GET /ach-transfers/pending ──────────────────────────────
+// Read-only: every ACH transfer Increase would still let us cancel, i.e. pending
+// and not yet handed to the Fed. Each is joined to the statement that carries it
+// as payoutTransferId so the operator can see exactly whose payout is at stake
+// before calling the cancel endpoint below. `funding_pull` rows are inbound ACH
+// debits replenishing the account and have no statement behind them.
+router.get('/ach-transfers/pending', async (req, res) => {
+    try {
+        if (!req.user || !req.user.isSystemUser) {
+            return res.status(403).json({ error: 'Only authorized (system) users can view pending ACH transfers.' });
+        }
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
+        }
+
+        const { pending, truncated, scanned } = await IncreaseService.listPendingTransfers();
+        const statements = await attachStatements(pending);
+
+        return res.json({
+            success: true,
+            count: pending.length,
+            scanned,
+            truncated,
+            totalPayoutDollars: pending.filter(t => t.direction === 'payout').reduce((s, t) => s + t.amountDollars, 0),
+            totalFundingDollars: pending.filter(t => t.direction === 'funding_pull').reduce((s, t) => s + t.amountDollars, 0),
+            transfers: statements,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'listPendingAchTransfers' });
+        return res.status(500).json({ error: 'Failed to list pending ACH transfers', detail: error.message });
+    }
+});
+
+// ─── POST /ach-transfers/cancel-pending ──────────────────────
+// Cancels pending ACH transfers on Increase and resets the statements behind
+// them to unpaid so the payout can be re-run cleanly. Destructive and
+// irreversible — a canceled transfer cannot be un-canceled, it has to be
+// re-created — so it is gated on an explicit confirm phrase and system user.
+// Body: { confirm: 'CANCEL_ALL_PENDING', transferIds?: string[], dryRun?: boolean }
+// Omitting transferIds targets every pending transfer.
+router.post('/ach-transfers/cancel-pending', async (req, res) => {
+    try {
+        if (!req.user || !req.user.isSystemUser) {
+            return res.status(403).json({ error: 'Only authorized (system) users can cancel ACH transfers.' });
+        }
+        if (!IncreaseService.isConfigured()) {
+            return res.status(500).json({ error: 'Increase is not configured' });
+        }
+
+        const { confirm, transferIds, dryRun } = req.body || {};
+        if (confirm !== 'CANCEL_ALL_PENDING') {
+            return res.status(400).json({
+                error: "Refusing to cancel — send { confirm: 'CANCEL_ALL_PENDING' } to proceed.",
+            });
+        }
+
+        const { pending, truncated } = await IncreaseService.listPendingTransfers();
+        const requested = Array.isArray(transferIds) && transferIds.length
+            ? pending.filter(t => transferIds.includes(t.id))
+            : pending;
+
+        // An explicitly requested ID that is not pending is reported, not silently
+        // dropped — it usually means the transfer was already submitted.
+        const notPending = Array.isArray(transferIds)
+            ? transferIds.filter(id => !pending.some(t => t.id === id))
+            : [];
+
+        const targets = await attachStatements(requested);
+
+        if (dryRun) {
+            return res.json({
+                success: true,
+                dryRun: true,
+                truncated,
+                wouldCancel: targets.length,
+                notPending,
+                transfers: targets,
+            });
+        }
+
+        const results = [];
+        for (const target of targets) {
+            const outcome = await IncreaseService.cancelTransfer(target.id);
+            let statementReset = null;
+
+            // Only clear the statement once Increase confirms the cancel. Resetting
+            // on a failed cancel would free a statement whose money is still moving
+            // and invite a duplicate payout.
+            if (outcome.canceled && target.statement) {
+                const statement = await Statement.findByPk(target.statement.id);
+                if (statement) {
+                    await statement.update({
+                        payoutStatus: null,
+                        payoutTransferId: null,
+                        paidAt: null,
+                        wiseFee: null,
+                        totalTransferAmount: null,
+                        payoutError: null,
+                    });
+                    statementReset = statement.id;
+                    logger.info('[PAYOUT] Statement reset to unpaid after ACH cancel', {
+                        statementId: statement.id,
+                        transferId: target.id,
+                        canceledBy: req.user.email || req.user.username,
+                    });
+                }
+            }
+
+            results.push({
+                transferId: target.id,
+                direction: target.direction,
+                amountDollars: target.amountDollars,
+                canceled: outcome.canceled,
+                newStatus: outcome.status,
+                reason: outcome.reason,
+                statementId: target.statement ? target.statement.id : null,
+                statementReset,
+            });
+        }
+
+        const canceled = results.filter(r => r.canceled);
+        const failed = results.filter(r => !r.canceled);
+        logger.info('[PAYOUT] Bulk ACH cancel complete', {
+            requested: results.length,
+            canceled: canceled.length,
+            failed: failed.length,
+            by: req.user.email || req.user.username,
+        });
+
+        return res.json({
+            success: true,
+            truncated,
+            requested: results.length,
+            canceledCount: canceled.length,
+            failedCount: failed.length,
+            statementsReset: results.filter(r => r.statementReset).map(r => r.statementReset),
+            notPending,
+            results,
+        });
+    } catch (error) {
+        logger.logError(error, { context: 'Payouts', action: 'cancelPendingAchTransfers' });
+        return res.status(500).json({ error: 'Failed to cancel pending ACH transfers', detail: error.message });
+    }
+});
+
 // ─── GET /receipt/preview ────────────────────────────────────
 // Render the payout-receipt HTML with sample data and serve it directly so
 // the team can review the in-browser layout. Does NOT send an email.
