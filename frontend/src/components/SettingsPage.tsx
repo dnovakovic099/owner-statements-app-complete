@@ -25,10 +25,13 @@ import {
   CheckCircle,
   XCircle,
   HardDrive,
-  Save
+  Save,
+  ToggleLeft,
+  DollarSign
 } from 'lucide-react';
 import { usersAPI, activityLogAPI, appLogsAPI, backupAPI, User, ActivityLogEntry } from '../services/api';
 import { useToast } from './ui/toast';
+import { useFeatures } from '../contexts/FeaturesContext';
 import ConfirmDialog from './ui/confirm-dialog';
 
 interface SettingsPageProps {
@@ -47,7 +50,9 @@ const SETTINGS_ALLOWED_EMAILS = [
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, currentUserEmail, hideSidebar = false }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'appLogs' | 'backup'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'appLogs' | 'backup' | 'features'>('users');
+  const { payoutsEnabled, refresh: refreshFeatures, setPayoutsEnabled } = useFeatures();
+  const [savingPayoutFlag, setSavingPayoutFlag] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -560,6 +565,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
             >
               <Database className="w-4 h-4 mr-2" />
               Backup
+            </button>
+            <button
+              onClick={() => setActiveTab('features')}
+              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'features'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <ToggleLeft className="w-4 h-4 mr-2" />
+              Features
             </button>
           </div>
 
@@ -1622,6 +1638,80 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, currentUserRole, cu
                 No local backup files. Backups are emailed and cleaned up after successful delivery.
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {activeTab === 'features' && (
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Features</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Turn major features on or off without a deploy. Changes take effect within a few seconds.
+            </p>
+          </div>
+
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="flex gap-3">
+                <div className={`mt-0.5 ${payoutsEnabled ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900 dark:text-white">Owner payouts (Increase)</div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-xl">
+                    Controls the entire payout feature: the Payout Accounts page, Pay Owner and bulk-pay
+                    buttons, receipts, the owner-facing bank setup and payment links, and the background
+                    job that funds and sends ACH transfers.
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-xl">
+                    Turning this off pauses the machinery — no statement, payout status, or bank detail is
+                    changed. Anything already queued or awaiting funding stays put and resumes exactly where
+                    it left off when you turn it back on.
+                  </p>
+                  <div className="mt-3">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        payoutsEnabled
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                      }`}
+                    >
+                      {payoutsEnabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={payoutsEnabled}
+                aria-label="Toggle owner payouts"
+                disabled={savingPayoutFlag}
+                onClick={async () => {
+                  const next = !payoutsEnabled;
+                  setSavingPayoutFlag(true);
+                  try {
+                    await setPayoutsEnabled(next);
+                    await refreshFeatures();
+                    showToast(next ? 'Payouts enabled' : 'Payouts disabled', 'success');
+                  } catch (err: any) {
+                    showToast(err?.response?.data?.error || 'Failed to update the payout feature', 'error');
+                  } finally {
+                    setSavingPayoutFlag(false);
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  payoutsEnabled ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                    payoutsEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       )}

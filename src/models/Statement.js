@@ -337,6 +337,12 @@ const Statement = sequelize.define('Statement', {
 // must never break the update itself.
 Statement.addHook('afterUpdate', (instance) => {
     try {
+        // Respect the payout kill-switch. Hooks are sync, so this reads the
+        // cached flag rather than the DB — it defaults to enabled, so the
+        // worst case on a cold process is one extra alert, never a missed one.
+        const { payoutsEnabledCached } = require('../utils/featureFlags');
+        if (!payoutsEnabledCached()) return;
+
         if (typeof instance.changed !== 'function' || !instance.changed('payoutStatus')) return;
         const prev = instance.previous('payoutStatus');
         const next = instance.payoutStatus;

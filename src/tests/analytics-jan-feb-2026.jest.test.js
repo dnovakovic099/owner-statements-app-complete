@@ -16,6 +16,12 @@ require('dotenv').config();
 const { Op } = require('sequelize');
 const { Statement, Listing, sequelize } = require('../models');
 const StatementCalculationService = require('../services/StatementCalculationService');
+const { requiresRealDatabase } = require('./helpers/requiresRealDatabase');
+
+// Every assertion here compares recomputed figures against real stored
+// statements ("at least 15 properties found in the date range"), so the suite
+// reports as skipped unless DATABASE_URL points at a populated database.
+const describeWithData = requiresRealDatabase();
 
 const QUERY_START = '2026-01-01';
 const QUERY_END   = '2026-02-28';
@@ -90,7 +96,7 @@ function buildListingInfoMap(listing) {
 
 // ─── main test suite ──────────────────────────────────────────────────────────
 
-describe(`Analytics Jan 1–Feb 28 2026 · top-15 properties`, () => {
+describeWithData(`Analytics Jan 1–Feb 28 2026 · top-15 properties`, () => {
     // Populated in beforeAll
     let top15 = [];
 

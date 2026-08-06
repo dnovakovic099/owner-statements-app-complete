@@ -16,6 +16,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useFeatures } from '../../contexts/FeaturesContext';
 
 type Page = 'dashboard' | 'listings' | 'groups' | 'wise' | 'email' | 'settings' | 'financials' | 'analytics';
 
@@ -59,11 +60,11 @@ interface SidebarProps {
   readListingIds: number[];
 }
 
-const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+const navItems: { id: Page; label: string; icon: React.ReactNode; adminOnly?: boolean; requiresPayouts?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'listings', label: 'Listings', icon: <Home className="w-5 h-5" /> },
   { id: 'groups', label: 'Groups', icon: <FolderOpen className="w-5 h-5" /> },
-  { id: 'wise', label: 'Payout Accounts', icon: <CreditCard className="w-5 h-5" /> },
+  { id: 'wise', label: 'Payout Accounts', icon: <CreditCard className="w-5 h-5" />, requiresPayouts: true },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, adminOnly: true },
   { id: 'email', label: 'Email', icon: <Mail className="w-5 h-5" /> },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },
@@ -91,6 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   readListingIds,
 }) => {
   const { setTheme, isDark } = useTheme();
+  const { payoutsEnabled } = useFeatures();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -134,6 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
         {navItems.map((item) => {
           if (item.adminOnly && !hasSettingsAccess) return null;
+          if (item.requiresPayouts && !payoutsEnabled) return null;
           const isActive = currentPage === item.id;
           return (
             <button

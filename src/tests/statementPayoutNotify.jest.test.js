@@ -17,6 +17,16 @@ jest.mock('../utils/notify', () => ({
 
 const notify = require('../utils/notify');
 const Statement = require('../models/Statement');
+const featureFlags = require('../utils/featureFlags');
+
+// The hook is gated on the payout kill-switch, which defaults to OFF. In a live
+// process the cached flag is always warm by the time a payout status changes —
+// every path that can move one (the cron ticks, the /api/payouts guard) reads
+// the flag first. Tests call the hook directly, so warm the cache by hand.
+beforeEach(() => {
+    jest.spyOn(featureFlags, 'payoutsEnabledCached').mockReturnValue(true);
+});
+afterAll(() => jest.restoreAllMocks());
 
 // Minimal Sequelize-instance stand-in with the changed()/previous() API the hook uses.
 const fakeInstance = (overrides = {}) => ({
@@ -62,6 +72,12 @@ describe('Statement afterUpdate queues payout status change', () => {
 
     test('does NOT queue when a non-payout field changed', async () => {
         await runAfterUpdate(fakeInstance({ changed: (f) => f === 'ownerName' }));
+        expect(notify.queuePayoutStatusChange).not.toHaveBeenCalled();
+    });
+
+    test('does NOT queue while the payout kill-switch is off', async () => {
+        featureFlags.payoutsEnabledCached.mockReturnValue(false);
+        await runAfterUpdate(fakeInstance());
         expect(notify.queuePayoutStatusChange).not.toHaveBeenCalled();
     });
 });

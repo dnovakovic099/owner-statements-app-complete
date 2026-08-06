@@ -16,6 +16,7 @@ import {
 } from '@tanstack/react-table';
 import { Eye, Edit, Download, Trash2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, SlidersHorizontal, Search, ArrowUpDown, CheckCircle, RotateCcw, Square, CheckSquare, AlertTriangle, Calendar, ClipboardList, FileSpreadsheet, Mail, GripVertical, Info, DollarSign, Copy, Receipt, BadgeCheck, X, Users, Unlock } from 'lucide-react';
 import { Statement } from '../types';
+import { useFeatures } from '../contexts/FeaturesContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Tooltip } from './ui/tooltip';
@@ -178,6 +179,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
   userRole,
   isSystemUser = false,
 }) => {
+  const { payoutsEnabled } = useFeatures();
   const COLUMN_VISIBILITY_KEY = 'statements-table-column-visibility';
   const COLUMN_ORDER_KEY = 'statements-table-column-order-v2';
   const COLUMN_SIZING_KEY = 'statements-table-column-sizing';
@@ -749,6 +751,11 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               disabled={statement.status === 'draft' || statement.status === 'sent' || statement.payoutStatus === 'paid'}
             />
             {(() => {
+              // Payout master switch — hide Pay Owner and the reactivate
+              // unlock entirely while the feature is off. The payout status
+              // column stays: the flag pauses the machinery, it doesn't hide
+              // what already happened.
+              if (!payoutsEnabled) return null;
               const listingId = statement.propertyId || (statement.propertyIds && statement.propertyIds[0]);
               const listing = listingId && listings ? listings.find(l => Number(l.id) === Number(listingId)) : null;
               // Group statements may pay out via the group's Increase account even
@@ -797,6 +804,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               );
             })()}
 
+            {payoutsEnabled && (
             <ActionButton
               onClick={async () => {
                 try {
@@ -819,7 +827,9 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               color={statement.payoutStatus === 'paid' || statement.payoutStatus === 'collected' ? 'text-teal-600' : 'text-gray-400'}
               disabled={statement.payoutStatus !== 'paid' && statement.payoutStatus !== 'collected'}
             />
+            )}
 
+            {payoutsEnabled && (
             <ActionButton
               onClick={() => handleVerifyTransfer(statement)}
               tooltip={statement.payoutStatus === 'paid' && (statement as any).payoutTransferId ? 'Verify on Increase' : 'Available after payout'}
@@ -827,6 +837,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
               color={statement.payoutStatus === 'paid' && (statement as any).payoutTransferId ? 'text-cyan-600' : 'text-gray-400'}
               disabled={statement.payoutStatus !== 'paid' || !(statement as any).payoutTransferId}
             />
+            )}
 
             <ActionButton
               onClick={() => onAction(statement.id, 'delete')}
@@ -1049,6 +1060,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <Mail className="w-4 h-4 mr-1.5" />
                 Send Email
               </Button>
+              {payoutsEnabled && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1060,6 +1072,7 @@ const StatementsTable: React.FC<StatementsTableProps> = ({
                 <DollarSign className="w-4 h-4 mr-1.5" />
                 Pay Owners
               </Button>
+              )}
               <button
                 onClick={() => setRowSelection({})}
                 className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-sm"

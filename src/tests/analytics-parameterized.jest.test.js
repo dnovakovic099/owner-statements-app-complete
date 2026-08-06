@@ -82,6 +82,11 @@ function selectStatementIds(rows, qStart, qEnd) {
 
 // ─── setup / teardown ─────────────────────────────────────────────────────────
 
+// Compares recomputed figures against real stored statements, so the suite
+// reports as skipped unless DATABASE_URL points at a populated database.
+const { requiresRealDatabase } = require('./helpers/requiresRealDatabase');
+const describeWithData = requiresRealDatabase();
+
 beforeAll(() => sequelize.authenticate());
 afterAll(() => sequelize.close());
 
@@ -99,7 +104,7 @@ function buildListingInfoMap(listing) {
 
 // ─── main test suite ──────────────────────────────────────────────────────────
 
-describe(`Analytics ${QUERY_START} to ${QUERY_END} · top-${TOP_N} properties`, () => {
+describeWithData(`Analytics ${QUERY_START} to ${QUERY_END} · top-${TOP_N} properties`, () => {
     // Populated in beforeAll
     let topProperties = [];
 

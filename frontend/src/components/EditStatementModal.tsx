@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, DollarSign, AlertTriangle, Plus, Calendar, FileText, Save, Edit2, Check, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeatures } from '../contexts/FeaturesContext';
 import { statementsAPI, listingsAPI } from '../services/api';
 import { Statement, Reservation } from '../types';
 import { Checkbox } from './ui/checkbox';
@@ -85,6 +86,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
   onStatementUpdated,
 }) => {
   const { user } = useAuth();
+  const { payoutsEnabled } = useFeatures();
   // Super-edit (inline reservation number editing) is restricted to specific users.
   const canSuperEdit = !!(user?.isSystemUser || user?.canSuperEditReservations);
   const [statement, setStatement] = useState<Statement | null>(null);
@@ -1168,6 +1170,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                             {(statement as any).payoutTransferId && (
                               <div className="space-y-1">
                                 <div className="font-mono text-[10px] text-gray-400">{(statement as any).payoutTransferId}</div>
+                                {payoutsEnabled && (
                                 <button
                                   type="button"
                                   onClick={async () => {
@@ -1189,6 +1192,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                                 >
                                   {verifying ? 'Checking…' : verifyData ? 'Refresh from Increase' : 'Verify on Increase'}
                                 </button>
+                                )}
                                 {verifyError && (
                                   <div className="text-[11px] text-red-600 max-w-[280px]">{verifyError}</div>
                                 )}
@@ -1232,7 +1236,7 @@ const EditStatementModal: React.FC<EditStatementModalProps> = ({
                           ⏳ Processing
                         </span>
                       ) : null}
-                      {(statement.status === 'final' && (statement as any).payoutStatus !== 'paid' && statement.ownerPayout > 0) && (
+                      {payoutsEnabled && (statement.status === 'final' && (statement as any).payoutStatus !== 'paid' && statement.ownerPayout > 0) && (
                         <button
                           type="button"
                           onClick={() => setPayConfirmOpen(true)}

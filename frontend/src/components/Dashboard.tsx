@@ -11,6 +11,7 @@ import LoadingSpinner from './LoadingSpinner';
 import { retryWithLoader, RetryCancelledError, RetryStatus } from '../utils/retryWithLoader';
 import ConfirmDialog from './ui/confirm-dialog';
 import { useToast } from './ui/toast';
+import { useFeatures } from '../contexts/FeaturesContext';
 import { Layout } from './Layout';
 
 // Lazy load pages and modals for better initial bundle size
@@ -82,6 +83,7 @@ const PATH_TO_PAGE: Record<string, Page> = Object.fromEntries(
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { showToast, updateToast } = useToast();
+  const { payoutsEnabled } = useFeatures();
   const navigate = useNavigate();
   const location = useLocation();
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -763,6 +765,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
         return;
       } else if (action === 'reactivate-payout') {
+        if (!payoutsEnabled) {
+          showToast('Payouts are currently disabled by an administrator.', 'error');
+          return;
+        }
         if (!user?.isSystemUser) {
           showToast('Only authorized (system) users can reactivate a payout.', 'error');
           return;
@@ -780,6 +786,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           updateToast(toastId, err?.response?.data?.error || 'Failed to reactivate payout', 'error');
         }
       } else if (action === 'pay-owner') {
+        if (!payoutsEnabled) {
+          showToast('Payouts are currently disabled by an administrator.', 'error');
+          return;
+        }
         analytics.trackFeatureUsage('payout_initiation', { statementId: id });
         // Find the statement to get its info
         const statement = statements.find(s => s.id === id);
@@ -1197,6 +1207,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setBulkProcessing(false);
       return;
     } else if (action === 'pay-owner') {
+      if (!payoutsEnabled) {
+        showToast('Payouts are currently disabled by an administrator.', 'error');
+        setBulkProcessing(false);
+        return;
+      }
       const selectedStatements = statements.filter(s => ids.includes(s.id));
 
       // Filter for valid payouts (must have positive payout, not already paid, and have Increase account).
@@ -1430,6 +1445,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
 
     if (currentPage === 'wise') {
+      // The payout master switch can be flipped while someone is sitting on
+      // this page (or has it bookmarked), so guard the render, not just the
+      // sidebar entry.
+      if (!payoutsEnabled) {
+        return (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Payouts are disabled</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+              An administrator has turned off the payout feature. Statements and everything else are unaffected — turn payouts back on in Settings to restore this page.
+            </p>
+          </div>
+        );
+      }
       return (
         <Suspense fallback={<LoadingSpinner />}>
           <PayoutAccountsPage />

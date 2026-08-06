@@ -22,6 +22,12 @@ const { authenticate, authorize, requireAdmin, requireEditor, requireViewer, edi
 const { authLimiter: authRateLimiter, apiLimiter, payoutLimiter, payoutSetupLimiter, payoutSetupPageLimiter } = require('./middleware/rateLimiter');
 const sanitize = require('./middleware/sanitize');
 
+// Payout master kill-switch — see utils/featureFlags.js. Applied to every
+// payout entry point: the /api/payouts router, the public owner-facing pages
+// below, and both background pipeline loops.
+const { requirePayoutsEnabled, requirePayoutsEnabledPage } = require('./middleware/payoutsEnabled');
+const { isPayoutsEnabled } = require('./utils/featureFlags');
+
 // Metrics
 const metricsMiddleware = require('./middleware/metricsMiddleware');
 const metrics = require('./utils/metrics');
@@ -374,6 +380,10 @@ app.use('/api/users', authenticate, require('./routes/users'));
 // Dashboard - Any authenticated user can view
 app.use('/api/dashboard', authenticate, require('./routes/dashboard-file'));
 
+// Feature flags - readable by any authenticated user (the UI needs to know
+// which surfaces to render); writes are admin-gated inside the router.
+app.use('/api/features', authenticate, require('./routes/features'));
+
 // Statements / Listings / Groups / Properties / Reservations / Expenses /
 // Email / Financials / QuickBooks all mix reads and writes. editorWrites
 // preserves GET access for any authenticated user (so viewers can browse)
@@ -396,7 +406,7 @@ app.use('/api/email-templates', authenticate, editorWrites, require('./routes/em
 const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 // Payout setup page (public — owner visits this link to add bank details)
-app.get('/payout-setup/:token', payoutSetupPageLimiter, async (req, res) => {
+app.get('/payout-setup/:token', payoutSetupPageLimiter, requirePayoutsEnabledPage, async (req, res) => {
     try {
         const { token } = req.params;
         const { Listing } = require('./models');
@@ -698,7 +708,7 @@ app.get('/payout-setup/:token', payoutSetupPageLimiter, async (req, res) => {
 });
 
 // Payout setup form submission (public — no auth)
-app.post('/api/payouts/setup/:token', payoutSetupLimiter, async (req, res) => {
+app.post('/api/payouts/setup/:token', payoutSetupLimiter, requirePayoutsEnabled, async (req, res) => {
     try {
         const { token } = req.params;
         const { name, email, accountType, routingNumber, accountNumber, street, city, state, zip } = req.body;
@@ -799,7 +809,7 @@ app.post('/api/payouts/setup/:token', payoutSetupLimiter, async (req, res) => {
 });
 
 // Payment page (public — owner visits to see amount owed and bank details)
-app.get('/pay/:token', async (req, res) => {
+app.get('/pay/:token', requirePayoutsEnabledPage, async (req, res) => {
     try {
         const { token } = req.params;
         const { Statement } = require('./models');
@@ -919,7 +929,7 @@ app.get('/pay/:token', async (req, res) => {
 
 // Payouts - Increase payout management
 // Public receipt endpoint — uses short-lived JWT token in query string so it works in a new browser tab
-app.get('/api/payouts/statements/:id/receipt', async (req, res) => {
+app.get('/api/payouts/statements/:id/receipt', requirePayoutsEnabledPage, async (req, res) => {
     try {
         const token = req.query.token;
         if (!token) return res.status(401).json({ error: 'Token required. Open receipts from the app.' });
@@ -1112,7 +1122,7 @@ async function downloadPDF(){
 });
 
 // Token generator for receipts (authenticated)
-app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) => {
+app.get('/api/payouts/statements/:id/receipt-token', authenticate, requirePayoutsEnabled, (req, res) => {
     try {
         const jwt = require('jsonwebtoken');
         const { JWT_SECRET } = require('./middleware/auth');
@@ -1132,7 +1142,10 @@ app.get('/api/payouts/statements/:id/receipt-token', authenticate, (req, res) =>
 // recipient holder names, and account-level details that viewers shouldn't
 // see. Per-route writes (transfer, fund-and-queue, mark-paid, etc.) move
 // real money, so role enforcement at the mount is the conservative choice.
-app.use('/api/payouts', authenticate, authorize('admin', 'editor'), require('./routes/payouts'));
+// requirePayoutsEnabled sits after the role gate so an unauthorized caller
+// still gets 401/403 for the right reason, and before the router so no
+// individual payout handler is reachable while the feature is off.
+app.use('/api/payouts', authenticate, authorize('admin', 'editor'), requirePayoutsEnabled, require('./routes/payouts'));
 
 // Queued payout processor — runs every 5 minutes.
 //
@@ -1158,6 +1171,10 @@ const startDailyDigestScheduler = () => {
     const DIGEST_HOUR = parseInt(process.env.PAYOUT_DIGEST_HOUR_EST) || 21;
     const tick = async () => {
         try {
+            // Read the kill-switch every tick (not at registration) so an
+            // operator flipping it doesn't have to wait for a restart.
+            if (!(await isPayoutsEnabled())) return;
+
             const now = new Date();
             const estDate = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
             const estHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }), 10);
@@ -1180,6 +1197,12 @@ const startQueuedPayoutChecker = () => {
     const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     setInterval(async () => {
         try {
+            // Kill-switch, checked per tick. When payouts are off nothing is
+            // promoted, funded, sent, or alerted on — in-flight rows simply
+            // sit in `awaiting_funding` / `queued` until the switch is
+            // flipped back, at which point this loop resumes them untouched.
+            if (!(await isPayoutsEnabled())) return;
+
             const { processQueuedPayouts } = require('./routes/payouts');
             const reconciliationService = require('./services/ReconciliationService');
             const IncreaseService = require('./services/IncreaseService');

@@ -1383,4 +1383,17 @@ export const backupAPI = {
   },
 };
 
+// Feature flags — currently just the payout master switch. Read on boot by
+// FeaturesContext so a disabled feature never flashes on screen.
+export const featuresAPI = {
+  get: async (): Promise<{ payoutsEnabled: boolean }> => {
+    const response = await api.get('/features');
+    return response.data;
+  },
+  setPayoutsEnabled: async (enabled: boolean): Promise<{ payoutsEnabled: boolean; changed: boolean }> => {
+    const response = await api.put('/features/payouts', { enabled });
+    return response.data;
+  },
+};
+
 export default api;

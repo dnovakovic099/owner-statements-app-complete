@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { FeaturesProvider } from './contexts/FeaturesContext';
 import { ToastProvider } from './components/ui/toast';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
@@ -94,6 +95,7 @@ function App() {
     <ThemeProvider>
     <BrowserRouter>
       <AuthProvider>
+        <FeaturesProvider>
         <ToastProvider>
           {updateAvailable && (
             <div className="fixed top-0 left-0 right-0 z-[9999] bg-blue-600 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-3 shadow-lg">
@@ -108,6 +110,7 @@ function App() {
           )}
           <AppRoutes />
         </ToastProvider>
+        </FeaturesProvider>
       </AuthProvider>
     </BrowserRouter>
     </ThemeProvider>

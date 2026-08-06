@@ -17,6 +17,11 @@ module.exports = {
     'calendarConversion.test.js',
     // Increase payout tests require sandbox API keys
     'increase-payout.jest.test.js'
+    // NOTE: the data-regression suites (statement-accuracy, analytics-*) are
+    // deliberately NOT excluded here. They guard themselves via
+    // src/tests/helpers/requiresRealDatabase.js and report as skipped when
+    // DATABASE_URL isn't a populated database — visible in every run, and they
+    // execute for real wherever one is configured.
   ],
   verbose: true
 };

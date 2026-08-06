@@ -15,6 +15,13 @@ require('dotenv').config();
 const { Op } = require('sequelize');
 const { Statement, Listing, sequelize } = require('../models');
 const StatementCalculationService = require('../services/StatementCalculationService');
+const { hasRealDatabase, requiresRealDatabase } = require('./helpers/requiresRealDatabase');
+
+// The describes that read stored statements only mean something against a
+// populated database; they are reported as skipped otherwise. The pure-logic
+// describes below (dedup algorithm, boundary conditions) need no database and
+// always run.
+const describeWithData = requiresRealDatabase();
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,17 +84,22 @@ function selectNonOverlapping(statementRows, queryStart, queryEnd) {
 
 // ─── setup / teardown ─────────────────────────────────────────────────────────
 
+// Only touch the connection when the DB-backed describes are actually going to
+// run — the pure-logic describes in this file must not fail because there is no
+// database to authenticate against.
 beforeAll(async () => {
+    if (!hasRealDatabase()) return;
     await sequelize.authenticate();
 });
 
 afterAll(async () => {
+    if (!hasRealDatabase()) return;
     await sequelize.close();
 });
 
 // ─── test suite ───────────────────────────────────────────────────────────────
 
-describe('Bay Pointe - Jeffrey · Feb 2026 · Calendar-based', () => {
+describeWithData('Bay Pointe - Jeffrey · Feb 2026 · Calendar-based', () => {
     let stmt;       // raw Statement row from DB
     let listing;    // raw Listing row from DB
     let reservations;
@@ -351,7 +363,7 @@ describe('Analytics deduplication — selectNonOverlapping()', () => {
 
 // ─── Real DB: analytics deduplication with actual statement rows ───────────────
 
-describe('Analytics deduplication — real statement IDs from DB', () => {
+describeWithData('Analytics deduplication — real statement IDs from DB', () => {
     test('for any property with a Feb 2026 monthly statement, no older overlapping statement is included', async () => {
         // Find properties that have a full Feb 1-28 statement (any type)
         const fullRangeStmts = await Statement.findAll({
@@ -411,7 +423,7 @@ describe('Analytics deduplication — real statement IDs from DB', () => {
 
 // ─── PM Commission sign convention ────────────────────────────────────────────
 
-describe('PM Commission sign convention', () => {
+describeWithData('PM Commission sign convention', () => {
     test('pmCommission is always stored as a positive number in the DB', async () => {
         const stmts = await Statement.findAll({
             attributes: ['id', 'pmCommission'],
