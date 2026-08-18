@@ -363,6 +363,7 @@ router.get('/', async (req, res) => {
                         const pmPercentage = listing ? StatementCalculationService.getEffectivePmFee(listing, res.createdAt) : (s.pmPercentage ?? 15);
                         const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
                         const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                        const cohostCommissionCollected = listing?.cohostCommissionCollected || false;
                         const disregardTax = listing?.disregardTax || false;
                         const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
 
@@ -401,7 +402,7 @@ router.get('/', async (req, res) => {
 
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                            grossPayout = -StatementCalculationService.getCohostCommissionDeduction(cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
                             grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
@@ -1064,6 +1065,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
             const resDisregardTax = resListingInfo.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
+            const resCohostCommissionCollected = resListingInfo.cohostCommissionCollected || false;
             const resCleaningFeePassThrough = resListingInfo.cleaningFeePassThrough || false;
             const resWaiveCommission = resListingInfo.waiveCommission || false;
             const resWaiveCommissionUntil = resListingInfo.waiveCommissionUntil || null;
@@ -1099,7 +1101,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                grossPayout = -StatementCalculationService.getCohostCommissionDeduction(resCohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
@@ -1226,6 +1228,7 @@ async function generateCombinedStatement(req, res, propertyIds, ownerId, startDa
                     const info = listingInfoMap[propId] || {};
                     snapshot[propId] = {
                         isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(info.cohostCommissionCollected),
                         disregardTax: Boolean(info.disregardTax),
                         airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
@@ -1879,6 +1882,7 @@ router.post('/generate', async (req, res) => {
             const resDisregardTax = resListingInfo?.disregardTax || false;
             const resAirbnbPassThroughTax = resListingInfo?.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo?.isCohostOnAirbnb || false;
+            const resCohostCommissionCollected = resListingInfo?.cohostCommissionCollected || false;
             const resWaiveCommission = resListingInfo?.waiveCommission || false;
             const resWaiveCommissionUntil = resListingInfo?.waiveCommissionUntil || null;
 
@@ -1912,7 +1916,7 @@ router.post('/generate', async (req, res) => {
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                grossPayout = -StatementCalculationService.getCohostCommissionDeduction(resCohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
@@ -2005,6 +2009,7 @@ router.post('/generate', async (req, res) => {
             adjustments: 0,
             ownerPayout: Math.round(adjustedOwnerPayout * 100) / 100,
             isCohostOnAirbnb: isCohostOnAirbnb,
+            cohostCommissionCollected: Boolean(listingInfo?.cohostCommissionCollected),
             airbnbPassThroughTax: airbnbPassThroughTax,
             disregardTax: disregardTax,
             cleaningFeePassThrough: cleaningFeePassThrough,
@@ -2019,6 +2024,7 @@ router.post('/generate', async (req, res) => {
                 return {
                     [propId]: {
                         isCohostOnAirbnb: Boolean(listingInfo.isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(listingInfo.cohostCommissionCollected),
                         disregardTax: Boolean(listingInfo.disregardTax),
                         airbnbPassThroughTax: Boolean(listingInfo.airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(listingInfo.cleaningFeePassThrough),
@@ -2522,6 +2528,7 @@ router.put('/:id/reconfigure', async (req, res) => {
                         const info = propertyListingMap[propId] || {};
                         snapshot[propId] = {
                             isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                            cohostCommissionCollected: Boolean(info.cohostCommissionCollected),
                             disregardTax: Boolean(info.disregardTax),
                             airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
                             cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
@@ -2615,6 +2622,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 
         // Get listing configuration
         const isCohostOnAirbnb = listing.isCohostOnAirbnb || false;
+        const cohostCommissionCollected = listing.cohostCommissionCollected || false;
         const airbnbPassThroughTax = listing.airbnbPassThroughTax || false;
         const disregardTax = listing.disregardTax || false;
         const cleaningFeePassThrough = listing.cleaningFeePassThrough || false;
@@ -2735,7 +2743,7 @@ router.put('/:id/reconfigure', async (req, res) => {
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                grossPayout = -StatementCalculationService.getCohostCommissionDeduction(cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
@@ -2766,6 +2774,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             insuranceFees: Math.round(insuranceFees * 100) / 100,
             ownerPayout: Math.round(finalOwnerPayout * 100) / 100,
             isCohostOnAirbnb,
+            cohostCommissionCollected,
             airbnbPassThroughTax,
             disregardTax,
             cleaningFeePassThrough,
@@ -2777,6 +2786,7 @@ router.put('/:id/reconfigure', async (req, res) => {
             listingSettingsSnapshot: {
                 [parseInt(propertyId)]: {
                     isCohostOnAirbnb: Boolean(isCohostOnAirbnb),
+                    cohostCommissionCollected: Boolean(cohostCommissionCollected),
                     disregardTax: Boolean(disregardTax),
                     airbnbPassThroughTax: Boolean(airbnbPassThroughTax),
                     cleaningFeePassThrough: Boolean(cleaningFeePassThrough),
@@ -3605,6 +3615,7 @@ router.get('/:id/view', async (req, res) => {
                 const snap = listingSettingsMap[statement.propertyId];
                 statement.disregardTax = Boolean(snap.disregardTax);
                 statement.isCohostOnAirbnb = Boolean(snap.isCohostOnAirbnb);
+                statement.cohostCommissionCollected = Boolean(snap.cohostCommissionCollected);
                 statement.airbnbPassThroughTax = Boolean(snap.airbnbPassThroughTax);
                 statement.cleaningFeePassThrough = Boolean(snap.cleaningFeePassThrough);
                 statement.excludeCleaningFromCommission = Boolean(snap.excludeCleaningFromCommission);
@@ -3622,6 +3633,7 @@ router.get('/:id/view', async (req, res) => {
                     const hostifyListing = hostifyListingMap.get(parseInt(listing.id));
                     listingSettingsMap[listing.id] = {
                         isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(listing.cohostCommissionCollected),
                         disregardTax: Boolean(listing.disregardTax),
                         airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
@@ -3645,6 +3657,7 @@ router.get('/:id/view', async (req, res) => {
                 if (currentListing) {
                     statement.disregardTax = Boolean(currentListing.disregardTax);
                     statement.isCohostOnAirbnb = Boolean(currentListing.isCohostOnAirbnb);
+                    statement.cohostCommissionCollected = Boolean(currentListing.cohostCommissionCollected);
                     statement.airbnbPassThroughTax = Boolean(currentListing.airbnbPassThroughTax);
                     statement.cleaningFeePassThrough = Boolean(currentListing.cleaningFeePassThrough);
                     statement.excludeCleaningFromCommission = Boolean(currentListing.excludeCleaningFromCommission);
@@ -3653,6 +3666,7 @@ router.get('/:id/view', async (req, res) => {
 
                     listingSettingsMap[statement.propertyId] = {
                         isCohostOnAirbnb: Boolean(currentListing.isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(currentListing.cohostCommissionCollected),
                         disregardTax: Boolean(currentListing.disregardTax),
                         airbnbPassThroughTax: Boolean(currentListing.airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(currentListing.cleaningFeePassThrough),
@@ -3675,6 +3689,7 @@ router.get('/:id/view', async (req, res) => {
         // Ensure boolean values are properly set (fallback to false if undefined)
         statement.disregardTax = Boolean(statement.disregardTax);
         statement.isCohostOnAirbnb = Boolean(statement.isCohostOnAirbnb);
+        statement.cohostCommissionCollected = Boolean(statement.cohostCommissionCollected);
         statement.airbnbPassThroughTax = Boolean(statement.airbnbPassThroughTax);
         statement.pmPercentage = statement.pmPercentage ?? 15;
 
@@ -3735,6 +3750,7 @@ router.get('/:id/view', async (req, res) => {
         statement.reservations?.forEach(reservation => {
             const propSettings = listingSettingsMap[reservation.propertyId] || {
                 isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                cohostCommissionCollected: statement.cohostCommissionCollected,
                 disregardTax: statement.disregardTax,
                 airbnbPassThroughTax: statement.airbnbPassThroughTax,
                 cleaningFeePassThrough: statement.cleaningFeePassThrough,
@@ -3790,7 +3806,7 @@ router.get('/:id/view', async (req, res) => {
             if (reservation.isCustom) {
                 grossPayout = reservation.grossAmount;
             } else if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                grossPayout = -StatementCalculationService.getCohostCommissionDeduction(propSettings.cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
@@ -5576,6 +5592,7 @@ router.get('/:id/view', async (req, res) => {
                     // Get per-property settings from the map, fall back to statement-level settings
                     const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                         isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                        cohostCommissionCollected: statement.cohostCommissionCollected,
                         disregardTax: statement.disregardTax,
                         airbnbPassThroughTax: statement.airbnbPassThroughTax,
                         cleaningFeePassThrough: statement.cleaningFeePassThrough,
@@ -5637,7 +5654,7 @@ router.get('/:id/view', async (req, res) => {
                     if (reservation.isCustom) {
                         grossPayout = reservation.grossAmount;
                     } else if (isCohostAirbnb) {
-                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                        grossPayout = -StatementCalculationService.getCohostCommissionDeduction(propSettings.cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
                     } else if (shouldAddTax) {
                         // Add tax: Non-Airbnb OR Airbnb with pass-through (and not disregardTax)
                         grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
@@ -5700,6 +5717,7 @@ router.get('/:id/view', async (req, res) => {
                             // Get per-property settings from the map, fall back to statement-level settings
                             const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                                 isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                                cohostCommissionCollected: statement.cohostCommissionCollected,
                                 disregardTax: statement.disregardTax,
                                 airbnbPassThroughTax: statement.airbnbPassThroughTax,
                                 cleaningFeePassThrough: statement.cleaningFeePassThrough,
@@ -5753,7 +5771,7 @@ router.get('/:id/view', async (req, res) => {
                             if (reservation.isCustom) {
                                 grossPayout = reservation.grossAmount;
                             } else if (isCohostAirbnb) {
-                                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                                grossPayout = -StatementCalculationService.getCohostCommissionDeduction(propSettings.cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
                             } else if (shouldAddTax) {
                                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                             } else {
@@ -5991,6 +6009,7 @@ router.get('/:id/view', async (req, res) => {
                     // Get per-property settings from the map, fall back to statement-level settings
                     const propSettings = statement._listingSettingsMap?.[reservation.propertyId] || {
                         isCohostOnAirbnb: statement.isCohostOnAirbnb,
+                        cohostCommissionCollected: statement.cohostCommissionCollected,
                         disregardTax: statement.disregardTax,
                         airbnbPassThroughTax: statement.airbnbPassThroughTax,
                         cleaningFeePassThrough: statement.cleaningFeePassThrough,
@@ -6040,7 +6059,7 @@ router.get('/:id/view', async (req, res) => {
                     if (reservation.isCustom) {
                         grossPayout = reservation.grossAmount;
                     } else if (isCohostAirbnb) {
-                        grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                        grossPayout = -StatementCalculationService.getCohostCommissionDeduction(propSettings.cohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
                     } else if (shouldAddTax) {
                         grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
                     } else {
@@ -7420,6 +7439,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                     // Get pre-fetched listing config
                     const listing = listingConfigs.get(property.id);
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    const cohostCommissionCollected = listing?.cohostCommissionCollected || false;
                     const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
                     const disregardTax = listing?.disregardTax || false;
                     const cleaningFeePassThrough = listing?.cleaningFeePassThrough || false;
@@ -7531,7 +7551,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
 
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -pmFee - cleaningFeeForPassThrough;
+                            grossPayout = -StatementCalculationService.getCohostCommissionDeduction(cohostCommissionCollected, pmFee) - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
                             grossPayout = clientRevenue - pmFee + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
@@ -7582,6 +7602,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             adjustments: 0,
                             ownerPayout: Math.round(ownerPayout * 100) / 100,
                             isCohostOnAirbnb,
+                            cohostCommissionCollected,
                             airbnbPassThroughTax,
                             disregardTax,
                             cleaningFeePassThrough,
@@ -7593,6 +7614,7 @@ async function generateAllOwnerStatementsBackground(jobId, startDate, endDate, c
                             listingSettingsSnapshot: listing ? {
                                 [property.id]: {
                                     isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                                    cohostCommissionCollected: Boolean(listing.cohostCommissionCollected),
                                     disregardTax: Boolean(listing.disregardTax),
                                     airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                                     cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),
@@ -7977,6 +7999,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
 
                     // Get listing settings for proper calculation
                     const isCohostOnAirbnb = listing?.isCohostOnAirbnb || false;
+                    const cohostCommissionCollected = listing?.cohostCommissionCollected || false;
                     const airbnbPassThroughTax = listing?.airbnbPassThroughTax || false;
                     const disregardTax = listing?.disregardTax || false;
 
@@ -8014,7 +8037,7 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         // Calculate gross payout per reservation (matching PDF logic exactly)
                         let grossPayout;
                         if (isCohostAirbnb) {
-                            grossPayout = -pmFee - cleaningFeeForPassThrough;
+                            grossPayout = -StatementCalculationService.getCohostCommissionDeduction(cohostCommissionCollected, pmFee) - cleaningFeeForPassThrough;
                         } else if (shouldAddTax) {
                             grossPayout = clientRevenue - pmFee + taxResponsibility - cleaningFeeForPassThrough;
                         } else {
@@ -8072,9 +8095,11 @@ async function generateAllOwnerStatements(req, res, startDate, endDate, calculat
                         disregardTax: Boolean(listing?.disregardTax),
                         airbnbPassThroughTax: Boolean(listing?.airbnbPassThroughTax),
                         guestPaidDamageCoverage: Boolean(listing?.guestPaidDamageCoverage),
+                        cohostCommissionCollected: Boolean(listing?.cohostCommissionCollected),
                         listingSettingsSnapshot: listing ? {
                             [property.id]: {
                                 isCohostOnAirbnb: Boolean(listing.isCohostOnAirbnb),
+                                cohostCommissionCollected: Boolean(listing.cohostCommissionCollected),
                                 disregardTax: Boolean(listing.disregardTax),
                                 airbnbPassThroughTax: Boolean(listing.airbnbPassThroughTax),
                                 cleaningFeePassThrough: Boolean(listing.cleaningFeePassThrough),

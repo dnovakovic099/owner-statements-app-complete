@@ -319,6 +319,29 @@ class StatementCalculationService {
     }
 
     /**
+     * How much PM commission a co-hosted Airbnb reservation bills back to the owner.
+     *
+     * There are two co-host arrangements, and they differ only here:
+     *   - Default (`cohostCommissionCollected` false): the client is paid by Airbnb
+     *     directly and we invoice the commission back, so the reservation's Gross
+     *     Payout is the negative commission.
+     *   - Commission-collected (`cohostCommissionCollected` true): Airbnb already
+     *     routes the commission to our account, so there is nothing to bill. The
+     *     commission still appears in the PM Commission column for visibility, but
+     *     it must not reduce the owner's payout — this returns 0 and the
+     *     reservation contributes nothing to Gross Payout.
+     *
+     * Both types still exclude Airbnb revenue from the statement's revenue total.
+     *
+     * @param {boolean} cohostCommissionCollected - the listing/snapshot flag
+     * @param {number} luxuryFeeToDeduct - commission after any active waiver
+     * @returns {number} amount to bill the owner (0 when already collected)
+     */
+    _getCohostCommissionDeduction(cohostCommissionCollected, luxuryFeeToDeduct) {
+        return cohostCommissionCollected ? 0 : luxuryFeeToDeduct;
+    }
+
+    /**
      * Boundary convention: checkout exactly on the end date IS considered "in period".
      * This is used consistently by both filterReservations and calculateGrossPayoutSum.
      */
@@ -364,6 +387,7 @@ class StatementCalculationService {
             const resAirbnbPassThroughTax = resListingInfo.airbnbPassThroughTax || false;
             const resIsCohostOnAirbnb = resListingInfo.isCohostOnAirbnb || false;
             const resCleaningFeePassThrough = resListingInfo.cleaningFeePassThrough || false;
+            const resCohostCommissionCollected = resListingInfo.cohostCommissionCollected || false;
             const resWaiveCommission = resListingInfo.waiveCommission || false;
             const resWaiveCommissionUntil = resListingInfo.waiveCommissionUntil || null;
 
@@ -402,7 +426,7 @@ class StatementCalculationService {
 
             let grossPayout;
             if (isCohostAirbnb) {
-                grossPayout = -luxuryFeeToDeduct - cleaningFeeForPassThrough;
+                grossPayout = -this._getCohostCommissionDeduction(resCohostCommissionCollected, luxuryFeeToDeduct) - cleaningFeeForPassThrough;
             } else if (shouldAddTax) {
                 grossPayout = clientRevenue - luxuryFeeToDeduct + taxResponsibility - cleaningFeeForPassThrough;
             } else {
@@ -772,5 +796,6 @@ const instance = new StatementCalculationService();
 // Export helpers as standalone functions so routes can use them directly
 instance.getEffectivePmFee = instance._getEffectivePmFee.bind(instance);
 instance.getCommissionBase = instance._getCommissionBase.bind(instance);
+instance.getCohostCommissionDeduction = instance._getCohostCommissionDeduction.bind(instance);
 
 module.exports = instance;

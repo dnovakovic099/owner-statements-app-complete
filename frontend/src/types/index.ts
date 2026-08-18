@@ -196,6 +196,12 @@ export interface Listing {
   maxNights?: number;
   pmFeePercentage?: number;
   isCohostOnAirbnb: boolean;
+  /**
+   * Co-host modifier: Airbnb pays the PM commission straight to us, so the
+   * statement shows the commission for visibility but never deducts it from the
+   * owner's gross payout. Only meaningful when isCohostOnAirbnb is true.
+   */
+  cohostCommissionCollected?: boolean;
   airbnbPassThroughTax?: boolean;
   disregardTax?: boolean;
   cleaningFeePassThrough?: boolean;

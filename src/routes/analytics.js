@@ -11,6 +11,7 @@ const logger = require('../utils/logger');
 const { Statement, Listing, ListingGroup, sequelize } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const FileDataService = require('../services/FileDataService');
+const StatementCalculationService = require('../services/StatementCalculationService');
 
 /**
  * Cache control middleware for analytics endpoints
@@ -133,6 +134,7 @@ function fanOutCombinedByProperty(combinedStatements) {
         const stmtDisregardTax      = !!stmt.disregardTax;
         const stmtAirbnbPassThrough = !!stmt.airbnbPassThroughTax;
         const stmtCohost   = !!stmt.isCohostOnAirbnb;
+        const stmtCohostCollected = !!stmt.cohostCommissionCollected;
         const isWaiverActive = stmtWaive && (
             !stmtWaiveEnd ||
             new Date(stmtEndDate + 'T00:00:00') <= new Date(stmtWaiveEnd + 'T23:59:59')
@@ -161,10 +163,15 @@ function fanOutCombinedByProperty(combinedStatements) {
                 ? parseFloat(r.luxuryLodgingFee)
                 : rawClientRevenue * (stmtPmPct / 100);
             const pmFeeToDeduct    = isWaiverActive ? 0 : luxuryFee;
+            // Commission-collected co-hosts already paid us via Airbnb, so the fee is
+            // reported (below) but never billed into the payout.
+            const pmFeeBilled      = isCohostAirbnb
+                ? StatementCalculationService.getCohostCommissionDeduction(stmtCohostCollected, pmFeeToDeduct)
+                : pmFeeToDeduct;
             const taxResponsibility = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
             const shouldAddTax     = !stmtDisregardTax && (!isAirbnb || stmtAirbnbPassThrough);
             const taxToAdd         = shouldAddTax ? taxResponsibility : 0;
-            const resGrossPayout   = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeToDeduct);
+            const resGrossPayout   = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeBilled);
             const resClientPayout  = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (resGrossPayout + taxToAdd);
 
             const e = get(r.propertyId);
@@ -795,7 +802,7 @@ router.get('/property-performance', setCacheHeaders(300), async (req, res) => {
         // Merge in combined/group statements (property_id NULL) by fanning them out per property.
         const combinedStmts = await Statement.findAll({
             attributes: ['id', 'ownerName', 'reservations', 'items', 'pmPercentage', 'weekEndDate',
-                         'isCohostOnAirbnb', 'waiveCommission', 'waiveCommissionUntil',
+                         'isCohostOnAirbnb', 'cohostCommissionCollected', 'waiveCommission', 'waiveCommissionUntil',
                          'disregardTax', 'airbnbPassThroughTax'],
             where: {
                 id: { [Op.in]: selectedIds },
@@ -1049,7 +1056,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
         const statements = await Statement.findAll({
             attributes: ['id', 'propertyId', 'propertyName', 'ownerName', 'reservations', 'expenses', 'items',
                          'totalRevenue', 'pmCommission', 'totalExpenses', 'ownerPayout', 'adjustments',
-                         'pmPercentage', 'weekEndDate', 'isCohostOnAirbnb',
+                         'pmPercentage', 'weekEndDate', 'isCohostOnAirbnb', 'cohostCommissionCollected',
                          'waiveCommission', 'waiveCommissionUntil',
                          'disregardTax', 'airbnbPassThroughTax'],
             where: step3Where,
@@ -1097,6 +1104,7 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
             const stmtDisregardTax      = !!stmt.disregardTax;
             const stmtAirbnbPassThrough = !!stmt.airbnbPassThroughTax;
             const stmtCohost   = !!stmt.isCohostOnAirbnb;
+            const stmtCohostCollected = !!stmt.cohostCommissionCollected;
 
             const isWaiverActive = stmtWaive && (
                 !stmtWaiveEnd ||
@@ -1127,11 +1135,16 @@ router.get('/property-financials', setCacheHeaders(300), async (req, res) => {
                     ? parseFloat(r.luxuryLodgingFee)
                     : rawClientRevenue * (stmtPmPct / 100);
                 const pmFeeToDeduct    = isWaiverActive ? 0 : luxuryFee;
+                // Commission-collected co-hosts already paid us via Airbnb, so the fee is
+                // reported (below) but never billed into the payout.
+                const pmFeeBilled      = isCohostAirbnb
+                    ? StatementCalculationService.getCohostCommissionDeduction(stmtCohostCollected, pmFeeToDeduct)
+                    : pmFeeToDeduct;
                 const taxResponsibility = parseFloat(r.clientTaxResponsibility || r.taxAmount || r.tax || 0);
                 const shouldAddTax     = !stmtDisregardTax && (!isAirbnb || stmtAirbnbPassThrough);
                 const taxToAdd         = shouldAddTax ? taxResponsibility : 0;
 
-                const resGrossPayout = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeToDeduct);
+                const resGrossPayout = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (clientRevenue - pmFeeBilled);
                 const resClientPayout = r.isCustom ? (parseFloat(r.grossAmount) || 0) : (resGrossPayout + taxToAdd);
 
                 entry.reservationCount += 1;
@@ -1752,7 +1765,7 @@ router.get('/export', async (req, res) => {
         // Merge in combined/group statements (property_id NULL) by fanning them out per property.
         const exportCombinedStmts = await Statement.findAll({
             attributes: ['id', 'ownerName', 'reservations', 'items', 'pmPercentage', 'weekEndDate',
-                         'isCohostOnAirbnb', 'waiveCommission', 'waiveCommissionUntil',
+                         'isCohostOnAirbnb', 'cohostCommissionCollected', 'waiveCommission', 'waiveCommissionUntil',
                          'disregardTax', 'airbnbPassThroughTax'],
             where: { ...baseWhere, propertyId: null },
             raw: true

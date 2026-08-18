@@ -119,6 +119,7 @@ class FileDataService {
                         listing.statementDisplayName = dbListing.statementDisplayName || null;
                         listing.pmFeePercentage = dbListing.pmFeePercentage;
                         listing.isCohostOnAirbnb = Boolean(dbListing.isCohostOnAirbnb);
+                        listing.cohostCommissionCollected = Boolean(dbListing.cohostCommissionCollected);
                         listing.cleaningFeePassThrough = Boolean(dbListing.cleaningFeePassThrough);
                         listing.disregardTax = Boolean(dbListing.disregardTax);
                         listing.airbnbPassThroughTax = Boolean(dbListing.airbnbPassThroughTax);
@@ -135,6 +136,7 @@ class FileDataService {
                         listing.statementDisplayName = null;
                         listing.pmFeePercentage = 15.00;
                         listing.isCohostOnAirbnb = false;
+                        listing.cohostCommissionCollected = false;
                         listing.cleaningFeePassThrough = false;
                         listing.disregardTax = false;
                         listing.airbnbPassThroughTax = false;
@@ -179,6 +181,7 @@ class FileDataService {
                         tags: db.tags || [],
                         pmFeePercentage: db.pmFeePercentage || 15.00,
                         isCohostOnAirbnb: Boolean(db.isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(db.cohostCommissionCollected),
                         cleaningFeePassThrough: Boolean(db.cleaningFeePassThrough),
                         excludeCleaningFromCommission: Boolean(db.excludeCleaningFromCommission),
                         disregardTax: Boolean(db.disregardTax),
@@ -199,6 +202,7 @@ class FileDataService {
                     listing.tags = [];
                     listing.pmFeePercentage = 15.00;
                     listing.isCohostOnAirbnb = false;
+                    listing.cohostCommissionCollected = false;
                     listing.cleaningFeePassThrough = false;
                     listing.disregardTax = false;
                     listing.airbnbPassThroughTax = false;

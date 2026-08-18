@@ -278,6 +278,7 @@ class StatementService {
                         const info = listingInfoMap[propId] || {};
                         snapshot[propId] = {
                             isCohostOnAirbnb: Boolean(info.isCohostOnAirbnb),
+                            cohostCommissionCollected: Boolean(info.cohostCommissionCollected),
                             disregardTax: Boolean(info.disregardTax),
                             airbnbPassThroughTax: Boolean(info.airbnbPassThroughTax),
                             cleaningFeePassThrough: Boolean(info.cleaningFeePassThrough),
@@ -461,6 +462,7 @@ class StatementService {
                 cleaningFeePassThrough: listingInfoMap[parsedPropertyId]?.cleaningFeePassThrough || false,
                 excludeCleaningFromCommission: listingInfoMap[parsedPropertyId]?.excludeCleaningFromCommission || false,
                 isCohostOnAirbnb: listingInfoMap[parsedPropertyId]?.isCohostOnAirbnb || false,
+                cohostCommissionCollected: listingInfoMap[parsedPropertyId]?.cohostCommissionCollected || false,
                 // Snapshot listing settings at generation time
                 waiveCommission: Boolean(listingInfoMap[parsedPropertyId]?.waiveCommission),
                 waiveCommissionUntil: listingInfoMap[parsedPropertyId]?.waiveCommissionUntil || null,
@@ -470,6 +472,7 @@ class StatementService {
                 listingSettingsSnapshot: listingInfoMap[parsedPropertyId] ? {
                     [parsedPropertyId]: {
                         isCohostOnAirbnb: Boolean(listingInfoMap[parsedPropertyId].isCohostOnAirbnb),
+                        cohostCommissionCollected: Boolean(listingInfoMap[parsedPropertyId].cohostCommissionCollected),
                         disregardTax: Boolean(listingInfoMap[parsedPropertyId].disregardTax),
                         airbnbPassThroughTax: Boolean(listingInfoMap[parsedPropertyId].airbnbPassThroughTax),
                         cleaningFeePassThrough: Boolean(listingInfoMap[parsedPropertyId].cleaningFeePassThrough),

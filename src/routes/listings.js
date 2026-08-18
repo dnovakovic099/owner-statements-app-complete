@@ -222,7 +222,7 @@ router.put('/:id/config', async (req, res) => {
     try {
         const { id } = req.params;
         logger.debug('PUT /listings/:id/config request', { context: 'Listings', body: req.body });
-        const { displayName, statementDisplayName, isCohostOnAirbnb, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, pmFeeSchedule, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
+        const { displayName, statementDisplayName, isCohostOnAirbnb, cohostCommissionCollected, airbnbPassThroughTax, disregardTax, cleaningFeePassThrough, excludeCleaningFromCommission, guestPaidDamageCoverage, includeChildListings, pmFeePercentage, defaultPetFee, tags, waiveCommission, waiveCommissionUntil, newPmFeeEnabled, newPmFeePercentage, newPmFeeStartDate, pmFeeSchedule, internalNotes, ownerEmail, ownerGreeting, autoSendStatements, groupId, payoutStatus, payoutNotes, wiseRecipientId, wiseStatus } = req.body;
 
         const config = {};
         if (displayName !== undefined) config.displayName = displayName;
@@ -231,6 +231,7 @@ router.put('/:id/config', async (req, res) => {
             config.statementDisplayName = trimmed || null;
         }
         if (isCohostOnAirbnb !== undefined) config.isCohostOnAirbnb = isCohostOnAirbnb;
+        if (cohostCommissionCollected !== undefined) config.cohostCommissionCollected = cohostCommissionCollected;
         if (airbnbPassThroughTax !== undefined) config.airbnbPassThroughTax = airbnbPassThroughTax;
         if (disregardTax !== undefined) config.disregardTax = disregardTax;
         if (cleaningFeePassThrough !== undefined) config.cleaningFeePassThrough = cleaningFeePassThrough;
@@ -343,6 +344,7 @@ router.put('/:id/config', async (req, res) => {
         const fieldLabels = {
             pmFeePercentage: 'PM Fee %',
             isCohostOnAirbnb: 'Cohost on Airbnb',
+            cohostCommissionCollected: 'Cohost Commission Already Collected',
             airbnbPassThroughTax: 'Pass-through Tax',
             disregardTax: 'Disregard Tax',
             cleaningFeePassThrough: 'Cleaning Fee Pass-through',

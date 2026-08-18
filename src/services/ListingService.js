@@ -498,6 +498,7 @@ class ListingService {
             if (config.displayName !== undefined) updates.displayName = config.displayName;
             if (config.statementDisplayName !== undefined) updates.statementDisplayName = config.statementDisplayName;
             if (config.isCohostOnAirbnb !== undefined) updates.isCohostOnAirbnb = config.isCohostOnAirbnb;
+            if (config.cohostCommissionCollected !== undefined) updates.cohostCommissionCollected = config.cohostCommissionCollected;
             if (config.airbnbPassThroughTax !== undefined) updates.airbnbPassThroughTax = config.airbnbPassThroughTax;
             if (config.disregardTax !== undefined) updates.disregardTax = config.disregardTax;
             if (config.cleaningFeePassThrough !== undefined) updates.cleaningFeePassThrough = config.cleaningFeePassThrough;

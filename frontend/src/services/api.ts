@@ -541,6 +541,7 @@ export const listingsAPI = {
     displayName?: string;
     statementDisplayName?: string | null;
     isCohostOnAirbnb?: boolean;
+    cohostCommissionCollected?: boolean;
     pmFeePercentage?: number;
     defaultPetFee?: number | null;
     tags?: string[];

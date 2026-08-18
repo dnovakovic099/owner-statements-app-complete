@@ -86,6 +86,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
   const [displayName, setDisplayName] = useState('');
   const [statementDisplayName, setStatementDisplayName] = useState('');
   const [isCohostOnAirbnb, setIsCohostOnAirbnb] = useState(false);
+  const [cohostCommissionCollected, setCohostCommissionCollected] = useState(false);
   const [airbnbPassThroughTax, setAirbnbPassThroughTax] = useState(false);
   const [disregardTax, setDisregardTax] = useState(false);
   const [cleaningFeePassThrough, setCleaningFeePassThrough] = useState(false);
@@ -325,6 +326,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         setDisplayName(listing.displayName || listing.nickname || listing.name || '');
         setStatementDisplayName(listing.statementDisplayName || '');
         setIsCohostOnAirbnb(listing.isCohostOnAirbnb || false);
+        setCohostCommissionCollected(listing.cohostCommissionCollected || false);
         setAirbnbPassThroughTax(listing.airbnbPassThroughTax || false);
         setDisregardTax(listing.disregardTax || false);
         setCleaningFeePassThrough(listing.cleaningFeePassThrough || false);
@@ -468,6 +470,9 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
         displayName: displayName.trim() || undefined,
         statementDisplayName: statementDisplayName.trim() || null,
         isCohostOnAirbnb,
+        // Only meaningful for co-hosts; keep it off elsewhere so a listing that
+        // stops being a co-host can't carry a stale modifier back with it.
+        cohostCommissionCollected: isCohostOnAirbnb ? cohostCommissionCollected : false,
         airbnbPassThroughTax,
         disregardTax,
         cleaningFeePassThrough,
@@ -647,6 +652,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       'Max Nights',
       'PM Fee %',
       'Is Co-host on Airbnb',
+      'Co-host Commission Already Collected',
       'Airbnb Pass-Through Tax',
       'Disregard Tax',
       'Cleaning Fee Pass-Through',
@@ -702,6 +708,7 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
       listing.maxNights || '',
       listing.pmFeePercentage ?? '',
       listing.isCohostOnAirbnb ? 'Yes' : 'No',
+      listing.isCohostOnAirbnb && listing.cohostCommissionCollected ? 'Yes' : 'No',
       listing.airbnbPassThroughTax ? 'Yes' : 'No',
       listing.disregardTax ? 'Yes' : 'No',
       listing.cleaningFeePassThrough ? 'Yes' : 'No',
@@ -1218,8 +1225,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                         ID: {listing.id}
                         {listing.city && ` • ${listing.city}`}
                         {listing.isCohostOnAirbnb && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
-                            Co-host
+                          <span
+                            className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
+                            title={listing.cohostCommissionCollected
+                              ? 'PM commission already collected from Airbnb — shown on statements for visibility, not billed to the owner'
+                              : 'PM commission is billed back to the owner on the statement'}
+                          >
+                            {listing.cohostCommissionCollected ? 'Co-host · fee collected' : 'Co-host'}
                           </span>
                         )}
                       </div>
@@ -1311,8 +1323,13 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             ID: {listing.id}
                             {listing.city && ` • ${listing.city}`}
                             {listing.isCohostOnAirbnb && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
-                                Co-host
+                              <span
+                                className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
+                                title={listing.cohostCommissionCollected
+                                  ? 'PM commission already collected from Airbnb — shown on statements for visibility, not billed to the owner'
+                                  : 'PM commission is billed back to the owner on the statement'}
+                              >
+                                {listing.cohostCommissionCollected ? 'Co-host · fee collected' : 'Co-host'}
                               </span>
                             )}
                           </div>
@@ -1444,6 +1461,35 @@ const ListingsPage: React.FC<ListingsPageProps> = ({
                             When enabled, Airbnb revenue will be <strong>excluded</strong> from statement calculations.
                             The client receives all payments directly, so only PM commission will be calculated.
                           </p>
+
+                          {/* Which co-host arrangement: bill the commission back, or
+                              show it for visibility because Airbnb already paid it to us. */}
+                          {isCohostOnAirbnb && (
+                            <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800">
+                              <div className="flex items-start">
+                                <input
+                                  type="checkbox"
+                                  id="cohostCommissionCollected"
+                                  checked={cohostCommissionCollected}
+                                  onChange={(e) => setCohostCommissionCollected(e.target.checked)}
+                                  className="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                                />
+                                <div className="ml-3">
+                                  <label
+                                    htmlFor="cohostCommissionCollected"
+                                    className="text-sm font-medium text-purple-900 cursor-pointer"
+                                  >
+                                    PM commission already collected from Airbnb
+                                  </label>
+                                  <p className="text-xs text-purple-700 mt-1">
+                                    For co-hosts where Airbnb pays the commission straight into our account.
+                                    The commission is still shown on the statement for visibility, but it is{' '}
+                                    <strong>not</strong> deducted from Gross Payout — the owner is never billed for it.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

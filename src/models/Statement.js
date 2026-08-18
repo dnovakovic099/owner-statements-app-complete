@@ -114,6 +114,13 @@ const Statement = sequelize.define('Statement', {
         defaultValue: false,
         field: 'is_cohost_on_airbnb'
     },
+    cohostCommissionCollected: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'cohost_commission_collected',
+        comment: 'Snapshot of the co-host commission-collected modifier: PM commission is shown for visibility but not deducted from gross payout'
+    },
     cleaningFeePassThrough: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

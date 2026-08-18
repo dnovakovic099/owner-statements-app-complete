@@ -59,6 +59,13 @@ const Listing = sequelize.define('Listing', {
         field: 'is_cohost_on_airbnb',
         comment: 'If true, Airbnb revenue will be excluded from statement calculations'
     },
+    cohostCommissionCollected: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'cohost_commission_collected',
+        comment: 'Co-host modifier: Airbnb pays the PM commission directly to us, so the statement shows it for visibility only and never deducts it from the owner payout. Only meaningful when isCohostOnAirbnb is true.'
+    },
     airbnbPassThroughTax: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
